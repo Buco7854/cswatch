@@ -117,21 +117,19 @@ try {
               if (!el.checkVisibility()) return false;
               // These named rails intentionally scroll horizontally; validate their
               // containing region below, not each offscreen, keyboard-reachable item.
-              if (el.closest('.round-events-track,.round-strip')) return false;
+              if (el.closest('.round-strip')) return false;
               const r = el.getBoundingClientRect();
               return r.width > 0 && r.height > 0 && (r.right > innerWidth + 1 || r.left < -1);
             })
             .map((el) => el.getAttribute('aria-label') || el.textContent?.slice(0, 45)),
         }));
-        const railOverflow = await page
-          .locator('.round-events-track,.round-strip')
-          .evaluateAll((rails) =>
-            rails.some((rail) => {
-              if (!rail.checkVisibility()) return false;
-              const bounds = rail.getBoundingClientRect();
-              return bounds.left < -1 || bounds.right > innerWidth + 1;
-            }),
-          );
+        const railOverflow = await page.locator('.round-strip').evaluateAll((rails) =>
+          rails.some((rail) => {
+            if (!rail.checkVisibility()) return false;
+            const bounds = rail.getBoundingClientRect();
+            return bounds.left < -1 || bounds.right > innerWidth + 1;
+          }),
+        );
         metrics.overflow ||= railOverflow;
         report.push({ lang, theme, kind, width, ...metrics, errors: [...errors] });
         if ([1440, 390].includes(width))

@@ -1,138 +1,20 @@
 .viewer-review-rails {
   min-width: 0;
 }
-.round-events {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-  margin-top: 8px;
-  padding-top: 7px;
-  border-top: 1px solid var(--border);
-}
-.round-events-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  flex: 0 0 156px;
-  min-height: 44px;
-  border: 0;
-  padding: 3px 8px 3px 0;
-  color: var(--muted);
-  background: transparent;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.round-events-heading-copy {
-  min-width: 0;
-  flex: 1;
-}
-.round-events-heading strong {
-  display: block;
-  color: var(--text);
-  font-size: 12px;
-  font-weight: 500;
-}
-.round-events-heading small {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin-top: 3px;
-  color: var(--faint);
-  font-size: 11px;
-}
-.round-events-player {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.round-event-kills,
-.round-event-deaths {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  flex-shrink: 0;
-  font-variant-numeric: tabular-nums;
-}
-.round-event-kills,
-.event-kill.selected-player-event .round-event-icon {
-  color: var(--signal);
-}
-.round-event-deaths,
-.event-death.selected-player-event .round-event-icon {
-  color: #efa3a7;
-}
-[data-theme='light'] .round-event-deaths,
-[data-theme='light'] .event-death.selected-player-event .round-event-icon {
-  color: #a12c36;
-}
-.round-events-track {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  position: relative;
-  flex: 1;
-  min-width: 0;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  scrollbar-width: thin;
-}
-.round-event-marker {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  flex-shrink: 0;
-  min-width: 76px;
-  min-height: 44px;
-  padding: 8px 10px;
-  border: 1px solid transparent;
-  border-radius: 5px;
-  background: transparent;
-  color: var(--faint);
-  font: inherit;
-  font-size: 12px;
-  line-height: 1.4;
-  cursor: pointer;
-}
-.round-event-marker.event-passed {
-  color: var(--muted);
-}
-.round-event-marker:hover,
-.round-event-marker[aria-current='step'] {
-  color: var(--text);
-  background: var(--raised);
-  border-color: var(--border);
-}
 .round-event-icon {
   display: inline-flex;
-  align-items: center;
   flex-shrink: 0;
   color: var(--faint);
 }
-.round-event-time {
-  color: var(--muted);
-  white-space: nowrap;
-  font-size: 12px;
-}
-.round-event-short-name {
-  white-space: nowrap;
-}
-.round-events-empty {
-  margin: 0;
-  color: var(--faint);
-  font-size: 12px;
-  line-height: 1.5;
-}
-.round-events-heading:focus-visible,
-.round-event-marker:focus-visible,
 .round-review-row:focus-visible {
   outline: 2px solid var(--signal);
   outline-offset: -2px;
+}
+.event-kill.selected-player-event .round-event-icon {
+  color: var(--signal);
+}
+.event-death.selected-player-event .round-event-icon {
+  color: var(--negative, #d76a74);
 }
 .round-event-filters {
   display: grid;
@@ -173,7 +55,7 @@
   min-height: 58px;
   padding: 13px 0;
   border: 0;
-  border-top: 1px solid var(--border);
+  border-top: 0;
   border-radius: 0;
   background: transparent;
   color: var(--text);
@@ -218,67 +100,6 @@
   min-height: 44px;
   margin: 16px 0 0;
   width: 100%;
-}
-@media (max-width: 760px) {
-  .round-events {
-    gap: 6px;
-    margin-top: 5px;
-    padding-top: 5px;
-  }
-  .round-events-heading {
-    flex-basis: 116px;
-    padding-right: 3px;
-    gap: 4px;
-  }
-  .round-events-heading strong {
-    font-size: 12px;
-  }
-  .round-events-heading small {
-    gap: 4px;
-  }
-  .round-event-marker {
-    min-width: 70px;
-    gap: 6px;
-    padding: 7px 8px;
-  }
-  .round-event-short-name {
-    display: none;
-  }
-  .round-events-track {
-    gap: 3px;
-  }
-  .round-events-empty {
-    font-size: 11px;
-  }
-}
-@media (min-width: 600px) and (max-width: 1100px) and (max-height: 560px) {
-  .viewer-review-rails {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    border-top: 1px solid var(--border);
-    margin-top: 5px;
-    padding-top: 6px;
-  }
-  .viewer-review-rails .round-events {
-    flex: 0 0 154px;
-    margin: 0;
-    padding: 0;
-    border: 0;
-  }
-  .viewer-review-rails .round-events-heading {
-    flex-basis: 100%;
-  }
-  .viewer-review-rails .round-events-track {
-    display: none;
-  }
-  .viewer-review-rails .viewer-rounds-rail {
-    flex: 1;
-    min-width: 0;
-    margin: 0;
-    padding: 0;
-    border: 0;
-  }
 }
 @media (max-width: 540px), (max-height: 560px) {
   .viewer-shell .viewer-surface .viewer-drawer {

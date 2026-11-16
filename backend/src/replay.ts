@@ -20,6 +20,41 @@ const tick = z
   .min(0)
   .max(64 * 60 * 180);
 const coordinate = z.number().finite().min(-1e7).max(1e7);
+const objectiveDeadline = z
+  .number()
+  .finite()
+  .min(0)
+  .max(64 * 60 * 360);
+const objectiveDuration = z.number().finite().positive().max(10800);
+const objectiveActor = z.string().regex(/^\d{1,20}$/);
+const objectiveBase = { tick, entity: z.string().min(1).max(80), present: z.boolean() };
+export const objectiveSampleSchema = z.discriminatedUnion('kind', [
+  z
+    .object({
+      ...objectiveBase,
+      kind: z.literal('plant'),
+      arming: z.boolean().optional(),
+      actor: objectiveActor.optional(),
+      endTick: objectiveDeadline.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      ...objectiveBase,
+      kind: z.literal('bomb'),
+      ticking: z.boolean().optional(),
+      beingDefused: z.boolean().optional(),
+      defused: z.boolean().optional(),
+      exploded: z.boolean().optional(),
+      actor: objectiveActor.optional(),
+      site: z.union([z.literal(0), z.literal(1)]).optional(),
+      endTick: objectiveDeadline.optional(),
+      duration: objectiveDuration.optional(),
+      defuseEndTick: objectiveDeadline.optional(),
+      defuseDuration: objectiveDuration.optional(),
+    })
+    .strict(),
+]);
 const point = z.object({ tick, x: coordinate, y: coordinate, z: coordinate }).strict();
 const buttonMask = z
   .string()
@@ -212,6 +247,10 @@ export const manifestSchema = z
     chat: z.array(chatMessageSchema).max(10000).optional(),
     captions: z.array(captionCueSchema).max(20000).optional(),
     communications: communicationInfoSchema.optional(),
+    objectives: z
+      .object({ samples: z.array(objectiveSampleSchema).max(10000), complete: z.boolean() })
+      .strict()
+      .optional(),
     capabilities: z
       .object({
         economy: z.boolean(),
@@ -382,6 +421,15 @@ export function validateReplayArtifacts(folder: string): {
     manifest.chunks.at(-1)!.endTick !== manifest.lastTick
   )
     throw new Error('Invalid replay bounds');
+  const actors = new Set(manifest.players.map((player) => player.id));
+  for (const [index, sample] of (manifest.objectives?.samples || []).entries()) {
+    if (
+      sample.tick > manifest.lastTick ||
+      (index > 0 && sample.tick < manifest.objectives!.samples[index - 1].tick) ||
+      (sample.actor !== undefined && !actors.has(sample.actor))
+    )
+      throw new Error('Invalid objective state identity or time');
+  }
   const chunksDir = lstatSync(join(folder, 'chunks'));
   if (!chunksDir.isDirectory() || chunksDir.isSymbolicLink())
     throw new Error('Invalid replay directory');

@@ -21,7 +21,9 @@ Start with `docs/HANDOFF.md` for current state and `docs/product/WORK.md` for th
 - `frontend/src/components/Viewer.tsx`: timeline/controller; `Scene.tsx`: WebGL rendering; `TacticalPlot.tsx`: 2D fallback; `ViewerOptions.tsx`: device-local display preferences.
 - `frontend/src/playback.ts`: pure seeking/frame lookup/skip logic. Keep this independent of Three.js.
 - `frontend/src/replay-cache.ts`, `useReplay.ts`: bounded chunk caching, buffering and identity-safe loading. Whole-match navigation must use manifest bounds, not current chunk bounds.
-- `frontend/src/review-events.ts`, `components/RoundEvents.tsx`: recorded round-event identity/grouping and progressive event review. Match real players by string Steam ID, never nickname.
+- `frontend/src/review-events.ts`, `timeline.ts`, `components/ReplayTimeline.tsx`, `RoundEvents.tsx`: recorded event identity, time projection/clusters, shared seek axis and detailed review. Match real players by string Steam ID, never nickname; event markers never use evenly spaced fake time.
+- `backend/src/objectives.ts`, `frontend/src/objective-state.ts`, `components/ObjectiveHud.tsx`: recorded C4 server clocks and seek-safe lifecycle. Never infer a fuse/defuse duration from a default or future explosion event; preserve elapsed fallback and explicit outcomes.
+- `shared/equipment-icons.json`, `backend/src/equipment-assets.ts`, `frontend/src/equipment-icons.ts`, `components/EquipmentGlyph.tsx`: fixed operator artwork registry, bounded validated PNG delivery and local-only loading. No arbitrary URLs, raw SVG serving or game artwork in Git/images. Build copies the registry into backend/dist for Docker.
 - `frontend/src/components/ReviewHud.tsx`, `PlayerInputs.tsx`, `MatchEconomy.tsx`: optional recorded inputs/economy. `Communications.tsx`, `voice-playback.ts`: local voice decoding, subtitles/chat, bounded scheduling and identity-safe lifecycle. Missing inputs/communications stay unavailable; physical bindings cannot be inferred.
 - `frontend/src/components/WorkspaceShell.tsx`, `AccountMenu.tsx`, `Controls.tsx`: work navigation, account destinations, accessible fullscreen/dialog-aware menus/selects. `/account/connections` is canonical; preserve `/connections` redirects.
 - `tools/assets`: trusted operator-only S2V export/optimization. No proprietary assets in Git/images.
@@ -30,7 +32,7 @@ Start with `docs/HANDOFF.md` for current state and `docs/product/WORK.md` for th
 
 ## Commands
 
-`npm ci` at root, then `npm ci --prefix backend`, `npm ci --prefix frontend`; optional tools with `npm ci --prefix tools/assets`. `npm run build`; `node scripts/fetch-test-demo.mjs`; `npm test`; `node scripts/runtime-smoke.mjs`; `npm run test:e2e`; private variants via `E2E_PRIVATE=1 E2E_REGISTRATIONS=false|true`; `npm run check:locales`; `npm run format:check`. See README for same-origin local server/worker and CLI account provisioning. Use Node 24, Linux Landlock ABI3+ and a C compiler/libc headers for the sandbox build. Native tests require the pinned fixture; missing fixtures are skips, never passes. Docker CI executes the same upload/sandbox/chunk smoke in the hardened image.
+`npm ci` at root, then `npm ci --prefix backend`, `npm ci --prefix frontend`; optional tools with `npm ci --prefix tools/assets`. `npm run build`; `node scripts/fetch-test-demo.mjs`; `npm test`; `npm run test:assets`; `node scripts/runtime-smoke.mjs`; `npm run test:e2e`; private variants via `E2E_PRIVATE=1 E2E_REGISTRATIONS=false|true`; `npm run check:locales`; `npm run format:check`. See README for same-origin local server/worker and CLI account provisioning. Use Node 24, Linux Landlock ABI3+ and a C compiler/libc headers for the sandbox build. Native tests require the pinned fixture; missing fixtures are skips, never passes. Docker CI executes the same upload/sandbox/chunk smoke in the hardened image.
 
 ## Invariants
 
@@ -42,6 +44,7 @@ Start with `docs/HANDOFF.md` for current state and `docs/product/WORK.md` for th
 - Worker has no network in Compose. Parser subprocess gets a stripped environment and required kernel filesystem/process/network restrictions. Unsupported confinement fails closed. Scratch polling does not replace host disk quotas; read SECURITY.md before changing parsing.
 - Replay Steam IDs remain strings. Source coordinates are inches, Z-up. S2V already exports meters/Y-up; do not apply Source scale twice. Viewer world is `(X,Z,-Y) * .0254`; S2V glTF rotates +90° around Y.
 - Use recorded event/flag data for skip controls and round-event markers. Synthetic sample data is labeled and never mixed into personal history. Premier/Competitive/Wingman files use the CS2 upload pipeline; Steam OpenID alone is not demo-download authorization.
+- Keep spectator controls at the edges; no centered input panel or floating equipment toolbar. Phone equipment starts compact and expands explicitly; the optional round strip starts collapsed on all devices. Preserve keyboard focus outlines while reducing decorative frames.
 - Display approximations honestly. Do not claim Source 2 visual parity, native smoke physics, frame-rate guarantees, Steam auto-downloads, or real-device validation without evidence.
 
 ## Change process

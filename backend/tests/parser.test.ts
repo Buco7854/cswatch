@@ -61,6 +61,44 @@ for (const compressed of [false, true])
         assert.equal(data.capabilities?.inputButtons, 'network');
         assert.equal(data.capabilities?.mouseInput, false);
         assert.equal(data.capabilities?.utilityThrows, true);
+        assert.equal(data.objectives?.complete, true);
+        assert.ok(data.objectives.samples.length > 5 && data.objectives.samples.length < 1000);
+        assert.ok(
+          data.objectives.samples.some(
+            (sample) =>
+              sample.kind === 'plant' &&
+              sample.arming &&
+              sample.actor &&
+              sample.endTick !== undefined,
+          ),
+        );
+        assert.ok(
+          data.objectives.samples.some(
+            (sample) =>
+              sample.kind === 'bomb' &&
+              sample.ticking &&
+              sample.duration === 40 &&
+              sample.endTick !== undefined,
+          ),
+        );
+        assert.ok(
+          data.objectives.samples.some(
+            (sample) =>
+              sample.kind === 'bomb' &&
+              sample.beingDefused &&
+              sample.actor &&
+              sample.defuseDuration === 10 &&
+              sample.defuseEndTick !== undefined,
+          ),
+        );
+        assert.ok(
+          data.events.some(
+            (event) => event.type === 'bomb_beginplant' && typeof event.user_steamid === 'string',
+          ),
+        );
+        assert.ok(
+          data.events.some((event) => event.type === 'bomb_begindefuse' && event.haskit === false),
+        );
         assert.ok(
           data.frames.some((frame: any) =>
             frame.players.some(

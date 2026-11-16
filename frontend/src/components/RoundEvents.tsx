@@ -1,14 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import {
-  Bomb,
-  CheckCircle2,
-  ChevronRight,
-  Crosshair,
-  Flag,
-  Flame,
-  Skull,
-  Waypoints,
-} from 'lucide-react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Bomb, CheckCircle2, Crosshair, Flag, Flame, Skull, Waypoints } from 'lucide-react';
 import { t } from '../i18n';
 import { roundEvents, type ReviewEvent, type ReviewRound } from '../review-events';
 import type { Playback } from '../types';
@@ -20,7 +11,7 @@ const clock = (seconds: number) => {
   const value = Math.max(0, Math.floor(seconds));
   return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`;
 };
-const eventIcon = (event: ReviewEvent, size = 16): ReactNode => {
+export const eventIcon = (event: ReviewEvent, size = 16): ReactNode => {
   if (event.type === 'death') return <Skull size={size} />;
   if (event.type === 'plant') return <Bomb size={size} />;
   if (event.type === 'defuse') return <CheckCircle2 size={size} />;
@@ -29,7 +20,7 @@ const eventIcon = (event: ReviewEvent, size = 16): ReactNode => {
   if (event.type === 'throw') return <Waypoints size={size} />;
   return <Crosshair size={size} />;
 };
-function eventTitle(event: ReviewEvent) {
+export function eventTitle(event: ReviewEvent) {
   if (event.type === 'kill') return t('Kill');
   if (event.type === 'death') return t('Death');
   if (event.type === 'elimination') return t('Elimination');
@@ -39,7 +30,7 @@ function eventTitle(event: ReviewEvent) {
   if (event.type === 'throw') return t('Utility thrown');
   return t('Round ended');
 }
-function eventDescription(event: ReviewEvent) {
+export function eventDescription(event: ReviewEvent) {
   if (event.type === 'throw') {
     return t('{{player}} threw {{utility}}', {
       player: event.actor || t('a player'),
@@ -61,7 +52,7 @@ function eventDescription(event: ReviewEvent) {
     });
   return eventTitle(event);
 }
-function eventLabel(event: ReviewEvent, origin: number, rate: number) {
+export function eventLabel(event: ReviewEvent, origin: number, rate: number) {
   return t('{{event}} at {{time}}', {
     event: eventDescription(event),
     time: clock((event.tick - origin) / rate),
@@ -75,95 +66,6 @@ type ReplayEventsProps = {
   selected: string;
   onSeek: (tick: number) => void;
 };
-
-/** Chronological 44px markers never overlap, even when eliminations share a tick. */
-export default function RoundEvents({
-  data,
-  round,
-  tick,
-  selected,
-  onSeek,
-  onReview,
-}: ReplayEventsProps & { onReview: (trigger: HTMLButtonElement) => void }) {
-  const events = useMemo(
-    () => roundEvents(data, round, selected),
-    [data, round.start, round.end, selected],
-  );
-  const player = data.players.find((player) => player.id === selected);
-  const kills = events.filter((event) => event.type === 'kill').length;
-  const deaths = events.filter((event) => event.type === 'death').length;
-  const active = events.reduce(
-    (previous, event, index) => (event.tick <= tick ? index : previous),
-    -1,
-  );
-  const activeId = events[active]?.id;
-  const track = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const container = track.current;
-    const marker = container?.querySelector<HTMLElement>('[aria-current="step"]');
-    if (!container || !marker) return;
-    const left = marker.offsetLeft - (container.clientWidth - marker.offsetWidth) / 2;
-    container.scrollTo({ left: Math.max(0, left), behavior: 'instant' });
-  }, [activeId, round.number]);
-  const summary = t('{{player}}: {{kills}}, {{deaths}}', {
-    player: player?.name || t('Selected player'),
-    kills: t('review_kill_count', { count: kills }),
-    deaths: t('review_death_count', { count: deaths }),
-  });
-  return (
-    <section className="round-events" aria-label={t('Current round events')}>
-      <button
-        className="round-events-heading"
-        onClick={(event) => onReview(event.currentTarget)}
-        aria-label={t('Review round {{round}} events. {{summary}}', {
-          round: round.number,
-          summary,
-        })}
-        title={summary}
-      >
-        <span className="round-events-heading-copy" aria-hidden="true">
-          <strong>{t(data.rounds.length ? 'Round events' : 'Match events')}</strong>
-          <small>
-            <span className="round-events-player">{player?.name || t('Selected player')}</span>
-            <span className="round-event-kills">
-              <Crosshair size={12} />
-              {kills}
-            </span>
-            <span className="round-event-deaths">
-              <Skull size={12} />
-              {deaths}
-            </span>
-          </small>
-        </span>
-        <ChevronRight size={14} aria-hidden="true" />
-      </button>
-      <div className="round-events-track" ref={track}>
-        {events.length ? (
-          events.map((event, index) => (
-            <button
-              key={event.id}
-              className={`round-event-marker event-${event.type}${event.selected ? ' selected-player-event' : ''}${event.tick <= tick ? ' event-passed' : ''}`}
-              aria-label={eventLabel(event, round.start, data.tickRate)}
-              title={eventLabel(event, round.start, data.tickRate)}
-              aria-current={index === active ? 'step' : undefined}
-              onClick={() => onSeek(event.tick)}
-            >
-              <span className="round-event-icon" aria-hidden="true">
-                {eventIcon(event)}
-              </span>
-              <span className="round-event-short-name">{eventTitle(event)}</span>
-              <span className="round-event-time num">
-                +{clock((event.tick - round.start) / data.tickRate)}
-              </span>
-            </button>
-          ))
-        ) : (
-          <p className="round-events-empty">{t('No key events recorded in this round.')}</p>
-        )}
-      </div>
-    </section>
-  );
-}
 
 /** Drawer detail keeps every event accessible; long matches load progressively. */
 export function RoundEventReview({

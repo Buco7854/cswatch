@@ -39,6 +39,18 @@ const db = new Store(root);
 const app = await createApp(config, db);
 try {
   const headers = { host: 'localhost:8000', origin };
+  const equipment = await app.inject({ method: 'GET', url: '/api/assets/equipment', headers });
+  assert.equal(equipment.statusCode, 200, equipment.body);
+  assert.deepEqual(
+    equipment.json(),
+    { icons: {} },
+    'Proprietary equipment artwork is never bundled.',
+  );
+  assert.equal(
+    (await app.inject({ method: 'GET', url: '/api/assets/equipment/unknown.png', headers }))
+      .statusCode,
+    404,
+  );
   const registration = await app.inject({
     method: 'POST',
     url: '/api/auth/register',

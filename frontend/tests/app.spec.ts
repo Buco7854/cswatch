@@ -276,8 +276,8 @@ test('viewer menus support keyboard selection, bounded touch lists and fullscree
       await page.keyboard.press('Enter');
       await expect(camera).toContainText('Player perspective');
       const compact = width <= 760 || (width <= 1100 && height <= 560);
-      const triggerName = compact ? 'More controls' : 'More navigation';
-      const menuName = compact ? 'Viewer controls' : 'More navigation';
+      const triggerName = 'More controls';
+      const menuName = 'Viewer controls';
       await page.getByRole('button', { name: triggerName, exact: true }).click();
       await expect(page.getByRole('menu', { name: menuName })).toBeVisible();
       expect(
@@ -312,7 +312,7 @@ test('viewer menus support keyboard selection, bounded touch lists and fullscree
   }
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.getByRole('button', { name: 'Players', exact: true }).click();
-  await page.getByRole('button', { name: 'More navigation', exact: true }).click();
+  await page.getByRole('button', { name: 'More controls', exact: true }).click();
   await page.keyboard.press('Escape');
   await expect(page.locator('.viewer-drawer')).toBeVisible();
   await page.getByRole('button', { name: 'Close panel' }).click();

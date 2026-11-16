@@ -97,3 +97,39 @@ test('unavailable events produce an honest empty state; names-only matching is l
     'kill',
   );
 });
+
+test('timeline projection uses the complete visible axis including endpoints and degenerate ranges', async () => {
+  const { timelinePosition } = await import('../../frontend/src/timeline.js');
+  assert.equal(timelinePosition(100, { start: 100, end: 1100 }), 0);
+  assert.equal(timelinePosition(600, { start: 100, end: 1100 }), 0.5);
+  assert.equal(timelinePosition(1100, { start: 100, end: 1100 }), 1);
+  assert.equal(timelinePosition(100, { start: 100, end: 100 }), 0);
+  assert.equal(timelinePosition(600, { start: 400, end: 800 }), 0.5);
+});
+
+test('timeline clusters preserve exact recorded members and every event during resize or zoom', async () => {
+  const { timelineGroups } = await import('../../frontend/src/timeline.js');
+  const events = roundEvents(data, { number: 0, start: 100, end: 2000 }, data.players[0].id);
+  const equalTick = { ...events[0], id: 'same-tick-second-event' };
+  const all = [...events, equalTick];
+  const narrow = timelineGroups(all, { start: 100, end: 2000 }, 240);
+  assert.deepEqual(
+    narrow
+      .flatMap((group) => group.events)
+      .map((event) => event.id)
+      .sort(),
+    all.map((event) => event.id).sort(),
+  );
+  assert.ok(
+    narrow.some((group) => group.events.includes(equalTick) && group.events.includes(events[0])),
+  );
+  assert.equal(narrow[0].anchor, (events[0].tick - 100) / 1900);
+  const wide = timelineGroups(all, { start: 100, end: 2000 }, 1200);
+  assert.ok(wide.length >= narrow.length);
+  assert.equal(wide[0].events.length, 2);
+  const zoom = timelineGroups(all, { start: 400, end: 800 }, 240);
+  assert.ok(
+    zoom.every((group) => group.events.every((event) => event.tick >= 400 && event.tick <= 800)),
+  );
+  assert.deepEqual(timelineGroups([], { start: 0, end: 0 }, 0), []);
+});

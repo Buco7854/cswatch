@@ -80,7 +80,7 @@ test('recorded voice decodes under the production CSP, subtitles/chat follow see
   const slider = page.getByRole('slider', { name: 'Playback position' });
   await expect(slider).toBeVisible();
   await expect(page.locator('.communication-overlay')).toHaveCount(0);
-  await page.getByRole('button', { name: 'More navigation', exact: true }).click();
+  await page.getByRole('button', { name: 'More controls', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Communications', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Communications' })).toBeVisible();
   await page.getByRole('switch', { name: /Recorded voice/ }).check();
@@ -92,7 +92,7 @@ test('recorded voice decodes under the production CSP, subtitles/chat follow see
   await page.getByRole('button', { name: 'Chat', exact: true }).click();
   await page.getByRole('switch', { name: /Chat overlay/ }).check();
   await page.getByRole('button', { name: 'Close communications', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'More navigation', exact: true })).toBeFocused();
+  await expect(page.getByRole('button', { name: 'More controls', exact: true })).toBeFocused();
   await slider.fill('100');
   await expect(page.locator('.voice-caption')).toContainText(
     'Explicit synthetic subtitle fixture.',
@@ -162,7 +162,7 @@ test('French communications controls and fullscreen-aware lists fit phone, table
       await page.getByRole('button', { name: 'Fermer les communications' }).click();
       await expect(page.getByRole('button', { name: 'Options', exact: true })).toBeFocused();
     }
-  // A responsive layout can hide the original menu trigger while its modal is open.
+  // The persistent action menu remains the focus return target across responsive layouts.
   await page.setViewportSize({ width: 320, height: 740 });
   await page.goto('/watch/sample?theme=light');
   await page.getByRole('button', { name: 'Autres commandes', exact: true }).click();
@@ -170,6 +170,6 @@ test('French communications controls and fullscreen-aware lists fit phone, table
   await expect(page.getByRole('dialog', { name: 'Communications' })).toBeVisible();
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.getByRole('button', { name: 'Fermer les communications' }).click();
-  await expect(page.getByRole('button', { name: 'Options', exact: true })).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Autres commandes', exact: true })).toBeFocused();
   expect(errors).toEqual([]);
 });

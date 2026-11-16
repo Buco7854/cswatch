@@ -69,7 +69,7 @@ Resetting invalidates existing sessions. Signed-in users can change/set their ow
 
 ### Recorded inputs, economy and communications
 
-The default viewer remains focused on the match. Options enable a progressive Inputs/Economy HUD for recorded movement/actions, WASD or ZQSD key labels, available mouse counts, player money/equipment/inventory and status. These are sampled recorded actions, not the player's physical key bindings. Missing command data stays unavailable rather than being guessed from movement. Current-round event markers and the review drawer cover selected-player kills/deaths, bomb outcomes and utility releases, with whole-match filters and exact seek controls.
+The default viewer remains focused on the match. Options enable compact edge-based inputs and broadcast equipment overlays for recorded movement/actions, WASD or ZQSD key labels, available mouse counts, player money/equipment/inventory and status. These are sampled recorded actions, not the player's physical key bindings. Missing command data stays unavailable rather than being guessed from movement. The seek bar positions selected-player kills/deaths and bomb outcomes at recorded times, with explicit round zoom and accessible event clusters; utility throws are optional. Detailed review retains whole-match/player filters. On-screen planting/defuse/fuse progress uses recorded C4 server deadlines; missing timing shows elapsed rather than an assumed duration.
 
 Communications has separate controls for recorded Opus voice, selected player/team/all speakers, volume and individual mutes, text chat and local speech subtitles. Voice decoding happens locally in the browser; no microphone access is requested. Some demos omit voice or use unsupported/encrypted communication data. cswatch cannot recover missing recordings or external Discord calls. Automatic subtitles can misrecognize speech. Sharing a demo also shares its recorded communications and captions; personal notes remain private.
 
@@ -98,7 +98,7 @@ New replays use versioned time slices with five seconds of trail context. The br
 
 [S2V / Source 2 Viewer](https://s2v.app/) exports CS2 content to glTF. The optional [asset preparation tools](tools/assets/README.md) run offline on a CPU, pack self-contained GLBs, create desktop/mobile map tiers, and record provenance. Install results into `/data/maps`. No .NET runtime or CS2 installation is needed by the web service itself.
 
-The browser discovers installed map assets by demo map name. Without a matching model it displays an explicitly labeled position view. Optional CT/T agent GLBs support generic time-sampled idle/movement/crouch animation; exact animation graphs, weapon attachments, and first-person weapon rendering are not complete. Source 2 lighting and volumetric effects are not preserved automatically by glTF export. No Valve content is bundled or redistributed by this repository.
+The browser discovers installed map assets by demo map name. The same operator workflow can prepare the actual CS2 weapon, utility, knife and kit icons: see [equipment artwork preparation](tools/assets/README.md#exact-equipment-silhouettes). Install that PNG pack under `/data/maps/equipment`; the HUD loads it locally and uses a labeled equipment fallback when absent. Game artwork is not bundled in Git or Docker. Without a matching model it displays an explicitly labeled position view. Optional CT/T agent GLBs support generic time-sampled idle/movement/crouch animation; exact animation graphs, weapon attachments, and first-person weapon rendering are not complete. Source 2 lighting and volumetric effects are not preserved automatically by glTF export. No Valve content is bundled or redistributed by this repository.
 
 ## Development
 
@@ -122,6 +122,7 @@ The local data directory defaults to `../var` relative to `backend/`. Environmen
 ```sh
 node scripts/fetch-test-demo.mjs   # checksum-pinned public upstream Mirage fixture
 npm test                         # security, replay logic, .dem and .dem.zst parsing
+npm run test:assets               # operator equipment sanitizer/output contracts
 node scripts/runtime-smoke.mjs    # upload → required sandbox → private chunks → notes/sharing
 npm run test:e2e                  # public journeys; uses an isolated test server
 E2E_PRIVATE=1 E2E_REGISTRATIONS=false npm run test:e2e

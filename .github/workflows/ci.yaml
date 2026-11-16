@@ -36,7 +36,7 @@ jobs:
       - run: node scripts/fetch-test-demo.mjs
       - name: Prepare checksum-pinned offline CPU speech model
         run: node tools/transcription/prepare-model.mjs --out var/transcription-models/whisper-tiny
-      - run: npm run format:check && npm run check:locales && npm run build && npm test
+      - run: npm run format:check && npm run check:locales && npm run build && npm test && npm run test:assets
         env:
           CSWATCH_TRANSCRIPTION_TEST_MODEL: ${{ github.workspace }}/var/transcription-models/whisper-tiny
       - name: Prepare public speech replay fixture for container verification

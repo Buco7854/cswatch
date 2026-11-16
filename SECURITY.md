@@ -15,6 +15,7 @@ Report a vulnerability privately to the repository maintainer using GitHub priva
 - Required per-job Linux Landlock/seccomp confinement inherited by native code. Read-only runtime libraries and isolated job files; no database, other demo, provider environment, network or subprocess access. Bounded artifact validation and quota checks before publication.
 - Non-root Docker runtime, read-only root, capability drop, no-new-privileges, process/CPU/memory limits; no worker network.
 - Isolated offline CPU transcription with read-only dedicated models, bounded Opus/utterance/output processing, lease-based publication and private caption access. Optional failure does not change primary demo readiness; retry requires ownership, Origin/CSRF and rate limits.
+- Read-only equipment artwork endpoints use a fixed registry, private-instance access checks, descriptor-anchored filesystem reads and bounded PNG structure/CRC validation. The general map route excludes the equipment directory; no public SVG upload or conversion endpoint exists.
 - Weekly CI image rebuild, dependency update PRs, production npm audit, and security boundary tests.
 
 ## Boundaries and remaining risks
@@ -32,5 +33,7 @@ There is no MFA, email verification/reset, arbitrary admin account management, s
 Opus packets and speech outputs are untrusted. Parent schema/byte/time/identity validation bounds published artifacts; browser audio scheduling and decoder state are bounded. Bundled WASM requires CSP `wasm-unsafe-eval`; ordinary JavaScript `unsafe-eval` remains disabled. Chat/captions render as plain React text. Subtitles are model estimates, not verified statements. Runtime speech inference has no network and never sends recordings to a service. Install only trusted, dedicated operator-controlled model directories; never grant a general directory containing secrets or application data as a model root.
 
 The worker is intentionally network-isolated; S2V conversion is operator-only. Do not expose conversion tools or install arbitrary user-supplied maps through a public endpoint. Only install assets you trust. External model URLs are excluded by both policy and CSP.
+
+Equipment SVG conversion is also operator-only. Its source checks reject external resources, scripts and symlink inputs before producing bounded PNGs; this is not a sandbox for arbitrary hostile artwork. Install trusted exports in the dedicated equipment directory. Proprietary game artwork is not committed or bundled, and the browser accepts only known same-origin raster paths from the equipment manifest.
 
 GitHub scheduled rebuilds update base image packages but do not change pinned application dependencies without a lockfile update. Review/merge dependency PRs and redeploy. CI runs production npm audits and emits image SBOM/provenance; this is not an independent security audit or a guarantee of vulnerability absence.

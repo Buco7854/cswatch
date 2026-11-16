@@ -41,3 +41,7 @@ The user likes the current public landing page. Preserve its composition, colors
 The viewer must occupy the **whole browser tab**. Render the match in a dedicated viewport with the playback/round dock inside it. Players, events, notes and advanced settings open over the scene. Browser fullscreen is additional, not the only way to get a full-sized viewer. No workspace sidebar or page footer should consume the viewing area. Test both portrait and landscape, as well as TV-sized viewports.
 
 Account settings and connected services belong in the user dropdown and account tabs. Keep the sidebar for match work. Communications, inputs and economy start disabled; the viewer's primary controls remain usable without enabling advanced overlays. Round events stay discoverable on phones, while the expanded round strip starts collapsed on narrow/short screens.
+
+## Spectator HUD direction
+
+The HUD takes its review navigation from CS demos and its live information from esports broadcasts. Recorded events sit at their actual timeline positions. Optional team banks show equipment and status at a glance; input actions use recognizable mouse/key shapes. Bomb actions show actor, icon and recorded progress. On small screens, expose advanced overlays progressively instead of squeezing every element onto the scene. Use space, alignment and neutral surface changes to group controls; avoid nested outlines around every panel and button.

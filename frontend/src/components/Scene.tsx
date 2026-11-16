@@ -498,6 +498,7 @@ export default function Scene({
   selected = '0',
   preview = false,
   settings = defaultSettings,
+  onMapAvailability,
 }: {
   data: Playback;
   tick?: number;
@@ -505,6 +506,7 @@ export default function Scene({
   selected?: string;
   preview?: boolean;
   settings?: ViewerSettings;
+  onMapAvailability?: (available: boolean) => void;
 }) {
   const low =
     settings.quality === 'low' ||
@@ -515,6 +517,9 @@ export default function Scene({
     ct: null,
     t: null,
   });
+  useEffect(() => {
+    onMapAvailability?.(Boolean(data.sample || model));
+  }, [model, data.sample, onMapAvailability]);
   useEffect(() => {
     const controller = new AbortController();
     setAgents({ ct: null, t: null });
@@ -574,7 +579,7 @@ export default function Scene({
           />
         </Canvas>
       </SceneBoundary>
-      {!data.sample && !model && (
+      {!onMapAvailability && !data.sample && !model && (
         <div className="map-notice">{t('Position view · map model not installed')}</div>
       )}
     </div>

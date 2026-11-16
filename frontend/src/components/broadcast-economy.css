@@ -1,0 +1,543 @@
+/* Parent owns the safe area above the playback dock. Only the data banks catch input. */
+.broadcast-economy {
+  --broadcast-plane: var(--surface);
+  display: grid;
+  grid-template-columns: minmax(0, var(--broadcast-bank-width, 260px)) minmax(0, 1fr) minmax(
+      0,
+      var(--broadcast-bank-width, 260px)
+    );
+  align-items: start;
+  gap: 12px;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  pointer-events: none;
+}
+.broadcast-bank,
+.broadcast-compact-card {
+  --team-ink: #8db9dd;
+  --team-wash: #1b2935;
+  grid-column: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  max-height: var(--broadcast-bank-max-height, min(500px, 65dvh));
+  background: var(--broadcast-plane);
+  color: var(--text);
+  border-radius: 5px;
+  overflow: hidden;
+  pointer-events: auto;
+  font-size: 12px;
+}
+.broadcast-bank[data-team='2'],
+.broadcast-compact-card[data-team='2'] {
+  --team-ink: #ddbf79;
+  --team-wash: #30291b;
+  grid-column: 3;
+}
+[data-theme='light'] .broadcast-bank,
+[data-theme='light'] .broadcast-compact-card {
+  --team-ink: #256d9c;
+  --team-wash: #e8f0f7;
+}
+[data-theme='light'] .broadcast-bank[data-team='2'],
+[data-theme='light'] .broadcast-compact-card[data-team='2'] {
+  --team-ink: #8c611c;
+  --team-wash: #f4eddf;
+}
+.broadcast-bank-heading {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 1px 0 1px 11px;
+  flex-shrink: 0;
+}
+.broadcast-bank-heading > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.broadcast-team-code {
+  flex-shrink: 0;
+  color: var(--team-ink);
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1;
+}
+.broadcast-team-name {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+  min-width: 0;
+}
+.broadcast-team-name small {
+  display: block;
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: 400;
+  margin-top: 1px;
+}
+.broadcast-bank-heading .icon-button {
+  min-width: 44px;
+  min-height: 44px;
+  color: var(--muted);
+}
+.broadcast-bank-content {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  touch-action: pan-y;
+}
+.broadcast-roster {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  padding: 0 3px;
+  min-height: 0;
+}
+.broadcast-player,
+.broadcast-compact-player {
+  min-width: 0;
+  flex-shrink: 0;
+}
+.broadcast-player-select {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-height: 56px;
+  width: 100%;
+  padding: 2px 9px 4px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  line-height: 1.25;
+}
+.broadcast-player-select:hover {
+  background: var(--raised);
+}
+:is(.broadcast-player, .broadcast-compact-player).is-selected .broadcast-player-select {
+  background: var(--team-wash);
+}
+.broadcast-player-select:focus-visible {
+  outline: 2px solid var(--team-ink);
+  outline-offset: -2px;
+}
+.broadcast-player-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  width: 100%;
+  line-height: 1.2;
+}
+.broadcast-player-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 500;
+}
+.broadcast-health-value {
+  color: var(--team-ink);
+  font-size: 11px;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+.broadcast-cash {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.broadcast-active-weapon,
+.broadcast-weapon-identity,
+.broadcast-player-equipment,
+.broadcast-protection,
+.broadcast-armor,
+.broadcast-utility,
+.broadcast-utility-item,
+.broadcast-no-utility {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.broadcast-active-weapon {
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  color: var(--muted);
+}
+.broadcast-weapon-identity {
+  gap: 8px;
+  flex: 1;
+}
+.broadcast-weapon-identity > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+.equipment-glyph {
+  width: 15px;
+  height: 16px;
+  flex-shrink: 0;
+  display: block;
+  color: currentColor;
+}
+.equipment-glyph.is-weapon {
+  width: 57px;
+  height: 19px;
+}
+.equipment-game-icon {
+  background: currentColor;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
+}
+.broadcast-ammo {
+  flex-shrink: 0;
+  color: var(--faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.broadcast-player-equipment {
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 17px;
+}
+.broadcast-utility {
+  gap: 7px;
+  color: var(--muted);
+  flex-wrap: wrap;
+}
+.broadcast-utility-item {
+  gap: 2px;
+}
+.broadcast-utility-item b {
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 500;
+}
+.broadcast-no-utility {
+  gap: 4px;
+  color: var(--faint);
+  font-size: 11px;
+}
+.broadcast-protection {
+  gap: 5px;
+  color: var(--faint);
+  flex-shrink: 0;
+}
+.broadcast-protection > span {
+  display: flex;
+}
+.broadcast-armor {
+  gap: 3px;
+  font-size: 11px;
+}
+.broadcast-bomb {
+  color: var(--team-ink);
+}
+.broadcast-health-track {
+  position: absolute;
+  bottom: 0;
+  left: 9px;
+  right: 9px;
+  height: 2px;
+  background: var(--border);
+}
+.broadcast-health-track > span {
+  display: block;
+  height: 100%;
+  background: var(--team-ink);
+}
+:is(.broadcast-player, .broadcast-compact-player).is-out .broadcast-player-select {
+  color: var(--faint);
+}
+:is(.broadcast-player, .broadcast-compact-player).is-out .broadcast-weapon-identity,
+:is(.broadcast-player, .broadcast-compact-player).is-out .broadcast-player-equipment {
+  opacity: 0.55;
+}
+.broadcast-empty,
+.broadcast-loadout-body > p {
+  color: var(--faint);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.broadcast-empty {
+  padding: 8px 12px 15px;
+  margin: 0;
+}
+.broadcast-loadout {
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--border);
+}
+.broadcast-select-hint {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 8px 12px;
+  margin: 0;
+  border-top: 1px solid var(--border);
+  color: var(--faint);
+  font-size: 11px;
+}
+.broadcast-loadout summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  min-height: 44px;
+  font-size: 11px;
+  color: var(--muted);
+  list-style: none;
+}
+.broadcast-loadout summary::-webkit-details-marker {
+  display: none;
+}
+.broadcast-loadout summary > span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.broadcast-loadout-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.broadcast-loadout summary strong {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 0;
+  max-width: 40%;
+}
+.broadcast-loadout[open] summary > svg {
+  transform: rotate(180deg);
+}
+.broadcast-loadout-body {
+  padding: 3px 12px 12px;
+  max-height: 200px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.broadcast-loadout-values {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px 14px;
+  margin: 0 0 15px;
+}
+.broadcast-loadout-values > div {
+  min-width: 0;
+}
+.broadcast-loadout-values dt {
+  font-size: 11px;
+  color: var(--faint);
+  overflow-wrap: anywhere;
+}
+.broadcast-loadout-values dd {
+  font-size: 12px;
+  margin: 2px 0 0;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.broadcast-inventory {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 0;
+  margin: 0;
+}
+.broadcast-inventory li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 23px;
+  color: var(--muted);
+}
+.broadcast-inventory li > span {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+}
+.broadcast-inventory .equipment-glyph.is-weapon {
+  width: 36px;
+  height: 15px;
+}
+.broadcast-inventory strong {
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 500;
+}
+.broadcast-unavailable {
+  color: var(--faint);
+}
+.broadcast-team-switch {
+  display: none;
+}
+.broadcast-compact-card,
+.broadcast-lineups-close {
+  display: none;
+}
+.broadcast-compact-roster {
+  list-style: none;
+  margin: 0;
+  padding: 0 3px;
+}
+.broadcast-lineups-open,
+.broadcast-lineups-close {
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 0;
+  background: var(--surface);
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.broadcast-lineups-open {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  flex-shrink: 0;
+}
+@media (max-width: 760px), (max-height: 560px) {
+  .broadcast-economy {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+  }
+  .broadcast-compact-card {
+    display: flex;
+    flex-direction: column;
+    align-self: flex-end;
+    width: min(210px, 100%);
+    max-height: 100%;
+    flex-shrink: 0;
+  }
+  .broadcast-compact-roster {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    touch-action: pan-y;
+  }
+  .broadcast-economy.is-lineups-open .broadcast-compact-card,
+  .broadcast-economy:not(.is-lineups-open) .broadcast-team-switch,
+  .broadcast-economy:not(.is-lineups-open) .broadcast-bank {
+    display: none;
+  }
+  .broadcast-economy.is-lineups-open .broadcast-lineups-close {
+    display: flex;
+    justify-content: flex-end;
+    flex-shrink: 0;
+    border-radius: 5px 5px 0 0;
+  }
+  .broadcast-team-switch {
+    display: flex;
+    padding: 3px;
+    flex-shrink: 0;
+    background: var(--surface);
+    border-radius: 5px 5px 0 0;
+    pointer-events: auto;
+  }
+  .broadcast-team-switch button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    flex: 1;
+    min-width: 0;
+    min-height: 44px;
+    padding: 7px 5px;
+    border: 0;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .broadcast-team-switch button[aria-pressed='true'] {
+    color: var(--text);
+    background: var(--raised);
+  }
+  .broadcast-team-switch button > span {
+    font-size: 16px;
+    font-weight: 600;
+    color: #8db9dd;
+  }
+  .broadcast-team-switch button[data-team='2'] > span {
+    color: #ddbf79;
+  }
+  [data-theme='light'] .broadcast-team-switch button > span {
+    color: #256d9c;
+  }
+  [data-theme='light'] .broadcast-team-switch button[data-team='2'] > span {
+    color: #8c611c;
+  }
+  .broadcast-bank,
+  .broadcast-bank[data-team='2'] {
+    width: 100%;
+    max-height: calc(var(--broadcast-bank-max-height, min(500px, 65dvh)) - 94px);
+    border-radius: 0 0 5px 5px;
+  }
+  /* The team selector names the bank. Global HUD controls remain reachable;
+     avoid repeating another header above a short phone scrolling area. */
+  .broadcast-bank-heading {
+    display: none;
+  }
+  /* Desktop collapse survives a resize. Keep its recovery control reachable
+     in compact lineups, and retain it while a keyboard user has focus there. */
+  .broadcast-bank.is-collapsed .broadcast-bank-heading,
+  .broadcast-bank-heading:focus-within {
+    display: flex;
+  }
+  .broadcast-economy[data-active-team='3'] .broadcast-bank[data-team='2'],
+  .broadcast-economy[data-active-team='2'] .broadcast-bank[data-team='3'] {
+    display: none;
+  }
+  .broadcast-player-select {
+    min-height: 72px;
+    padding: 6px 9px 8px;
+    gap: 3px;
+  }
+  .broadcast-compact-card .broadcast-player-select {
+    min-height: 56px;
+    padding: 2px 9px 4px;
+    gap: 0;
+  }
+}
