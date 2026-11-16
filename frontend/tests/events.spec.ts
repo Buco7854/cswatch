@@ -1,25 +1,39 @@
 import { test, expect } from '@playwright/test';
 
-test('round event markers remain keyboard-reachable in their phone rail and open exact filtered moments', async ({
+test('timeline markers use recorded time positions, clustered events seek exactly and round zoom retains review filters', async ({
   page,
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE));
-  await page.setViewportSize({ width: 320, height: 740 });
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/watch/sample');
-  const markers = page.locator('.round-event-marker');
-  await expect(markers).toHaveCount(3);
-  await markers.first().focus();
-  await page.keyboard.press('ArrowRight');
-  await page.keyboard.press('ArrowRight');
-  await expect(markers.last()).toBeFocused();
-  expect(
-    await markers.last().evaluate((element) => {
-      const r = element.getBoundingClientRect();
-      return r.left >= 0 && r.right <= innerWidth;
-    }),
-  ).toBe(true);
-  await page.keyboard.press('Enter');
-  await expect(page.getByRole('slider', { name: 'Playback position' })).toHaveValue('1240');
+  const plot = page.locator('.replay-timeline-plot');
+  const marker = page.locator('.timeline-event-marker[data-tick="620"]');
+  await expect(marker).toBeVisible();
+  const fraction = await marker.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const parent = element.closest('.replay-timeline-plot')!.getBoundingClientRect();
+    return (box.left + box.width / 2 - parent.left) / parent.width;
+  });
+  expect(fraction).toBeCloseTo(620 / 3840, 2);
+  // The lower/right edge is still part of the event's 44px touch target.
+  // A range input painted across it would scrub past 620 instead of seeking it.
+  const markerBox = (await marker.boundingBox())!;
+  await page.mouse.click(markerBox.x + markerBox.width - 2, markerBox.y + markerBox.height - 2);
+  const slider = page.getByRole('slider', { name: 'Playback position' });
+  await expect(slider).toHaveValue('620');
+  await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeVisible();
+  await page.setViewportSize({ width: 320, height: 740 });
+  const cluster = plot.locator('.is-cluster[data-tick="620"]');
+  await expect(cluster).toBeVisible();
+  await cluster.click();
+  const menu = page.getByRole('menu');
+  await expect(menu.getByRole('menuitem', { name: /Bomb planted at 0:15/ })).toBeVisible();
+  await menu.getByRole('menuitem', { name: /Bomb planted at 0:15/ }).click();
+  await expect(slider).toHaveValue('960');
+  await page.getByRole('combobox', { name: 'Timeline range' }).click();
+  await page.getByRole('option', { name: 'Current round', exact: true }).click();
+  await expect(slider).toHaveAttribute('min', '0');
+  await expect(slider).toHaveAttribute('max', '1279');
   await page.getByRole('button', { name: /Review round 1 events/ }).click();
   await expect(page.getByRole('dialog', { name: 'Match review' })).toBeVisible();
   await page.getByRole('combobox', { name: 'Event range' }).click();
@@ -30,4 +44,93 @@ test('round event markers remain keyboard-reachable in their phone rail and open
   await expect(page.locator('.round-review-row')).toHaveCount(6);
   await page.getByRole('button', { name: 'Close panel' }).click();
   await expect(page.getByRole('button', { name: /Review round 1 events/ })).toBeFocused();
+  await slider.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(slider).toHaveValue('961');
+});
+
+test('event stems and native scrubber share endpoint and midpoint coordinates', async ({
+  page,
+}) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE));
+  const replay = {
+    version: 1,
+    map: 'de_timeline_fixture',
+    sample: false,
+    tickRate: 64,
+    players: [],
+    frames: [
+      { tick: 0, players: [] },
+      { tick: 1000, players: [] },
+    ],
+    rounds: [{ number: 1, tick: 0 }],
+    events: [
+      { type: 'bomb_planted', tick: 0 },
+      { type: 'bomb_defused', tick: 500 },
+      { type: 'round_end', tick: 1000, winner: 3 },
+    ],
+  };
+  await page.route('**/api/demos/timeline-fixture', (route) =>
+    route.fulfill({
+      json: {
+        id: 'timeline-fixture',
+        name: 'Explicit timeline geometry fixture',
+        source: 'upload',
+        status: 'ready',
+        public: true,
+        owned: false,
+        map: replay.map,
+        duration: 16,
+        rounds: 1,
+        size: 100,
+        created_at: 1700000000,
+      },
+    }),
+  );
+  await page.route('**/api/demos/timeline-fixture/playback', (route) =>
+    route.fulfill({ json: replay }),
+  );
+  await page.setViewportSize({ width: 768, height: 1024 });
+  await page.goto('/watch/timeline-fixture');
+  const slider = page.getByRole('slider', { name: 'Playback position' });
+  await expect(page.locator('.timeline-event-marker')).toHaveCount(3);
+  for (const tick of [0, 500, 1000]) {
+    const marker = page.locator(`.timeline-event-marker[data-tick="${tick}"]`);
+    const center = await marker.evaluate((element) => {
+      const r = element.getBoundingClientRect();
+      return r.left + r.width / 2;
+    });
+    const expected = await slider.evaluate((element, tick) => {
+      const r = element.getBoundingClientRect();
+      return r.left + 8 + (r.width - 16) * (tick / 1000);
+    }, tick);
+    expect(Math.abs(center - expected)).toBeLessThan(1);
+    expect(
+      await marker.evaluate((element) => {
+        const marker = element.getBoundingClientRect();
+        const slider = element
+          .closest('.replay-timeline-plot')!
+          .querySelector('input')!
+          .getBoundingClientRect();
+        return marker.height >= 44 && slider.height >= 44 && marker.bottom <= slider.top;
+      }),
+    ).toBe(true);
+    const box = await slider.boundingBox();
+    await page.mouse.click(expected, box!.y + box!.height / 2);
+    await expect(slider).toHaveValue(String(tick));
+  }
+  replay.events = [];
+  await page.reload();
+  const emptyPlot = page.locator('.replay-timeline-plot');
+  await expect(emptyPlot).toHaveClass(/is-empty/);
+  await expect(emptyPlot).toHaveCSS('height', '44px');
+  await expect(
+    page.getByText('No key events recorded in this range.', { exact: true }),
+  ).toBeVisible();
+  const emptySlider = (await slider.boundingBox())!;
+  await page.mouse.click(
+    emptySlider.x + emptySlider.width / 2,
+    emptySlider.y + emptySlider.height / 2,
+  );
+  await expect(slider).toHaveValue('500');
 });

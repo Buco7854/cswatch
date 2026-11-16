@@ -152,6 +152,10 @@ export async function parse(folder: string, maxExpanded: number) {
     'round_freeze_end',
     'round_end',
     'bomb_planted',
+    'bomb_beginplant',
+    'bomb_abortplant',
+    'bomb_begindefuse',
+    'bomb_abortdefuse',
     'bomb_defused',
     'bomb_exploded',
     'smokegrenade_detonate',
@@ -166,6 +170,12 @@ export async function parse(folder: string, maxExpanded: number) {
       if (kind === 'weapon_fire' || kind === 'grenade_thrown') {
         try {
           parsed = parseEvent(source, kind, ['X', 'Y', 'Z']);
+        } catch {
+          parsed = parseEvent(source, kind);
+        }
+      } else if (kind.startsWith('bomb_')) {
+        try {
+          parsed = parseEvent(source, kind, ['has_defuser'], ['game_time']);
         } catch {
           parsed = parseEvent(source, kind);
         }
@@ -259,6 +269,7 @@ export async function parse(folder: string, maxExpanded: number) {
     voice: media.voice,
     chat: media.chat,
     communications: media.communications,
+    objectives: media.objectives,
   };
   await writeReplay(folder, data);
   writeFileSync(

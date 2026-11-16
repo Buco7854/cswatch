@@ -4,6 +4,7 @@
   "scripts": {
     "build": "npm --prefix backend run build && npm --prefix frontend run build",
     "test": "npm --prefix backend test",
+    "test:assets": "node --test tools/assets/*.test.mjs",
     "dev:web": "npm --prefix backend run dev",
     "dev:ui": "npm --prefix frontend run dev",
     "worker": "npm --prefix backend run worker",

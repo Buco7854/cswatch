@@ -29,7 +29,9 @@ import { useApp } from '../context';
 import type { Bookmark } from '../types';
 import { frameAt, readSettings, skipDeadTime } from '../playback';
 import { roundAt, roundEvents } from '../review-events';
-import RoundEvents, { RoundEventReview } from './RoundEvents';
+import { RoundEventReview } from './RoundEvents';
+import ReplayTimeline from './ReplayTimeline';
+import ObjectiveHud from './ObjectiveHud';
 import ReviewHud from './ReviewHud';
 import Communications from './Communications';
 import ViewerOptions from './ViewerOptions';
@@ -87,6 +89,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     [options, setOptions] = useState(false),
     [manage, setManage] = useState(false);
   const [communicationsOpen, setCommunicationsOpen] = useState(false);
+  const [mapAvailable, setMapAvailable] = useState(false);
   const communicationsTrigger = useRef<HTMLElement | null>(null);
   const communicationsWasOpen = useRef(false);
   useEffect(() => {
@@ -102,9 +105,8 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     } catch {}
   }, [settings]);
   const [panel, setPanel] = useState<'players' | 'review' | null>(null);
-  const [roundsOpen, setRoundsOpen] = useState(
-    () => !window.matchMedia('(max-width:760px),(max-height:560px)').matches,
-  );
+  const mutationScope = useRef({ active: true });
+  const [roundsOpen, setRoundsOpen] = useState(false);
   const [eventReviewKey, setEventReviewKey] = useState(0);
   const panelClose = useRef<HTMLButtonElement>(null);
   const panelTrigger = useRef<HTMLElement | null>(null);
@@ -212,13 +214,22 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
   }, [panel, compactPanels]);
   const timeRef = useRef<number | null>(null);
   useEffect(() => {
+    const scope = { active: true };
+    mutationScope.current = scope;
     setPlaying(false);
     setBookmarks([]);
+    setLabel('');
+    setShowNote(false);
+    setBusy(false);
+    setTab('events');
     setPanel(null);
     setOptions(false);
     setManage(false);
     setCommunicationsOpen(false);
-  }, [id]);
+    return () => {
+      scope.active = false;
+    };
+  }, [id, user?.id]);
   useEffect(() => {
     const controller = new AbortController();
     if (id !== 'sample') setBookmarks([]);
@@ -303,6 +314,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       return;
     }
     if (!label.trim()) return;
+    const scope = mutationScope.current;
     setBusy(true);
     try {
       if (id === 'sample') {
@@ -316,6 +328,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
           method: 'POST',
           body: JSON.stringify({ tick: Math.round(tick), label: label.trim() }),
         });
+        if (!scope.active) return;
         setBookmarks((bs) => [...bs, b].sort((a, b) => a.tick - b.tick));
       }
       setLabel('');
@@ -323,21 +336,25 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       setTab('notes');
       setPanel('review');
     } catch (e) {
-      notify((e as Error).message);
+      if (scope.active) notify((e as Error).message);
     } finally {
-      setBusy(false);
+      if (scope.active) setBusy(false);
     }
   }
   async function removeNote(bid: string) {
+    const scope = mutationScope.current;
     try {
       if (id !== 'sample') await api('/api/bookmarks/' + bid, { method: 'DELETE' });
+      if (!scope.active) return;
       setBookmarks((bs) => bs.filter((b) => b.id !== bid));
     } catch (e) {
-      notify((e as Error).message);
+      if (scope.active) notify((e as Error).message);
     }
   }
   async function share() {
     if (!demo?.owned) return;
+    const scope = mutationScope.current;
+    const url = window.location.href;
     const publish = !demo.public;
     if (
       publish &&
@@ -352,9 +369,11 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       return;
     try {
       await api('/api/demos/' + id, { method: 'PATCH', body: JSON.stringify({ public: publish }) });
+      if (!scope.active) return;
       setDemo({ ...demo, public: publish });
       if (publish) {
-        await navigator.clipboard?.writeText(window.location.href).catch(() => {});
+        await navigator.clipboard?.writeText(url).catch(() => {});
+        if (!scope.active) return;
         notify(
           t(
             config.public_access
@@ -364,7 +383,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
         );
       } else notify(t('Demo is private.'));
     } catch (e) {
-      notify((e as Error).message);
+      if (scope.active) notify((e as Error).message);
     }
   }
   if (error)
@@ -494,7 +513,10 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
   const round = data.rounds.filter((r) => r.tick <= tick).at(-1);
   const reviewRound = roundAt(data, tick, last);
   return (
-    <div className="viewer-frame" ref={full}>
+    <div
+      className={'viewer-frame' + (settings.inputs || settings.economy ? ' has-review-hud' : '')}
+      ref={full}
+    >
       <header className="viewer-titlebar" role="banner" inert={Boolean(panel) && compactPanels}>
         <div className="viewer-identity">
           <Link className="icon-button viewer-back" to={backTo} aria-label={t('Back to library')}>
@@ -551,7 +573,14 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       <div className="viewer-surface">
         <div className="viewer-stage" inert={Boolean(panel) && compactPanels}>
           <Suspense fallback={<div className="scene-fallback">{t('Starting renderer…')}</div>}>
-            <Scene data={data} tick={tick} mode={mode} selected={selected} settings={settings} />
+            <Scene
+              data={data}
+              tick={tick}
+              mode={mode}
+              selected={selected}
+              settings={settings}
+              onMapAvailability={setMapAvailable}
+            />
           </Suspense>
           {buffering && (
             <div className="replay-buffer" role={chunkError ? 'alert' : 'status'}>
@@ -593,6 +622,14 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
           <div className="viewer-context">
             <span className="status-dot" />
             {t('Round')} {round?.number ?? 1}
+            {!data.sample && mode !== '2d' && !mapAvailable && (
+              <span
+                className="viewer-map-status"
+                title={t('Position view · map model not installed')}
+              >
+                {t('Position view')}
+              </span>
+            )}
             <span>
               {data.deadTimes?.some((s) => tick >= s.start && tick < s.end)
                 ? t(data.deadTimes.find((s) => tick >= s.start && tick < s.end)?.kind || '')
@@ -808,11 +845,12 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
           settings={settings}
           hidden={Boolean(panel)}
           onSelect={setSelected}
-          onClose={() => {
-            setSettings((value) => ({ ...value, inputs: false, economy: false }));
+          onCloseInputs={() => {
+            setSettings((value) => ({ ...value, inputs: false }));
             optionsTrigger.current?.focus();
           }}
         />
+        <ObjectiveHud data={data} tick={tick} hidden={Boolean(panel)} />
         <div
           ref={playbackDock}
           inert={Boolean(panel) && compactPanels}
@@ -820,19 +858,16 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
           role="region"
           aria-label={t('Playback controls')}
         >
-          <div className="scrubber">
-            <span className="num">{clock((tick - first) / rate)}</span>
-            <input
-              aria-label={t('Playback position')}
-              type="range"
-              min={first}
-              max={last}
-              step={1}
-              value={Math.round(tick)}
-              onChange={(e) => seek(Number(e.target.value))}
-            />
-            <span className="num">{clock((last - first) / rate)}</span>
-          </div>
+          <ReplayTimeline
+            data={data}
+            tick={tick}
+            first={first}
+            last={last}
+            round={reviewRound}
+            selected={selected}
+            onSeek={seekEvent}
+            onReview={openRoundReview}
+          />
           <div className="viewer-controlbar">
             <div className="viewer-transport">
               <button
@@ -1011,14 +1046,6 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
             </div>
           </div>
           <div className="viewer-review-rails">
-            <RoundEvents
-              data={data}
-              round={reviewRound}
-              tick={tick}
-              selected={selected}
-              onSeek={seekEvent}
-              onReview={openRoundReview}
-            />
             {roundsOpen && (
               <div className="viewer-rounds-rail" role="region" aria-label={t('Round timeline')}>
                 <div className="round-strip">

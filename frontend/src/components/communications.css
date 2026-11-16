@@ -31,7 +31,8 @@
 }
 .communication-notice {
   padding: 12px;
-  border: 1px solid var(--control);
+  border: 0;
+  background: var(--raised);
   border-radius: 6px;
   font-size: 13px;
 }
@@ -138,60 +139,31 @@
 .communication-overlay > div:nth-last-child(n + 4) {
   display: none;
 }
-/* Captions and an opt-in analysis HUD get separate regions. Compact screens
-   keep the latest two-line call beside the radar; the transcript retains all. */
-.viewer-frame:has(.viewer-analysis-hud:not([hidden])) .communication-overlay {
-  left: 390px;
-  right: 20px;
-  width: auto;
-  transform: none;
+/* A live subtitle keeps one clear lane below optional review overlays. */
+.viewer-frame:has(.communication-overlay > div) {
+  --review-communications-gap: 64px;
+}
+.viewer-frame:has(.viewer-review-hud:not([hidden]):not(.is-collapsed))
+  .communication-overlay
+  > div:not(:last-child) {
+  display: none;
+}
+.viewer-frame:has(.viewer-review-hud:not([hidden]):not(.is-collapsed)) .communication-overlay p {
+  -webkit-line-clamp: 2;
 }
 .viewer-frame:has(.viewer-drawer[aria-modal='true']) .communication-overlay {
   visibility: hidden;
 }
-@media (max-width: 900px) and (min-height: 561px) {
-  .viewer-frame:has(.viewer-analysis-hud:not([hidden])) .communication-overlay {
-    left: 146px;
-    right: 14px;
-    top: 126px;
-    bottom: auto;
-    align-items: stretch;
+@media (max-width: 760px) {
+  .communication-overlay {
+    width: calc(100% - 24px);
   }
-  .viewer-frame:has(.viewer-analysis-hud:not([hidden]))
-    .communication-overlay
-    > div:not(:last-child) {
-    display: none;
-  }
-  .viewer-frame:has(.viewer-analysis-hud:not([hidden])) .communication-overlay p {
-    -webkit-line-clamp: 2;
-  }
-}
-@media (max-width: 760px) and (min-height: 561px) {
-  .viewer-frame:has(.viewer-analysis-hud:not([hidden])) .communication-overlay {
-    left: 100px;
-    right: 12px;
-    top: 124px;
-  }
-}
-@media (max-width: 599px) and (max-height: 560px) {
-  .viewer-frame:has(.viewer-analysis-hud:not([hidden]):not(.is-collapsed)) .communication-overlay {
-    visibility: hidden;
-  }
-}
-@media (max-height: 560px) {
-  .communication-overlay > div:not(:last-child) {
-    display: none;
-  }
-  .communication-overlay p {
-    -webkit-line-clamp: 2;
+  .communication-overlay > div {
+    font-size: 13px;
   }
 }
 @media (max-width: 540px) {
   .speaker-mutes {
     grid-template-columns: 1fr;
-  }
-  .communication-overlay {
-    width: calc(100% - 24px);
-    bottom: calc(var(--viewer-dock-height, 240px) + 12px);
   }
 }

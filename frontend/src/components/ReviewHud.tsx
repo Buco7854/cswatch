@@ -1,12 +1,14 @@
-import { useRef, useState } from 'react';
-import { ChevronDown, ChevronUp, Keyboard, Wallet, X } from 'lucide-react';
+import { useEffect, useId, useRef, useState, type CSSProperties } from 'react';
+import { Check, ChevronDown, ChevronUp, Keyboard, MoreHorizontal, X } from 'lucide-react';
 import { t } from '../i18n';
 import type { Frame, Playback } from '../types';
 import type { ViewerSettings } from '../playback';
+import { ActionMenu } from './Controls';
 import PlayerInputs from './PlayerInputs';
 import MatchEconomy from './MatchEconomy';
 import './review-hud.css';
 
+/** Match context stays at the edges; the middle is reserved for the camera. */
 export default function ReviewHud({
   data,
   frame,
@@ -14,7 +16,7 @@ export default function ReviewHud({
   settings,
   hidden,
   onSelect,
-  onClose,
+  onCloseInputs,
 }: {
   data: Playback;
   frame: Frame;
@@ -22,123 +24,118 @@ export default function ReviewHud({
   settings: ViewerSettings;
   hidden: boolean;
   onSelect: (id: string) => void;
-  onClose: () => void;
+  onCloseInputs: () => void;
 }) {
-  const [requested, setActive] = useState<'inputs' | 'economy'>(
-    settings.inputs ? 'inputs' : 'economy',
-  );
-  const [collapsed, setCollapsed] = useState(false);
-  const collapse = useRef<HTMLButtonElement>(null);
-  const tabButtons = useRef<Partial<Record<'inputs' | 'economy', HTMLButtonElement | null>>>({});
-  const active = settings[requested] ? requested : settings.inputs ? 'inputs' : 'economy';
+  const [inputCollapsed, setInputCollapsed] = useState(false);
+  const [detailsExpanded, setDetailsExpanded] = useState(false);
+  const [inputHeight, setInputHeight] = useState(134);
+  const inputPanel = useRef<HTMLElement>(null);
+  const inputToggle = useRef<HTMLButtonElement>(null);
+  const contentId = useId();
   const player = data.players.find((player) => player.id === selected);
+  useEffect(() => {
+    const panel = inputPanel.current;
+    if (!panel || hidden || !settings.inputs) return;
+    const observer = new ResizeObserver(([entry]) => {
+      const height = entry.borderBoxSize[0]?.blockSize ?? panel.getBoundingClientRect().height;
+      setInputHeight(Math.ceil(height));
+    });
+    observer.observe(panel);
+    return () => observer.disconnect();
+  }, [hidden, settings.inputs]);
   if (!settings.inputs && !settings.economy) return null;
   return (
     <aside
-      className={'viewer-analysis-hud' + (collapsed ? ' is-collapsed' : '')}
+      className="viewer-review-hud"
+      data-economy={settings.economy}
+      data-inputs={settings.inputs}
       hidden={hidden}
       aria-label={t('Analysis HUD')}
-      onKeyDown={(event) => {
-        if (event.key === 'Escape' && !event.defaultPrevented) {
-          event.preventDefault();
-          setCollapsed(true);
-          collapse.current?.focus();
-        }
-      }}
+      style={{ '--review-input-height': `${inputHeight}px` } as CSSProperties}
     >
-      <header className="analysis-hud-heading">
-        <div>
-          <strong>{player?.name || t('Selected player')}</strong>
-          <small>{t(active === 'inputs' ? 'Recorded inputs' : 'Economy and loadouts')}</small>
+      {settings.economy && (
+        <div className="review-economy-frame">
+          <MatchEconomy
+            players={data.players}
+            frame={frame}
+            selected={selected}
+            onSelect={onSelect}
+          />
         </div>
-        <button
-          ref={collapse}
-          className="icon-button"
-          aria-label={t(collapsed ? 'Expand analysis HUD' : 'Collapse analysis HUD')}
-          aria-expanded={!collapsed}
-          onClick={() => setCollapsed((value) => !value)}
+      )}
+      {settings.inputs && (
+        <section
+          ref={inputPanel}
+          className={'review-inputs-panel' + (inputCollapsed ? ' is-collapsed' : '')}
+          aria-label={t('Recorded inputs')}
+          onKeyDown={(event) => {
+            if (
+              event.key !== 'Escape' ||
+              event.defaultPrevented ||
+              (event.target as HTMLElement).closest('[role="menu"]')
+            )
+              return;
+            event.preventDefault();
+            setInputCollapsed(true);
+            inputToggle.current?.focus();
+          }}
         >
-          {collapsed ? <ChevronUp size={17} /> : <ChevronDown size={17} />}
-        </button>
-        <button className="icon-button" aria-label={t('Close analysis HUD')} onClick={onClose}>
-          <X size={18} />
-        </button>
-      </header>
-      {!collapsed && (
-        <>
-          {settings.inputs && settings.economy && (
-            <div
-              className="analysis-hud-tabs"
-              role="tablist"
-              aria-label={t('Analysis view')}
-              onKeyDown={(event) => {
-                if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-                event.preventDefault();
-                const next =
-                  event.key === 'Home'
-                    ? 'inputs'
-                    : event.key === 'End'
-                      ? 'economy'
-                      : active === 'inputs'
-                        ? 'economy'
-                        : 'inputs';
-                setActive(next);
-                tabButtons.current[next]?.focus();
-              }}
+          <header className="review-inputs-header">
+            <button
+              ref={inputToggle}
+              type="button"
+              className="review-input-toggle"
+              aria-expanded={!inputCollapsed}
+              aria-controls={contentId}
+              aria-label={t(inputCollapsed ? 'Expand input display' : 'Collapse input display')}
+              onClick={() => setInputCollapsed((value) => !value)}
             >
-              <button
-                role="tab"
-                id="analysis-inputs-tab"
-                aria-controls="analysis-hud-panel"
-                aria-selected={active === 'inputs'}
-                tabIndex={active === 'inputs' ? 0 : -1}
-                ref={(element) => {
-                  tabButtons.current.inputs = element;
-                }}
-                onClick={() => setActive('inputs')}
-              >
-                <Keyboard size={16} />
-                {t('Inputs')}
-              </button>
-              <button
-                role="tab"
-                id="analysis-economy-tab"
-                aria-controls="analysis-hud-panel"
-                aria-selected={active === 'economy'}
-                tabIndex={active === 'economy' ? 0 : -1}
-                ref={(element) => {
-                  tabButtons.current.economy = element;
-                }}
-                onClick={() => setActive('economy')}
-              >
-                <Wallet size={16} />
-                {t('Economy')}
-              </button>
-            </div>
-          )}
-          <div
-            className="analysis-hud-content"
-            id="analysis-hud-panel"
-            role={settings.inputs && settings.economy ? 'tabpanel' : undefined}
-            aria-labelledby={
-              settings.inputs && settings.economy ? 'analysis-' + active + '-tab' : undefined
-            }
-          >
-            {active === 'inputs' ? (
+              <Keyboard size={14} />
+              <span title={player?.name}>{player?.name || t('Selected player')}</span>
+              {inputCollapsed ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+            </button>
+            <ActionMenu
+              label={t('Input display options')}
+              trigger={
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label={t('Input display options')}
+                >
+                  <MoreHorizontal size={17} />
+                </button>
+              }
+              items={[
+                {
+                  id: 'details',
+                  label: t('Input details'),
+                  icon: detailsExpanded ? <Check size={15} /> : undefined,
+                  onSelect: () => {
+                    setDetailsExpanded((value) => !value);
+                    setInputCollapsed(false);
+                  },
+                },
+                {
+                  id: 'close',
+                  label: t('Hide inputs'),
+                  icon: <X size={15} />,
+                  separatorBefore: true,
+                  onSelect: onCloseInputs,
+                },
+              ]}
+            />
+          </header>
+          {!inputCollapsed && (
+            <div id={contentId} className="review-inputs-body">
               <PlayerInputs
                 state={frame.players.find((player) => player.id === selected)}
                 layout={settings.inputLayout}
+                compact
+                detailsExpanded={detailsExpanded}
               />
-            ) : (
-              <MatchEconomy
-                players={data.players}
-                frame={frame}
-                selected={selected}
-                onSelect={onSelect}
-              />
-            )}
-          </div>
-        </>
+            </div>
+          )}
+        </section>
       )}
     </aside>
   );

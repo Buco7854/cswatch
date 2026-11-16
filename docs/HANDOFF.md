@@ -7,7 +7,7 @@ Updated 2026-11-16. Start with [active work](product/WORK.md), [feature status](
 - Preserve the approved public landing and restrained neutral member direction. Account/connections live in the user menu/account tabs. The viewer takes the whole tab, with in-view controls and progressive mobile panels; additional browser fullscreen is supported.
 - The application is TypeScript with CPU-only hosting, React/Three rendering, S2V operator asset preparation, Docker behind the operator's proxy, EN/FR and both themes. The small C launcher provides the Linux security boundary; no Python backend or bundled TLS proxy.
 - The user canceled the HLTV/pro catalog. External demos use a manual source guide and normal private uploads. Do not reintroduce `/pro` or `PRO_*` flags.
-- Advanced review includes recorded round events, optional economy/inventory/input HUDs, WASD/ZQSD labels, local voice/chat and optional offline CPU subtitles. Missing recorded data stays unknown. These features are progressive, disabled where appropriate by default, and never justify fake history or guessed speech.
+- Advanced review includes events on the actual seek axis, optional edge-based broadcast equipment and physical input visuals, recorded objective timers, WASD/ZQSD labels, local voice/chat and optional offline CPU subtitles. Missing recorded data stays unknown. These features are progressive, disabled where appropriate by default, and never justify fake history or guessed speech.
 
 ## Architecture checkpoints
 
@@ -15,7 +15,9 @@ Read `AGENTS.md`, `ARCHITECTURE.md` and `SECURITY.md` before changes. HTTP handl
 
 New replay output uses version 2 manifest/chunks with global indexes/bounds and five-second trail context. The browser caches at most three slices and cancels irrelevant requests. Legacy version 1 remains readable. Player IDs remain strings; coordinate transforms are documented in `AGENTS.md`.
 
-Schema v4 separates subtitle state/leases/artifact pointers. Optional offline Whisper CPU transcription runs after the primary replay is ready; failure cannot fail that replay. Compose separates parsing from the optional networkless transcription profile. Model preparation is operator-only; no weights or proprietary assets are committed or bundled.
+Schema v4 separates subtitle state/leases/artifact pointers. Optional offline Whisper CPU transcription runs after the primary replay is ready; failure cannot fail that replay. Compose separates parsing from the optional networkless transcription profile. Model preparation is operator-only; no weights or proprietary assets are committed or bundled. The same local-asset policy covers the 73-item equipment registry and safe SVG-to-PNG preparation.
+
+The latest user rejected centered HUD controls and generic weapon shapes. Inputs stay in a small corner, equipment stays on the sides, phones start with a compact selected-player card, and no floating equipment toolbar occupies the center. The optional round strip starts closed; More controls stays available at every width. The local ignored preview pack contains actual CS2 equipment icons; never add those files to Git/images.
 
 ## Evidence and continuation
 

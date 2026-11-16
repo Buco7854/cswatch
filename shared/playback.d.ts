@@ -1,5 +1,6 @@
 /** Versioned browser/server contract. Coordinates are Source units, Z up. IDs are strings. */
 import type { VoicePacket, ChatMessage, CaptionCue, CommunicationInfo } from './communications.js';
+import type { ObjectiveData } from './objectives.js';
 export type Player = { id: string; name: string; team: number };
 /** Recorded actions, independent of the player's physical keyboard layout/binds. */
 export type RecordedInput = {
@@ -93,6 +94,7 @@ export type Playback = {
   chat?: ChatMessage[];
   captions?: CaptionCue[];
   communications?: CommunicationInfo;
+  objectives?: ObjectiveData;
   /** Global Source-coordinate bounds keep cameras and plots stable while time slices change. */
   worldBounds?: {
     minX: number;

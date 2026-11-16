@@ -61,6 +61,12 @@ English/French apply to public content, app navigation, viewer options/status/er
 
 ## Full-tab viewer and quieter workspace
 
-Viewer routes use their own shell. The canvas fills the surface below a compact match/return header. The in-view bottom dock contains play/seek/speed, round selection/jumps, overlays/panel entry points and browser fullscreen. A round rail can collapse on larger screens. Only one player/review side panel is open at a time; it scrolls internally and closes with Escape, restoring focus to its trigger. Options remain a named modal with bounded vertical scrolling. No viewing control requires scrolling the document.
+Viewer routes use their own shell. The canvas fills the surface below a compact match/return header. The in-view bottom dock contains play/seek/speed, round selection/jumps, overlays/panel entry points and browser fullscreen. The optional round rail starts collapsed at every size. Only one player/review side panel is open at a time; it scrolls internally and closes with Escape, restoring focus to its trigger. Options remain a named modal with bounded vertical scrolling. No viewing control requires scrolling the document.
 
 The member library is a single working list. Upload opens a focused modal instead of occupying a permanent right-hand column. A compact practice link replaces the repeated scene preview and feature checklist. Existing upload/auth return intent opens that dialog after authentication; dismissing it clears the transient upload query flag.
+
+## Spectator overlays
+
+Keep the camera center clear. Optional team banks sit at the side edges; the physical mouse/key display is a small lower-corner instrument. There is no centered equipment toolbar. Phone and short-landscape equipment starts with a selected-player card and explicitly expands to a scrollable team lineup, restoring focus on close. Input details expand through its header menu; hiding inputs leaves equipment enabled.
+
+Timeline event positions share the seek thumb axis. Dense markers expose named, exact events; they are never evenly spaced chips. Match and current-round ranges are explicit. Objective progress shows recorded actor/site/kit and server deadlines, with elapsed/unavailable fallback. Missing map status belongs in round context instead of a central banner. Neutral surfaces and spacing replace decorative frames; focus indicators and form affordances remain visible.

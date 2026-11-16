@@ -1,1 +1,17 @@
-{"name":"cswatch-assets","private":true,"type":"module","scripts":{"prepare-map":"node prepare-map.mjs"},"dependencies":{"@gltf-transform/core":"^4.3.0","@gltf-transform/extensions":"^4.5.1","@gltf-transform/functions":"^4.3.0","meshoptimizer":"^1.0.1","sharp":"^0.35.5"}}
+{
+  "name": "cswatch-assets",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prepare-map": "node prepare-map.mjs",
+    "prepare-equipment": "node prepare-equipment.mjs",
+    "test:equipment": "node --test prepare-equipment.test.mjs"
+  },
+  "dependencies": {
+    "@gltf-transform/core": "^4.3.0",
+    "@gltf-transform/extensions": "^4.5.1",
+    "@gltf-transform/functions": "^4.3.0",
+    "meshoptimizer": "^1.0.1",
+    "sharp": "^0.35.5"
+  }
+}

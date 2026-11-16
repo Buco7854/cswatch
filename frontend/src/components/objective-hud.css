@@ -1,0 +1,243 @@
+.objective-hud {
+  position: absolute;
+  top: var(--objective-hud-top, 154px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 300px;
+  max-width: calc(100% - 24px);
+  padding: 12px 14px 10px;
+  z-index: 4;
+  border: 0;
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text);
+  pointer-events: none;
+  --objective-color: #c76331;
+  --objective-fuse: #c76331;
+}
+[data-theme='dark'] .objective-hud {
+  --objective-color: #efa16c;
+  --objective-fuse: #efa16c;
+}
+.objective-hud[data-phase='defusing'],
+.objective-hud[data-phase='defused'] {
+  --objective-color: #237b9b;
+}
+[data-theme='dark'] .objective-hud[data-phase='defusing'],
+[data-theme='dark'] .objective-hud[data-phase='defused'] {
+  --objective-color: #8ec6dc;
+}
+.objective-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.objective-symbol {
+  flex: 0 0 auto;
+  color: var(--objective-color);
+}
+.objective-identity {
+  min-width: 0;
+  flex: 1;
+}
+.objective-identity strong {
+  display: block;
+  font-size: 14px;
+  line-height: 1.25;
+  font-weight: 600;
+}
+.objective-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 9px;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.objective-player {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.objective-timers {
+  display: grid;
+  gap: 8px;
+  margin-top: 9px;
+}
+.objective-meter-caption {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.objective-meter-caption > span:first-child {
+  min-width: 0;
+  line-height: 1.35;
+}
+.objective-seconds {
+  color: var(--text);
+  font-size: 20px;
+  line-height: 1.1;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.objective-seconds.is-elapsed {
+  font-size: 16px;
+}
+.objective-seconds.is-unrecorded {
+  max-width: 60%;
+  font-size: 12px;
+  line-height: 1.3;
+  font-weight: 400;
+  text-align: right;
+  white-space: normal;
+}
+.objective-meter-fuse + .objective-meter .objective-seconds,
+.objective-meter + .objective-meter-fuse .objective-seconds {
+  font-size: 14px;
+}
+.objective-meter-track {
+  height: 4px;
+  margin-top: 5px;
+  background: var(--raised);
+  overflow: hidden;
+}
+.objective-meter-track span {
+  display: block;
+  height: 100%;
+  background: var(--objective-color);
+}
+.objective-meter-fuse .objective-meter-track span {
+  background: var(--objective-fuse);
+}
+.objective-meter-track.is-unknown {
+  background: var(--muted);
+  opacity: 0.2;
+}
+.objective-hud[data-phase='plant-aborted'],
+.objective-hud[data-phase='defuse-aborted'] {
+  --objective-color: var(--muted);
+}
+@media (max-width: 760px) {
+  .objective-hud {
+    padding: 10px 12px;
+  }
+  .objective-seconds {
+    font-size: 18px;
+  }
+  .objective-context {
+    column-gap: 7px;
+  }
+}
+/* Live objectives occupy the space between round context and camera controls. */
+.viewer-frame {
+  --objective-hud-top: 14px;
+}
+@media (min-width: 761px) and (max-width: 1100px) {
+  .objective-hud {
+    width: 220px;
+  }
+  .viewer-frame:has(.objective-hud) .viewer-context {
+    max-width: calc(50% - 132px);
+  }
+  .viewer-frame:has(.objective-hud) .viewer-context > span:last-child {
+    display: none;
+  }
+}
+@media (max-width: 760px) and (min-height: 561px) {
+  .objective-hud {
+    top: 68px;
+    left: 88px;
+    right: 12px;
+    width: auto;
+    max-width: none;
+    transform: none;
+  }
+  .viewer-frame:has(.objective-hud) .position-radar {
+    width: 64px;
+    height: 64px;
+  }
+}
+@media (max-height: 560px) {
+  .objective-hud {
+    top: 6px;
+    width: 240px;
+    padding: 7px 10px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .objective-heading {
+    gap: 6px;
+    flex: 1;
+  }
+  .objective-symbol {
+    width: 17px;
+    height: 17px;
+  }
+  .objective-identity strong {
+    font-size: 12px;
+  }
+  .objective-context {
+    display: none;
+  }
+  .objective-timers {
+    display: flex;
+    gap: 8px;
+    margin: 0;
+  }
+  .objective-meter-caption > span:first-child {
+    display: none;
+  }
+  .objective-seconds {
+    font-size: 16px;
+  }
+  .objective-meter-track {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    margin: 0;
+    height: 2px;
+  }
+  .objective-meter-fuse + .objective-meter .objective-seconds,
+  .objective-meter + .objective-meter-fuse .objective-seconds {
+    font-size: 12px;
+  }
+  .objective-meter + .objective-meter-fuse .objective-meter-track {
+    display: none;
+  }
+}
+.objective-meter-caption > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+@media (max-height: 560px) {
+  .objective-meter-caption > span:first-child {
+    display: none;
+  }
+  .objective-meter-fuse .objective-meter-caption > span:first-child {
+    display: inline-flex;
+    font-size: 0;
+    gap: 0;
+  }
+}
+.objective-heading > .equipment-glyph {
+  width: 22px;
+  height: 24px;
+  flex: none;
+}
+@media (max-height: 560px) {
+  .objective-heading > .equipment-glyph {
+    width: 18px;
+    height: 19px;
+  }
+}

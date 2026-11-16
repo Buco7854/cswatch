@@ -24,6 +24,7 @@ import { authRoutes } from './auth.js';
 import { providerRoutes } from './providers.js';
 import { captionArtifactName } from './captions.js';
 import { requeueTranscription } from './transcription-worker.js';
+import { equipmentAssetRoutes } from './equipment-assets.js';
 
 export async function createApp(c: Config, db = new Store(c.dataDir)) {
   process.umask(0o077);
@@ -140,6 +141,7 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
   });
   await authRoutes(app, db, c);
   await providerRoutes(app, db, c);
+  await equipmentAssetRoutes(app, db.root);
   const visible = (row: Record<string, any>, uid?: string) => ({
     ...Object.fromEntries(
       [
@@ -410,7 +412,8 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
     decorateReply: false,
     dotfiles: 'deny',
     cacheControl: false,
-    allowedPath: (p) => /\.(glb|gltf|bin|png|jpe?g|webp|ktx2)$/i.test(p),
+    allowedPath: (p) =>
+      !/^\/?equipment(?:\/|$)/i.test(p) && /\.(glb|gltf|bin|png|jpe?g|webp|ktx2)$/i.test(p),
   });
   app.setNotFoundHandler(async (r, reply) => {
     if (

@@ -1,0 +1,339 @@
+/* Keycaps and one mouse replace boxed status rows. Displayed bindings are
+   conventional labels for recorded game actions, never physical-key evidence. */
+.input-hud-empty h3 {
+  margin: 0 0 8px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.input-hud-empty p {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.input-hud-empty p:last-child {
+  margin-bottom: 0;
+}
+.player-inputs .input-device-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 60px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  max-width: 258px;
+  margin-inline: auto;
+}
+.player-inputs .input-keyboard {
+  display: grid;
+  gap: 3px;
+  align-items: stretch;
+}
+.player-inputs .input-movement-keys {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(2, 24px);
+}
+.player-inputs .input-utility-keys {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(4, 24px);
+}
+.player-inputs .input-action-key {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 0;
+  padding: 3px;
+  border: 0;
+  border-radius: 4px;
+  background: var(--raised);
+  color: var(--muted);
+  box-shadow: inset 0 -2px 0 #0001;
+  line-height: 1;
+}
+.player-inputs .input-action-key kbd {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+}
+.player-inputs .input-action-key[data-state='pressed'] {
+  background: var(--text);
+  color: var(--surface);
+  box-shadow: none;
+}
+.player-inputs .input-action-key[data-state='unknown'] {
+  background: var(--ground);
+  color: var(--faint);
+  box-shadow: none;
+}
+.player-inputs .input-forward {
+  grid-column: 2;
+  grid-row: 1;
+}
+.player-inputs .input-use {
+  grid-column: 1;
+  grid-row: 1;
+}
+.player-inputs .input-reload {
+  grid-column: 2;
+  grid-row: 1;
+}
+.player-inputs .input-left {
+  grid-column: 1;
+  grid-row: 2;
+}
+.player-inputs .input-back {
+  grid-column: 2;
+  grid-row: 2;
+}
+.player-inputs .input-right {
+  grid-column: 3;
+  grid-row: 2;
+}
+.player-inputs .input-walk {
+  grid-column: 1 / span 2;
+  grid-row: 2;
+}
+.player-inputs .input-duck {
+  grid-column: 1 / span 2;
+  grid-row: 3;
+}
+.player-inputs .input-jump {
+  grid-column: 1 / span 2;
+  grid-row: 4;
+}
+.player-inputs .input-mouse-device {
+  display: flex;
+  justify-content: center;
+  align-self: center;
+}
+.player-inputs .input-mouse-shell {
+  position: relative;
+  width: 60px;
+  height: 104px;
+  border: 1px solid var(--control);
+  border-radius: 30px 30px 25px 25px;
+  background: var(--ground);
+  overflow: hidden;
+}
+.player-inputs .input-mouse-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  height: 45px;
+  border-bottom: 1px solid var(--control);
+}
+.player-inputs .input-mouse-button {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 1px 7px;
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 500;
+  color: var(--muted);
+  background: var(--raised);
+}
+.player-inputs .input-mouse-primary {
+  border-right: 1px solid var(--control);
+}
+.player-inputs .input-mouse-button[data-state='pressed'] {
+  color: var(--surface);
+  background: var(--text);
+}
+.player-inputs .input-mouse-button[data-state='unknown'] {
+  color: var(--faint);
+  background: transparent;
+}
+.player-inputs .input-mouse-wheel {
+  position: absolute;
+  left: 26px;
+  top: 10px;
+  width: 6px;
+  height: 17px;
+  border-radius: 4px;
+  background: var(--faint);
+  pointer-events: none;
+}
+.player-inputs .input-mouse-motion {
+  display: block;
+  width: 36px;
+  height: 36px;
+  margin: 10px auto 0;
+  color: var(--signal);
+}
+.input-mouse-motion-axes {
+  fill: none;
+  stroke: var(--control);
+  stroke-width: 1;
+}
+.input-mouse-motion-vector {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+.input-mouse-motion-point {
+  fill: currentColor;
+}
+.player-inputs .input-visual-details {
+  border: 0;
+  border-radius: 0;
+  margin: 1px 0 0;
+  padding: 0;
+  background: transparent;
+}
+.player-inputs .input-visual-details > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  gap: 12px;
+  color: var(--faint);
+  font-size: 12px;
+  cursor: pointer;
+  list-style: none;
+}
+.player-inputs .input-visual-details > summary::before,
+.player-inputs .input-visual-details > summary::marker {
+  display: none;
+}
+.player-inputs .input-visual-details > summary::-webkit-details-marker {
+  display: none;
+}
+.input-visual-layout {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+.input-visual-details[open] .input-visual-layout svg {
+  transform: rotate(180deg);
+}
+.player-inputs .input-visual-source {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0 0 10px;
+}
+.player-inputs .input-mouse-values {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  border: 0;
+  padding: 0;
+  margin: 8px 0;
+}
+.player-inputs .input-mouse-values > span {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.player-inputs .input-mouse-values svg {
+  flex: none;
+}
+.player-inputs .input-mouse-values strong {
+  flex-basis: 100%;
+  padding-left: 19px;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.player-inputs .input-recording-note {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.player-inputs.is-compact .input-device-stage {
+  grid-template-columns: minmax(0, 1fr) 50px minmax(0, 1fr);
+  max-width: 174px;
+  gap: 6px;
+}
+.player-inputs.is-compact .input-keyboard {
+  grid-auto-rows: 18px;
+  gap: 2px;
+}
+.player-inputs.is-compact .input-movement-keys {
+  grid-template-rows: repeat(2, 18px);
+}
+.player-inputs.is-compact .input-utility-keys {
+  grid-template-rows: repeat(4, 18px);
+}
+.player-inputs.is-compact .input-action-key {
+  padding: 1px;
+  border-radius: 3px;
+}
+.player-inputs.is-compact .input-action-key kbd {
+  font-size: 11px;
+}
+.player-inputs.is-compact .input-mouse-shell {
+  width: 50px;
+  height: 78px;
+  border-radius: 25px 25px 21px 21px;
+}
+.player-inputs.is-compact .input-mouse-buttons {
+  height: 35px;
+}
+.player-inputs.is-compact .input-mouse-button {
+  padding: 0 0 5px;
+}
+.player-inputs.is-compact .input-mouse-wheel {
+  left: 22px;
+  top: 6px;
+  width: 4px;
+  height: 12px;
+}
+.player-inputs.is-compact .input-mouse-motion {
+  width: 28px;
+  height: 28px;
+  margin-top: 5px;
+}
+.player-inputs .input-visual-metadata {
+  padding-top: 12px;
+}
+@media (max-width: 360px) {
+  .player-inputs .input-device-stage {
+    gap: 8px;
+    grid-template-columns: minmax(0, 1fr) 54px minmax(0, 1fr);
+  }
+  .player-inputs .input-mouse-shell {
+    width: 54px;
+    height: 100px;
+  }
+  .player-inputs .input-mouse-wheel {
+    left: 23px;
+  }
+}
+@media (max-height: 560px) {
+  .player-inputs .input-movement-keys {
+    grid-template-rows: repeat(2, 20px);
+  }
+  .player-inputs .input-utility-keys {
+    grid-template-rows: repeat(4, 18px);
+  }
+  .player-inputs .input-mouse-shell {
+    width: 48px;
+    height: 76px;
+  }
+  .player-inputs .input-mouse-device {
+    min-height: 76px;
+  }
+  .player-inputs .input-mouse-wheel {
+    left: 20px;
+    height: 13px;
+  }
+  .player-inputs .input-mouse-motion {
+    width: 25px;
+    height: 25px;
+    margin-top: 3px;
+  }
+}

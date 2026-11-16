@@ -2,11 +2,13 @@
 import { DemoReader, EntityMode } from 'cs2parser';
 import type { VoicePacket, ChatMessage, CommunicationInfo } from '../../shared/communications.js';
 import { voiceFrames } from './voice-packets.js';
+import { observeObjectives } from './objectives.js';
 
 export async function readCommunications(path: string, tickRate: number, lastTick: number) {
   const voice: VoicePacket[] = [],
     chat: ChatMessage[] = [];
   const reader = new DemoReader();
+  const finishObjectives = observeObjectives(reader, tickRate, lastTick);
   let unsupported = 0,
     encrypted = 0,
     bytes = 0,
@@ -71,7 +73,7 @@ export async function readCommunications(path: string, tickRate: number, lastTic
   });
   let failed = false;
   try {
-    const result = await reader.parseDemo(path, { entities: EntityMode.NONE });
+    const result = await reader.parseDemo(path, { entities: EntityMode.ALL });
     failed = result.status !== 'complete';
   } catch {
     failed = true;
@@ -103,5 +105,7 @@ export async function readCommunications(path: string, tickRate: number, lastTic
   if (unsupported)
     warnings.push('Some recorded voice packets use an unsupported or invalid codec.');
   if (truncated) warnings.push('Communication data reached the processing limit.');
-  return { voice, chat, communications, warnings };
+  const objectives = finishObjectives(!failed);
+  if (!objectives.complete) warnings.push('Some bomb objective state could not be read.');
+  return { voice, chat, communications, objectives, warnings };
 }

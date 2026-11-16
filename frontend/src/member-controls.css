@@ -8,7 +8,7 @@
   min-width: 0;
   min-height: 40px;
   padding: 8px 11px;
-  border: 1px solid var(--control);
+  border: 0;
   border-radius: 6px;
   background: var(--surface);
   color: var(--text);
@@ -213,9 +213,13 @@
 }
 .language-code,
 .mobile-round-count,
-.workspace-signin-icon,
-.viewer-shell .mobile-viewer-menu {
+.workspace-signin-icon {
   display: none;
+}
+.viewer-shell .mobile-viewer-menu {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 .viewer-global-actions .viewer-language {
   width: 58px;

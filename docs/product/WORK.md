@@ -23,3 +23,9 @@ The latest user requests are implemented as recorded round-event review, optiona
 - Commission independent security review; retain hard host disk quotas and maintained Linux confinement.
 
 `STATUS.md` is authoritative about incomplete capabilities. No Source 2 parity, native positional game audio, automatic Steam downloads, physical-device certification or independent audit may be claimed without new evidence.
+
+## Current HUD refinement
+
+The latest user feedback replaces the detached event rail and tabular HUD presentation. Input actions use a physical mouse in the center, movement keys left and action/modifier keys right. Events are anchored to the actual scrubber axis with match/round ranges, exact seeking and accessible clusters. Equipment uses independent broadcast-style CT/T lineups with health, money, ammo, weapons and actual utility inventory. Planting/defusing/planted status gets an on-screen icon and recorded live timer; never guess a server's fuse length. Structural borders are reduced across member/viewer surfaces while keyboard focus and form affordances remain.
+
+The coordinated pass implemented the timeline, edge-only overlay composition, quieter member controls, exact local equipment icons and recorded objective state. Specialist file ownership has returned to root for release verification. Keep native/browser-heavy verification sequential; the shared development host has a finite memory budget. Actual equipment artwork is operator-installed and excluded from Git/images; the bundled fallback uses original schematic SVG code. Preserve the approved public landing.
