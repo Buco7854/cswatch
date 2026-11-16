@@ -1,7 +1,6 @@
 name: cswatch
 x-app: &app
-  image: ${CSWATCH_IMAGE:-cswatch:local}
-  build: .
+  image: ${CSWATCH_IMAGE:-ghcr.io/buco7854/cswatch:latest}
   env_file: .env
   restart: unless-stopped
   read_only: true

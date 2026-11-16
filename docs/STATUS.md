@@ -34,7 +34,7 @@ This file is part of the product contract. Update it when implementation or veri
 - Unified theme-specific viewer surfaces and a flush playback deck; quieter member controls using neutral surfaces and spacing; preserved focus indicators/form affordances, collapsed optional round strip and persistent action menu.
 - Bounded TypeScript voice/chat extraction in the parser sandbox; Steam/Opus framing/CRC validation, streamed voice packets, local browser WASM decoding, playback speed/volume, speaker scope and mutes, chat overlays and transcript review.
 - Clearly labeled silent EN/FR practice subtitles with clock-based preview. Optional offline CPU multilingual Whisper subtitles in a separate durable stage. Read-only pinned model, actual language identification, English/French speech verification, output/CPU/audio budgets, private caption access, owner-only retry, leases/quota/rollback/crash recovery. Failure preserves the ready replay; partial captions are labeled.
-- Docker/Compose without Caddy, Monday no-cache image rebuild/publishing workflow, weekly dependency update PRs, architecture/security/agent handoff docs.
+- Docker/Compose without Caddy, default published `ghcr.io/buco7854/cswatch:latest` image with optional tag/digest override, Monday no-cache image rebuild/publishing workflow, weekly dependency update PRs, architecture/security/agent handoff docs.
 
 ## Requires operator resources or external verification
 
