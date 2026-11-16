@@ -1,0 +1,19 @@
+{
+  "name": "cswatch-workspace",
+  "private": true,
+  "scripts": {
+    "build": "npm --prefix backend run build && npm --prefix frontend run build",
+    "test": "npm --prefix backend test",
+    "dev:web": "npm --prefix backend run dev",
+    "dev:ui": "npm --prefix frontend run dev",
+    "worker": "npm --prefix backend run worker",
+    "test:e2e": "npm --prefix frontend run test:e2e",
+    "format": "prettier --write backend/src backend/tests frontend/src frontend/tests frontend/playwright.config.ts shared scripts/*.mjs tools/assets/*.mjs *.md \"docs/**/*.md\" *.yaml .github",
+    "format:check": "prettier --check backend/src backend/tests frontend/src frontend/tests frontend/playwright.config.ts shared scripts/*.mjs tools/assets/*.mjs *.md \"docs/**/*.md\" *.yaml .github",
+    "check:locales": "node scripts/check-locales.mjs",
+    "test:visual": "node scripts/visual-check.mjs"
+  },
+  "devDependencies": {
+    "prettier": "^3.10.1"
+  }
+}

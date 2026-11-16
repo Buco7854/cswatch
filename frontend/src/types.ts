@@ -1,0 +1,42 @@
+export type User = {
+  id: string;
+  username: string;
+  is_admin: boolean;
+  csrf: string;
+  identities?: { provider: string; subject: string }[];
+};
+export type Config = {
+  public_access: boolean;
+  registrations_enabled: boolean;
+  steam_enabled: boolean;
+  faceit_enabled: boolean;
+  max_upload_mb: number;
+  retention_days: number;
+  faceit_configured: boolean;
+  faceit_downloads: boolean;
+  steam_discovery: boolean;
+};
+export type Demo = {
+  id: string;
+  name: string;
+  source: string;
+  status: string;
+  size: number;
+  created_at: number;
+  public: boolean;
+  owned: boolean;
+  map: string | null;
+  duration: number | null;
+  rounds: number | null;
+  error: string | null;
+};
+export type {
+  Player,
+  Position,
+  Frame,
+  GameEvent,
+  Playback,
+  DeadTime,
+  Grenade,
+} from '../../shared/playback';
+export type Bookmark = { id: string; tick: number; label: string };
