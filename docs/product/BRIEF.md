@@ -23,7 +23,7 @@ cswatch is a public-capable, self-hostable review product with private-by-defaul
 
 **Member workspace:** own demos first, upload/import as a clear primary task, processing state and recovery, private sharing, connections/account. Never fill it with fictional personal statistics.
 
-**Viewer:** largest area is the match, permanent playback/round/player controls; advanced overlays and tuning live in a coherent options surface. Keep a route back to the originating library/explore context. A guest may view public demos but must sign in to save personal notes or upload.
+**Viewer:** the scene occupies the whole tab; a compact overlay interface fades on scene taps or playback idleness, with keyboard recovery and independent subtitles; playback/round/player controls are available when shown; advanced overlays and tuning live in a coherent options surface. Keep a route back to the originating library/explore context. A guest may view public demos but must sign in to save personal notes or upload.
 
 **Private instance:** a branded, useful sign-in entry, with no anonymous access to demos, asset files or community listing. New-account actions follow the independent registrations policy. Do not leak demo metadata through navigation/previews while gated.
 

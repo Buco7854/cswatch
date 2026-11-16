@@ -36,29 +36,170 @@
   --team-ct-wash: #d2e5f0;
   --team-t-wash: #f0ddd4;
 }
-.viewer-frame .viewer-titlebar,
-.viewer-frame .viewer-dock,
-.viewer-frame .viewer-scene-tools {
-  background: var(--viewer-plane);
-  color: var(--viewer-ink);
+/* The scene owns the whole tab. A single overlay row replaces app navigation. */
+.viewer-frame {
+  --viewer-toolbar-height: 48px;
 }
-.viewer-frame .viewer-scene-tools {
+.viewer-frame .viewer-surface {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+}
+.viewer-frame .viewer-titlebar {
+  position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  min-height: 52px;
-  padding: 4px 16px;
+  z-index: 6;
+  height: var(--viewer-toolbar-height);
+  min-height: var(--viewer-toolbar-height);
+  padding: 2px 8px;
+  gap: 8px;
+  background: var(--viewer-plane);
+  color: var(--viewer-ink);
+}
+.viewer-frame .viewer-identity {
+  flex: 1;
+  gap: 6px;
+  min-width: 0;
+}
+.viewer-frame .viewer-titlebar .viewer-back,
+.viewer-frame .viewer-titlebar .icon-button,
+.viewer-frame .viewer-titlebar .account-button,
+.viewer-frame .viewer-titlebar .options-button {
+  flex: none;
+  min-width: 44px;
+  min-height: 44px !important;
+  width: 44px;
+  height: 44px;
+  padding: 8px !important;
+  border: 0;
+  background: transparent;
+  border-radius: 2px;
+}
+.viewer-frame .viewer-titlebar .account-button > svg {
+  display: none;
+}
+.viewer-frame .viewer-match {
+  min-width: 0;
+  padding: 0;
+}
+.viewer-frame .viewer-match h1 {
+  margin: 0;
+  font-size: 14px;
+  line-height: 18px;
+  max-width: 600px;
+}
+.viewer-frame .viewer-match .viewer-context {
+  display: flex;
   align-items: center;
-}
-.viewer-frame .viewer-context {
+  flex-wrap: nowrap;
+  gap: 0;
+  min-height: 14px;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  white-space: nowrap;
   background: transparent;
-  padding: 7px 0;
+  color: var(--viewer-muted);
+  font-size: 11px;
+  line-height: 14px;
 }
-.viewer-frame .viewer-camera-tools > .select-control,
-.viewer-frame .viewer-camera-tools > .options-button {
-  background: transparent;
+.viewer-frame .viewer-context > span {
+  display: inline;
+  flex: none;
+  color: inherit;
+  font-size: inherit;
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+.viewer-frame .viewer-context > span + span::before {
+  content: '·';
+  margin: 0 5px;
+}
+.viewer-frame .viewer-context > span:first-child {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.viewer-frame .viewer-global-actions {
+  flex: none;
+  max-width: none;
+  gap: 2px;
+}
+.viewer-frame .viewer-titlebar .camera-select {
+  min-width: 44px;
+  min-height: 44px;
+  height: 44px;
   border: 0;
   border-radius: 2px;
+  background: transparent;
+  font-size: 12px;
+}
+.viewer-frame .options-button > span {
+  display: none;
+}
+.viewer-frame .viewer-stage:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: -3px;
+}
+/* Inert switches immediately; visibility waits for the fade to finish. */
+.viewer-frame [data-viewer-chrome] {
+  opacity: 1;
+  visibility: visible;
+  transition:
+    opacity 180ms ease,
+    visibility 0s;
+}
+.viewer-frame[data-chrome-visible='false'] [data-viewer-chrome] {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 180ms ease,
+    visibility 0s 180ms;
+}
+.viewer-game-hud,
+.viewer-objective-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.viewer-game-hud {
+  z-index: 3;
+}
+.viewer-objective-layer {
+  z-index: 4;
+}
+.viewer-frame .position-radar {
+  top: calc(var(--viewer-toolbar-height) + 12px);
+  left: 12px;
+  width: 86px;
+  height: 86px;
+}
+.viewer-frame .killfeed,
+.viewer-frame.has-review-hud .killfeed {
+  top: calc(var(--viewer-toolbar-height) + 12px);
+  right: 12px;
+}
+.viewer-frame:has(.viewer-review-hud[data-economy='true']) .killfeed {
+  right: calc(clamp(240px, 22vw, 280px) + 28px);
+}
+.viewer-frame .killfeed > div {
+  background: var(--viewer-plane);
+  color: var(--viewer-ink);
+  padding: 2px 8px;
+  font-size: 11px;
+  line-height: 14px;
+}
+.viewer-frame .killfeed span {
+  color: var(--viewer-muted);
+}
+.viewer-frame .objective-hud {
+  top: calc(var(--viewer-toolbar-height) + 10px);
 }
 .viewer-frame .viewer-dock {
   left: 0;
@@ -67,49 +208,8 @@
   padding: 8px 16px;
   border-radius: 0;
   box-shadow: none;
-}
-.viewer-frame .viewer-dock[hidden] {
-  display: none;
-}
-.viewer-frame .viewer-show-controls {
-  position: absolute;
-  left: 50%;
-  bottom: 8px;
-  transform: translateX(-50%);
-  z-index: 5;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 44px;
-  min-width: 44px;
-  border: 0;
-  border-radius: 2px;
   background: var(--viewer-plane);
   color: var(--viewer-ink);
-  padding: 8px 12px;
-  font-size: 12px;
-}
-.viewer-frame.has-review-hud .killfeed {
-  top: 54px;
-}
-.viewer-frame.has-review-hud .killfeed > div {
-  padding: 2px 8px;
-  font-size: 11px;
-  line-height: 12px;
-}
-.viewer-frame .killfeed > div {
-  background: var(--viewer-plane);
-  color: var(--viewer-ink);
-}
-.viewer-frame .killfeed span {
-  color: var(--viewer-muted);
-}
-.viewer-frame .viewer-hint {
-  bottom: calc(var(--viewer-dock-height, 160px) + 12px);
-  background: var(--viewer-plane);
-  color: var(--viewer-muted);
-  border-radius: 0;
 }
 .viewer-frame .communication-overlay > div,
 .viewer-frame .communication-overlay p {
@@ -124,8 +224,33 @@
   --raised: var(--broadcast-raised);
 }
 @media (max-width: 760px) {
-  .viewer-frame .viewer-scene-tools {
-    padding-inline: 8px;
+  .viewer-frame .viewer-titlebar {
+    padding-inline: 4px;
+    gap: 2px;
+  }
+  .viewer-frame .viewer-titlebar .camera-select {
+    width: 44px;
+    padding: 8px;
+    justify-content: center;
+  }
+  .viewer-frame .camera-select > span:not(.select-leading-icon) {
+    display: none;
+  }
+  .viewer-frame .camera-select > .select-leading-icon {
+    display: flex;
+  }
+  .viewer-frame .viewer-context .viewer-map-status {
+    display: none;
+  }
+  .viewer-frame .position-radar {
+    left: 8px;
+    width: 56px;
+    height: 56px;
+  }
+  .viewer-frame:has(.viewer-review-hud[data-economy='true']) .killfeed {
+    top: calc(var(--viewer-toolbar-height) + 82px);
+    left: 8px;
+    right: 196px;
   }
   .viewer-frame .viewer-dock {
     padding: 8px;
@@ -139,20 +264,21 @@
     height: 44px;
     min-height: 44px;
   }
-  .viewer-frame .options-button {
-    min-width: 44px;
-    min-height: 44px !important;
-  }
   .viewer-frame .viewer-round-controls {
     display: none;
   }
 }
 @media (max-height: 560px) {
-  .viewer-frame .viewer-scene-tools {
-    min-height: 48px;
-    padding-block: 2px;
-  }
   .viewer-frame .viewer-dock {
     padding-block: 5px;
+  }
+  .viewer-frame:has(.viewer-review-hud[data-economy='true']) .killfeed {
+    right: 200px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .viewer-frame [data-viewer-chrome],
+  .viewer-frame[data-chrome-visible='false'] [data-viewer-chrome] {
+    transition: none;
   }
 }

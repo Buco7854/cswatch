@@ -93,7 +93,7 @@ test('equipment lookup retries a denied manifest on the next viewer mount', asyn
   expect(manifests).toBe(2);
 });
 
-test('right-side lineups fold for mobile and restore toggle focus without duplicating the selected player', async ({
+test('right-side lineups stay compact on mobile and their visibility is managed in Options', async ({
   page,
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE));
@@ -106,17 +106,18 @@ test('right-side lineups fold for mobile and restore toggle focus without duplic
     hud.locator('.broadcast-bank-heading,.broadcast-compact-card,.observed-player'),
   ).toHaveCount(0);
   await page.setViewportSize({ width: 320, height: 740 });
-  const toggle = hud.getByRole('button', { name: 'Expand team lineups', exact: true });
-  await expect(toggle).toBeVisible();
-  await toggle.click();
+  await expect(hud.locator('.broadcast-lineups-open,.broadcast-lineups-close')).toHaveCount(0);
   await expect(hud.locator('.broadcast-player').first()).toBeVisible();
   await hud.locator('.broadcast-player[data-player-id="6"] button').click();
   await expect(hud.locator('.broadcast-player button[aria-pressed="true"]')).toHaveCount(1);
-  await page.keyboard.press('Escape');
-  await expect(toggle).toBeFocused();
-  await toggle.click();
-  await hud.getByRole('button', { name: 'Close team lineups', exact: true }).click();
-  await expect(toggle).toBeFocused();
+  await page.getByRole('button', { name: 'Options', exact: true }).click();
+  await page.getByRole('switch', { name: /^Economy and loadouts/ }).uncheck();
+  await page.getByRole('button', { name: 'Close viewer options', exact: true }).click();
+  await expect(hud).toHaveCount(0);
+  await page.getByRole('button', { name: 'Options', exact: true }).click();
+  await page.getByRole('switch', { name: /^Economy and loadouts/ }).check();
+  await page.getByRole('button', { name: 'Close viewer options', exact: true }).click();
+  await expect(hud.locator('.broadcast-player button[aria-pressed="true"]')).toHaveCount(1);
   await page.setViewportSize({ width: 1440, height: 900 });
   await expect(hud.locator('.broadcast-player').last()).toBeVisible();
   await expect(hud.locator('.broadcast-player button[aria-pressed="true"]')).toHaveCount(1);

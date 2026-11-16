@@ -131,6 +131,11 @@ test('broadcast HUD shows recorded loadouts and inputs without inventing missing
   const terrorists = hud.locator('.broadcast-bank[data-team="2"]');
   const row = (index: number) =>
     hud.locator('.broadcast-bank .broadcast-player[data-player-id="fixture-player-' + index + '"]');
+  const setOption = async (title: string, enabled: boolean) => {
+    await page.getByRole('button', { name: 'Options', exact: true }).click();
+    await page.getByRole('switch', { name: new RegExp('^' + title) }).setChecked(enabled);
+    await page.getByRole('button', { name: 'Close viewer options', exact: true }).click();
+  };
   await expect(hud).toBeVisible();
   await expect(ct).toBeVisible();
   await expect(terrorists).toBeVisible();
@@ -200,8 +205,7 @@ test('broadcast HUD shows recorded loadouts and inputs without inventing missing
   await expect(hud.locator('.input-forward')).toHaveAttribute('data-state', 'pressed');
   await expect(hud.locator('.input-forward kbd')).toHaveText('Z');
   await expect(hud.locator('.input-left')).toHaveAttribute('data-state', 'released');
-  await hud.getByRole('button', { name: 'Input display options', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Input details', exact: true }).click();
+  await setOption('Input details', true);
   await expect(hud.getByText('Network button states', { exact: true })).toBeVisible();
   await expect(
     hud.getByText('Mouse movement is unavailable for this player at this moment.'),
@@ -228,20 +232,18 @@ test('broadcast HUD shows recorded loadouts and inputs without inventing missing
   await expect(hud.getByLabel('Recorded mouse movement', { exact: true })).toContainText('-4');
   await expect(hud.locator('.input-mouse-primary')).toHaveAttribute('data-state', 'unknown');
   await expect(hud.locator('.review-hud-tools')).toHaveCount(0);
+  await expect(hud.locator('.review-inputs-header button')).toHaveCount(0);
+  await setOption('Input details', false);
   for (const [width, height] of [
     [320, 740],
     [844, 390],
   ]) {
     await page.setViewportSize({ width, height });
-    const closeLineups = hud.getByRole('button', { name: 'Close team lineups', exact: true });
-    if (await closeLineups.isVisible()) await closeLineups.click();
-    await expect(hud.locator('.broadcast-lineups-open')).toBeVisible();
-    await hud.getByRole('button', { name: 'Expand team lineups', exact: true }).click();
+    await expect(hud.locator('.broadcast-lineups-open,.broadcast-lineups-close')).toHaveCount(0);
     await expect(ct).toBeVisible();
     await expect(terrorists).toBeVisible();
     await row(5).getByRole('button', { name: 'Select player vex', exact: true }).click();
     await expect(row(5).getByRole('button')).toHaveAttribute('aria-pressed', 'true');
-    await hud.getByRole('button', { name: 'Close team lineups', exact: true }).click();
     await expect(hud.locator('.review-inputs-panel')).toBeVisible();
     await expect(
       hud.getByText('Input actions were not recorded for this player at this moment.'),
@@ -253,14 +255,10 @@ test('broadcast HUD shows recorded loadouts and inputs without inventing missing
     const dock = await page.locator('.viewer-dock').boundingBox();
     expect(input!.y + input!.height).toBeLessThanOrEqual(dock!.y);
     expect(input!.x + input!.width).toBeLessThan(width / 2);
-    await hud.getByRole('button', { name: 'Collapse input display', exact: true }).click();
-    await expect(hud.locator('.review-inputs-body')).toHaveCount(0);
-    await hud.getByRole('button', { name: 'Expand input display', exact: true }).click();
   }
-  await hud.getByRole('button', { name: 'Input display options', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Hide inputs', exact: true }).click();
+  await setOption('Recorded inputs', false);
   await expect(hud.locator('.review-inputs-panel')).toHaveCount(0);
-  await expect(hud.locator('.broadcast-lineups-open')).toBeVisible();
+  await expect(hud.locator('.broadcast-player')).toHaveCount(10);
   expect(
     await page.evaluate(() => {
       const value = JSON.parse(localStorage.getItem('viewer-settings') || '{}');

@@ -839,5 +839,21 @@
   "Hide playback controls": "Hide playback controls",
   "Hide the playback dock. Use Show controls or press H to bring it back.": "Hide the playback dock. Use Show controls or press H to bring it back.",
   "Show controls": "Show controls",
-  "Show controls (H)": "Show controls (H)"
+  "Show controls (H)": "Show controls (H)",
+  "Show the recorded input source and raw mouse movement values.": "Show the recorded input source and raw mouse movement values.",
+  "Hide controls during playback": "Hide controls during playback",
+  "Fade the viewing interface after a few seconds. Tap the scene or move the mouse to bring it back.": "Fade the viewing interface after a few seconds. Tap the scene or move the mouse to bring it back.",
+  "Tap the scene or press H to show or hide the viewing interface.": "Tap the scene or press H to show or hide the viewing interface.",
+  "Demo view · tap or press H to show or hide controls": "Demo view · tap or press H to show or hide controls",
+  "Viewer menu": "Viewer menu",
+  "Show viewer controls": "Show viewer controls",
+  "Hide viewer controls": "Hide viewer controls",
+  "Subtitle example": "Subtitle example",
+  "Preview subtitle example": "Preview subtitle example",
+  "Authored sample captions with no recorded audio.": "Authored sample captions with no recorded audio.",
+  "Synthetic example": "Synthetic example",
+  "Synthetic captions for the practice scene. No speech was recorded or transcribed.": "Synthetic captions for the practice scene. No speech was recorded or transcribed.",
+  "Smoke is down. Cross now.": "Smoke is down. Cross now.",
+  "One close right. Flashing over.": "One close right. Flashing over.",
+  "Bomb planted. Hold the crossfire.": "Bomb planted. Hold the crossfire."
 }

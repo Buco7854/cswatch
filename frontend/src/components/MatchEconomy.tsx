@@ -1,5 +1,5 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { ChevronDown, Skull, Users, X } from 'lucide-react';
+import { useId, useMemo } from 'react';
+import { ChevronDown, Skull } from 'lucide-react';
 import { locale, t } from '../i18n';
 import type { Frame, Player, Position } from '../types';
 import { equipmentKey, equipmentKind, equipmentName, utilityInventory } from '../equipment-display';
@@ -335,35 +335,6 @@ export default function MatchEconomy({
     () => new Map(frame.players.map((state) => [state.id, state])),
     [frame.players],
   );
-  const [lineupsOpen, setLineupsOpen] = useState(false);
-  const root = useRef<HTMLElement>(null);
-  const openLineups = useRef<HTMLButtonElement>(null);
-  const closeLineups = useRef<HTMLButtonElement>(null);
-  const previousLineupsOpen = useRef(false);
-  const contentId = useId();
-  useEffect(() => {
-    if (previousLineupsOpen.current !== lineupsOpen) {
-      const media = window.matchMedia('(max-width:760px),(max-height:560px)');
-      if (media.matches)
-        (lineupsOpen ? closeLineups : openLineups).current?.focus({ preventScroll: true });
-      previousLineupsOpen.current = lineupsOpen;
-    }
-  }, [lineupsOpen]);
-  useEffect(() => {
-    const media = window.matchMedia('(max-width:760px),(max-height:560px)');
-    const update = () => {
-      const active = document.activeElement;
-      if (!active || !root.current?.contains(active)) return;
-      if (media.matches) setLineupsOpen(true);
-      else if (active === openLineups.current || active === closeLineups.current) {
-        root.current
-          .querySelector<HTMLButtonElement>('.broadcast-player-select[aria-pressed="true"]')
-          ?.focus({ preventScroll: true });
-      }
-    };
-    media.addEventListener('change', update);
-    return () => media.removeEventListener('change', update);
-  }, []);
   const teams = useMemo(() => {
     const grouped: Record<2 | 3, LoadoutMember[]> = { 2: [], 3: [] };
     for (const player of players) {
@@ -374,46 +345,8 @@ export default function MatchEconomy({
     return grouped;
   }, [players, states]);
   return (
-    <section
-      ref={root}
-      className={'broadcast-economy' + (lineupsOpen ? ' is-lineups-open' : '')}
-      aria-label={t('Economy and loadouts')}
-      onKeyDown={(event) => {
-        if (
-          event.key === 'Escape' &&
-          !event.defaultPrevented &&
-          window.matchMedia('(max-width:760px),(max-height:560px)').matches
-        ) {
-          event.preventDefault();
-          setLineupsOpen(false);
-          openLineups.current?.focus({ preventScroll: true });
-        }
-      }}
-    >
-      <button
-        type="button"
-        ref={openLineups}
-        className="broadcast-lineups-open"
-        aria-label={t('Expand team lineups')}
-        aria-expanded={lineupsOpen}
-        aria-controls={contentId}
-        onClick={() => setLineupsOpen(true)}
-      >
-        <Users size={16} />
-        <span>{t('Expand team lineups')}</span>
-        <ChevronDown size={14} />
-      </button>
-      <button
-        type="button"
-        ref={closeLineups}
-        className="broadcast-lineups-close"
-        aria-controls={contentId}
-        onClick={() => setLineupsOpen(false)}
-      >
-        <span>{t('Close team lineups')}</span>
-        <X size={16} />
-      </button>
-      <div id={contentId} className="broadcast-lineup-stack">
+    <section className="broadcast-economy" aria-label={t('Economy and loadouts')}>
+      <div className="broadcast-lineup-stack">
         <TeamBank team={3} members={teams[3]} selected={selected} onSelect={onSelect} />
         <TeamBank team={2} members={teams[2]} selected={selected} onSelect={onSelect} />
       </div>

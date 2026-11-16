@@ -839,5 +839,21 @@
   "Hide playback controls": "Masquer les commandes de lecture",
   "Hide the playback dock. Use Show controls or press H to bring it back.": "Masquer la barre de lecture. Utilisez Afficher les commandes ou appuyez sur H pour la rétablir.",
   "Show controls": "Afficher les commandes",
-  "Show controls (H)": "Afficher les commandes (H)"
+  "Show controls (H)": "Afficher les commandes (H)",
+  "Show the recorded input source and raw mouse movement values.": "Afficher la source des commandes et les valeurs brutes du mouvement de la souris.",
+  "Hide controls during playback": "Masquer les commandes pendant la lecture",
+  "Fade the viewing interface after a few seconds. Tap the scene or move the mouse to bring it back.": "Masquer progressivement l’interface après quelques secondes. Touchez la scène ou déplacez la souris pour la réafficher.",
+  "Tap the scene or press H to show or hide the viewing interface.": "Touchez la scène ou appuyez sur H pour afficher ou masquer l’interface de lecture.",
+  "Demo view · tap or press H to show or hide controls": "Vue démo · touchez la scène ou appuyez sur H pour afficher ou masquer les commandes",
+  "Viewer menu": "Menu du lecteur",
+  "Show viewer controls": "Afficher les commandes du lecteur",
+  "Hide viewer controls": "Masquer les commandes du lecteur",
+  "Subtitle example": "Exemple de sous-titres",
+  "Preview subtitle example": "Voir l’exemple de sous-titres",
+  "Authored sample captions with no recorded audio.": "Sous-titres rédigés pour cet exemple, sans enregistrement audio.",
+  "Synthetic example": "Exemple fictif",
+  "Synthetic captions for the practice scene. No speech was recorded or transcribed.": "Sous-titres fictifs pour la scène d’entraînement. Aucune voix n’a été enregistrée ni transcrite.",
+  "Smoke is down. Cross now.": "La smoke est en place. Traversez maintenant.",
+  "One close right. Flashing over.": "Un ennemi tout près à droite. Je lance une flash.",
+  "Bomb planted. Hold the crossfire.": "Bombe posée. Gardez le tir croisé."
 }

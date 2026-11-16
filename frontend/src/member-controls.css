@@ -221,15 +221,6 @@
   align-items: center;
   justify-content: center;
 }
-.viewer-global-actions .viewer-language {
-  width: 58px;
-  min-height: 36px;
-  padding: 6px;
-  gap: 4px;
-  font-size: 12px;
-  border: 0;
-  background: transparent;
-}
 .viewer-camera-tools .camera-select {
   width: auto;
   max-width: 260px;
@@ -276,7 +267,6 @@
 .replay-buffer .button {
   margin: 10px auto 0;
 }
-.viewer-shell .viewer-hint,
 .viewer-shell .viewer-drawer {
   bottom: calc(var(--viewer-dock-height, 180px) + 32px);
 }
@@ -511,18 +501,12 @@
   }
   .viewer-shell .viewer-global-actions .icon-button,
   .viewer-shell .viewer-titlebar .viewer-back,
-  .viewer-shell .viewer-global-actions .viewer-language,
   .viewer-shell .viewer-global-actions .account-button {
     width: 44px;
     min-width: 44px;
     min-height: 44px;
     height: 44px;
     padding: 7px;
-  }
-  .viewer-shell .viewer-global-actions .viewer-language {
-    padding: 5px 2px;
-    gap: 0;
-    font-size: 11px;
   }
   .viewer-shell .viewer-global-actions .account-button > svg {
     display: none;
@@ -641,13 +625,6 @@
   .mobile-round-count {
     display: inline;
     white-space: nowrap;
-  }
-  .viewer-global-actions .viewer-language {
-    width: 49px;
-    min-height: 36px;
-    font-size: 11px;
-    gap: 2px;
-    padding: 5px 3px;
   }
   .viewer-global-actions .compact-account {
     padding: 2px 0 2px 5px;

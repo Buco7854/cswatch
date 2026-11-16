@@ -1,6 +1,18 @@
 import { test, expect, type Page } from '@playwright/test';
 const privateInstance = Boolean(process.env.E2E_PRIVATE);
 async function choose(page: Page, label: string, option: string) {
+  if (label === 'Language' || label === 'Langue') {
+    await page
+      .getByRole('button', {
+        name: label === 'Langue' ? 'Menu du lecteur' : 'Viewer menu',
+        exact: true,
+      })
+      .click();
+    await page
+      .getByRole('menuitem', { name: option === 'FR' ? 'Français' : 'English', exact: true })
+      .click();
+    return;
+  }
   await page.getByRole('combobox', { name: label, exact: true }).click();
   await page.getByRole('option', { name: option, exact: true }).click();
 }
@@ -44,7 +56,8 @@ test('public landing has working proof, feature navigation, and guest viewer', a
   await page.getByRole('button', { name: 'Options', exact: true }).click();
   await expect(page.getByRole('switch', { name: /X-ray silhouettes/ })).not.toBeChecked();
   await page.getByRole('button', { name: 'Close viewer options' }).click();
-  await page.getByRole('button', { name: 'Switch to light theme' }).click();
+  await page.getByRole('button', { name: 'Viewer menu', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Switch to light theme' }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   for (const width of [390, 768, 1440, 1920]) {
     await page.setViewportSize({ width, height: 900 });
@@ -122,7 +135,8 @@ test('French covers public pages, viewer, auth errors and saved language choice'
   await page.getByRole('button', { name: 'Options', exact: true }).click();
   await expect(page.getByRole('switch', { name: /Silhouettes à travers les murs/ })).toBeVisible();
   await page.getByRole('button', { name: 'Fermer les options du lecteur' }).click();
-  await page.getByRole('banner').getByRole('button', { name: 'Se connecter', exact: true }).click();
+  await page.getByRole('button', { name: 'Menu du lecteur', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Se connecter', exact: true }).click();
   await page.getByLabel('Nom d’utilisateur', { exact: true }).fill('missing_member');
   await page.getByLabel('Mot de passe', { exact: true }).fill('wrong-test-password');
   await page.getByRole('dialog').getByRole('button', { name: 'Se connecter', exact: true }).click();
@@ -236,12 +250,14 @@ test('viewer menus support keyboard selection, bounded touch lists and fullscree
   test.setTimeout(90000);
   await page.goto('/watch/sample');
   for (const theme of ['dark', 'light']) {
-    if ((await page.locator('html').getAttribute('data-theme')) !== theme)
+    if ((await page.locator('html').getAttribute('data-theme')) !== theme) {
+      await page.getByRole('button', { name: 'Viewer menu', exact: true }).click();
       await page
-        .getByRole('button', {
+        .getByRole('menuitem', {
           name: theme === 'light' ? 'Switch to light theme' : 'Switch to dark theme',
         })
         .click();
+    }
     for (const [width, height] of [
       [320, 740],
       [768, 1024],
