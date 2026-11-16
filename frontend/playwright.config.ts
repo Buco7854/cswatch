@@ -8,6 +8,9 @@ if (!process.env.E2E_EXISTING_SERVER) process.env.E2E_DATA_DIR = dataDir;
 export default defineConfig({
   testDir: './tests',
   timeout: 60000,
+  // Software-rendered WebGL suites share one test server and are CPU intensive.
+  // Keep CI within the same resource budget as the verified local run.
+  workers: 1,
   fullyParallel: false,
   use: {
     baseURL,
