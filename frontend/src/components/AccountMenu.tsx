@@ -6,7 +6,15 @@ import { useApp } from '../context';
 import { t } from '../i18n';
 import { ActionMenu, type MenuAction } from './Controls';
 
-export default function AccountMenu({ compact = false }: { compact?: boolean }) {
+export default function AccountMenu({
+  compact = false,
+  extraActions = [],
+  label,
+}: {
+  compact?: boolean;
+  extraActions?: MenuAction[];
+  label?: string;
+}) {
   const { user, refresh, notify } = useApp();
   const location = useLocation();
   const [open, setOpen] = useState(false);
@@ -43,6 +51,7 @@ export default function AccountMenu({ compact = false }: { compact?: boolean }) 
           },
         ]
       : []),
+    ...extraActions,
     {
       id: 'logout',
       label: t('Sign out'),
@@ -54,7 +63,7 @@ export default function AccountMenu({ compact = false }: { compact?: boolean }) 
   ];
   return (
     <ActionMenu
-      label={t('Account menu')}
+      label={label || t('Account menu')}
       open={open}
       onOpenChange={setOpen}
       heading={
@@ -66,7 +75,7 @@ export default function AccountMenu({ compact = false }: { compact?: boolean }) 
       trigger={
         <button
           className={'account-button' + (compact ? ' compact-account' : '')}
-          aria-label={user.username}
+          aria-label={label || user.username}
         >
           <span className="avatar" aria-hidden="true">
             {user.username.slice(0, 1).toUpperCase()}

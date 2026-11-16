@@ -99,11 +99,26 @@ test('recorded voice decodes under the production CSP, subtitles/chat follow see
   );
   await expect(page.locator('.chat-caption')).toContainText('<script>plain recorded text</script>');
   await expect(page.locator('.communication-overlay script')).toHaveCount(0);
+  const scene = page.locator('.viewer-stage');
+  const bounds = (await scene.boundingBox())!;
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height * 0.45);
+  await page.mouse.down();
+  await page.mouse.up();
+  await expect(page.locator('.viewer-frame')).toHaveAttribute('data-chrome-visible', 'false');
+  await expect(page.locator('.voice-caption')).toContainText(
+    'Explicit synthetic subtitle fixture.',
+  );
+  await expect(page.locator('.voice-caption')).toBeVisible();
+  await expect(page.locator('.chat-caption')).toBeVisible();
+  await scene.press('h');
+  await expect(page.locator('.viewer-frame')).toHaveAttribute('data-chrome-visible', 'true');
   await slider.fill('0');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   await expect
     .poll(() => page.evaluate(() => (window as any).__voiceStarts), { timeout: 15000 })
     .toBeGreaterThan(0);
+  if ((await page.locator('.viewer-frame').getAttribute('data-chrome-visible')) === 'false')
+    await page.locator('.viewer-stage').press('h');
   await page.getByRole('button', { name: 'Pause', exact: true }).click();
   expect(errors).toEqual([]);
 });

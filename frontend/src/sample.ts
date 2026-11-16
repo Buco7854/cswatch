@@ -5,6 +5,42 @@ export const sample: Playback = {
   map: 'Training courtyard',
   tickRate: 64,
   sample: true,
+  communications: {
+    voice: 'absent',
+    chat: 'absent',
+    captions: 'ready',
+    unsupportedPackets: 0,
+  },
+  // Authored, synthetic UI examples. These are not recorded speech or ASR output.
+  captions: [
+    {
+      id: 'sample-caption-smoke',
+      startTick: 448,
+      endTick: 704,
+      speaker: '0',
+      text: 'Smoke is down. Cross now.',
+      source: 'imported',
+      language: 'en',
+    },
+    {
+      id: 'sample-caption-flash',
+      startTick: 720,
+      endTick: 928,
+      speaker: '1',
+      text: 'One close right. Flashing over.',
+      source: 'imported',
+      language: 'en',
+    },
+    {
+      id: 'sample-caption-plant',
+      startTick: 960,
+      endTick: 1216,
+      speaker: '0',
+      text: 'Bomb planted. Hold the crossfire.',
+      source: 'imported',
+      language: 'en',
+    },
+  ],
   players: [
     'marlow',
     'echo',

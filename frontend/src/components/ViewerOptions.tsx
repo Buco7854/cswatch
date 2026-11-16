@@ -95,6 +95,11 @@ export default function ViewerOptions({
               t('Mouse buttons and movement'),
               t('Show recorded attack actions and mouse movement on a mouse diagram.'),
             )}
+            {toggle(
+              'inputDetails',
+              t('Input details'),
+              t('Show the recorded input source and raw mouse movement values.'),
+            )}
             <label>
               {t('Keyboard display layout')}
               <SelectControl
@@ -125,9 +130,16 @@ export default function ViewerOptions({
       <section>
         <h3>{t('Playback & performance')}</h3>
         {toggle(
+          'autoHideControls',
+          t('Hide controls during playback'),
+          t(
+            'Fade the viewing interface after a few seconds. Tap the scene or move the mouse to bring it back.',
+          ),
+        )}
+        {toggle(
           'controlsHidden',
-          t('Hide playback controls'),
-          t('Hide the playback dock. Use Show controls or press H to bring it back.'),
+          t('Hide viewer controls'),
+          t('Tap the scene or press H to show or hide the viewing interface.'),
         )}
         {toggle(
           'autoSkip',

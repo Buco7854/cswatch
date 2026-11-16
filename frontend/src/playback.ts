@@ -64,7 +64,9 @@ export type ViewerSettings = {
   autoSkip: boolean;
   inputs: boolean;
   mouseInput: boolean;
+  inputDetails: boolean;
   controlsHidden: boolean;
+  autoHideControls: boolean;
   economy: boolean;
   inputLayout: 'wasd' | 'zqsd';
   voice: boolean;
@@ -85,7 +87,9 @@ export const defaultSettings: ViewerSettings = {
   autoSkip: false,
   inputs: false,
   mouseInput: false,
+  inputDetails: false,
   controlsHidden: false,
+  autoHideControls: true,
   economy: false,
   inputLayout: 'wasd',
   voice: false,

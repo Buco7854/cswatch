@@ -1,5 +1,4 @@
-import i18n, { t, locale, setLanguage, type Language } from '../i18n';
-import Brand from './Brand';
+import i18n, { t, locale, setLanguage } from '../i18n';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams, useLocation } from 'react-router-dom';
 import {
@@ -22,10 +21,10 @@ import {
   Moon,
   ChevronDown,
   MoreHorizontal,
-  PanelBottomOpen,
 } from 'lucide-react';
 import { api } from '../api';
 import { useReplay } from '../useReplay';
+import { useViewerChrome } from '../useViewerChrome';
 import { useApp } from '../context';
 import type { Bookmark } from '../types';
 import { frameAt, readSettings, skipDeadTime } from '../playback';
@@ -116,14 +115,37 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
   const panelWasOpen = useRef(false);
   const full = useRef<HTMLDivElement>(null);
   const playbackDock = useRef<HTMLDivElement>(null);
-  const showControlsTrigger = useRef<HTMLButtonElement>(null);
+  const stage = useRef<HTMLDivElement>(null);
   const playTrigger = useRef<HTMLButtonElement>(null);
-  const previousControlsHidden = useRef(settings.controlsHidden);
   const mobileMoreTrigger = useRef<HTMLButtonElement>(null);
   const momentMenuTrigger = useRef<HTMLButtonElement>(null);
   const eventMenuTrigger = useRef<HTMLElement | null>(null);
   const optionsTrigger = useRef<HTMLButtonElement>(null);
   const panelElement = useRef<HTMLElement>(null);
+  const setControlsHidden = useCallback(
+    (controlsHidden: boolean) =>
+      setSettings((value) =>
+        value.controlsHidden === controlsHidden ? value : { ...value, controlsHidden },
+      ),
+    [],
+  );
+  const chrome = useViewerChrome({
+    frame: full,
+    stage,
+    hidden: settings.controlsHidden,
+    setHidden: setControlsHidden,
+    playing,
+    autoHide: settings.autoHideControls,
+    blocked:
+      Boolean(panel) ||
+      options ||
+      manage ||
+      communicationsOpen ||
+      timelineOptionsOpen ||
+      roundsOpen ||
+      buffering,
+    ready: Boolean(data),
+  });
   function restoreViewerFocus(preferred: HTMLElement | null) {
     const target = [preferred, optionsTrigger.current, panelClose.current].find((element) => {
       if (!element?.isConnected || element.closest('[inert]') || element.matches(':disabled'))
@@ -150,7 +172,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     const update = () =>
       full.current?.style.setProperty(
         '--viewer-dock-height',
-        `${settings.controlsHidden ? 48 : dock.getBoundingClientRect().height}px`,
+        `${chrome.visible ? dock.getBoundingClientRect().height : 0}px`,
       );
     update();
     if (typeof ResizeObserver !== 'undefined') {
@@ -160,18 +182,17 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     }
     window.addEventListener('resize', update);
     return () => window.removeEventListener('resize', update);
-  }, [Boolean(data), settings.controlsHidden]);
+  }, [Boolean(data), chrome.visible]);
   useEffect(() => {
-    if (previousControlsHidden.current === settings.controlsHidden) return;
-    previousControlsHidden.current = settings.controlsHidden;
-    const frame = requestAnimationFrame(() => {
-      if (document.querySelector('dialog[open],[aria-modal="true"]')) return;
-      (settings.controlsHidden ? showControlsTrigger : playTrigger).current?.focus({
-        preventScroll: true,
-      });
+    if (chrome.visible) return;
+    // A closing native dialog may return focus after this commit. Wait for its
+    // teardown before handing focus to the scene rather than an inert trigger.
+    const handoff = requestAnimationFrame(() => {
+      if (!document.querySelector('dialog[open],[aria-modal="true"]'))
+        stage.current?.focus({ preventScroll: true });
     });
-    return () => cancelAnimationFrame(frame);
-  }, [settings.controlsHidden]);
+    return () => cancelAnimationFrame(handoff);
+  }, [Boolean(data), chrome.visible]);
   function closePanel() {
     setPanel(null);
   }
@@ -305,7 +326,21 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       ) {
         if (e.repeat) return;
         e.preventDefault();
-        setSettings((current) => ({ ...current, controlsHidden: !current.controlsHidden }));
+        const wasVisible = chrome.visible;
+        chrome.toggle();
+        if (!wasVisible)
+          requestAnimationFrame(() => playTrigger.current?.focus({ preventScroll: true }));
+        return;
+      }
+      if (!chrome.visible && e.code === 'Tab') {
+        e.preventDefault();
+        chrome.show();
+        requestAnimationFrame(() => optionsTrigger.current?.focus({ preventScroll: true }));
+        return;
+      }
+      if (target === stage.current && e.code === 'Enter') {
+        e.preventDefault();
+        chrome.toggle();
         return;
       }
       if (target.closest('input,select,textarea,button,a,dialog,[data-keyboard-managed]')) return;
@@ -325,7 +360,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     }
     window.addEventListener('keydown', keys);
     return () => window.removeEventListener('keydown', keys);
-  }, [last, first, rate]);
+  }, [last, first, rate, chrome.visible, chrome.toggle, chrome.show]);
   async function toggleFull() {
     try {
       if (document.fullscreenElement) await document.exitFullscreen();
@@ -539,67 +574,138 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
   const selectedPlayer = data.players.find((player) => player.id === selected);
   const round = data.rounds.filter((r) => r.tick <= tick).at(-1);
   const reviewRound = roundAt(data, tick, last);
+  const viewerMenuActions: MenuAction[] = [
+    ...(['en', 'fr'] as const).map((language) => ({
+      id: 'language-' + language,
+      label: language === 'en' ? 'English' : 'Français',
+      onSelect: () => setLanguage(language),
+      disabled: i18n.language === language,
+    })),
+    {
+      id: 'theme',
+      label: t(theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'),
+      icon: theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />,
+      onSelect: toggleTheme,
+    },
+    ...(demo?.owned
+      ? [
+          {
+            id: 'manage',
+            label: t('Manage'),
+            onSelect: () => setManage(true),
+            separatorBefore: true,
+          },
+          {
+            id: 'share',
+            label: t(demo.public ? 'Make private' : 'Share demo'),
+            icon: <Share2 size={17} />,
+            onSelect: () => void share(),
+          },
+        ]
+      : []),
+    ...(!user
+      ? [{ id: 'sign-in', label: t('Sign in'), onSelect: signIn, separatorBefore: true }]
+      : []),
+  ];
   return (
     <div
       className={'viewer-frame' + (settings.inputs || settings.economy ? ' has-review-hud' : '')}
       data-controls-hidden={settings.controlsHidden}
+      data-chrome-visible={chrome.visible}
       ref={full}
     >
-      <header className="viewer-titlebar" role="banner" inert={Boolean(panel) && compactPanels}>
+      <header
+        className="viewer-titlebar"
+        role="banner"
+        data-viewer-chrome
+        inert={!chrome.visible || (Boolean(panel) && compactPanels)}
+        aria-hidden={!chrome.visible}
+      >
         <div className="viewer-identity">
           <Link className="icon-button viewer-back" to={backTo} aria-label={t('Back to library')}>
             <ArrowLeft size={19} />
           </Link>
-          <Brand to={backTo} />
           <div className="viewer-match">
-            <h1>{data.sample ? t('Training courtyard') : data.map.replace('de_', '')}</h1>
-            <span>
-              {data.sample ? t('Interactive sample · original scene & synthetic data') : demo?.name}
-            </span>
+            <h1
+              title={
+                data.sample ? t('Interactive sample · original scene & synthetic data') : demo?.name
+              }
+            >
+              {data.sample ? t('Training courtyard') : data.map.replace('de_', '')}
+            </h1>
+            <div className="viewer-context">
+              {data.sample && <span>{t('Interactive sample')}</span>}
+              <span>
+                {t('Round')} {round?.number ?? 1}
+              </span>
+              {!data.sample && mode !== '2d' && !mapAvailable && (
+                <span
+                  className="viewer-map-status"
+                  title={t('Position view · map model not installed')}
+                >
+                  {t('Position view')}
+                </span>
+              )}
+              {data.deadTimes?.some((period) => tick >= period.start && tick < period.end) && (
+                <span>
+                  {t(
+                    data.deadTimes.find((period) => tick >= period.start && tick < period.end)
+                      ?.kind || '',
+                  )}
+                </span>
+              )}
+            </div>
           </div>
         </div>
-        <div className="viewer-global-actions">
-          {demo?.owned && (
-            <button className="button" onClick={() => setManage(true)}>
-              {t('Manage')}
-            </button>
-          )}
-          {demo?.owned && (
-            <button
-              className="icon-button"
-              aria-label={t(demo.public ? 'Make private' : 'Share demo')}
-              onClick={() => void share()}
-            >
-              <Share2 size={17} />
-            </button>
-          )}
+        <div className="viewer-global-actions viewer-camera-tools">
           <SelectControl
-            label={t('Language')}
-            className="viewer-language"
-            value={i18n.language}
-            onValueChange={(value) => setLanguage(value as Language)}
+            label={t('Camera mode')}
+            className="camera-select"
+            icon={<Eye size={16} />}
+            value={mode}
+            onValueChange={setMode}
             options={[
-              { value: 'en', label: 'EN' },
-              { value: 'fr', label: 'FR' },
+              { value: 'orbit', label: t('Free camera') },
+              { value: 'tactical', label: t('Overhead') },
+              { value: '2d', label: t('2D tactical · low power') },
+              { value: 'pov', label: t('Player perspective') },
             ]}
           />
           <button
-            className="icon-button"
-            aria-label={t(theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme')}
-            onClick={toggleTheme}
+            ref={optionsTrigger}
+            className="button options-button"
+            aria-label={t('Options')}
+            title={t('Options')}
+            onClick={() => setOptions(true)}
           >
-            {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
+            <SlidersHorizontal size={17} />
+            <span>{t('Options')}</span>
           </button>
-          {!user && (
-            <button className="button viewer-signin" onClick={signIn}>
-              {t('Sign in')}
-            </button>
+          {user ? (
+            <AccountMenu compact label={t('Viewer menu')} extraActions={viewerMenuActions} />
+          ) : (
+            <ActionMenu
+              label={t('Viewer menu')}
+              trigger={
+                <button className="icon-button" aria-label={t('Viewer menu')}>
+                  <MoreHorizontal size={19} />
+                </button>
+              }
+              items={viewerMenuActions}
+            />
           )}
-          {user && <AccountMenu compact />}
         </div>
       </header>
       <div className="viewer-surface">
-        <div className="viewer-stage" inert={Boolean(panel) && compactPanels}>
+        <div
+          className="viewer-stage"
+          ref={stage}
+          role="group"
+          tabIndex={0}
+          aria-label={t('Demo view · tap or press H to show or hide controls')}
+          aria-keyshortcuts="H Enter"
+          inert={Boolean(panel) && compactPanels}
+        >
           <Suspense fallback={<div className="scene-fallback">{t('Starting renderer…')}</div>}>
             <Scene
               data={data}
@@ -626,67 +732,31 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
               <i />
             </span>
           )}
-          {settings.killfeed && (
-            <div className="killfeed">
-              {data.events
-                .filter(
-                  (e) => e.type === 'player_death' && e.tick <= tick && e.tick > tick - rate * 6,
-                )
-                .slice(-4)
-                .map((e, i) => (
-                  <div key={i}>
-                    <strong>{e.attacker_name || t('World')}</strong>
-                    <span>{e.weapon || t('eliminated')}</span>
-                    {e.user_name || t('Player')}
-                  </div>
-                ))}
-            </div>
-          )}
-          {settings.radar && mode !== '2d' && (
-            <TacticalPlot data={data} tick={tick} selected={selected} compact />
-          )}
-        </div>
-        <div className="viewer-scene-tools" inert={Boolean(panel) && compactPanels}>
-          <div className="viewer-context">
-            <span className="status-dot" />
-            {t('Round')} {round?.number ?? 1}
-            {!data.sample && mode !== '2d' && !mapAvailable && (
-              <span
-                className="viewer-map-status"
-                title={t('Position view · map model not installed')}
-              >
-                {t('Position view')}
-              </span>
+          <div
+            className="viewer-game-hud"
+            data-viewer-chrome
+            inert={!chrome.visible}
+            aria-hidden={!chrome.visible}
+          >
+            {settings.killfeed && (
+              <div className="killfeed">
+                {data.events
+                  .filter(
+                    (e) => e.type === 'player_death' && e.tick <= tick && e.tick > tick - rate * 6,
+                  )
+                  .slice(-4)
+                  .map((e, i) => (
+                    <div key={i}>
+                      <strong>{e.attacker_name || t('World')}</strong>
+                      <span>{e.weapon || t('eliminated')}</span>
+                      {e.user_name || t('Player')}
+                    </div>
+                  ))}
+              </div>
             )}
-            <span>
-              {data.deadTimes?.some((s) => tick >= s.start && tick < s.end)
-                ? t(data.deadTimes.find((s) => tick >= s.start && tick < s.end)?.kind || '')
-                : t('Live playback')}
-            </span>
-          </div>
-          <div className="viewer-camera-tools">
-            <SelectControl
-              label={t('Camera mode')}
-              className="camera-select"
-              icon={<Eye size={16} />}
-              value={mode}
-              onValueChange={setMode}
-              options={[
-                { value: 'orbit', label: t('Free camera') },
-                { value: 'tactical', label: t('Overhead') },
-                { value: '2d', label: t('2D tactical · low power') },
-                { value: 'pov', label: t('Player perspective') },
-              ]}
-            />
-            <button
-              ref={optionsTrigger}
-              className="button options-button"
-              aria-label={t('Options')}
-              onClick={() => setOptions(true)}
-            >
-              <SlidersHorizontal size={17} />
-              <span>{t('Options')}</span>
-            </button>
+            {settings.radar && mode !== '2d' && (
+              <TacticalPlot data={data} tick={tick} selected={selected} compact />
+            )}
           </div>
         </div>
         {panel && (
@@ -888,18 +958,23 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
           selected={selected}
           settings={settings}
           hidden={Boolean(panel) || buffering}
+          chromeVisible={chrome.visible}
           onSelect={setSelected}
-          onCloseInputs={() => {
-            setSettings((value) => ({ ...value, inputs: false }));
-            optionsTrigger.current?.focus();
-          }}
         />
-        <ObjectiveHud data={data} tick={tick} hidden={Boolean(panel)} />
+        <div
+          className="viewer-objective-layer"
+          data-viewer-chrome
+          inert={!chrome.visible}
+          aria-hidden={!chrome.visible}
+        >
+          <ObjectiveHud data={data} tick={tick} hidden={Boolean(panel)} />
+        </div>
         <div
           ref={playbackDock}
-          inert={Boolean(panel) && compactPanels}
+          inert={!chrome.visible || (Boolean(panel) && compactPanels)}
+          data-viewer-chrome
+          aria-hidden={!chrome.visible}
           className={'viewer-dock' + (roundsOpen ? ' rounds-visible' : '')}
-          hidden={settings.controlsHidden}
           role="region"
           aria-label={t('Playback controls')}
         >
@@ -1095,9 +1170,8 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
                   },
                   {
                     id: 'hide-controls',
-                    label: t('Hide playback controls'),
-                    onSelect: () =>
-                      setSettings((current) => ({ ...current, controlsHidden: true })),
+                    label: t('Hide viewer controls'),
+                    onSelect: chrome.hide,
                     separatorBefore: true,
                   },
                   {
@@ -1177,28 +1251,6 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
             )}
           </div>
         </div>
-        {settings.controlsHidden && (
-          <button
-            ref={showControlsTrigger}
-            className="viewer-show-controls button"
-            aria-label={t('Show controls')}
-            title={t('Show controls (H)')}
-            inert={Boolean(panel) && compactPanels}
-            onClick={() => setSettings((current) => ({ ...current, controlsHidden: false }))}
-          >
-            <PanelBottomOpen size={18} aria-hidden="true" />
-            <span>{t('Show controls')}</span>
-          </button>
-        )}
-        {!panel && !settings.controlsHidden && !settings.inputs && !settings.economy && (
-          <p className="viewer-hint">
-            {mode === 'orbit'
-              ? t('Drag to orbit · pinch or scroll to zoom')
-              : mode === 'pov'
-                ? t('Select a player to follow their view')
-                : t('Overhead position view')}
-          </p>
-        )}
       </div>
       {manage && demo && (
         <ManageDemo demo={demo} onChange={setDemo} close={() => setManage(false)} />

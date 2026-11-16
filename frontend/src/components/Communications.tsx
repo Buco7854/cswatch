@@ -47,6 +47,9 @@ export default function Communications({
   owned: boolean;
 }) {
   const { config } = useApp();
+  const sampleExample = id === 'sample' && data.sample === true;
+  const isSampleCue = (cue: CaptionCue) => sampleExample && cue.id.startsWith('sample-caption-');
+  const captionText = (cue: CaptionCue) => (isSampleCue(cue) ? t(cue.text) : cue.text);
   const dialog = useRef<HTMLDialogElement>(null);
   const engine = useRef<VoicePlayback | null>(null);
   const [audioError, setAudioError] = useState('');
@@ -175,8 +178,18 @@ export default function Communications({
       ? !speaker || !muted.includes(speaker)
       : speaker !== null && speakers.includes(speaker);
   const cues = captionsFor === id ? captions.cues : [];
+  const previewExample = () => {
+    const cue = data.captions?.find(isSampleCue);
+    if (!cue) return;
+    onChange({ ...settings, subtitles: true });
+    onSeek(cue.startTick);
+    close();
+  };
   const visibleCaptions = cues
-    .filter((cue) => cue.startTick <= tick && cue.endTick > tick && permitted(cue.speaker))
+    .filter(
+      (cue) =>
+        cue.startTick <= tick && cue.endTick > tick && (isSampleCue(cue) || permitted(cue.speaker)),
+    )
     .slice(-3);
   const chat = data.chat || [];
   const visibleChat = chat
@@ -212,6 +225,8 @@ export default function Communications({
     </label>
   );
   const captionStatus = () => {
+    if (sampleExample)
+      return t('Synthetic captions for the practice scene. No speech was recorded or transcribed.');
     if (captionError) return t('Subtitles could not be loaded.');
     if (captions.status === 'queued')
       return t('Local subtitles are queued. You can keep reviewing.');
@@ -244,11 +259,28 @@ export default function Communications({
             ))}
           {settings.subtitles &&
             visibleCaptions.map((cue) => (
-              <div className="voice-caption" key={cue.id}>
-                <Volume2 size={16} />
-                <p>
-                  <strong>{name(cue.speaker)}</strong> {cue.text}
-                </p>
+              <div
+                className={'voice-caption' + (isSampleCue(cue) ? ' is-synthetic' : '')}
+                key={cue.id}
+              >
+                {isSampleCue(cue) ? (
+                  <>
+                    <MessageSquareText size={16} />
+                    <div className="caption-example-copy">
+                      <span className="caption-example-label">{t('Synthetic example')}</span>
+                      <p>
+                        <strong>{name(cue.speaker)}</strong> {captionText(cue)}
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <Volume2 size={16} />
+                    <p>
+                      <strong>{name(cue.speaker)}</strong> {cue.text}
+                    </p>
+                  </>
+                )}
               </div>
             ))}
         </div>
@@ -274,6 +306,18 @@ export default function Communications({
               'Recorded voice, local subtitles and demo chat. Display choices stay on this device.',
             )}
           </p>
+          {sampleExample && data.captions?.length ? (
+            <section className="subtitle-example-guide" aria-label={t('Subtitle example')}>
+              <div>
+                <strong>{t('Synthetic example')}</strong>
+                <p>{t('Authored sample captions with no recorded audio.')}</p>
+              </div>
+              <button className="button" onClick={previewExample}>
+                <Play size={15} />
+                {t('Preview subtitle example')}
+              </button>
+            </section>
+          ) : null}
           <nav className="tabs" aria-label={t('Communication view')}>
             {['voice', 'subtitles', 'chat'].map((value) => (
               <button
@@ -403,7 +447,7 @@ export default function Communications({
                     <time className="num">{clock((cue.startTick - first) / data.tickRate)}</time>
                     <span>
                       <strong>{name(cue.speaker)}</strong>
-                      {cue.text}
+                      {captionText(cue)}
                     </span>
                     <Play size={14} />
                   </button>

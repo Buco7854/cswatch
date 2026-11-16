@@ -193,8 +193,8 @@ test('broadcast objective HUD follows recorded custom timers, interruptions and 
   await slider.fill('1984');
   for (const language of ['en', 'fr']) {
     if (language === 'fr') {
-      await page.getByRole('combobox', { name: 'Language', exact: true }).click();
-      await page.getByRole('option', { name: 'FR', exact: true }).click();
+      await page.getByRole('button', { name: 'Viewer menu', exact: true }).click();
+      await page.getByRole('menuitem', { name: 'Français', exact: true }).click();
     }
     for (const theme of ['dark', 'light']) {
       await page.evaluate((theme) => {

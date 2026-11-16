@@ -93,7 +93,12 @@ const replay = {
   },
 };
 
-async function fixture(page: Page, language: Language = 'en', theme: 'light' | 'dark' = 'dark') {
+async function fixture(
+  page: Page,
+  language: Language = 'en',
+  theme: 'light' | 'dark' = 'dark',
+  tactical = true,
+) {
   await page.addInitScript(
     ({ language, theme }) => {
       localStorage.setItem('cswatch.language', language);
@@ -129,6 +134,10 @@ async function fixture(page: Page, language: Language = 'en', theme: 'light' | '
   await expect(
     page.getByRole('heading', { name: replay.map.replace('de_', ''), exact: true }),
   ).toBeVisible();
+  if (!tactical) {
+    await expect(page.locator('.viewer-stage canvas')).toBeVisible();
+    return;
+  }
   const camera = page.getByRole('combobox', {
     name: message(language, 'Camera mode'),
     exact: true,
@@ -179,48 +188,59 @@ test('recorded movement and mouse visualization require separate opt-ins', async
   await expect.poll(async () => (await settings(page)).mouseInput).toBe(true);
 });
 
-test('the playback bar hides, leaves no hidden focus targets and remains recoverable after reload', async ({
+async function hiddenChrome(page: Page) {
+  await expect(page.locator('.viewer-frame')).toHaveAttribute('data-chrome-visible', 'false');
+  await expect(page.locator('.viewer-titlebar')).toHaveCSS('opacity', '0');
+  await expect(page.locator('.viewer-dock')).toHaveCSS('visibility', 'hidden');
+  expect(
+    await page
+      .locator('.viewer-titlebar,.viewer-dock')
+      .evaluateAll((elements) => elements.every((element) => Boolean(element.closest('[inert]')))),
+  ).toBe(true);
+  await expect(page.locator('.viewer-stage')).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Show controls', exact: true })).toHaveCount(0);
+}
+
+test('whole viewer controls hide without invisible focus targets and remain recoverable after reload', async ({
   page,
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE));
   await page.setViewportSize({ width: 390, height: 844 });
   await fixture(page);
-  const dock = page.locator('.viewer-dock');
-  const reveal = page.getByRole('button', { name: 'Show controls', exact: true });
+  const frame = page.locator('.viewer-frame');
+  const stage = page.locator('.viewer-stage');
   await page.getByRole('button', { name: 'More controls', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Hide playback controls', exact: true }).click();
-  await expect(dock).toBeHidden();
-  await expect(reveal).toBeVisible();
-  await expect(reveal).toBeFocused();
-  const bounds = (await reveal.boundingBox())!;
-  expect(bounds.height).toBeGreaterThanOrEqual(44);
-  expect(bounds.width).toBeGreaterThanOrEqual(44);
-  for (let index = 0; index < 12; index++) {
-    await page.keyboard.press('Tab');
-    expect(
-      await page.evaluate(() => Boolean(document.activeElement?.closest('.viewer-dock'))),
-    ).toBe(false);
-  }
+  await page.getByRole('menuitem', { name: 'Hide viewer controls', exact: true }).click();
+  await hiddenChrome(page);
+  await stage.press('Tab');
+  await expect(frame).toHaveAttribute('data-chrome-visible', 'true');
+  await expect(page.getByRole('button', { name: 'Options', exact: true })).toBeFocused();
+  await expect.poll(async () => (await settings(page)).controlsHidden).toBe(false);
+  await stage.focus();
+  await stage.press('h');
+  await hiddenChrome(page);
   await page.reload();
-  await expect(dock).toBeHidden();
-  await expect(reveal).toBeVisible();
+  await expect(frame).toHaveAttribute('data-chrome-visible', 'false');
+  await expect(stage).toHaveAttribute('tabindex', '0');
+  await expect(stage).toHaveAccessibleName('Demo view · tap or press H to show or hide controls');
   await expect.poll(async () => (await settings(page)).controlsHidden).toBe(true);
-  await reveal.click();
-  await expect(dock).toBeVisible();
+  await stage.focus();
+  await stage.press('h');
+  await expect(frame).toHaveAttribute('data-chrome-visible', 'true');
   await expect(page.getByRole('slider', { name: 'Playback position', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeFocused();
   await page.keyboard.press('h');
-  await expect(dock).toBeHidden();
-  await expect(reveal).toBeFocused();
+  await hiddenChrome(page);
   await page.keyboard.press('h');
-  await expect(dock).toBeVisible();
+  await expect(frame).toHaveAttribute('data-chrome-visible', 'true');
   await expect.poll(async () => (await settings(page)).controlsHidden).toBe(false);
   await page.keyboard.down('h');
-  await expect(dock).toBeHidden();
+  await hiddenChrome(page);
   await page.keyboard.down('h');
-  await expect(dock).toBeHidden();
+  await hiddenChrome(page);
   await page.keyboard.up('h');
   await page.keyboard.press('h');
-  await expect(dock).toBeVisible();
+  await expect(frame).toHaveAttribute('data-chrome-visible', 'true');
 });
 
 test('H keeps its normal typing behavior and does not change visibility inside dialogs', async ({
@@ -258,11 +278,174 @@ test('H keeps its normal typing behavior and does not change visibility inside d
   await expect.poll(async () => (await settings(page)).controlsHidden).toBe(false);
   await closePanel.click();
   await page.getByRole('button', { name: 'Options', exact: true }).click();
-  await optionSwitch(page, 'Hide playback controls').check();
+  await optionSwitch(page, 'Hide viewer controls').check();
   await page.getByRole('button', { name: 'Close viewer options', exact: true }).click();
-  await expect(dock).toBeHidden();
-  await page.getByRole('button', { name: 'Show controls', exact: true }).click();
-  await expect(dock).toBeVisible();
+  await hiddenChrome(page);
+  await page.locator('.viewer-stage').press('h');
+  await expect(page.locator('.viewer-frame')).toHaveAttribute('data-chrome-visible', 'true');
+});
+
+test.describe('scene touch gestures', () => {
+  test.use({ hasTouch: true });
+  test('a real canvas tap fades chrome, while camera gestures and child controls do not', async ({
+    page,
+  }) => {
+    test.skip(Boolean(process.env.E2E_PRIVATE));
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() =>
+      localStorage.setItem(
+        'viewer-settings',
+        JSON.stringify({ quality: 'low', inputs: true, economy: true }),
+      ),
+    );
+    await fixture(page, 'en', 'dark', false);
+    const frame = page.locator('.viewer-frame');
+    const stage = page.locator('.viewer-stage');
+    const canvas = page.locator('.viewer-stage canvas');
+    const bounds = (await canvas.boundingBox())!;
+    const point = {
+      x: Math.round(bounds.x + bounds.width / 2),
+      y: Math.round(bounds.y + bounds.height * 0.45),
+    };
+    expect(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.tagName, point)).toBe(
+      'CANVAS',
+    );
+    await stage.evaluate((element) =>
+      element.addEventListener(
+        'pointerdown',
+        (event) => {
+          (window as any).__scenePointerTarget =
+            event.target instanceof Element ? event.target.tagName : '';
+        },
+        { capture: true },
+      ),
+    );
+    await page.touchscreen.tap(point.x, point.y);
+    await hiddenChrome(page);
+    expect(await page.evaluate(() => (window as any).__scenePointerTarget)).toBe('CANVAS');
+    const hud = page.locator('.viewer-review-hud');
+    await expect(hud).toHaveCSS('opacity', '0');
+    expect(await hud.evaluate((element) => Boolean(element.closest('[inert]')))).toBe(true);
+    await page.touchscreen.tap(point.x, point.y);
+    await expect(frame).toHaveAttribute('data-chrome-visible', 'true');
+    await page.getByRole('button', { name: 'Options', exact: true }).tap();
+    await expect(page.getByRole('dialog', { name: 'Viewer options', exact: true })).toBeVisible();
+    await expect(frame).toHaveAttribute('data-chrome-visible', 'true');
+    await page.getByRole('button', { name: 'Close viewer options', exact: true }).tap();
+    await page
+      .locator(`.broadcast-player[data-player-id="${secondPlayer}"] .broadcast-player-select`)
+      .tap();
+    await expect(frame).toHaveAttribute('data-chrome-visible', 'true');
+    const session = await page.context().newCDPSession(page);
+    const touch = (id: number, x: number, y: number) => ({
+      id,
+      x,
+      y,
+      radiusX: 1,
+      radiusY: 1,
+      force: 1,
+    });
+    try {
+      await session.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [touch(1, point.x, point.y)],
+      });
+      await session.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [touch(1, point.x + 36, point.y + 12)],
+      });
+      await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await expect(frame).toHaveAttribute('data-chrome-visible', 'true');
+      await session.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [touch(2, point.x, point.y)],
+      });
+      await page.waitForTimeout(550);
+      await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await expect(frame).toHaveAttribute('data-chrome-visible', 'true');
+      await session.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [touch(3, point.x - 15, point.y), touch(4, point.x + 15, point.y)],
+      });
+      await session.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [touch(3, point.x - 40, point.y), touch(4, point.x + 40, point.y)],
+      });
+      await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await expect(frame).toHaveAttribute('data-chrome-visible', 'true');
+    } finally {
+      await session.detach();
+    }
+    expect(
+      await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth <= innerWidth &&
+          document.documentElement.scrollHeight <= innerHeight,
+      ),
+    ).toBe(true);
+  });
+});
+
+test('idle fade follows playback but respects paused state, dialogs, focus, menus, gestures and its setting', async ({
+  page,
+}) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE));
+  test.setTimeout(90000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await fixture(page);
+  const frame = page.locator('.viewer-frame'),
+    stage = page.locator('.viewer-stage');
+  await page.getByRole('combobox', { name: 'Playback speed', exact: true }).click();
+  await page.getByRole('option', { name: '0.25×', exact: true }).click();
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  const box = (await stage.boundingBox())!;
+  const point = { x: Math.round(box.x + box.width / 2), y: Math.round(box.y + box.height * 0.45) };
+  await page.mouse.move(point.x, point.y);
+  await expect(frame).toHaveAttribute('data-chrome-visible', 'false', { timeout: 6500 });
+  // Real desktop movement, rather than a no-op pointer event, reveals idle chrome.
+  await page.mouse.move(point.x + 24, point.y);
+  await expect(frame).toHaveAttribute('data-chrome-visible', 'true');
+  await page.getByRole('button', { name: 'Pause', exact: true }).click();
+  await page.waitForTimeout(3300);
+  await expect(frame).toHaveAttribute('data-chrome-visible', 'true');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await page.getByRole('button', { name: 'Options', exact: true }).click();
+  await page.waitForTimeout(3300);
+  await expect(page.getByRole('dialog', { name: 'Viewer options', exact: true })).toBeVisible();
+  await expect(frame).toHaveAttribute('data-chrome-visible', 'true');
+  await page.getByRole('button', { name: 'Close viewer options', exact: true }).click();
+  await stage.focus();
+  await page.keyboard.press('Tab');
+  expect(
+    await page.evaluate(() =>
+      Boolean(
+        document.activeElement?.closest('[data-viewer-chrome]') &&
+        document.activeElement?.matches(':focus-visible'),
+      ),
+    ),
+  ).toBe(true);
+  await page.waitForTimeout(3300);
+  await expect(frame).toHaveAttribute('data-chrome-visible', 'true');
+  await page.getByRole('button', { name: 'More controls', exact: true }).click();
+  await page.waitForTimeout(3300);
+  await expect(page.getByRole('menu', { name: 'Viewer controls', exact: true })).toBeVisible();
+  await expect(frame).toHaveAttribute('data-chrome-visible', 'true');
+  await page.keyboard.press('Escape');
+  await stage.focus();
+  await page.mouse.move(point.x, point.y);
+  await page.mouse.down();
+  await page.waitForTimeout(3300);
+  await expect(frame).toHaveAttribute('data-chrome-visible', 'true');
+  await page.mouse.up();
+  await expect(frame).toHaveAttribute('data-chrome-visible', 'true');
+  await page.getByRole('button', { name: 'Options', exact: true }).click();
+  await optionSwitch(page, 'Hide controls during playback').uncheck();
+  await page.getByRole('button', { name: 'Close viewer options', exact: true }).click();
+  await stage.focus();
+  await page.waitForTimeout(3300);
+  await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
+  await expect(frame).toHaveAttribute('data-chrome-visible', 'true');
+  await expect.poll(async () => (await settings(page)).autoHideControls).toBe(false);
 });
 
 for (const language of ['en', 'fr'] as const)
@@ -306,12 +489,10 @@ for (const language of ['en', 'fr'] as const)
         .getByRole('button', { name: message(language, 'More controls'), exact: true })
         .click();
       await page
-        .getByRole('menuitem', { name: message(language, 'Hide playback controls'), exact: true })
+        .getByRole('menuitem', { name: message(language, 'Hide viewer controls'), exact: true })
         .click();
-      await expect(page.locator('.viewer-dock')).toBeHidden();
-      await page
-        .getByRole('button', { name: message(language, 'Show controls'), exact: true })
-        .click();
-      await expect(page.locator('.viewer-dock')).toBeVisible();
+      await expect(page.locator('.viewer-frame')).toHaveAttribute('data-chrome-visible', 'false');
+      await page.locator('.viewer-stage').press('h');
+      await expect(page.locator('.viewer-frame')).toHaveAttribute('data-chrome-visible', 'true');
     });
   }

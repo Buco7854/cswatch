@@ -1,5 +1,7 @@
 # Broadcast refinement
 
+The later [immersive follow-up](immersive-viewer.md) supersedes this pass's permanent reveal/Lineups/input-widget interactions following new user feedback. The palette, roster hierarchy and native artwork decisions remain.
+
 Continue True-black flat, seed1155974105. The user rejected merely tidy app cards for the spectator HUD. Preserve the approved public/member brand. The viewer has one theme-specific presentation plane shared by the toolbar, rosters, objective, inputs and full-width playback deck. The user explicitly rejected mixed dark/light surfaces and a separate selected-player strip. Both teams share a single right-edge roster; selection appears only as the row highlight, with no role banners.
 
 The question remains: what is this player doing, with what equipment, now? Inventory: two current sides, normally five live sampled states each; immutable identities; actual HP/ammo/utility; missing versus zero; a selected observer; physical recorded actions; bomb deadlines; exact kill/death/objective ticks. Never invent team branding, portraits, official scores, native game countdowns or absent inputs.
