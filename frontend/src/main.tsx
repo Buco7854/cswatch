@@ -9,35 +9,19 @@ import { createRoot } from 'react-dom/client';
 import {
   BrowserRouter,
   Link,
-  NavLink,
+  Navigate,
   Route,
   Routes,
   useLocation,
   useNavigate,
 } from 'react-router-dom';
-import {
-  ArrowUpRight,
-  ChevronDown,
-  Menu,
-  X,
-  LogOut,
-  Sun,
-  Moon,
-  PanelsTopLeft,
-  Link2,
-  Settings2,
-  ShieldCheck,
-  ChevronRight,
-  Crosshair,
-  LockKeyhole,
-  Globe2,
-} from 'lucide-react';
+import { ArrowUpRight, X, Sun, Moon, LockKeyhole } from 'lucide-react';
 import { api, setCsrf } from './api';
 import { AppContext } from './context';
 import type { Config, User } from './types';
 import Library from './components/Library';
 import Viewer from './components/Viewer';
-import Connections from './components/Connections';
+import WorkspaceShell from './components/WorkspaceShell';
 import { Account, Admin } from './components/Settings';
 import AuthDialog from './components/AuthDialog';
 import '@fontsource/ibm-plex-sans/latin-400.css';
@@ -48,6 +32,7 @@ import './workspace.css';
 import './brand.css';
 import './public.css';
 import './member.css';
+import './member-controls.css';
 import '@fontsource/barlow-condensed/latin-600.css';
 import '@fontsource/barlow-condensed/latin-700.css';
 
@@ -93,7 +78,6 @@ function App() {
   const [user, setUser] = useState<User | null>(null),
     [config, setConfig] = useState<Config | null>(null),
     [auth, setAuth] = useState(false),
-    [menu, setMenu] = useState(false),
     [toast, setToast] = useState(''),
     [error, setError] = useState('');
   const location = useLocation();
@@ -110,7 +94,6 @@ function App() {
     refresh().catch((e) => setError(e.message));
   }, [refresh]);
   useEffect(() => {
-    setMenu(false);
     window.scrollTo(0, 0);
   }, [location.pathname]);
   useEffect(() => {
@@ -121,10 +104,21 @@ function App() {
   }, [toast]);
   useEffect(() => {
     function arrows(e: KeyboardEvent) {
-      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
+      if (
+        e.defaultPrevented ||
+        !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)
+      )
+        return;
       const active = document.activeElement as HTMLElement;
-      if (!active || !active.matches('button,a,summary')) return;
-      const dialog = document.querySelector('dialog[open]');
+      if (
+        !active ||
+        !active.matches('button,a,summary') ||
+        active.closest('[role="menu"],[role="listbox"]')
+      )
+        return;
+      const dialog =
+        document.querySelector('dialog[open]') ||
+        document.querySelector('[role="dialog"][aria-modal="true"]');
       const candidates = [
         ...(dialog || document).querySelectorAll<HTMLElement>(
           'a[href],button:not(:disabled),input:not(:disabled),select:not(:disabled),summary',
@@ -132,6 +126,7 @@ function App() {
       ].filter(
         (el) =>
           el !== active &&
+          !el.closest('[inert]') &&
           el.getBoundingClientRect().width > 0 &&
           (!el.checkVisibility || el.checkVisibility()) &&
           (!el.closest('details:not([open])') || el.closest('summary')),
@@ -192,15 +187,6 @@ function App() {
         <p>{t('Opening your review room…')}</p>
       </main>
     );
-  async function logout() {
-    try {
-      await api('/api/auth/logout', { method: 'POST' });
-      await refresh();
-      setMenu(false);
-    } catch (e) {
-      setToast((e as Error).message);
-    }
-  }
   const privateGate = !config.public_access && !user;
   const publicSurface = ['/', '/features/viewer', '/features/imports', '/self-host'].includes(
     location.pathname,
@@ -208,39 +194,13 @@ function App() {
   const guestPath = location.pathname + location.search;
   const pageTitle = location.pathname.startsWith('/watch')
     ? t('Match review')
-    : location.pathname === '/connections'
+    : ['/connections', '/account/connections'].includes(location.pathname)
       ? t('Connected accounts')
       : location.pathname === '/account'
         ? t('Account settings')
         : location.pathname === '/admin'
           ? t('Administration')
           : t('Demo library');
-  const navigation = (
-    <>
-      <NavLink end to="/library">
-        <PanelsTopLeft size={18} />
-        {t('Demo library')}
-      </NavLink>
-      <NavLink to="/explore">
-        <Globe2 size={18} />
-        {t(config.public_access ? 'Explore demos' : 'Shared demos')}
-      </NavLink>
-      <NavLink to="/connections">
-        <Link2 size={18} />
-        {t('Connections')}
-      </NavLink>
-      <NavLink to="/account">
-        <Settings2 size={18} />
-        {t('Account settings')}
-      </NavLink>
-      {user?.is_admin && (
-        <NavLink to="/admin">
-          <ShieldCheck size={18} />
-          {t('Administration')}
-        </NavLink>
-      )}
-    </>
-  );
   return (
     <AppContext.Provider
       value={{ user, config, refresh, notify: setToast, signIn: () => setAuth(true) }}
@@ -317,142 +277,39 @@ function App() {
           </main>
         </div>
       ) : (
-        <div className="app-shell">
-          <aside className="site-sidebar">
-            <Brand to="/library" />
-            <div className="workspace-label">
-              <Crosshair size={15} />
-              {t('Counter-Strike review')}
-            </div>
-            <nav className="sidebar-nav" aria-label={t('Main navigation')}>
-              {navigation}
-            </nav>
-            <div className="sidebar-bottom">
-              <div className="instance-identity">
-                {config.public_access ? <Globe2 size={16} /> : <LockKeyhole size={16} />}
-                <span>
-                  {t(config.public_access ? 'Public instance' : 'Private instance')}
-                  <small>{t('Self-hosted. Your rules.')}</small>
-                </span>
-              </div>
-              <Link className="public-site-link" to="/">
-                {t('About cswatch')}
-                <ArrowUpRight size={13} />
-              </Link>
-              <span className="sidebar-version">
-                cswatch <span>v0.1</span>
-              </span>
-            </div>
-          </aside>
-          <div className="workspace">
-            <header className="workspace-bar">
-              <div className="workspace-location">
-                <button
-                  className="icon-button mobile-menu"
-                  onClick={() => setMenu(!menu)}
-                  aria-label={t('Toggle navigation')}
-                  aria-expanded={menu}
-                >
-                  {menu ? <X size={19} /> : <Menu size={19} />}
-                </button>
-                <span className="mobile-wordmark">cswatch</span>
-                <span className="desktop-location">
-                  cswatch <ChevronRight size={13} /> <strong>{pageTitle}</strong>
-                </span>
-              </div>
-              <div className="nav-actions">
-                <label className="language-select">
-                  <span className="visually-hidden">{t('Language')}</span>
-                  <select
-                    aria-label={t('Language')}
-                    value={i18n.language}
-                    onChange={(e) => setLanguage(e.target.value as Language)}
-                  >
-                    <option value="en">English</option>
-                    <option value="fr">Français</option>
-                  </select>
-                </label>
-                <button
-                  className="icon-button theme-toggle"
-                  aria-label={t(
-                    theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme',
-                  )}
-                  onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                >
-                  {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
-                </button>
-                {user ? (
-                  <button
-                    className="account-button"
-                    onClick={() => setMenu(!menu)}
-                    aria-expanded={menu}
-                  >
-                    <span className="avatar">{user.username.slice(0, 1)}</span>
-                    <span className="account-name">{user.username}</span>
-                    <ChevronDown size={14} />
-                  </button>
-                ) : (
-                  <button className="button primary" onClick={() => setAuth(true)}>
-                    {t('Sign in')}
-                    <ArrowUpRight size={15} />
-                  </button>
-                )}
-              </div>
-              {menu && (
-                <nav className="menu-panel" aria-label={t('Account and mobile navigation')}>
-                  {navigation}
-                  {user && (
-                    <button onClick={() => void logout()}>
-                      <LogOut size={15} />
-                      {t('Sign out')}
-                    </button>
-                  )}
-                </nav>
-              )}
-            </header>
-            <div className="workspace-sheet">
-              <main
-                id="main"
-                className={'main ' + (location.pathname.startsWith('/watch') ? 'wide-main' : '')}
-              >
-                {privateGate ? (
-                  <div className="private-gate">
-                    <Crosshair size={36} strokeWidth={1.2} />
-                    <h1>{t('A private review room.')}</h1>
-                    <p>{t('This instance is open to signed-in members only.')}</p>
-                    <button className="button primary" onClick={() => setAuth(true)}>
-                      {t('Sign in to continue')}
-                      <ArrowUpRight size={17} />
-                    </button>
-                  </div>
-                ) : (
-                  <Routes>
-                    <Route path="/library" element={user ? <Library /> : <AccountGate />} />
-                    <Route path="/explore" element={<Library publicOnly />} />
-                    <Route path="/connections" element={user ? <Connections /> : <AccountGate />} />
-                    <Route path="/account" element={user ? <Account /> : <AccountGate />} />
-                    <Route path="/admin" element={<Admin />} />
-                    <Route
-                      path="*"
-                      element={
-                        <div className="inline-state">
-                          <h1>{t('Page not found')}</h1>
-                          <Link className="button" to="/">
-                            {t('Back to library')}
-                          </Link>
-                        </div>
-                      }
-                    />
-                  </Routes>
-                )}
-              </main>
-              <footer className="site-footer">
-                <span>{t('Made for the next round.')}</span>
-                <span>{t('Independent project. Not affiliated with Valve or FACEIT.')}</span>
-              </footer>
-            </div>
-          </div>
-        </div>
+        <WorkspaceShell
+          title={pageTitle}
+          theme={theme}
+          toggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+        >
+          <Routes>
+            <Route path="/library" element={user ? <Library /> : <AccountGate />} />
+            <Route path="/explore" element={<Library publicOnly />} />
+            <Route
+              path="/connections"
+              element={<Navigate replace to={'/account/connections' + location.search} />}
+            />
+            <Route path="/account" element={user ? <Account /> : <AccountGate kind="account" />} />
+            <Route
+              path="/account/connections"
+              element={
+                user ? <Account section="connections" /> : <AccountGate kind="connections" />
+              }
+            />
+            <Route path="/admin" element={<Admin />} />
+            <Route
+              path="*"
+              element={
+                <div className="inline-state">
+                  <h1>{t('Page not found')}</h1>
+                  <Link className="button" to="/library">
+                    {t('Back to library')}
+                  </Link>
+                </div>
+              }
+            />
+          </Routes>
+        </WorkspaceShell>
       )}
       {auth && (
         <AuthDialog

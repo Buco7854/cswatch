@@ -17,9 +17,11 @@ export default function UploadDialog({ close }: { close: () => void }) {
         if (e.target === dialog.current) close();
       }}
     >
-      <button className="icon-button dialog-close" aria-label={t('Close upload')} onClick={close}>
-        <X size={20} />
-      </button>
+      <div className="upload-dialog-closebar">
+        <button className="icon-button dialog-close" aria-label={t('Close upload')} onClick={close}>
+          <X size={20} />
+        </button>
+      </div>
       <Upload />
     </dialog>
   );

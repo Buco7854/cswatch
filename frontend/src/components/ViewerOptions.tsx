@@ -2,14 +2,17 @@ import { t } from '../i18n';
 import { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 import type { ViewerSettings } from '../playback';
+import { SelectControl } from './Controls';
 export default function ViewerOptions({
   settings,
   onChange,
   close,
+  openCommunications,
 }: {
   settings: ViewerSettings;
   onChange: (s: ViewerSettings) => void;
   close: () => void;
+  openCommunications: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -33,18 +36,26 @@ export default function ViewerOptions({
     <dialog
       ref={dialog}
       className="options-dialog member-dialog"
+      aria-labelledby="viewer-options-title"
       onCancel={close}
       onClick={(e) => {
         if (e.target === dialog.current) close();
       }}
     >
       <div className="panel-heading">
-        <h2>{t('Viewer options')}</h2>
+        <h2 id="viewer-options-title">{t('Viewer options')}</h2>
         <button className="icon-button" aria-label={t('Close viewer options')} onClick={close}>
           <X size={20} />
         </button>
       </div>
       <p>{t('Saved on this device. The scene updates as you change settings.')}</p>
+      <section>
+        <h3>{t('Communications')}</h3>
+        <p>{t('Voice, communication subtitles and text chat have their own review controls.')}</p>
+        <button className="button" onClick={openCommunications}>
+          {t('Review communications')}
+        </button>
+      </section>
       <section>
         <h3>{t('Player visibility')}</h3>
         {toggle('xray', t('X-ray silhouettes'), t('Show player shapes through map geometry.'))}
@@ -71,6 +82,40 @@ export default function ViewerOptions({
         )}
       </section>
       <section>
+        <h3>{t('Analysis HUD')}</h3>
+        {toggle(
+          'inputs',
+          t('Recorded inputs'),
+          t('Show sampled movement, attack, and interaction actions for the selected player.'),
+        )}
+        {settings.inputs && (
+          <label>
+            {t('Keyboard display layout')}
+            <SelectControl
+              label={t('Keyboard display layout')}
+              value={settings.inputLayout}
+              onValueChange={(value) =>
+                onChange({ ...settings, inputLayout: value as ViewerSettings['inputLayout'] })
+              }
+              options={[
+                { value: 'wasd', label: 'WASD' },
+                { value: 'zqsd', label: 'ZQSD' },
+              ]}
+            />
+          </label>
+        )}
+        {toggle(
+          'economy',
+          t('Economy and loadouts'),
+          t('Show every player’s money, carried equipment value, status, and inventory.'),
+        )}
+        <p className="muted">
+          {t(
+            'Available fields depend on what the demo recorded. Missing input and mouse values are never estimated.',
+          )}
+        </p>
+      </section>
+      <section>
         <h3>{t('Playback & performance')}</h3>
         {toggle(
           'autoSkip',
@@ -79,16 +124,18 @@ export default function ViewerOptions({
         )}
         <label>
           {t('Rendering quality')}
-          <select
+          <SelectControl
+            label={t('Rendering quality')}
             value={settings.quality}
-            onChange={(e) =>
-              onChange({ ...settings, quality: e.target.value as ViewerSettings['quality'] })
+            onValueChange={(value) =>
+              onChange({ ...settings, quality: value as ViewerSettings['quality'] })
             }
-          >
-            <option value="auto">{t('Auto · mobile friendly')}</option>
-            <option value="low">{t('Low · reduced resolution, no shadows')}</option>
-            <option value="high">{t('High · shadows, higher resolution')}</option>
-          </select>
+            options={[
+              { value: 'auto', label: t('Auto · mobile friendly') },
+              { value: 'low', label: t('Low · reduced resolution, no shadows') },
+              { value: 'high', label: t('High · shadows, higher resolution') },
+            ]}
+          />
         </label>
         <p className="muted">
           {t(

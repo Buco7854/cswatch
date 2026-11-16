@@ -1,0 +1,197 @@
+.viewer-frame .member-dialog.communications-dialog {
+  width: min(620px, calc(100vw - 24px));
+}
+.communications-dialog .tabs {
+  margin: 18px 0 0;
+}
+.communications-dialog .tabs button,
+.communications-dialog .button,
+.communications-dialog .text-button {
+  min-height: 44px;
+}
+.communications-dialog .panel-heading > .icon-button {
+  min-width: 44px;
+  min-height: 44px;
+}
+.communications-dialog section > label:not(.toggle-row) {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+}
+.communications-dialog .voice-volume input {
+  width: 100%;
+  min-height: 44px;
+  accent-color: var(--signal);
+}
+.voice-volume output {
+  font-size: 12px;
+  color: var(--muted);
+}
+.communication-notice {
+  padding: 12px;
+  border: 1px solid var(--control);
+  border-radius: 6px;
+  font-size: 13px;
+}
+.communication-notice p {
+  margin: 0 0 8px;
+}
+.speaker-mutes {
+  border: 0;
+  padding: 0;
+  margin: 20px 0 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 12px;
+}
+.speaker-mutes legend {
+  font-size: 13px;
+  padding: 0;
+  margin-bottom: 8px;
+  color: var(--muted);
+}
+.speaker-mutes label {
+  min-width: 0;
+  min-height: 44px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+.speaker-mutes input {
+  flex: none;
+  width: 17px !important;
+  height: 17px !important;
+  min-height: 17px !important;
+  accent-color: var(--signal);
+}
+.communication-list {
+  margin-top: 16px;
+}
+.communication-list .event-row {
+  width: 100%;
+  min-height: 52px;
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 16px;
+  gap: 10px;
+  text-align: left;
+}
+.communication-list .event-row strong {
+  display: block;
+  font-size: 12px;
+  margin-bottom: 3px;
+}
+.communication-list .event-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.communication-list time {
+  white-space: nowrap;
+}
+.communication-overlay {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(var(--viewer-dock-height, 160px) + 24px);
+  width: min(720px, calc(100% - 40px));
+  pointer-events: none;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+.communication-overlay > div {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  color: #fff;
+  background: #17191c;
+  max-width: 100%;
+  font-size: clamp(14px, 1vw, 18px);
+  line-height: 1.4;
+}
+.communication-overlay svg {
+  flex: none;
+  margin-top: 2px;
+}
+.communication-overlay p {
+  color: #fff;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+.communication-overlay strong {
+  font-weight: 600;
+  margin-right: 5px;
+}
+.communication-overlay > div:nth-last-child(n + 4) {
+  display: none;
+}
+/* Captions and an opt-in analysis HUD get separate regions. Compact screens
+   keep the latest two-line call beside the radar; the transcript retains all. */
+.viewer-frame:has(.viewer-analysis-hud:not([hidden])) .communication-overlay {
+  left: 390px;
+  right: 20px;
+  width: auto;
+  transform: none;
+}
+.viewer-frame:has(.viewer-drawer[aria-modal='true']) .communication-overlay {
+  visibility: hidden;
+}
+@media (max-width: 900px) and (min-height: 561px) {
+  .viewer-frame:has(.viewer-analysis-hud:not([hidden])) .communication-overlay {
+    left: 146px;
+    right: 14px;
+    top: 126px;
+    bottom: auto;
+    align-items: stretch;
+  }
+  .viewer-frame:has(.viewer-analysis-hud:not([hidden]))
+    .communication-overlay
+    > div:not(:last-child) {
+    display: none;
+  }
+  .viewer-frame:has(.viewer-analysis-hud:not([hidden])) .communication-overlay p {
+    -webkit-line-clamp: 2;
+  }
+}
+@media (max-width: 760px) and (min-height: 561px) {
+  .viewer-frame:has(.viewer-analysis-hud:not([hidden])) .communication-overlay {
+    left: 100px;
+    right: 12px;
+    top: 124px;
+  }
+}
+@media (max-width: 599px) and (max-height: 560px) {
+  .viewer-frame:has(.viewer-analysis-hud:not([hidden]):not(.is-collapsed)) .communication-overlay {
+    visibility: hidden;
+  }
+}
+@media (max-height: 560px) {
+  .communication-overlay > div:not(:last-child) {
+    display: none;
+  }
+  .communication-overlay p {
+    -webkit-line-clamp: 2;
+  }
+}
+@media (max-width: 540px) {
+  .speaker-mutes {
+    grid-template-columns: 1fr;
+  }
+  .communication-overlay {
+    width: calc(100% - 24px);
+    bottom: calc(var(--viewer-dock-height, 240px) + 12px);
+  }
+}

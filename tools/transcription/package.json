@@ -1,0 +1,13 @@
+{
+  "name": "cswatch-transcription-tools",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prepare:model": "node prepare-model.mjs",
+    "verify": "node verify-transcription.mjs"
+  },
+  "devDependencies": {
+    "mpg123-decoder": "1.0.3",
+    "opusscript": "0.1.1"
+  }
+}

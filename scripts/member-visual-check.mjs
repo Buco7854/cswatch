@@ -107,15 +107,32 @@ try {
           dockVisible:
             !document.querySelector('.viewer-dock') ||
             document.querySelector('.viewer-dock').getBoundingClientRect().bottom <= innerHeight,
-          offscreenControls: [...document.querySelectorAll('button,input:not([hidden]),select')]
+          offscreenControls: [
+            ...document.querySelectorAll(
+              'button,input:not([hidden]),select,[role=menu],[role=listbox]',
+            ),
+          ]
             .filter((el) => {
               if (el.closest('details:not([open])') && !el.closest('summary')) return false;
               if (!el.checkVisibility()) return false;
+              // These named rails intentionally scroll horizontally; validate their
+              // containing region below, not each offscreen, keyboard-reachable item.
+              if (el.closest('.round-events-track,.round-strip')) return false;
               const r = el.getBoundingClientRect();
               return r.width > 0 && r.height > 0 && (r.right > innerWidth + 1 || r.left < -1);
             })
             .map((el) => el.getAttribute('aria-label') || el.textContent?.slice(0, 45)),
         }));
+        const railOverflow = await page
+          .locator('.round-events-track,.round-strip')
+          .evaluateAll((rails) =>
+            rails.some((rail) => {
+              if (!rail.checkVisibility()) return false;
+              const bounds = rail.getBoundingClientRect();
+              return bounds.left < -1 || bounds.right > innerWidth + 1;
+            }),
+          );
+        metrics.overflow ||= railOverflow;
         report.push({ lang, theme, kind, width, ...metrics, errors: [...errors] });
         if ([1440, 390].includes(width))
           await page.screenshot({
@@ -150,6 +167,11 @@ try {
           await inspect(kind, width);
           if (kind === 'library') {
             await page
+              .getByRole('button', { name: 'reviewer_with_a_long_handle', exact: true })
+              .click();
+            await inspect('account-menu', width);
+            await page.keyboard.press('Escape');
+            await page
               .getByRole('button', {
                 name: lang === 'fr' ? 'Ajouter une démo' : 'Add a demo',
                 exact: true,
@@ -158,8 +180,24 @@ try {
             if (await page.locator('dialog[open]').count()) await inspect('upload', width);
           }
           if (kind === 'viewer') {
+            await page
+              .getByRole('combobox', {
+                name: lang === 'fr' ? 'Mode de caméra' : 'Camera mode',
+                exact: true,
+              })
+              .click();
+            await inspect('camera', width);
+            await page.keyboard.press('Escape');
             await page.getByRole('button', { name: 'Options', exact: true }).click();
             await inspect('options', width);
+            await page
+              .getByRole('combobox', {
+                name: lang === 'fr' ? 'Qualité du rendu' : 'Rendering quality',
+                exact: true,
+              })
+              .click();
+            await inspect('quality', width);
+            await page.keyboard.press('Escape');
             await page.keyboard.press('Escape');
             await page
               .getByRole('button', { name: lang === 'fr' ? 'Joueurs' : 'Players', exact: true })
@@ -171,12 +209,25 @@ try {
                 exact: true,
               })
               .click();
-            await page
-              .getByRole('button', {
-                name: lang === 'fr' ? 'Ajouter une note' : 'Add note',
-                exact: true,
-              })
-              .click();
+            const addNote = page.getByRole('button', {
+              name: lang === 'fr' ? 'Ajouter une note' : 'Add note',
+              exact: true,
+            });
+            if (await addNote.isVisible()) await addNote.click();
+            else {
+              await page
+                .getByRole('button', {
+                  name: lang === 'fr' ? 'Autres commandes' : 'More controls',
+                  exact: true,
+                })
+                .click();
+              await page
+                .getByRole('menuitem', {
+                  name: lang === 'fr' ? 'Ajouter une note' : 'Add note',
+                  exact: true,
+                })
+                .click();
+            }
             await inspect('notes', width);
             await page
               .getByRole('button', {
@@ -184,7 +235,15 @@ try {
                 exact: true,
               })
               .click();
-            await page.locator('.moment-navigation summary').click();
+            const more = page.locator('.moment-menu-trigger');
+            if (await more.isVisible()) await more.click();
+            else
+              await page
+                .getByRole('button', {
+                  name: lang === 'fr' ? 'Autres commandes' : 'More controls',
+                  exact: true,
+                })
+                .click();
             await inspect('navigation', width);
           }
         }

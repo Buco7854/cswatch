@@ -1,15 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
-import { createWriteStream } from 'node:fs';
 import { join } from 'node:path';
-import { Readable, Transform } from 'node:stream';
-import { pipeline } from 'node:stream/promises';
 import type { Store } from './db.js';
 import type { Config } from './config.js';
 import { HttpError, requireUser, rateLimit } from './security.js';
 import { abandon, reserve, validateMagic } from './ingestion.js';
+import { downloadRemoteDemo, validateRemoteUrl } from './remote-download.js';
+import { readUpstreamJson } from './upstream.js';
 async function faceit(c: Config, path: string, params: Record<string, string> = {}) {
   if (!c.faceitApiKey)
     throw new HttpError(503, 'The administrator must configure a FACEIT Data API key.');
@@ -23,7 +21,7 @@ async function faceit(c: Config, path: string, params: Record<string, string> = 
       },
     );
     if (!response.ok) throw new Error();
-    return (await response.json()) as any;
+    return readUpstreamJson(response);
   } catch {
     throw new HttpError(
       502,
@@ -48,18 +46,9 @@ export async function validateDownload(url: string) {
     )
   )
     throw new HttpError(502, 'FACEIT returned an unsupported download host.');
-  const addresses = await lookup(host, { all: true });
-  // Cloud-provider host suffixes prevent attacker-controlled DNS. Also reject local resolutions.
-  if (
-    !addresses.length ||
-    addresses.some(({ address }) =>
-      /^(127\.|10\.|192\.168\.|169\.254\.|0\.|172\.(1[6-9]|2\d|3[01])\.|::1$|fc|fd|fe80)/i.test(
-        address,
-      ),
-    )
-  )
-    throw new HttpError(502, 'Invalid download address.');
-  return u;
+  // This is only the provider host policy. downloadRemoteDemo checks and pins DNS
+  // on the actual TLS request so a second resolution cannot rebind to the LAN.
+  return validateRemoteUrl(u.href, [host]);
 }
 export async function providerRoutes(app: FastifyInstance, db: Store, c: Config) {
   const enabled = () => {
@@ -120,8 +109,7 @@ export async function providerRoutes(app: FastifyInstance, db: Store, c: Config)
     const match = await faceit(c, 'matches/' + match_id);
     const resource = z.string().url().safeParse(match.demo_url?.[0]);
     if (!resource.success) throw new HttpError(404, 'FACEIT has no demo for this match yet.');
-    if (new URL(resource.data).hostname !== 'demos.faceit.com')
-      throw new HttpError(502, 'Unsupported FACEIT resource.');
+    validateRemoteUrl(resource.data, ['demos.faceit.com']);
     const { id, folder } = reserve(db, c, u.id, 'FACEIT ' + match_id, 'faceit', match_id);
     try {
       const signal = AbortSignal.timeout(180000);
@@ -136,29 +124,18 @@ export async function providerRoutes(app: FastifyInstance, db: Store, c: Config)
         redirect: 'error',
       });
       if (!signed.ok) throw new Error();
-      const result = (await signed.json()) as any;
+      const result = await readUpstreamJson(signed);
       const url = await validateDownload(result.payload.download_url);
-      const response = await fetch(url, { signal, redirect: 'error' });
-      if (!response.ok || !response.body) throw new Error();
       const suffix = new URL(resource.data).pathname.endsWith('.gz')
         ? '.gz'
         : new URL(resource.data).pathname.endsWith('.zst')
           ? '.zst'
           : '.dem';
-      let size = 0;
-      const limiter = new Transform({
-        transform(chunk, _, cb) {
-          size += chunk.length;
-          if (size > c.maxUploadMb * 1024 ** 2)
-            cb(new HttpError(413, 'Demo exceeds the upload limit.'));
-          else cb(null, chunk);
-        },
+      const { bytes: size } = await downloadRemoteDemo(url.href, join(folder, 'input' + suffix), {
+        allowedHosts: [url.hostname],
+        maxBytes: c.maxUploadMb * 1024 ** 2,
+        signal,
       });
-      await pipeline(
-        Readable.fromWeb(response.body as any),
-        limiter,
-        createWriteStream(join(folder, 'input' + suffix), { mode: 0o600 }),
-      );
       validateMagic(join(folder, 'input' + suffix), suffix);
       db.run("UPDATE demos SET status='queued',size=? WHERE id=?", size, id);
       reply.code(202);
@@ -203,8 +180,10 @@ export async function providerRoutes(app: FastifyInstance, db: Store, c: Config)
         { signal: AbortSignal.timeout(20000), redirect: 'error' },
       );
       if (!response.ok) throw new Error();
-      const result = (await response.json()) as any;
+      const result = await readUpstreamJson(response);
       const code = result.result?.nextcode;
+      if (code && code !== 'n/a' && !/^CSGO(?:-[A-Za-z0-9]{5}){5}$/.test(code))
+        throw new Error('Invalid Steam share code');
       return {
         share_code: code && code !== 'n/a' ? code : null,
         message:

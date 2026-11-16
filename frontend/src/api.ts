@@ -19,9 +19,28 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   }
   return response.json();
 }
-export function uploadFile(file: File, progress: (n: number) => void): Promise<{ id: string }> {
+export function uploadFile(
+  file: File,
+  progress: (n: number) => void,
+  signal?: AbortSignal,
+): Promise<{ id: string }> {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException('Upload cancelled.', 'AbortError'));
+      return;
+    }
     const xhr = new XMLHttpRequest();
+    let settled = false;
+    const abort = () => xhr.abort();
+    function finish(result: { id: string } | Error) {
+      if (settled) return;
+      settled = true;
+      signal?.removeEventListener('abort', abort);
+      xhr.onload = xhr.onerror = xhr.ontimeout = xhr.onabort = null;
+      xhr.upload.onprogress = null;
+      if ('id' in result) resolve(result);
+      else reject(result);
+    }
     xhr.open('POST', '/api/demos');
     xhr.setRequestHeader('X-CSRF-Token', csrf);
     xhr.upload.onprogress = (e) => {
@@ -32,17 +51,26 @@ export function uploadFile(file: File, progress: (n: number) => void): Promise<{
       try {
         data = JSON.parse(xhr.responseText);
       } catch {
-        reject(new Error(t('Upload failed. Try again.')));
+        finish(new Error(t('Upload failed. Try again.')));
         return;
       }
-      if (xhr.status >= 200 && xhr.status < 300) resolve(data);
-      else reject(new Error(typeof data.detail === 'string' ? data.detail : t('Upload failed.')));
+      const object = data && typeof data === 'object' ? data : {};
+      if (xhr.status >= 200 && xhr.status < 300 && typeof object.id === 'string')
+        finish({ id: object.id });
+      else
+        finish(new Error(typeof object.detail === 'string' ? object.detail : t('Upload failed.')));
     };
-    xhr.onerror = () => reject(new Error(t('Connection lost. Try your upload again.')));
+    xhr.onerror = () => finish(new Error(t('Connection lost. Try your upload again.')));
+    xhr.onabort = () => finish(new DOMException('Upload cancelled.', 'AbortError'));
     xhr.timeout = 600000;
-    xhr.ontimeout = () => reject(new Error(t('Upload timed out. Try again.')));
+    xhr.ontimeout = () => finish(new Error(t('Upload timed out. Try again.')));
     const form = new FormData();
     form.append('file', file);
-    xhr.send(form);
+    signal?.addEventListener('abort', abort, { once: true });
+    try {
+      xhr.send(form);
+    } catch (error) {
+      finish(error instanceof Error ? error : new Error(t('Upload failed.')));
+    }
   });
 }

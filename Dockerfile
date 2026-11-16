@@ -9,6 +9,8 @@ RUN npm run build
 
 FROM node:24-bookworm-slim AS backend
 WORKDIR /build/backend
+ENV ONNXRUNTIME_NODE_INSTALL=skip
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev && rm -rf /var/lib/apt/lists/*
 COPY backend/package*.json ./
 RUN npm ci
 COPY backend/ ./

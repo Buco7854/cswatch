@@ -18,13 +18,23 @@ This file is part of the product contract. Update it when implementation or veri
 - Operator-installed map assets, desktop/mobile tier discovery, optional generic animated agent GLBs, and CPU S2V glTF packing/optimization/provenance tools.
 - Verified-Steam FACEIT profile association, match history adapter, and approved signed download import adapter. Steam next-match share-code discovery adapter.
 - Admin policy toggles with environment precedence and secret-free configuration; terminal admin creation/password reset.
+- Account/connected services in the user dropdown and account tabs; work-only sidebar; full-library paginated search, preserved loaded pages during processing refresh; accessible menus/selects with fullscreen/modal-aware portals.
+- Whole-tab viewer, progressive mobile controls with 44 px primary touch targets, neutral light playback control, buffering/error retry and keyboard-safe floating menus.
+- Version 2 replay manifest/time slices with global indexes/bounds, five seconds of trail context, at most three cached browser chunks, forward prefetch and cancelled irrelevant requests. Legacy whole-file replays remain readable.
+- Required Linux per-job Landlock/seccomp sandbox; private copied input, stripped environment, process/time/scratch bounds, validated artifacts and publication quota/cancellation checks. Real raw/compressed demo and required sandbox fixtures exercised locally.
+- Manual Steam/Premier/Competitive/Wingman, FACEIT and HLTV file-import guides; ordinary private uploads, without an HLTV wrapper.
+- Current-round kill/death, bomb outcome and recorded utility-release markers, exact seeking, round/match and player filters, and progressive event loading. Real players are matched by immutable Steam ID; nickname fallback is restricted to labeled synthetic practice data.
+- Optional Inputs/Economy HUD: recorded uint64 button states, actual mouse commands when present, WASD/ZQSD action labels, all-player money/equipment/health/armor/status and recorded inventory. Missing data stays unknown; network snapshots are labeled and do not claim every physical key press.
+- Bounded TypeScript voice/chat extraction in the parser sandbox; Steam/Opus framing/CRC validation, streamed voice packets, local browser WASM decoding, playback speed/volume, speaker scope and mutes, chat overlays and transcript review.
+- Optional offline CPU multilingual Whisper subtitles in a separate durable stage. Read-only pinned model, actual language identification, English/French speech verification, output/CPU/audio budgets, private caption access, owner-only retry, leases/quota/rollback/crash recovery. Failure preserves the ready replay; partial captions are labeled.
 - Docker/Compose without Caddy, Monday no-cache image rebuild/publishing workflow, weekly dependency update PRs, architecture/security/agent handoff docs.
 
 ## Requires operator resources or external verification
 
 - CS2 map/agent/weapon assets are not bundled. The S2V export step needs installed CS2 content and the operator's S2V binary. Optimization was tested with a synthetic glTF; a full CS2 export/alignment has not been tested in this environment.
-- Steam/FACEIT end-to-end network flows need real accounts/keys and FACEIT Downloads API approval. Tests verify local access policy and Steam callback rejection, not a live login or successful partner download.
+- Steam/FACEIT end-to-end network flows need real accounts/keys and FACEIT Downloads API approval. Tests cover a successful mocked Steam assertion and adversarial callbacks/access policy, not a live account login or approved partner download.
 - Container execution/Compose hardening must be exercised on a Docker host; Docker is not installed in the development environment. CI defines the image build/runtime smoke test.
+- Subtitle generation requires an operator-prepared local model and enabled transcription worker/profile. Models and speech fixtures are not bundled in Git/images. Actual English/French CPU and required-sandbox inference were exercised with public speech; the actual Mirage CS2 fixture has no voice/chat. Full real-world voiced-demo corpus validation remains outstanding.
 - Real-device performance remains unverified. A Galaxy S24 is a target, not a certified benchmark. Browser viewport checks do not measure mobile GPU memory or thermals. TV browser/remote behavior varies by model.
 
 ## Not implemented / do not claim
@@ -32,10 +42,10 @@ This file is part of the product contract. Update it when implementation or veri
 - Source 2 engine execution in-browser or exact visual/gameplay parity.
 - Reconstructed baked map lighting/light probes/skyboxes, exact shaders or material blending.
 - Exact character AnimGraph/poses/player-specific skins, weapon/bone attachments or first-person weapon animations. Optional agent clips are generic deterministic approximations.
-- Volumetric smoke simulation, exact fire spread, weapon effects, positional game audio or voice chat.
+- Volumetric smoke simulation, exact fire spread, weapon effects or Source 2 positional gunshot/footstep audio. Recorded VoIP playback is implemented separately.
+- Recovery of missing voice/Discord calls, encrypted team/private chat, or encrypted public chat without its companion key. There is no `.dem.info` key-import workflow yet.
 - Automated Steam Game Coordinator demo resolution/download/sync; Steam login alone cannot provide this.
 - FACEIT as a social login provider. It is a verified linked data source, as requested for current Steam-only social auth.
-- Per-round replay streaming/chunk caching. Entire replay loads into memory; oversized prepared replays fail at a 200 MB uncompressed ceiling. Improve this before claiming long-match support on memory-constrained phones/TVs.
 - Exact server-rendered CS2 video, GPU streaming, AI coaching, clips/video exports, drawing collaboration, MFA, email recovery, moderation, or multi-host horizontal scaling.
 
-The next high-value work is real CS2 asset validation, chunked replay delivery for mobile, stronger per-job filesystem sandboxing, exact weapon/animation/effects work, and real-device performance testing. None should be represented by a decorative UI switch before it works.
+The next high-value work is real CS2 asset validation, exact weapon/animation/effects work, real-device performance testing, live provider validation and independent security review. None should be represented by a decorative UI switch before it works. See the [acceptance matrix](product/ACCEPTANCE.md).

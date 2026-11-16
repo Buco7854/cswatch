@@ -1,7 +1,7 @@
 import { t } from '../i18n';
 import { useMemo } from 'react';
 import type { Playback } from '../types';
-import { frameAt } from '../playback';
+import { frameAt, playbackBounds } from '../playback';
 export default function TacticalPlot({
   data,
   tick,
@@ -14,19 +14,9 @@ export default function TacticalPlot({
   compact?: boolean;
 }) {
   const bounds = useMemo(() => {
-    let minX = Infinity,
-      maxX = -Infinity,
-      minY = Infinity,
-      maxY = -Infinity;
-    for (const f of data.frames.filter((_, i) => i % 16 === 0))
-      for (const p of f.players) {
-        minX = Math.min(minX, p.x);
-        maxX = Math.max(maxX, p.x);
-        minY = Math.min(minY, p.y);
-        maxY = Math.max(maxY, p.y);
-      }
+    const { minX, maxX, minY, maxY } = playbackBounds(data);
     return { minX, minY, size: Math.max(maxX - minX, maxY - minY, 500) };
-  }, [data]);
+  }, [data.worldBounds, data.worldBounds ? null : data.frames]);
   const { frame } = frameAt(data, tick);
   return (
     <svg

@@ -15,6 +15,8 @@ export type Config = {
   faceit_configured: boolean;
   faceit_downloads: boolean;
   steam_discovery: boolean;
+  transcription_enabled: boolean;
+  transcription_configured: boolean;
 };
 export type Demo = {
   id: string;

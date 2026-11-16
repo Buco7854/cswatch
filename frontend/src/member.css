@@ -1,7 +1,7 @@
 /* Member surfaces are deliberately isolated from the accepted public landing.
    216px navigation + fluid work area; a single 28px canvas gutter on desktop.
    Neutral elevations carry structure. Brand teal is a focus/data signal only. */
-:is(.app-shell, .viewer-shell, .member-dialog, .member-toast) {
+:is(.app-shell, .viewer-shell, .member-dialog, .member-toast, .member-floating) {
   --ground: #101113;
   --surface: #17191c;
   --raised: #202328;
@@ -20,7 +20,8 @@
   font-size: 14px;
   line-height: 1.5;
 }
-[data-theme='light'] :is(.app-shell, .viewer-shell, .member-dialog, .member-toast) {
+[data-theme='light']
+  :is(.app-shell, .viewer-shell, .member-dialog, .member-toast, .member-floating) {
   --ground: #f3f4f6;
   --surface: #fff;
   --raised: #f3f4f6;
@@ -159,14 +160,6 @@
   gap: 9px;
   min-width: 0;
 }
-.app-shell .language-select select {
-  font-size: 12px !important;
-  background: transparent !important;
-  border: 0 !important;
-  color: var(--muted) !important;
-  padding: 6px 4px !important;
-  max-width: 110px;
-}
 .app-shell .account-button {
   gap: 8px;
   padding: 4px 0 4px 10px;
@@ -185,38 +178,6 @@
   border: 1px solid var(--border);
   border-radius: 50% !important;
   flex-shrink: 0;
-}
-.app-shell .menu-panel {
-  top: 52px;
-  left: auto;
-  right: 20px;
-  background: var(--surface) !important;
-  color: var(--text) !important;
-  border: 1px solid var(--control);
-  border-radius: 8px !important;
-  box-shadow: 0 10px 30px #0004;
-  max-width: calc(100vw - 24px);
-  width: 236px;
-  padding: 6px;
-}
-.app-shell .menu-panel a,
-.app-shell .menu-panel button {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 42px;
-  padding: 10px 12px;
-  color: var(--text);
-  font-size: 13px;
-  border-radius: 4px;
-  white-space: normal;
-}
-.app-shell .menu-panel a:hover,
-.app-shell .menu-panel button:hover {
-  background: var(--raised) !important;
-}
-.app-shell .menu-panel svg {
-  width: 16px;
 }
 .app-shell .workspace-sheet {
   background: var(--ground);
@@ -1116,14 +1077,6 @@
   align-items: center;
   flex-shrink: 0;
 }
-.viewer-global-actions > select {
-  background: transparent;
-  border: 0;
-  font-size: 12px;
-  padding: 6px;
-  min-height: 38px;
-  width: 53px;
-}
 .viewer-global-actions > .button {
   min-height: 34px;
   font-size: 12px;
@@ -1205,33 +1158,6 @@
   gap: 6px;
   pointer-events: auto;
   flex-shrink: 0;
-}
-.viewer-shell .camera-label {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 5px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--muted);
-  padding: 2px 7px;
-  max-width: 260px;
-  min-width: 0;
-}
-.viewer-shell .camera-label > svg {
-  width: 15px;
-  flex-shrink: 0;
-}
-.viewer-shell .camera-label select {
-  background: transparent;
-  border: 0;
-  font-size: 13px;
-  padding: 7px 3px;
-  min-height: 37px;
-  max-width: 230px;
-  min-width: 0;
-  width: auto;
 }
 .viewer-shell .options-button {
   min-height: 43px !important;
@@ -1347,27 +1273,11 @@
   min-width: 39px;
   display: grid;
   place-items: center;
-  border: 0;
-  border-radius: 50%;
-  background: var(--primary) !important;
-  color: var(--ground) !important;
+  border: 1px solid var(--control);
+  border-radius: 6px;
+  background: var(--raised) !important;
+  color: var(--text) !important;
   cursor: pointer;
-}
-.viewer-transport > select {
-  font-size: 13px;
-  border: 0;
-  background: transparent;
-  min-height: 40px;
-  width: 63px;
-  padding: 6px 3px;
-}
-.viewer-round-controls > select {
-  background: transparent;
-  border-color: var(--border);
-  font-size: 13px;
-  min-height: 34px;
-  padding: 6px 9px;
-  width: 114px;
 }
 .viewer-round-controls .skip-dead-time {
   background: transparent;
@@ -1432,56 +1342,6 @@
 }
 .viewer-rounds-rail .round-strip button.active i {
   background: var(--signal);
-}
-.viewer-rounds-rail .moment-navigation {
-  position: relative;
-  border: 0;
-  padding: 0;
-  margin: 0;
-  flex-shrink: 0;
-}
-.viewer-rounds-rail .moment-navigation > summary {
-  font-size: 12px;
-  color: var(--muted);
-  white-space: nowrap;
-  cursor: pointer;
-  min-height: 32px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.viewer-rounds-rail .moment-navigation > summary:before {
-  content: '+';
-  font-size: 17px;
-  line-height: 1;
-}
-.viewer-rounds-rail .moment-navigation[open] > summary:before {
-  content: '−';
-}
-.viewer-rounds-rail .moment-navigation .actions {
-  position: absolute;
-  bottom: 42px;
-  right: 0;
-  width: 260px;
-  max-height: min(360px, 60vh);
-  overflow: auto;
-  background: var(--surface);
-  border: 1px solid var(--control);
-  border-radius: 7px;
-  box-shadow: 0 8px 24px #0005;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 5px;
-  padding: 8px;
-  margin: 0;
-}
-.viewer-rounds-rail .moment-navigation .button {
-  font-size: 13px;
-  min-height: 40px;
-  justify-content: flex-start;
-  border: 0;
-  padding: 10px 12px;
 }
 .viewer-drawer {
   position: absolute;
@@ -1771,11 +1631,6 @@
     font-weight: 700;
     color: var(--text);
   }
-  .app-shell .menu-panel {
-    left: 16px;
-    right: auto;
-    top: 52px;
-  }
   .app-shell .settings-section {
     grid-template-columns: minmax(210px, 0.8fr) minmax(0, 1.4fr);
     gap: 30px;
@@ -1918,12 +1773,6 @@
     min-height: 36px;
     padding: 7px;
   }
-  .viewer-global-actions > select {
-    min-height: 36px;
-    width: 45px;
-    padding: 5px 2px;
-    font-size: 11px;
-  }
   .viewer-global-actions > .button {
     font-size: 11px;
     min-height: 32px;
@@ -1949,19 +1798,6 @@
   .viewer-camera-tools {
     gap: 5px;
     max-width: 65%;
-  }
-  .viewer-shell .camera-label {
-    padding: 2px 5px;
-    max-width: 230px;
-  }
-  .viewer-shell .camera-label select {
-    font-size: 12px;
-    max-width: 200px;
-    min-height: 34px;
-    padding: 5px 1px;
-  }
-  .viewer-shell .camera-label > svg {
-    display: none;
   }
   .viewer-shell .options-button {
     padding: 8px !important;
@@ -2005,11 +1841,6 @@
     padding-top: 8px;
     margin-top: 4px;
   }
-  .viewer-round-controls > select {
-    min-height: 34px;
-    font-size: 12px;
-    width: 110px;
-  }
   .viewer-round-controls .skip-dead-time span {
     display: inline;
   }
@@ -2041,12 +1872,6 @@
     height: 38px;
     min-width: 38px;
   }
-  .viewer-transport > select {
-    font-size: 12px;
-    width: 50px;
-    min-height: 40px;
-    padding: 5px 0;
-  }
   .viewer-rounds-rail {
     margin-top: 8px;
     padding-top: 8px;
@@ -2056,13 +1881,6 @@
     min-width: 32px;
     min-height: 33px;
     padding: 5px 7px;
-  }
-  .viewer-rounds-rail .moment-navigation summary {
-    font-size: 11px;
-    min-height: 33px;
-  }
-  .viewer-rounds-rail .moment-navigation .actions {
-    width: 235px;
   }
   .viewer-drawer {
     top: 63px;
@@ -2094,10 +1912,6 @@
   }
   .app-shell .mobile-wordmark {
     font-size: 26px;
-  }
-  .app-shell .language-select select {
-    font-size: 11px !important;
-    max-width: 85px;
   }
   .app-shell .account-name {
     display: none;
@@ -2333,9 +2147,6 @@
     width: 30px;
     padding: 6px;
   }
-  .viewer-global-actions > select {
-    width: 42px;
-  }
   .viewer-context {
     font-size: 12px;
     padding: 9px 9px;
@@ -2348,16 +2159,6 @@
   }
   .viewer-camera-tools {
     max-width: 67%;
-  }
-  .viewer-shell .camera-label select {
-    max-width: 176px;
-    width: 100%;
-    min-width: 0;
-    font-size: 11px;
-  }
-  .viewer-shell .camera-label {
-    max-width: 190px;
-    min-width: 0;
   }
   .viewer-shell .options-button {
     min-width: 37px;
@@ -2408,15 +2209,6 @@
     height: 36px;
     min-width: 36px;
   }
-  .viewer-transport > select {
-    width: 43px;
-    font-size: 11px;
-    padding: 4px 0;
-  }
-  .viewer-round-controls > select {
-    width: 105px;
-    font-size: 12px;
-  }
   .viewer-round-controls > .icon-button {
     min-width: 32px;
     width: 32px;
@@ -2429,9 +2221,6 @@
   }
   .viewer-rounds-rail {
     gap: 8px;
-  }
-  .viewer-rounds-rail .moment-navigation summary {
-    font-size: 10px;
   }
   .viewer-rounds-rail .round-strip button {
     min-height: 34px;
@@ -2499,10 +2288,6 @@
     min-width: 27px;
     padding: 5px;
   }
-  .viewer-global-actions > select {
-    width: 38px;
-    font-size: 10px;
-  }
   .viewer-global-actions .viewer-signin {
     font-size: 10px;
     padding: 5px 6px;
@@ -2517,14 +2302,6 @@
     gap: 3px;
     max-width: 65%;
   }
-  .viewer-shell .camera-label {
-    max-width: 158px;
-    padding: 2px 4px;
-  }
-  .viewer-shell .camera-label select {
-    max-width: 148px;
-    font-size: 10px;
-  }
   .viewer-context {
     font-size: 11px;
     padding: 9px 7px;
@@ -2537,9 +2314,6 @@
     min-width: 31px;
     width: 31px;
     padding: 6px;
-  }
-  .viewer-transport > select {
-    width: 39px;
   }
   .viewer-shell .play-button {
     width: 33px;
@@ -2554,9 +2328,6 @@
     font-size: 10px;
     gap: 4px;
     padding: 7px 5px;
-  }
-  .viewer-round-controls > select {
-    width: 100px;
   }
   .app-shell .match-name small {
     max-width: 96px;
@@ -2665,18 +2436,11 @@
     font-size: 11px;
   }
 }
-@media (max-width: 540px) {
-  .viewer-rounds-rail .moment-navigation summary {
-    font-size: 11px;
-  }
-}
 @media (max-width: 360px) {
   .viewer-match h1 {
     font-size: 13px;
   }
-  .viewer-global-actions > select,
   .viewer-global-actions .viewer-signin,
-  .viewer-shell .camera-label select,
   .viewer-round-controls .skip-dead-time {
     font-size: 11px;
   }
@@ -2711,14 +2475,4 @@
     bottom: 8px;
     z-index: 6;
   }
-}
-/* A capped column menu scrolls; it must never wrap into an off-canvas second column. */
-.viewer-rounds-rail .moment-navigation .actions {
-  flex-wrap: nowrap;
-  align-items: stretch;
-}
-.viewer-rounds-rail .moment-navigation .actions .button {
-  flex-shrink: 0;
-  width: 100%;
-  min-width: 0;
 }

@@ -1,33 +1,26 @@
 # Current handoff
 
-Updated 2026-11-16. Start with `docs/product/WORK.md`; it reflects the latest user request. Earlier design/task records are history, not current blockers.
+Updated 2026-11-16. Start with [active work](product/WORK.md), [feature status](STATUS.md) and [verification](VERIFICATION.md). The user authorized autonomous specialist development and pushing verified changes to `main`. Repository: [Buco7854/cswatch](https://github.com/Buco7854/cswatch). The initial proof of concept is preserved in commit `bfb9618`.
 
-## Latest authorization
+## Product decisions to preserve
 
-The user now likes the general feel of the landing and current neutral charcoal member UI. They want a coordinated agentic product rebuild preserving every agreed feature, fixing remaining navigation/control flaws, adding an explicit HLTV/pro-demo experience, and **pushing to main when verified**. They explicitly authorized specialized agents. Root coordinates bounded file ownership; agents do not commit/push independently.
+- Preserve the approved public landing and restrained neutral member direction. Account/connections live in the user menu/account tabs. The viewer takes the whole tab, with in-view controls and progressive mobile panels; additional browser fullscreen is supported.
+- The application is TypeScript with CPU-only hosting, React/Three rendering, S2V operator asset preparation, Docker behind the operator's proxy, EN/FR and both themes. The small C launcher provides the Linux security boundary; no Python backend or bundled TLS proxy.
+- The user canceled the HLTV/pro catalog. External demos use a manual source guide and normal private uploads. Do not reintroduce `/pro` or `PRO_*` flags.
+- Advanced review includes recorded round events, optional economy/inventory/input HUDs, WASD/ZQSD labels, local voice/chat and optional offline CPU subtitles. Missing recorded data stays unknown. These features are progressive, disabled where appropriate by default, and never justify fake history or guessed speech.
 
-Account and connections must move out of primary sidebar navigation into the user dropdown/account area. Viewer must remain whole-tab by default, with contained controls/panels; improve dropdowns and light-theme play control. Keep EN/FR, dark/light, CPU-only TypeScript deployment, S2V offline assets, mobile/TV/desktop, extensible auth, provider/env/admin policy controls, secure uploads/queue, Docker without proxy, weekly maintenance.
+## Architecture checkpoints
 
-## Existing POC
+Read `AGENTS.md`, `ARCHITECTURE.md` and `SECURITY.md` before changes. HTTP handlers never run native parsing. Each child receives only its copied job, stripped environment and read-only runtime through required Landlock ABI 3+/seccomp. Unsupported confinement fails closed. Scratch polling is not a host filesystem quota.
 
-GitHub is `Buco7854/cswatch`; local workspace remains `/workspace/csdemo`. Root will preserve a baseline commit before coordinated changes. No application code has yet been pushed; remote original main had only LICENSE. Do not commit proprietary assets or ignored runtime data. Original AGPL-3.0 license stays.
+New replay output uses version 2 manifest/chunks with global indexes/bounds and five-second trail context. The browser caches at most three slices and cancels irrelevant requests. Legacy version 1 remains readable. Player IDs remain strings; coordinate transforms are documented in `AGENTS.md`.
 
-Public routes: `/`, `/features/viewer`, `/features/imports`, `/self-host`. Member routes: `/library`, `/explore`, `/connections`, `/account`, `/admin`. Viewer `/watch/:id` now uses its own full-viewport shell; sample is synthetic and explicitly labeled. Public/private gates are enforced server-side as well as in UI. Steam social auth adapter and verified FACEIT data source exist; no Game Coordinator auto-download implementation or live credentials validated. No HLTV/pro catalog exists yet.
+Schema v4 separates subtitle state/leases/artifact pointers. Optional offline Whisper CPU transcription runs after the primary replay is ready; failure cannot fail that replay. Compose separates parsing from the optional networkless transcription profile. Model preparation is operator-only; no weights or proprietary assets are committed or bundled.
 
-Main frontend files: `main.tsx` shell/policy; public components/`public.css` approved; `member.css` scoped neutral member/viewer controls; older `styles.css`, `workspace.css`, `brand.css` provide accumulated foundations needing deliberate cleanup. `Viewer.tsx` has a large controller/render body worth decomposing while preserving all controls. No proprietary map/agent models are bundled; optional S2V assets and generic animation exist.
+## Evidence and continuation
 
-Backend: Fastify + SQLite WAL, private streaming uploads, native demoparser2 in disposable CPU child, persistent queue, retention/limits. Process isolation is **not filesystem sandboxing**. Current parser child sees shared data volume; entire replay is delivered as one gzip JSON with a 200 MB uncompressed ceiling. These are real security/mobile follow-ups, not hidden solved features. Read SECURITY/STATUS/ARCHITECTURE.
+The consolidated local record is in `VERIFICATION.md`: backend tests with no skips, public/private browser journeys, actual sandboxed upload/streaming/subtitle smoke and rendered locale/theme/device checks. The Mirage fixture has no voice/chat; communication protocol fixtures and actual public speech validate those paths separately. Docker is unavailable locally; the release workflow performs actual hardened-image verification before publishing.
 
-## Verification so far
+Specialist responsibilities were workspace UX, native processing/security and offline speech/imports. They worked in the shared checkout with root integration; no parallel agent commits. Use focused ownership and shared contracts for future changes, and update factual status/evidence with every capability change.
 
-Before this coordinated rebuild: production build/locale/format checks passed; 13 backend/replay/catalog tests passed with zero skips and real upstream `.dem`/`.dem.zst` fixture. Public browser suite: 4 passed, 1 private-only skip, including full-tab viewer, panels, notes and native fullscreen. Private suite with registrations off and on each passed its policy test. Member QA scripts cover authenticated fixtures, long strings, state-row heights, switch geometry, viewer/panel/dock bounds, both locales/themes and 6 viewport sizes. Latest EN dark/light batches each passed 60 checks; French batches may still run. Read actual logs/reports before claiming final matrix completion.
-
-Previously fixed real UI bugs: `.demo-state processing` collided with generic `.processing` page layout (now `status-*`); mobile input min-height stretched switches; capped vertical navigation menu wrapped a last action off-canvas (now nowrap/scroll); D-pad focus now excludes hidden details content. Landing was pixel-identical in dark/light before/after member-only styling changes. Preserve it.
-
-## Environment and tools
-
-Node 22.23.4 locally; supported container/CI target Node 24. All npm dependencies already installed in root/backend/frontend/tools/assets. Commands: root build/test/check:locales/format:check/test:e2e. Tests use isolated temp data. `scripts/fetch-test-demo.mjs` fetches checksum-pinned public upstream Mirage fixture into ignored var/.
-
-Chromium: `/home/paseo/.cache/ms-playwright/chromium-1254/chrome-linux64/chrome`; set `PLAYWRIGHT_CHROMIUM_EXECUTABLE`. Test-only flags: no-sandbox, disable-dev-shm-usage, enable-unsafe-swiftshader. Production preview at `http://localhost:8000` should be checked for liveness. Tests default 4174; member QA 4176. `/tmp/csdemo-chrome.sh` wraps Chrome for taste inspector. Generated screenshots/logs under ignored `.design/` or `/tmp/`.
-
-No Docker binary was available; verify before claiming image execution. Plenty of disk headroom now (~6 GB at latest check); never delete other projects/data. Live Steam/FACEIT approval, actual S2V CS2 exports/alignment, independent security audit and S24/TV GPU/thermal performance remain unverified.
+Highest-value follow-up is operator CS2 asset/export validation, live provider integration, real voiced-demo corpus and physical S24/TV measurements, followed by independent security review. Exact Source 2 lighting, weapon animation/audio/effects, Game Coordinator downloads and encrypted-chat key import remain incomplete. Do not substitute decorative switches for those capabilities.

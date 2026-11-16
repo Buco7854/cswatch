@@ -1,9 +1,10 @@
-import { mkdirSync, rmSync, openSync, readSync, closeSync } from 'node:fs';
+import { mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Store } from './db.js';
 import { now } from './db.js';
 import type { Config } from './config.js';
 import { HttpError, token } from './security.js';
+export { validateMagic } from './demo-format.js';
 export function reserve(
   db: Store,
   c: Config,
@@ -57,20 +58,5 @@ export function accessDemo(db: Store, id: string, user: { id: string } | null, o
   if (!d || ((!user || user.id !== d.owner_id) && (ownerOnly || !d.public)))
     throw new HttpError(404, 'Demo not found.');
   return d;
-}
-export function validateMagic(path: string, ext: string) {
-  const fd = openSync(path, 'r');
-  const magic = Buffer.alloc(8);
-  try {
-    readSync(fd, magic);
-  } finally {
-    closeSync(fd);
-  }
-  if (ext === '.dem' && !magic.equals(Buffer.from('PBDEMS2\0')))
-    throw new HttpError(400, 'This is not a CS2 demo. CS:GO demos are not supported.');
-  if (ext === '.zst' && !magic.subarray(0, 4).equals(Buffer.from([0x28, 0xb5, 0x2f, 0xfd])))
-    throw new HttpError(400, 'This is not a Zstandard-compressed demo.');
-  if (ext === '.gz' && !(magic[0] === 0x1f && magic[1] === 0x8b))
-    throw new HttpError(400, 'Invalid compressed demo.');
 }
 export const credentialsSchema = { username: /^[A-Za-z0-9_-]{3,32}$/ };

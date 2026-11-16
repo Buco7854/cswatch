@@ -14,6 +14,8 @@ cswatch is a public-capable, self-hostable review product with private-by-defaul
 - Public by default, configurable private instance; independent registrations setting; environment locks override admin UI.
 - Desktop, mobile/touch, TV/keyboard/remote; low-power/2D fallback; English/French; dark/light.
 - Docker without a bundled reverse proxy, durable storage/queue, bounded untrusted parsing, weekly image rebuild and dependency maintenance.
+- Premier/Competitive/Wingman demos use the normal CS2 file pipeline. Steam identity is separate from download authorization. External HLTV demos are downloaded at their source and uploaded; no HLTV catalog or scraping wrapper.
+- Advanced review follows csdemo.tv as a completeness reference: recorded round events, utility releases, all-player economy/status/inventory, inputs with WASD/ZQSD labels, voice, chat and optional local speech subtitles. Present these progressively and preserve unknown/missing data.
 
 ## Product surfaces
 
@@ -37,3 +39,5 @@ The next design must resolve positioning, navigation, imagery, typography, shape
 The user likes the current public landing page. Preserve its composition, colors, typography, content and interactions. Rework the other screens: the previous member palette felt too green, the interface too cluttered, and some controls overflowed. Their supplied Refrag member screenshot is an inspiration for restrained charcoal surfaces, clear navigation and readable control grouping, not permission to copy its branding or content.
 
 The viewer must occupy the **whole browser tab**. Render the match in a dedicated viewport with the playback/round dock inside it. Players, events, notes and advanced settings open over the scene. Browser fullscreen is additional, not the only way to get a full-sized viewer. No workspace sidebar or page footer should consume the viewing area. Test both portrait and landscape, as well as TV-sized viewports.
+
+Account settings and connected services belong in the user dropdown and account tabs. Keep the sidebar for match work. Communications, inputs and economy start disabled; the viewer's primary controls remain usable without enabling advanced overlays. Round events stay discoverable on phones, while the expanded round strip starts collapsed on narrow/short screens.

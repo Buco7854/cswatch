@@ -3,8 +3,8 @@ import { z } from 'zod';
 import type { Store } from './db.js';
 import { now } from './db.js';
 import type { Config } from './config.js';
+import { readUpstreamText } from './upstream.js';
 import {
-  COOKIE,
   HttpError,
   digest,
   equal,
@@ -15,6 +15,8 @@ import {
   token,
   verifyPassword,
   safeReturnPath,
+  sessionCookieName,
+  steamStateCookie,
 } from './security.js';
 const credentials = z.object({
   username: z.string().regex(/^[A-Za-z0-9_-]{3,32}$/),
@@ -58,8 +60,14 @@ export async function authRoutes(app: FastifyInstance, db: Store, c: Config) {
     return { user: { id: u!.id, username: u!.username, is_admin: Boolean(u!.is_admin), csrf } };
   });
   app.post('/api/auth/logout', async (r, reply) => {
-    db.run('DELETE FROM sessions WHERE token_hash=?', digest(r.cookies[COOKIE] || ''));
-    reply.clearCookie(COOKIE, { path: '/' });
+    const cookie = sessionCookieName(c);
+    db.run('DELETE FROM sessions WHERE token_hash=?', digest(r.cookies[cookie] || ''));
+    reply.clearCookie(cookie, {
+      path: '/',
+      secure: c.cookieSecure,
+      httpOnly: true,
+      sameSite: 'lax',
+    });
     return { ok: true };
   });
   app.post('/api/auth/password', async (r, reply) => {
@@ -91,7 +99,7 @@ export async function authRoutes(app: FastifyInstance, db: Store, c: Config) {
       digest(state),
       r.user?.id ?? null,
       now() + 600,
-      safeReturnPath(query.returnTo, r.user ? '/connections' : '/library'),
+      safeReturnPath(query.returnTo, r.user ? '/account/connections' : '/library'),
     );
     const params = new URLSearchParams({
       'openid.ns': 'http://specs.openid.net/auth/2.0',
@@ -101,11 +109,12 @@ export async function authRoutes(app: FastifyInstance, db: Store, c: Config) {
       'openid.identity': 'http://specs.openid.net/auth/2.0/identifier_select',
       'openid.claimed_id': 'http://specs.openid.net/auth/2.0/identifier_select',
     });
-    reply.setCookie('steam_state', state, {
+    const stateCookie = steamStateCookie(c);
+    reply.setCookie(stateCookie.name, state, {
       httpOnly: true,
       secure: c.cookieSecure,
       sameSite: 'lax',
-      path: '/api/auth/steam',
+      path: stateCookie.path,
       maxAge: 600,
     });
     return reply.redirect('https://steamcommunity.com/openid/login?' + params, 303);
@@ -114,7 +123,7 @@ export async function authRoutes(app: FastifyInstance, db: Store, c: Config) {
     if (!db.flag(c, 'steam_enabled')) throw new HttpError(403, 'Steam sign-in is disabled.');
     const q = z.record(z.string(), z.string()).parse(r.query),
       state = q.state || '';
-    if (!state || !equal(state, r.cookies.steam_state || ''))
+    if (!state || !equal(state, r.cookies[steamStateCookie(c).name] || ''))
       throw new HttpError(400, 'Invalid sign-in state. Start again.');
     const stored = db.transaction(() => {
       const s = db.one(
@@ -161,7 +170,10 @@ export async function authRoutes(app: FastifyInstance, db: Store, c: Config) {
         signal: AbortSignal.timeout(15000),
         redirect: 'error',
       });
-      if (!result.ok || !(await result.text()).split(/\r?\n/).includes('is_valid:true'))
+      if (
+        !result.ok ||
+        !(await readUpstreamText(result, 16384)).split(/\r?\n/).includes('is_valid:true')
+      )
         throw new Error();
     } catch {
       throw new HttpError(400, 'Steam could not verify this sign-in. Try again.');
@@ -179,7 +191,11 @@ export async function authRoutes(app: FastifyInstance, db: Store, c: Config) {
         if (!db.flag(c, 'registrations_enabled'))
           throw new HttpError(403, 'New registrations are disabled.');
         id = token().slice(0, 32);
-        db.run('INSERT INTO users VALUES(?,?,?,?,?)', id, 'steam_' + subject, null, 0, now());
+        const base = 'steam_' + subject;
+        const username = db.one('SELECT id FROM users WHERE username=? COLLATE NOCASE', base)
+          ? `${base}_${token().slice(0, 8)}`
+          : base;
+        db.run('INSERT INTO users VALUES(?,?,?,?,?)', id, username, null, 0, now());
       }
       const linked = db.one(
         "SELECT subject FROM identities WHERE provider='steam' AND user_id=?",
@@ -191,7 +207,13 @@ export async function authRoutes(app: FastifyInstance, db: Store, c: Config) {
       return id as string;
     });
     newSession(db, c, r, reply, uid);
-    reply.clearCookie('steam_state', { path: '/api/auth/steam' });
+    const stateCookie = steamStateCookie(c);
+    reply.clearCookie(stateCookie.name, {
+      path: stateCookie.path,
+      secure: c.cookieSecure,
+      httpOnly: true,
+      sameSite: 'lax',
+    });
     db.audit(uid, 'steam.authenticated');
     return reply.redirect(safeReturnPath(stored.return_to), 303);
   });

@@ -6,7 +6,9 @@ A self-hosted Counter-Strike 2 demo review room. TypeScript, React, Three.js, Fa
 
 ## Product and navigation
 
-The public landing page is `/`, with dedicated `/features/viewer`, `/features/imports`, and `/self-host` pages. `/explore` lists explicitly shared demos. `/library` is the member's private workspace; `/connections`, `/account`, and `/admin` expose only the appropriate account/role capabilities. Account-required actions preserve a safe local destination through authentication. Private instances replace public/product entry with a branded sign-in gate and also block anonymous content APIs and map assets.
+The public landing page is `/`, with dedicated `/features/viewer`, `/features/imports`, and `/self-host` pages. `/library` is the member's private workspace; `/explore` lists explicitly shared demos. Account and connected services live in the user menu at `/account` and `/account/connections`; `/connections` redirects there. `/admin` is administrator-only. Account-required actions preserve a safe local destination through authentication. Private instances replace public/product entry with a branded sign-in gate and also block anonymous content APIs and map assets.
+
+The viewer takes the whole browser tab. Its in-view controls include cameras, player selection, round/event/timeout navigation, private notes and display options. On phones, secondary actions sit in **More controls**, with primary touch targets at least 44 pixels. Browser fullscreen is an additional option.
 
 English and French are available throughout the public site, viewer, account flows and administration. The initial language follows the browser; the language control and theme choice persist on the device. User-entered names and protocol/game identifiers are not translated. `npm run check:locales` checks literal message coverage and the tests check catalog/placeholder parity.
 
@@ -14,11 +16,13 @@ Product decisions and follow-up tasks live in [the product brief](docs/product/B
 
 ## Docker deployment
 
-Requirements: Docker with Compose, a CPU supporting the native parser, storage for demos/assets, and your own HTTPS reverse proxy. Budget approximately 2 CPU cores and 6–8 GB RAM for the two services. Limits are configurable; these are deployment defaults, not benchmark guarantees.
+Requirements: Docker with Compose on Linux with Landlock ABI 3 or newer (kernel 6.2+ with Landlock enabled), a CPU supporting the native parser, storage for demos/assets, and your own HTTPS reverse proxy. Budget approximately 2 CPU cores and 6–8 GB RAM for the two services. Limits are configurable; these are deployment defaults, not benchmark guarantees.
 
 ```sh
 cp .env.example .env
 # Edit APP_URL to your public HTTPS origin.
+docker compose build --pull
+docker compose run --rm worker ./dist/parser-sandbox --check
 docker compose up -d --build
 docker compose exec web node dist/cli.js create-admin YOUR_USERNAME
 ```
@@ -28,6 +32,8 @@ The command prompts for a password without echoing it. There is no default passw
 Point your proxy at `127.0.0.1:8000`. Preserve the original `Host` header, terminate HTTPS, allow requests up to `MAX_UPLOAD_MB` plus multipart overhead, and allow long uploads. The application validates `Host` and request `Origin` against `APP_URL`. Set `TRUSTED_PROXY_IPS` to your proxy's exact address/CIDR only if it should supply client IPs. Never trust all proxy sources on a publicly reachable listener. For a proxy in another container, join a shared Docker network and remove the loopback port publishing only if needed.
 
 Both web and worker must run. Data is stored in the named volume `cswatch_cswatch-data`. The worker has no network, and both services run as a non-root user with dropped capabilities, read-only root filesystems, memory/CPU/process limits, and `no-new-privileges`. Uploads and prepared playback stay private until their owner explicitly shares them.
+
+Each native parser child additionally runs inside a required Landlock/seccomp sandbox. It receives only its job copy and read-only runtime libraries; it cannot read the application database, other demos or provider secrets. Unsupported kernels fail closed. `PARSER_SANDBOX=off` is an explicit escape hatch for **trusted local development**, never public uploads. The small compiled C launcher is a Linux security bridge; application code remains TypeScript. See [the security boundary](SECURITY.md).
 
 ### Instance policy
 
@@ -39,6 +45,7 @@ These variables accept `true`, `false`, or an empty/unset value:
 | `REGISTRATIONS_ENABLED` | `true`             | Local registrations and creation of new accounts through Steam. Existing users can still sign in.                |
 | `STEAM_ENABLED`         | `false`            | Steam OpenID sign-in and account linking.                                                                        |
 | `FACEIT_ENABLED`        | `false`            | Steam-verified FACEIT profile linking, match history, and approved imports. This is not a FACEIT login provider. |
+| `TRANSCRIPTION_ENABLED` | `false`            | Optional offline CPU speech transcription with a prepared local model and the transcription worker.              |
 
 Explicit environment values take precedence and lock the corresponding admin controls. Empty variables let the administrator change policy in the UI. API keys are environment-only and are never returned to the browser. To run a closed private instance, disable **both** public access and registrations.
 
@@ -48,6 +55,10 @@ Steam OpenID verifies a Steam ID without collecting Steam passwords. Enable `STE
 
 For FACEIT, set `FACEIT_API_KEY`. Linking looks up the FACEIT CS2 account matching the user's verified Steam ID. History comes from the official Data API. Automatic imports additionally require a separately approved `FACEIT_DOWNLOAD_TOKEN`; ordinary Data API access is insufficient. Only FACEIT match IDs are accepted, never arbitrary remote download URLs. If approval is unavailable, manual uploads work.
 
+### Premier, Competitive and externally downloaded demos
+
+The Add demo dialog includes focused Steam, FACEIT and HLTV download/import guides. Premier, Competitive and Wingman replay files use the same CS2 parser. Obtain the replay at its source, extract `.bz2`, `.gz` or archives on your device when necessary, then upload `.dem` or `.dem.zst`. Steam OpenID alone does not download demos. There is no HLTV scraper, match catalog or proxy wrapper.
+
 Accounts use usernames, not email addresses. There is no email verification or email password reset flow. Operators can reset a password through a terminal:
 
 ```sh
@@ -56,11 +67,32 @@ docker compose exec web node dist/cli.js reset-password USERNAME
 
 Resetting invalidates existing sessions. Signed-in users can change/set their own passwords in Account settings. The identity table supports multiple provider identities per user without merging accounts by display name or email. See [architecture](docs/ARCHITECTURE.md) for adding future providers.
 
+### Recorded inputs, economy and communications
+
+The default viewer remains focused on the match. Options enable a progressive Inputs/Economy HUD for recorded movement/actions, WASD or ZQSD key labels, available mouse counts, player money/equipment/inventory and status. These are sampled recorded actions, not the player's physical key bindings. Missing command data stays unavailable rather than being guessed from movement. Current-round event markers and the review drawer cover selected-player kills/deaths, bomb outcomes and utility releases, with whole-match filters and exact seek controls.
+
+Communications has separate controls for recorded Opus voice, selected player/team/all speakers, volume and individual mutes, text chat and local speech subtitles. Voice decoding happens locally in the browser; no microphone access is requested. Some demos omit voice or use unsupported/encrypted communication data. cswatch cannot recover missing recordings or external Discord calls. Automatic subtitles can misrecognize speech. Sharing a demo also shares its recorded communications and captions; personal notes remain private.
+
+Optional automatic subtitles use a small multilingual Whisper model **on the CPU**, in a separate durable sandboxed worker stage. The replay is watchable before transcription finishes; failure or timeout leaves the replay intact. Prepare the model using [the offline tooling](tools/transcription/README.md), then mount it read-only into the optional worker. For example, add `compose.override.yaml`:
+
+```yaml
+services:
+  transcription:
+    volumes:
+      - /srv/cswatch-models/whisper-tiny:/models/whisper-tiny:ro
+```
+
+Set `TRANSCRIPTION_MODEL_DIR=/models/whisper-tiny` in `.env`, and enable `TRANSCRIPTION_ENABLED=true` (or its unlocked admin setting). Start the optional service with `docker compose --profile transcription up -d`. The main worker handles parsing; the transcription service has its own CPU/memory limits and no network. Allow additional RAM/CPU for simultaneous processing; the default transcription container limit is 4 GB, on top of normal web/parser needs. Runtime inference never downloads a model or sends audio to a service.
+
+`TRANSCRIPTION_LANGUAGE=auto` performs language identification; an explicit ISO language code is also accepted. `TRANSCRIPTION_MAX_AUDIO_SECONDS=600` bounds per-demo audio work, and `TRANSCRIPTION_TIMEOUT_SECONDS=600` bounds each job. Longer recordings can produce explicitly partial captions. Owners can retry failed subtitles from Communications after the operator resolves model/resources. Without Compose, `WORKER_ROLE=parse|transcription|all` selects duties; the local default is `all`.
+
 ### Limits and retention
 
-`.env.example` lists limits for file size, expanded size, per-user storage/count, global storage, processing time, memory, and sessions. Defaults accept `.dem` and `.dem.zst` up to 512 MB, with a 2 GB expansion cap. Demo originals and compressed playback count toward storage. Concurrent uploads reserve their maximum size atomically. Leave additional disk headroom for one expanded demo per worker, parser output, SQLite, logs, and operator-installed maps. Limits are application quotas, not filesystem quotas.
+`.env.example` lists limits for file size, expanded size, per-user storage/count, global storage, processing time, memory, and sessions. Defaults accept `.dem` and `.dem.zst` up to 512 MB, with a 2 GB expansion cap. Demo originals and compressed playback count toward storage. Concurrent uploads reserve their maximum size atomically; prepared output must also fit the quotas before publication. Leave additional disk headroom for each job's input copy, expanded demo, parser output, SQLite, logs, and operator-installed maps. Limits and scratch polling are application controls, not hard filesystem quotas.
 
-`RETENTION_DAYS=30` deletes old demos and their notes automatically. `0` disables expiry. The UI states the retention policy. Audit events expire after 90 days. Back up the **whole data volume**, including SQLite and its WAL files, originals, prepared playback, and maps. Stop both services before a filesystem backup/restore; restart both afterward. A database-only backup will not include demo files. Keep backups outside the live data volume.
+New replays use versioned time slices with five seconds of trail context. The browser keeps at most three cached chunks and prefetches the next, while the timeline and event/round indexes cover the whole match. Chunk JSON is capped at 4 MiB, metadata at 16 MiB, decoded output at 512 MiB and stored output at 160 MiB. Legacy version 1 replays remain readable but still load as a whole; re-upload to prepare the new format.
+
+`RETENTION_DAYS=30` deletes old demos and their notes automatically. `0` disables expiry. The UI states the retention policy. Audit events expire after 90 days. Back up the **whole data volume**, including SQLite and its WAL files, originals, prepared playback, and maps. Stop all services, including optional transcription, before a filesystem backup/restore; restart them afterward. A database-only backup will not include demo files. Keep backups outside the live data volume.
 
 ## Map and agent assets
 
@@ -70,13 +102,14 @@ The browser discovers installed map assets by demo map name. Without a matching 
 
 ## Development
 
-Use Node 24 LTS and npm. Node 22.13+ can run most of the app, but Node 24 is the supported CI/container target. Development is on the **same origin**; serve the built frontend from Fastify to exercise real authentication and security headers.
+Use Node 24 LTS and npm. Node 22.13+ can run most of the app, but Node 24 is the supported CI/container target. Building on Linux also requires a C compiler and libc headers for the sandbox (`build-essential` on Debian/Ubuntu); the Docker build provides these only in its build stage. Use Docker on other operating systems for untrusted parsing. Development is on the **same origin**; serve the built frontend from Fastify to exercise real authentication and security headers.
 
 ```sh
 npm ci
 npm ci --prefix backend
 npm ci --prefix frontend
 npm ci --prefix tools/assets
+npm ci --prefix tools/transcription # optional speech verification tools
 npm run build
 cd backend
 APP_URL=http://localhost:8000 COOKIE_SECURE=false npm start
@@ -89,6 +122,7 @@ The local data directory defaults to `../var` relative to `backend/`. Environmen
 ```sh
 node scripts/fetch-test-demo.mjs   # checksum-pinned public upstream Mirage fixture
 npm test                         # security, replay logic, .dem and .dem.zst parsing
+node scripts/runtime-smoke.mjs    # upload → required sandbox → private chunks → notes/sharing
 npm run test:e2e                  # public journeys; uses an isolated test server
 E2E_PRIVATE=1 E2E_REGISTRATIONS=false npm run test:e2e
 E2E_PRIVATE=1 E2E_REGISTRATIONS=true npm run test:e2e
@@ -100,7 +134,7 @@ Playwright needs Chromium: `cd frontend && npx playwright install chromium`. Set
 
 ## Updates
 
-The GitHub workflow tests/builds on PRs and main pushes, and runs **every Monday**. After verification it rebuilds the container without cache, pulls the current Node/Debian base, and publishes to `ghcr.io/OWNER/REPOSITORY` on main. The workflow includes a container health smoke test. Publishing requires the repository's Actions token to have package write access. Repository permissions and GHCR visibility are operator-controlled.
+The GitHub workflow tests/builds on PRs and main pushes, and runs **every Monday**. After verification it rebuilds without cache, pulls the current Node/Debian base, and publishes to `ghcr.io/OWNER/REPOSITORY` on main. It prepares checksum-pinned parser/speech fixtures, exercises actual offline English/French inference, and runs upload/ownership/parsing/transcription checks inside the hardened networkless image. Publishing requires the Actions token's package write access. Repository permissions and GHCR visibility are operator-controlled.
 
 Dependabot opens weekly dependency and base/action update PRs; locked npm dependencies change through reviewed PRs. A weekly rebuild alone does not upgrade a lockfile. Versioned image tags contain the commit and workflow run number. Scheduled builds do **not** automatically replace a running self-hosted deployment.
 
@@ -110,7 +144,7 @@ docker compose build --pull --no-cache
 docker compose up -d
 ```
 
-For published images set `CSWATCH_IMAGE=ghcr.io/OWNER/REPOSITORY:TAG`, then use `docker compose pull` and `docker compose up -d --no-build`. Back up data before upgrades. The versioned schema includes an additive v2 migration for safe authentication return paths. Future changes must use explicit migrations.
+For published images set `CSWATCH_IMAGE=ghcr.io/OWNER/REPOSITORY:TAG`, then use `docker compose pull` and `docker compose up -d --no-build` (include `--profile transcription` when enabled). Back up data before upgrades. Schema migrations are additive: safe auth return paths (v2), nullable import provenance (v3), and separate transcription state/leases/artifact pointers (v4). Production host-prefixed cookies require a fresh sign-in when upgrading from the initial proof of concept. Future changes must use explicit migrations.
 
 ## Project guide
 

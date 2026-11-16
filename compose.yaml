@@ -24,11 +24,25 @@ services:
   worker:
     <<: *app
     command: [node, dist/worker.js]
+    environment:
+      WORKER_ROLE: parse
     network_mode: none
     mem_limit: 5g
     cpus: 2
     healthcheck:
       disable: true
     stop_grace_period: 330s
+  transcription:
+    <<: *app
+    profiles: [transcription]
+    command: [node, dist/worker.js]
+    environment:
+      WORKER_ROLE: transcription
+    network_mode: none
+    mem_limit: 4g
+    cpus: 2
+    healthcheck:
+      disable: true
+    stop_grace_period: 20s
 volumes:
   cswatch-data:

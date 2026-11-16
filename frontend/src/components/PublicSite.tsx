@@ -362,6 +362,10 @@ const featureContent = {
         'Choose a .dem or .dem.zst file. Uploads are private by default, bounded by your instance’s limits, and processed in a separate CPU worker.',
       ],
       [
+        'Premier, Competitive and Wingman.',
+        'Download an available CS2 replay from Steam Personal Game Data or the in-game match history, then upload its .dem or .dem.zst file. The upload guide walks you through finding and extracting the file.',
+      ],
+      [
         'Verify your Steam identity.',
         'Steam sign-in links an immutable Steam ID. With a configured API key, you can discover the next match sharing code. Automatic Steam demo downloads are not implemented.',
       ],

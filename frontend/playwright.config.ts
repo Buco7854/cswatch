@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 const baseURL = process.env.E2E_BASE_URL || 'http://localhost:4174';
 const dataDir = process.env.E2E_DATA_DIR || mkdtempSync(join(tmpdir(), 'cswatch-e2e-'));
+if (!process.env.E2E_EXISTING_SERVER) process.env.E2E_DATA_DIR = dataDir;
 export default defineConfig({
   testDir: './tests',
   timeout: 60000,

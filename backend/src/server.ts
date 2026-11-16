@@ -22,6 +22,8 @@ import {
 import { abandon, accessDemo, reserve, validateMagic } from './ingestion.js';
 import { authRoutes } from './auth.js';
 import { providerRoutes } from './providers.js';
+import { captionArtifactName } from './captions.js';
+import { requeueTranscription } from './transcription-worker.js';
 
 export async function createApp(c: Config, db = new Store(c.dataDir)) {
   process.umask(0o077);
@@ -49,7 +51,7 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'"],
+        scriptSrc: ["'self'", "'wasm-unsafe-eval'"],
         styleSrc: ["'self'", "'unsafe-inline'"],
         imgSrc: ["'self'", 'data:', 'blob:'],
         fontSrc: ["'self'"],
@@ -74,7 +76,7 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
       .header('Cache-Control', 'no-store')
       .header('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
     if (r.headers.host !== c.host) throw new HttpError(400, 'Invalid host.');
-    r.user = currentUser(db, r);
+    r.user = currentUser(db, r, c);
     const path = r.url.split('?')[0];
     if (!db.flag(c, 'public_access') && !r.user) {
       const allowed =
@@ -93,6 +95,7 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
           ([
             '/library',
             '/connections',
+            '/account/connections',
             '/account',
             '/admin',
             '/explore',
@@ -166,26 +169,33 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
     steam_discovery: Boolean(c.steamApiKey),
     faceit_configured: Boolean(c.faceitApiKey),
     faceit_downloads: Boolean(c.faceitDownloadToken),
+    transcription_configured: Boolean(c.transcriptionModelDir),
   }));
   app.get('/api/demos', async (r) => {
     const q = z
       .object({
         scope: z.enum(['mine', 'public']).default('mine'),
         offset: z.coerce.number().int().min(0).max(100000).default(0),
+        q: z.string().trim().max(120).default(''),
       })
       .parse(r.query);
-    const rows =
-      q.scope === 'public'
-        ? db.all(
-            "SELECT * FROM demos WHERE public=1 AND status='ready' ORDER BY created_at DESC LIMIT 50 OFFSET ?",
-            q.offset,
-          )
-        : db.all(
-            'SELECT * FROM demos WHERE owner_id=? ORDER BY created_at DESC LIMIT 50 OFFSET ?',
-            requireUser(r).id,
-            q.offset,
-          );
-    return { demos: rows.map((row) => visible(row, r.user?.id)) };
+    const filter = q.scope === 'public' ? "public=1 AND status='ready'" : 'owner_id=?';
+    const args: (string | number)[] = q.scope === 'public' ? [] : [requireUser(r).id];
+    const search = q.q
+      ? " AND (name LIKE ? ESCAPE '\\' OR coalesce(map,'') LIKE ? ESCAPE '\\')"
+      : '';
+    if (q.q) {
+      const pattern = '%' + q.q.replace(/[\\%_]/g, '\\$&') + '%';
+      args.push(pattern, pattern);
+    }
+    const where = `WHERE ${filter}${search}`;
+    const rows = db.all(
+      `SELECT * FROM demos ${where} ORDER BY created_at DESC,id DESC LIMIT 50 OFFSET ?`,
+      ...args,
+      q.offset,
+    );
+    const total = db.one(`SELECT count(*) AS count FROM demos ${where}`, ...args)!.count;
+    return { demos: rows.map((row) => visible(row, r.user?.id)), total };
   });
   app.post('/api/demos', async (r, reply) => {
     const u = requireUser(r),
@@ -223,8 +233,55 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
     const d = accessDemo(db, r.params.id, r.user);
     if (d.status !== 'ready') throw new HttpError(409, 'This demo is not ready.');
     reply.type('application/json').header('Content-Encoding', 'gzip');
-    return reply.send(createReadStream(join(db.root, 'demos', d.id, 'playback.json.gz')));
+    const folder = join(db.root, 'demos', d.id);
+    const file = existsSync(join(folder, 'manifest.json.gz'))
+      ? 'manifest.json.gz'
+      : 'playback.json.gz';
+    return reply.send(createReadStream(join(folder, file)));
   });
+  app.get<{ Params: { id: string } }>('/api/demos/:id/captions', async (r, reply) => {
+    const demo = accessDemo(db, r.params.id, r.user);
+    if (demo.status !== 'ready') throw new HttpError(409, 'This demo is not ready.');
+    const status = demo.transcription_status || 'disabled';
+    if (status === 'ready' && demo.transcription_artifact) {
+      let name: string;
+      try {
+        name = captionArtifactName(demo.transcription_artifact);
+      } catch {
+        throw new HttpError(503, 'Subtitles are temporarily unavailable.');
+      }
+      const path = join(db.root, 'demos', demo.id, name);
+      if (!existsSync(path)) throw new HttpError(503, 'Subtitles are temporarily unavailable.');
+      reply.type('application/json').header('Content-Encoding', 'gzip');
+      return reply.send(createReadStream(path));
+    }
+    return { status, cues: [] };
+  });
+  app.post<{ Params: { id: string } }>('/api/demos/:id/captions/retry', async (r, reply) => {
+    const user = requireUser(r),
+      demo = accessDemo(db, r.params.id, user, true);
+    rateLimit(db, r, 'subtitle-retry', 3, 3600, user.id);
+    z.object({})
+      .strict()
+      .parse(r.body ?? {});
+    const result = requeueTranscription(db, c, demo);
+    db.audit(user.id, 'captions.requeued');
+    reply.code(result.status === 'queued' ? 202 : 200);
+    return result;
+  });
+  app.get<{ Params: { id: string; index: string } }>(
+    '/api/demos/:id/playback/chunks/:index',
+    async (r, reply) => {
+      const d = accessDemo(db, r.params.id, r.user);
+      if (d.status !== 'ready') throw new HttpError(409, 'This demo is not ready.');
+      if (!/^(0|[1-9]\d{0,2})$/.test(r.params.index) || Number(r.params.index) >= 512)
+        throw new HttpError(404, 'Replay chunk not found.');
+      const path = join(db.root, 'demos', d.id, 'chunks', `${r.params.index}.json.gz`);
+      if (!existsSync(path)) throw new HttpError(404, 'Replay chunk not found.');
+      reply.type('application/json').header('Content-Encoding', 'gzip');
+      return reply.send(createReadStream(path));
+    },
+  );
   app.patch<{ Params: { id: string } }>('/api/demos/:id', async (r) => {
     const u = requireUser(r),
       d = accessDemo(db, r.params.id, u, true),
@@ -324,13 +381,8 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
   app.patch('/api/admin', async (r) => {
     const u = requireAdmin(r),
       b = z
-        .object({
-          public_access: z.boolean(),
-          registrations_enabled: z.boolean(),
-          steam_enabled: z.boolean(),
-          faceit_enabled: z.boolean(),
-        })
-        .strict()
+        .partialRecord(z.enum(Object.keys(flagDefaults) as [Flag, ...Flag[]]), z.boolean())
+        .refine((values) => Object.keys(values).length > 0)
         .parse(r.body);
     db.transaction(() => {
       for (const [k, v] of Object.entries(b))

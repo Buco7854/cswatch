@@ -1,0 +1,156 @@
+.member-dialog.upload-dialog .upload-dialog-closebar {
+  position: sticky;
+  top: 0;
+  height: 0;
+  z-index: 3;
+}
+.member-dialog.upload-dialog .upload-dialog-closebar > .dialog-close {
+  top: -8px;
+  right: -8px;
+  min-width: 44px;
+  min-height: 44px;
+  background: var(--surface);
+  border-radius: 6px;
+}
+.member-dialog.upload-dialog .upload-panel > .panel-heading {
+  padding-right: 36px;
+}
+.member-dialog .upload-source-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 20px;
+}
+.member-dialog .upload-source-choice > span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.member-dialog .upload-source-choice > .select-control {
+  margin: 0;
+  width: 100%;
+}
+.member-dialog .demo-import-guide {
+  min-width: 0;
+}
+.member-dialog .import-guide-intro h3 {
+  font-size: 16px;
+  margin: 0 0 8px;
+  color: var(--text);
+}
+.member-dialog .demo-import-guide p {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+  margin: 7px 0 0;
+}
+.member-dialog .demo-import-guide ol {
+  margin: 20px 0;
+  padding-left: 22px;
+  display: grid;
+  gap: 19px;
+}
+.member-dialog .demo-import-guide li {
+  padding-left: 5px;
+  color: var(--faint);
+  font-size: 13px;
+}
+.member-dialog .demo-import-guide li > strong {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+}
+.member-dialog .demo-import-guide li > .button {
+  margin-top: 12px;
+}
+.member-dialog .import-guide-help {
+  padding: 14px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.member-dialog .import-guide-help summary {
+  cursor: pointer;
+  color: var(--text);
+  font-size: 13px;
+}
+.member-dialog .import-guide-help code {
+  display: block;
+  margin-top: 12px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.member-dialog .demo-import-guide .import-guide-availability {
+  margin-top: 16px;
+  font-size: 12px;
+}
+.member-dialog .import-guide-availability a,
+.member-dialog .import-guide-reference a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text);
+  min-height: 32px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.member-dialog .demo-import-guide .import-guide-reference {
+  margin-top: 7px;
+  font-size: 11px;
+}
+.member-dialog .import-guide-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin-top: 20px;
+  padding-top: 12px;
+  background: var(--surface);
+}
+.member-dialog .import-guide-actions::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 32px;
+  background: var(--surface);
+}
+.member-dialog .import-guide-upload {
+  width: 100%;
+  margin: 0;
+  justify-content: center;
+}
+.member-dialog .upload-find-match {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 15px;
+  min-height: 40px;
+  padding: 0;
+  font-size: 13px;
+  color: var(--text);
+  text-align: left;
+}
+.member-dialog .upload-guide-progress {
+  margin: 18px 0 0;
+  padding: 16px;
+  background: var(--raised);
+  border-radius: 6px;
+}
+.member-dialog .upload-guide-progress > progress {
+  width: 100%;
+  margin-top: 10px;
+}
+.member-dialog .upload-guide-progress > p {
+  color: var(--text);
+  margin: 0;
+}
+@media (max-width: 540px) {
+  .member-dialog .import-guide-reference a,
+  .member-dialog .import-guide-availability a {
+    min-height: 44px;
+  }
+  .member-dialog .import-guide-help summary {
+    min-height: 32px;
+    padding: 6px 0;
+  }
+}
