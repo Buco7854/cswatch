@@ -77,7 +77,25 @@ export const sample: Playback = {
     },
   ],
   events: [
-    { type: 'smokegrenade_detonate', tick: 448, x: 376, y: 392, z: 0 },
+    {
+      type: 'grenade_thrown',
+      tick: 256,
+      user_name: 'marlow',
+      weapon: 'smokegrenade',
+      entityid: 1,
+      user_X: -200,
+      user_Y: 200,
+      user_Z: 0,
+    },
+    {
+      type: 'smokegrenade_detonate',
+      tick: 448,
+      user_name: 'marlow',
+      entityid: 1,
+      x: 376,
+      y: 392,
+      z: 0,
+    },
     { type: 'round_start', tick: 0 },
     {
       type: 'player_death',

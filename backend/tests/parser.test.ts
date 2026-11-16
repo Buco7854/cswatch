@@ -15,6 +15,7 @@ import { spawnSync } from 'node:child_process';
 import { parse } from '../src/parser.js';
 import { validateReplayArtifacts } from '../src/replay.js';
 import { collectFrameState } from '../src/frame-state.js';
+import { buildReviewPrompts } from '../../frontend/src/review-prompts.js';
 const fixture = resolve(process.env.DEMO_FIXTURE || '../var/fixture/input.dem');
 for (const compressed of [false, true])
   test(
@@ -55,6 +56,20 @@ for (const compressed of [false, true])
         assert.equal(typeof elimination.attacker_steamid, 'string');
         assert.equal(typeof elimination.user_steamid, 'string');
         assert.ok(data.grenades.some((g: any) => g.points.length > 2));
+        const prompts = data.players.map((player) =>
+          buildReviewPrompts(
+            { ...data, version: 1 },
+            player.id,
+            frames[0].tick,
+            frames.at(-1)!.tick,
+          ),
+        );
+        assert.ok(prompts.some((index) => index.kills.length > 0));
+        assert.ok(
+          prompts.some((index) =>
+            index.landings.some((landing) => landing.source === 'recorded-detonation'),
+          ),
+        );
         assert.equal(data.capabilities?.economy, true);
         assert.equal(data.capabilities?.equipment, true);
         assert.equal(data.capabilities?.inventory, true);

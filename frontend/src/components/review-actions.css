@@ -1,0 +1,87 @@
+/* Recorded-moment actions share one small plane, independent of fading chrome. */
+.viewer-frame .viewer-context-actions {
+  position: absolute;
+  right: 16px;
+  bottom: calc(var(--viewer-dock-height, 160px) + 12px + var(--review-communications-gap, 0px));
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  width: 190px;
+  padding: 4px;
+  box-sizing: border-box;
+  border-radius: 4px;
+  background: var(--viewer-plane);
+  color: var(--viewer-ink);
+}
+.viewer-frame .viewer-context-actions .review-action {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  flex: none;
+  width: 100%;
+  box-sizing: border-box;
+  height: 44px;
+  min-height: 44px;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--viewer-ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 16px;
+  text-align: left;
+  white-space: normal;
+  cursor: pointer;
+}
+.viewer-frame .viewer-context-actions .review-action:hover {
+  background: var(--viewer-raised);
+}
+.viewer-frame .viewer-context-actions .review-action:focus-visible {
+  outline: 2px solid var(--viewer-ink);
+  outline-offset: -2px;
+  background: var(--viewer-raised);
+}
+.viewer-frame .viewer-context-actions .review-action > svg,
+.viewer-frame .viewer-context-actions .equipment-glyph,
+.viewer-frame .viewer-context-actions .review-event-glyph {
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+.viewer-frame .viewer-context-actions .review-action > span:last-child {
+  min-width: 0;
+}
+.viewer-frame[data-review-action-count='1'] {
+  --review-actions-gap: 64px;
+}
+.viewer-frame[data-review-action-count='2'] {
+  --review-actions-gap: 108px;
+}
+.viewer-frame .review-economy-frame {
+  max-height: calc(100% - var(--review-actions-gap, 0px));
+}
+@media (max-width: 760px) {
+  .viewer-frame .viewer-context-actions {
+    right: 8px;
+    width: min(190px, calc(100% - 176px));
+  }
+}
+@media (max-height: 560px) and (min-width: 480px) {
+  .viewer-frame .viewer-context-actions {
+    right: 16px;
+  }
+  .viewer-frame[data-review-action-count='2'] .viewer-context-actions {
+    flex-direction: row;
+    width: min(386px, calc(100% - 216px));
+  }
+  .viewer-frame .viewer-context-actions .review-action {
+    flex: 1;
+  }
+  .viewer-frame[data-review-action-count='2'] {
+    --review-actions-gap: 64px;
+  }
+}

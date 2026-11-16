@@ -73,12 +73,12 @@ export default function ViewerOptions({
         {toggle(
           'utilities',
           t('Utility zones'),
-          t('Show event-based smoke and fire approximations.'),
+          t('Show recorded detonation markers and approximate smoke and fire zones.'),
         )}
         {toggle(
           'trajectories',
           t('Grenade paths'),
-          t('Show recorded flight paths and projectile positions.'),
+          t('Show the recorded flight paths. Grenade projectiles stay visible.'),
         )}
       </section>
       <section>
@@ -130,6 +130,16 @@ export default function ViewerOptions({
       <section>
         <h3>{t('Playback & performance')}</h3>
         {toggle(
+          'grenadeLanding',
+          t('Grenade landing shortcut'),
+          t('Offer a view of the recorded detonation after the observed player throws a grenade.'),
+        )}
+        {toggle(
+          'killReplay',
+          t('Kill replay shortcut'),
+          t('Offer a short replay after an elimination by the observed player.'),
+        )}
+        {toggle(
           'autoHideControls',
           t('Hide controls during playback'),
           t(
@@ -161,6 +171,11 @@ export default function ViewerOptions({
             ]}
           />
         </label>
+        <p className="muted">
+          {t(
+            'Recorded grenades remain visible at every quality level. Paths and analytical zones have separate controls.',
+          )}
+        </p>
         <p className="muted">
           {t(
             'Utility zones approximate event positions and durations. They do not reproduce Source 2’s volumetric smoke simulation.',

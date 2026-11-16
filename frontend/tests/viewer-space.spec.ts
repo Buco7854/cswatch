@@ -172,7 +172,20 @@ test('recorded movement and mouse visualization require separate opt-ins', async
   await expect(optionSwitch(page, 'Mouse buttons and movement')).not.toBeChecked();
   await page.getByRole('button', { name: 'Close viewer options', exact: true }).click();
   await expect(page.locator('.input-forward')).toHaveAttribute('data-state', 'pressed');
+  await expect(page.locator('.input-forward kbd')).toHaveText('Z');
+  await expect(page.locator('.input-left kbd')).toHaveText('Q');
+  await expect(page.locator('.input-back kbd')).toHaveText('S');
+  await expect(page.locator('.input-right kbd')).toHaveText('D');
   await expect(page.locator('.input-movement-keys')).toBeVisible();
+  const movement = (await page.locator('.input-movement-keys').boundingBox())!;
+  const modifiers = (await page.locator('.input-utility-keys').boundingBox())!;
+  expect(modifiers.y).toBeGreaterThanOrEqual(movement.y + movement.height);
+  const forward = (await page.locator('.input-forward').boundingBox())!;
+  const back = (await page.locator('.input-back').boundingBox())!;
+  expect(forward.y + forward.height).toBeLessThanOrEqual(back.y);
+  expect(forward.x + forward.width / 2).toBeCloseTo(back.x + back.width / 2, 0);
+  await expect(page.locator('.input-walk kbd')).toHaveText('Shift');
+  await expect(page.locator('.input-duck kbd')).toHaveText('Ctrl');
   await expect(page.locator('.input-mouse-device')).toHaveCount(0);
   await page.getByRole('button', { name: 'Options', exact: true }).click();
   await optionSwitch(page, 'Mouse buttons and movement').check();
@@ -181,11 +194,22 @@ test('recorded movement and mouse visualization require separate opt-ins', async
     page.getByRole('group', { name: 'Mouse action display', exact: true }),
   ).toBeVisible();
   await expect(page.locator('.input-mouse-primary')).toHaveAttribute('data-state', 'pressed');
+  const keyboard = (await page.locator('.input-keyboard-block').boundingBox())!;
+  const mouse = (await page.locator('.input-mouse-device').boundingBox())!;
+  expect(mouse.x).toBeGreaterThanOrEqual(keyboard.x + keyboard.width);
   await page.reload();
   await expect(
     page.getByRole('group', { name: 'Mouse action display', exact: true }),
   ).toBeVisible();
   await expect.poll(async () => (await settings(page)).mouseInput).toBe(true);
+  await page.getByRole('button', { name: 'Options', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Keyboard display layout', exact: true }).click();
+  await page.getByRole('option', { name: 'WASD', exact: true }).click();
+  await page.getByRole('button', { name: 'Close viewer options', exact: true }).click();
+  await page.reload();
+  await expect(page.locator('.input-forward kbd')).toHaveText('W');
+  await expect(page.locator('.input-left kbd')).toHaveText('A');
+  await expect.poll(async () => (await settings(page)).inputLayout).toBe('wasd');
 });
 
 async function hiddenChrome(page: Page) {

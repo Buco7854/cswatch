@@ -100,7 +100,7 @@ export default function PlayerInputs({
   state: Position | undefined;
   layout: 'wasd' | 'zqsd';
   compact?: boolean;
-  /** A containing edge widget can expose metadata through its own action menu. */
+  /** Settings can expose source and raw-count metadata without inline controls. */
   detailsExpanded?: boolean;
   /** The physical mouse diagram is opt-in; recorded metadata remains available. */
   mouseInput?: boolean;
@@ -157,25 +157,64 @@ export default function PlayerInputs({
       aria-label={t('Selected player input actions')}
     >
       <div className="input-device-stage">
-        <div
-          className="input-keyboard input-movement-keys"
-          role="group"
-          aria-label={t('Movement actions')}
-        >
-          <ActionKey
-            className="input-forward"
-            label={layout === 'zqsd' ? 'Z' : 'W'}
-            action={t('Forward')}
-            pressed={input.forward}
-          />
-          <ActionKey
-            className="input-left"
-            label={layout === 'zqsd' ? 'Q' : 'A'}
-            action={t('Left')}
-            pressed={input.left}
-          />
-          <ActionKey className="input-back" label="S" action={t('Backward')} pressed={input.back} />
-          <ActionKey className="input-right" label="D" action={t('Right')} pressed={input.right} />
+        <div className="input-keyboard-block">
+          <div
+            className="input-keyboard input-movement-keys"
+            role="group"
+            aria-label={t('Movement actions')}
+          >
+            <ActionKey
+              className="input-forward"
+              label={layout === 'zqsd' ? 'Z' : 'W'}
+              action={t('Forward')}
+              pressed={input.forward}
+            />
+            <ActionKey
+              className="input-left"
+              label={layout === 'zqsd' ? 'Q' : 'A'}
+              action={t('Left')}
+              pressed={input.left}
+            />
+            <ActionKey
+              className="input-back"
+              label="S"
+              action={t('Backward')}
+              pressed={input.back}
+            />
+            <ActionKey
+              className="input-right"
+              label="D"
+              action={t('Right')}
+              pressed={input.right}
+            />
+          </div>
+          <div className="input-keyboard input-utility-keys">
+            <ActionKey
+              className="input-walk"
+              label="Shift"
+              action={t('Walk')}
+              pressed={input.walk}
+            />
+            <ActionKey
+              className="input-duck"
+              label="Ctrl"
+              action={t('Crouch')}
+              pressed={input.duck}
+            />
+            <ActionKey className="input-use" label="E" action={t('Use')} pressed={input.use} />
+            <ActionKey
+              className="input-jump"
+              label={t('Space')}
+              action={t('Jump')}
+              pressed={input.jump}
+            />
+            <ActionKey
+              className="input-reload"
+              label="R"
+              action={t('Reload')}
+              pressed={input.reload}
+            />
+          </div>
         </div>
         {mouseInput && (
           <div className="input-mouse-device" role="group" aria-label={t('Mouse action display')}>
@@ -189,28 +228,6 @@ export default function PlayerInputs({
             </div>
           </div>
         )}
-        <div className="input-keyboard input-utility-keys">
-          <ActionKey className="input-use" label="E" action={t('Use')} pressed={input.use} />
-          <ActionKey
-            className="input-reload"
-            label="R"
-            action={t('Reload')}
-            pressed={input.reload}
-          />
-          <ActionKey className="input-walk" label="Shift" action={t('Walk')} pressed={input.walk} />
-          <ActionKey
-            className="input-duck"
-            label="Ctrl"
-            action={t('Crouch')}
-            pressed={input.duck}
-          />
-          <ActionKey
-            className="input-jump"
-            label={t('Space')}
-            action={t('Jump')}
-            pressed={input.jump}
-          />
-        </div>
       </div>
       {detailsExpanded === undefined ? (
         <details className="input-visual-details">

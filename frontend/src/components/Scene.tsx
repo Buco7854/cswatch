@@ -7,6 +7,20 @@ import * as THREE from 'three';
 import type { Playback, Position } from '../types';
 import { api } from '../api';
 import TacticalPlot from './TacticalPlot';
+import {
+  buildUtilityZones,
+  projectilesAt,
+  type ProjectileState,
+  type UtilityZone,
+} from '../utility-state';
+type UtilityPresentation = { projectiles: ProjectileState[]; zones: UtilityZone[] };
+export type SceneFocus = {
+  id: string;
+  target: { x: number; y: number; z: number };
+  origin?: { x: number; y: number; z: number };
+  fromTick?: number;
+  untilTick?: number;
+};
 import { frameAt, playbackBounds, defaultSettings, type ViewerSettings } from '../playback';
 import { Line } from '@react-three/drei';
 import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js';
@@ -267,6 +281,8 @@ function World({
   preview,
   settings,
   agents,
+  focus,
+  utilityState,
 }: {
   data: Playback;
   tick: number;
@@ -276,9 +292,12 @@ function World({
   preview: boolean;
   settings: ViewerSettings;
   agents: { ct: string | null; t: string | null };
+  focus?: SceneFocus;
+  utilityState: UtilityPresentation;
 }) {
   const { camera } = useThree();
   const orbit = useRef<React.ComponentRef<typeof OrbitControls>>(null);
+  const freeView = useRef<{ position: THREE.Vector3; target: THREE.Vector3 } | null>(null);
   const { frame, next, alpha } = frameAt(data, tick);
   const bounds = useMemo(() => {
     if (data.sample) return { center: new THREE.Vector3(0, 0, 0), extent: 52 };
@@ -292,15 +311,44 @@ function World({
     return { center: box.getCenter(new THREE.Vector3()), extent: Math.max(size.x, size.z, 20) };
   }, [data.sample, data.worldBounds, data.worldBounds ? null : data.frames]);
   useEffect(() => {
-    if (mode === 'orbit') {
+    if (mode === 'orbit' && focus) {
+      const target = new THREE.Vector3(
+        focus.target.x * UNIT,
+        focus.target.z * UNIT,
+        -focus.target.y * UNIT,
+      );
+      const origin =
+        focus.origin &&
+        new THREE.Vector3(focus.origin.x * UNIT, focus.origin.z * UNIT, -focus.origin.y * UNIT);
+      const extent = origin ? THREE.MathUtils.clamp(origin.distanceTo(target) * 0.7, 10, 32) : 16;
       camera.position
-        .copy(bounds.center)
-        .add(new THREE.Vector3(bounds.extent * 0.57, bounds.extent * 0.65, bounds.extent * 0.62));
-      camera.lookAt(bounds.center);
-      orbit.current?.target.copy(bounds.center);
+        .copy(target)
+        .add(new THREE.Vector3(extent * 0.65, extent * 0.9, extent * 0.65));
+      camera.lookAt(target);
+      orbit.current?.target.copy(target);
+      orbit.current?.update();
+    } else if (mode === 'orbit') {
+      camera.position.copy(
+        freeView.current?.position ||
+          bounds.center
+            .clone()
+            .add(
+              new THREE.Vector3(bounds.extent * 0.57, bounds.extent * 0.65, bounds.extent * 0.62),
+            ),
+      );
+      const target = freeView.current?.target || bounds.center;
+      camera.lookAt(target);
+      orbit.current?.target.copy(target);
       orbit.current?.update();
     }
-  }, [mode, bounds, camera]);
+    return () => {
+      if (mode === 'orbit')
+        freeView.current = {
+          position: camera.position.clone(),
+          target: orbit.current?.target.clone() || bounds.center.clone(),
+        };
+    };
+  }, [mode, bounds, camera, focus?.id]);
   useFrame(() => {
     if (mode === 'orbit') return;
     const p = frame.players.find((p) => p.id === selected) ?? frame.players[0];
@@ -380,7 +428,29 @@ function World({
             rate={data.tickRate}
           />
         ))}
-      {!preview && <UtilityLayer data={data} tick={tick} selected={selected} settings={settings} />}
+      {!preview && (
+        <UtilityLayer
+          data={data}
+          tick={tick}
+          selected={selected}
+          settings={settings}
+          utilityState={utilityState}
+        />
+      )}
+      {mode === 'orbit' &&
+        focus &&
+        tick >= (focus.fromTick ?? -Infinity) &&
+        tick <= (focus.untilTick ?? Infinity) && (
+          <mesh
+            name="review-impact-target"
+            position={[focus.target.x * UNIT, focus.target.z * UNIT + 0.05, -focus.target.y * UNIT]}
+            rotation={[-Math.PI / 2, 0, 0]}
+            renderOrder={11}
+          >
+            <ringGeometry args={[0.4, 0.47, 32]} />
+            <meshBasicMaterial color="#e4b575" depthTest={false} transparent opacity={0.8} />
+          </mesh>
+        )}
       <OrbitControls
         ref={orbit}
         enabled={mode === 'orbit' && !preview}
@@ -397,26 +467,15 @@ function UtilityLayer({
   tick,
   selected,
   settings,
+  utilityState,
 }: {
   data: Playback;
   tick: number;
   selected: string;
   settings: ViewerSettings;
+  utilityState: UtilityPresentation;
 }) {
-  const paths = useMemo(() => data.grenades ?? [], [data]);
-  const utility = data.events.filter(
-    (e) =>
-      settings.utilities &&
-      typeof e.x === 'number' &&
-      typeof e.y === 'number' &&
-      typeof e.z === 'number' &&
-      tick >= e.tick &&
-      tick <
-        e.tick +
-          data.tickRate *
-            (e.type === 'smokegrenade_detonate' ? 18 : e.type === 'inferno_startburn' ? 7 : 0) &&
-      ['smokegrenade_detonate', 'inferno_startburn'].includes(e.type),
-  );
+  const { zones: utility, projectiles } = utilityState;
   const trail = useMemo(() => {
     if (!settings.trails) return [];
     const frames = data.frames.filter((f) => f.tick <= tick && f.tick > tick - data.tickRate * 5);
@@ -427,52 +486,51 @@ function UtilityLayer({
   }, [data, tick, selected, settings.trails]);
   return (
     <>
-      {utility.map((e, i) => (
+      {utility.map((zone) => (
         <mesh
-          key={e.type + String(e.tick) + i}
+          key={zone.id}
+          name={'utility-zone:' + zone.kind}
           position={[
-            Number(e.x) * UNIT,
-            Number(e.z) * UNIT + (e.type === 'smokegrenade_detonate' ? 1.7 : 0.08),
-            -Number(e.y) * UNIT,
+            zone.x * UNIT,
+            zone.z * UNIT + (zone.kind === 'smoke' ? 1.7 : zone.kind === 'fire' ? 0.08 : 0.4),
+            -zone.y * UNIT,
           ]}
-          rotation={e.type === 'inferno_startburn' ? [-Math.PI / 2, 0, 0] : [0, 0, 0]}
+          rotation={zone.kind === 'fire' ? [-Math.PI / 2, 0, 0] : [0, 0, 0]}
         >
-          {e.type === 'smokegrenade_detonate' ? (
-            <sphereGeometry args={[3.7, 16, 12]} />
-          ) : (
+          {zone.kind === 'fire' ? (
             <circleGeometry args={[3.2, 24]} />
+          ) : (
+            <sphereGeometry args={[zone.kind === 'smoke' ? 3.7 : 0.9, 16, 12]} />
           )}
           <meshStandardMaterial
-            color={e.type === 'smokegrenade_detonate' ? '#b5b8ad' : '#e4a661'}
+            color={
+              zone.kind === 'smoke' ? '#b5b8ad' : zone.kind === 'flash' ? '#f5f0d8' : '#e4a661'
+            }
             transparent
-            opacity={e.type === 'smokegrenade_detonate' ? 0.45 : 0.6}
+            opacity={zone.kind === 'smoke' ? 0.45 : 0.6}
             depthWrite={false}
           />
         </mesh>
       ))}
-      {settings.trajectories &&
-        paths.map((g) => {
-          if (!g.points.length || tick < g.points[0].tick || tick > g.points.at(-1)!.tick)
-            return null;
-          const points = g.points.filter(
-            (p) => p.tick <= tick && p.tick > tick - data.tickRate * 2,
-          );
-          if (points.length < 2) return null;
-          const last = points.at(-1)!;
-          return (
-            <group key={g.id}>
-              <Line
-                points={points.map((p) => new THREE.Vector3(p.x * UNIT, p.z * UNIT, -p.y * UNIT))}
-                color="#e4b575"
-                lineWidth={1.5}
-              />
-              <mesh position={[last.x * UNIT, last.z * UNIT, -last.y * UNIT]}>
-                <sphereGeometry args={[0.13, 8, 8]} />
-                <meshBasicMaterial color="#e4b575" />
-              </mesh>
-            </group>
-          );
-        })}
+      {projectiles.map((grenade) => (
+        <group key={grenade.id} name={'recorded-projectile:' + grenade.id}>
+          {settings.trajectories && grenade.trail.length > 1 && (
+            <Line
+              points={grenade.trail.map(
+                (point) => new THREE.Vector3(point.x * UNIT, point.z * UNIT, -point.y * UNIT),
+              )}
+              color="#e4b575"
+              lineWidth={1.5}
+            />
+          )}
+          <mesh
+            position={[grenade.point.x * UNIT, grenade.point.z * UNIT, -grenade.point.y * UNIT]}
+          >
+            <sphereGeometry args={[0.13, 8, 8]} />
+            <meshBasicMaterial color="#e4b575" />
+          </mesh>
+        </group>
+      ))}
       {trail.length > 1 && (
         <Line points={trail} color="#ffffff" lineWidth={1.5} transparent opacity={0.6} />
       )}
@@ -499,6 +557,7 @@ export default function Scene({
   preview = false,
   settings = defaultSettings,
   onMapAvailability,
+  focus,
 }: {
   data: Playback;
   tick?: number;
@@ -507,11 +566,35 @@ export default function Scene({
   preview?: boolean;
   settings?: ViewerSettings;
   onMapAvailability?: (available: boolean) => void;
+  focus?: SceneFocus;
 }) {
-  const low =
-    settings.quality === 'low' ||
-    (settings.quality === 'auto' &&
-      (window.matchMedia('(max-width:780px)').matches || navigator.hardwareConcurrency <= 4));
+  const [autoLow, setAutoLow] = useState(
+    () =>
+      window.matchMedia('(max-width:780px),(pointer:coarse)').matches ||
+      navigator.hardwareConcurrency <= 4,
+  );
+  useEffect(() => {
+    const media = window.matchMedia('(max-width:780px),(pointer:coarse)');
+    const update = () => setAutoLow(media.matches || navigator.hardwareConcurrency <= 4);
+    media.addEventListener('change', update);
+    update();
+    return () => media.removeEventListener('change', update);
+  }, []);
+  const low = settings.quality === 'low' || (settings.quality === 'auto' && autoLow);
+  const zones = useMemo(
+    () => buildUtilityZones(data.events, data.tickRate),
+    [data.events, data.tickRate],
+  );
+  const utilityState = useMemo(
+    () => ({
+      projectiles: preview ? [] : projectilesAt(data.grenades || [], tick, data.tickRate),
+      zones:
+        preview || !settings.utilities
+          ? []
+          : zones.filter((zone) => tick >= zone.start && tick < zone.end),
+    }),
+    [data.grenades, data.tickRate, tick, zones, preview, settings.utilities],
+  );
   const [model, setModel] = useState<string | null>(null);
   const [agents, setAgents] = useState<{ ct: string | null; t: string | null }>({
     ct: null,
@@ -545,10 +628,30 @@ export default function Scene({
         .catch(() => {});
     return () => controller.abort();
   }, [data.map, data.sample, low]);
-  if (mode === '2d') return <TacticalPlot data={data} tick={tick} selected={selected} />;
+  if (mode === '2d')
+    return (
+      <TacticalPlot
+        data={data}
+        tick={tick}
+        selected={selected}
+        settings={settings}
+        focus={
+          focus && tick >= (focus.fromTick ?? -Infinity) && tick <= (focus.untilTick ?? Infinity)
+            ? focus.target
+            : undefined
+        }
+      />
+    );
   return (
     <div
       className="scene"
+      data-quality={low ? 'low' : 'high'}
+      data-camera-mode={mode}
+      data-focus-x={focus?.target.x}
+      data-focus-y={focus?.target.y}
+      data-focus-z={focus?.target.z}
+      data-projectile-count={utilityState.projectiles.length}
+      data-utility-zone-count={utilityState.zones.length}
       role="img"
       aria-label={
         data.sample
@@ -558,14 +661,42 @@ export default function Scene({
     >
       <SceneBoundary
         key={data.map}
-        fallback={<TacticalPlot data={data} tick={tick} selected={selected} />}
+        fallback={
+          <TacticalPlot
+            data={data}
+            tick={tick}
+            selected={selected}
+            settings={settings}
+            focus={
+              focus &&
+              tick >= (focus.fromTick ?? -Infinity) &&
+              tick <= (focus.untilTick ?? Infinity)
+                ? focus.target
+                : undefined
+            }
+          />
+        }
       >
         <Canvas
           shadows={!low}
           dpr={low ? 1 : [1, 1.75]}
           camera={{ position: [32, 36, 34], fov: 48, near: 0.05, far: 3000 }}
           gl={{ antialias: true, powerPreference: 'high-performance' }}
-          fallback={<TacticalPlot data={data} tick={tick} selected={selected} />}
+          fallback={
+            <TacticalPlot
+              data={data}
+              tick={tick}
+              selected={selected}
+              settings={settings}
+              focus={
+                focus &&
+                tick >= (focus.fromTick ?? -Infinity) &&
+                tick <= (focus.untilTick ?? Infinity)
+                  ? focus.target
+                  : undefined
+              }
+            />
+          }
         >
           <World
             data={data}
@@ -576,6 +707,8 @@ export default function Scene({
             preview={preview}
             settings={settings}
             agents={agents}
+            focus={focus}
+            utilityState={utilityState}
           />
         </Canvas>
       </SceneBoundary>

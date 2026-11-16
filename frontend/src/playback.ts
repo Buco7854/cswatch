@@ -67,6 +67,8 @@ export type ViewerSettings = {
   inputDetails: boolean;
   controlsHidden: boolean;
   autoHideControls: boolean;
+  grenadeLanding: boolean;
+  killReplay: boolean;
   economy: boolean;
   inputLayout: 'wasd' | 'zqsd';
   voice: boolean;
@@ -90,8 +92,10 @@ export const defaultSettings: ViewerSettings = {
   inputDetails: false,
   controlsHidden: false,
   autoHideControls: true,
+  grenadeLanding: true,
+  killReplay: true,
   economy: false,
-  inputLayout: 'wasd',
+  inputLayout: 'zqsd',
   voice: false,
   subtitles: false,
   chat: false,
