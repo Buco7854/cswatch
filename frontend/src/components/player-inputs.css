@@ -1,5 +1,5 @@
-/* Keycaps and one mouse replace boxed status rows. Displayed bindings are
-   conventional labels for recorded game actions, never physical-key evidence. */
+/* Keyboard actions are the default. The mouse diagram is an explicit preference.
+   Labels represent recorded game actions, never physical-key evidence. */
 .input-hud-empty h3 {
   margin: 0 0 8px;
   color: var(--text);
@@ -19,11 +19,14 @@
 }
 .player-inputs .input-device-stage {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 60px minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: center;
   gap: 10px;
   max-width: 258px;
   margin-inline: auto;
+}
+.player-inputs.has-mouse-input .input-device-stage {
+  grid-template-columns: minmax(0, 1fr) 60px minmax(0, 1fr);
 }
 .player-inputs .input-keyboard {
   display: grid;
@@ -254,9 +257,12 @@
   overflow-wrap: anywhere;
 }
 .player-inputs.is-compact .input-device-stage {
-  grid-template-columns: minmax(0, 1fr) 50px minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   max-width: 174px;
   gap: 6px;
+}
+.player-inputs.is-compact.has-mouse-input .input-device-stage {
+  grid-template-columns: minmax(0, 1fr) 50px minmax(0, 1fr);
 }
 .player-inputs.is-compact .input-keyboard {
   grid-auto-rows: 18px;
@@ -303,6 +309,8 @@
 @media (max-width: 360px) {
   .player-inputs .input-device-stage {
     gap: 8px;
+  }
+  .player-inputs.has-mouse-input:not(.is-compact) .input-device-stage {
     grid-template-columns: minmax(0, 1fr) 54px minmax(0, 1fr);
   }
   .player-inputs .input-mouse-shell {
@@ -312,6 +320,9 @@
   .player-inputs .input-mouse-wheel {
     left: 23px;
   }
+}
+.options-dialog .input-display-preferences {
+  padding-inline-start: 12px;
 }
 @media (max-height: 560px) {
   .player-inputs .input-movement-keys {

@@ -11,7 +11,12 @@ const registry = z
   .object({
     schema: z.literal(1),
     items: z
-      .record(z.string().regex(/^[a-z0-9]{1,40}$/), z.string().regex(/^[a-z0-9_]{1,80}\.svg$/))
+      .record(
+        z.string().regex(/^[a-z0-9]{1,40}$/),
+        z
+          .string()
+          .regex(/^(?:(?:icons\/ui|hud\/teamcounter|hud\/deathnotice)\/)?[a-z0-9_-]{1,80}\.svg$/),
+      )
       .refine((items) => Object.keys(items).length > 0 && Object.keys(items).length <= 128),
   })
   .strict()

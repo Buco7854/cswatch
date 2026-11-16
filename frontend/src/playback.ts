@@ -63,6 +63,8 @@ export type ViewerSettings = {
   killfeed: boolean;
   autoSkip: boolean;
   inputs: boolean;
+  mouseInput: boolean;
+  controlsHidden: boolean;
   economy: boolean;
   inputLayout: 'wasd' | 'zqsd';
   voice: boolean;
@@ -82,6 +84,8 @@ export const defaultSettings: ViewerSettings = {
   killfeed: true,
   autoSkip: false,
   inputs: false,
+  mouseInput: false,
+  controlsHidden: false,
   economy: false,
   inputLayout: 'wasd',
   voice: false,

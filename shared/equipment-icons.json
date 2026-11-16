@@ -73,6 +73,16 @@
     "hegrenade": "hegrenade.svg",
     "molotov": "molotov.svg",
     "incgrenade": "incgrenade.svg",
-    "decoy": "decoy.svg"
+    "decoy": "decoy.svg",
+    "demokill": "icons/ui/crosshair_circle.svg",
+    "demodeath": "icons/ui/kill.svg",
+    "demotick": "icons/ui/bullet.svg",
+    "bombplanted": "hud/teamcounter/teamcounter_bomb-planted.svg",
+    "bombdefused": "hud/teamcounter/teamcounter_bomb-planted-defused.svg",
+    "bombexploded": "hud/teamcounter/killtype_blast.svg",
+    "roundmarker": "icons/ui/round_hash.svg",
+    "teamct": "icons/ui/ct_logo_1c.svg",
+    "teamt": "icons/ui/t_logo_1c.svg",
+    "headshot": "hud/deathnotice/icon_headshot.svg"
   }
 }

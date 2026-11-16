@@ -97,7 +97,13 @@ test('broadcast HUD shows recorded loadouts and inputs without inventing missing
   await page.addInitScript(() =>
     localStorage.setItem(
       'viewer-settings',
-      JSON.stringify({ inputs: true, economy: true, inputLayout: 'zqsd', quality: 'low' }),
+      JSON.stringify({
+        inputs: true,
+        mouseInput: true,
+        economy: true,
+        inputLayout: 'zqsd',
+        quality: 'low',
+      }),
     ),
   );
   await page.route('**/api/demos/hud-fixture', (route) =>
@@ -131,6 +137,14 @@ test('broadcast HUD shows recorded loadouts and inputs without inventing missing
   await expect(ct.locator('.broadcast-player')).toHaveCount(5);
   await expect(terrorists.locator('.broadcast-player')).toHaveCount(5);
   await expect(row(0).locator('.broadcast-cash')).toHaveText('$0');
+  await expect(
+    hud.locator('.observed-player,.broadcast-compact-card,.broadcast-bank-heading'),
+  ).toHaveCount(0);
+  const ctBounds = (await ct.boundingBox())!;
+  const tBounds = (await terrorists.boundingBox())!;
+  expect(ctBounds.x).toBeGreaterThan(720);
+  expect(tBounds.x).toBeCloseTo(ctBounds.x, 0);
+  expect(tBounds.y).toBeGreaterThanOrEqual(ctBounds.y + ctBounds.height);
   await expect(row(0).locator('.broadcast-ammo')).toContainText('0');
   await expect(row(0).locator('.broadcast-armor')).toContainText('0');
   await expect(row(0).getByRole('img', { name: 'Flashbang ×2', exact: true })).toBeVisible();
@@ -139,26 +153,29 @@ test('broadcast HUD shows recorded loadouts and inputs without inventing missing
     row(1).getByLabel('Inventory is unavailable at this moment.', { exact: true }),
   ).toBeVisible();
   await expect(row(3).locator('.broadcast-weapon-identity')).toContainText('AWP');
-  await ct.locator('.broadcast-loadout summary').click();
+  await page.getByRole('button', { name: 'Players', exact: true }).click();
+  const details = page.locator('.viewer-drawer .broadcast-loadout');
+  const loadout = details.locator('.broadcast-loadout-values');
+  await details.locator('summary').click();
   await expect
     .poll(() =>
-      ct.evaluate((bank) => {
-        const body = bank.querySelector('.broadcast-loadout-body')!.getBoundingClientRect();
-        const bankRect = bank.getBoundingClientRect();
-        return body.top >= bankRect.top && body.bottom <= bankRect.bottom + 1;
+      details.evaluate((element) => {
+        const body = element.querySelector('.broadcast-loadout-body')!.getBoundingClientRect();
+        const viewport = element.closest('.viewer-drawer-content')!.getBoundingClientRect();
+        return body.top >= viewport.top && body.bottom <= viewport.bottom + 1;
       }),
     )
     .toBe(true);
-  const loadout = ct.locator('.broadcast-loadout-values');
   await expect(
     loadout
       .locator('div')
       .filter({ has: page.getByText('Equipment', { exact: true }) })
       .locator('dd'),
   ).toHaveText('$0');
-  await expect(ct.locator('.broadcast-inventory li').filter({ hasText: 'Flashbang' })).toHaveText(
-    'Flashbang×2',
-  );
+  await expect(
+    details.locator('.broadcast-inventory li').filter({ hasText: 'Flashbang' }),
+  ).toHaveText('Flashbang×2');
+  await page.getByRole('button', { name: 'Close panel', exact: true }).click();
   const timeline = page.getByRole('slider', { name: 'Playback position', exact: true });
   await timeline.fill('1280');
   await expect(row(0).locator('.broadcast-cash')).toHaveText('$5,400');
@@ -167,12 +184,15 @@ test('broadcast HUD shows recorded loadouts and inputs without inventing missing
   await expect(row(0).locator('.broadcast-ammo')).toContainText('7');
   await expect(row(0).getByRole('img', { name: 'Flashbang ×1', exact: true })).toBeVisible();
   await expect(row(0).getByRole('img', { name: 'Flashbang ×2', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Players', exact: true }).click();
+  await details.locator('summary').click();
   await expect(
     loadout
       .locator('div')
       .filter({ has: page.getByText('Equipment', { exact: true }) })
       .locator('dd'),
   ).toHaveText('$4,750');
+  await page.getByRole('button', { name: 'Close panel', exact: true }).click();
   await timeline.fill('0');
   await expect(row(0).locator('.broadcast-cash')).toHaveText('$0');
   await expect(row(0).locator('.broadcast-weapon-identity')).toContainText('AK-47');
@@ -192,23 +212,20 @@ test('broadcast HUD shows recorded loadouts and inputs without inventing missing
     hud.getByText('Input actions were not recorded for this player at this moment.'),
   ).toBeVisible();
   await expect(hud.locator('.input-action-key')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Players', exact: true }).click();
+  await details.locator('summary').click();
   await expect(
     loadout
       .locator('div')
       .filter({ has: page.getByText('Money', { exact: true }) })
       .locator('dd'),
   ).toHaveText('—');
+  await page.getByRole('button', { name: 'Close panel', exact: true }).click();
   await row(2).getByRole('button', { name: 'Select player sable', exact: true }).click();
   await expect(hud.locator('.input-forward')).toHaveAttribute('data-state', 'unknown');
 
   await expect(hud.getByLabel('Recorded mouse movement', { exact: true })).toContainText('12');
   await expect(hud.getByLabel('Recorded mouse movement', { exact: true })).toContainText('-4');
-  await ct
-    .getByRole('button', { name: 'Collapse Counter-terrorists loadouts', exact: true })
-    .click();
-  await expect(ct.locator('.broadcast-roster')).toHaveCount(0);
-  await ct.getByRole('button', { name: 'Expand Counter-terrorists loadouts', exact: true }).click();
-  await expect(ct.locator('.broadcast-player')).toHaveCount(5);
   await expect(hud.locator('.input-mouse-primary')).toHaveAttribute('data-state', 'unknown');
   await expect(hud.locator('.review-hud-tools')).toHaveCount(0);
   for (const [width, height] of [
@@ -216,18 +233,11 @@ test('broadcast HUD shows recorded loadouts and inputs without inventing missing
     [844, 390],
   ]) {
     await page.setViewportSize({ width, height });
-    await expect(hud.locator('.broadcast-compact-card')).toBeVisible();
+    const closeLineups = hud.getByRole('button', { name: 'Close team lineups', exact: true });
+    if (await closeLineups.isVisible()) await closeLineups.click();
+    await expect(hud.locator('.broadcast-lineups-open')).toBeVisible();
     await hud.getByRole('button', { name: 'Expand team lineups', exact: true }).click();
-    await hud
-      .locator('.broadcast-team-switch')
-      .getByRole('button', { name: 'CT Counter-terrorists', exact: true })
-      .click();
     await expect(ct).toBeVisible();
-    await expect(terrorists).toBeHidden();
-    await hud
-      .locator('.broadcast-team-switch')
-      .getByRole('button', { name: 'T Terrorists', exact: true })
-      .click();
     await expect(terrorists).toBeVisible();
     await row(5).getByRole('button', { name: 'Select player vex', exact: true }).click();
     await expect(row(5).getByRole('button')).toHaveAttribute('aria-pressed', 'true');
@@ -250,11 +260,12 @@ test('broadcast HUD shows recorded loadouts and inputs without inventing missing
   await hud.getByRole('button', { name: 'Input display options', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Hide inputs', exact: true }).click();
   await expect(hud.locator('.review-inputs-panel')).toHaveCount(0);
-  await expect(hud.locator('.broadcast-compact-card')).toBeVisible();
+  await expect(hud.locator('.broadcast-lineups-open')).toBeVisible();
   expect(
     await page.evaluate(() => {
       const value = JSON.parse(localStorage.getItem('viewer-settings') || '{}');
       return value.inputs === false && value.economy === true && value.inputLayout === 'zqsd';
     }),
   ).toBe(true);
+  await expect(hud.locator('.observed-player,.broadcast-compact-card')).toHaveCount(0);
 });

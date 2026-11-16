@@ -93,7 +93,7 @@ test('equipment lookup retries a denied manifest on the next viewer mount', asyn
   expect(manifests).toBe(2);
 });
 
-test('desktop-collapsed banks remain expandable after switching to compact lineups', async ({
+test('right-side lineups fold for mobile and restore toggle focus without duplicating the selected player', async ({
   page,
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE));
@@ -101,37 +101,67 @@ test('desktop-collapsed banks remain expandable after switching to compact lineu
   await page.route('**/api/assets/equipment', (route) => route.fulfill({ json: { icons: {} } }));
   await page.goto('/watch/sample');
   const hud = page.getByRole('complementary', { name: 'Analysis HUD', exact: true });
-  const ct = hud.locator('.broadcast-bank[data-team="3"]');
-  const terrorists = hud.locator('.broadcast-bank[data-team="2"]');
-  await ct
-    .getByRole('button', { name: 'Collapse Counter-terrorists loadouts', exact: true })
-    .click();
-  await terrorists
-    .getByRole('button', { name: 'Collapse Terrorists loadouts', exact: true })
-    .click();
-  await expect(ct.locator('.broadcast-player')).toHaveCount(0);
-  await expect(terrorists.locator('.broadcast-player')).toHaveCount(0);
-
-  await page.setViewportSize({ width: 320, height: 740 });
-  await expect(hud.locator('.broadcast-compact-card')).toBeVisible();
-  await hud.getByRole('button', { name: 'Expand team lineups', exact: true }).click();
-  const expandCt = ct.getByRole('button', {
-    name: 'Expand Counter-terrorists loadouts',
-    exact: true,
-  });
-  await expect(expandCt).toBeVisible();
-  await expandCt.click();
-  await expect(ct.locator('.broadcast-player')).toHaveCount(5);
+  await expect(hud.locator('.broadcast-player')).toHaveCount(10);
   await expect(
-    ct.getByRole('button', { name: 'Collapse Counter-terrorists loadouts', exact: true }),
-  ).toBeFocused();
-
-  await hud
-    .locator('.broadcast-team-switch')
-    .getByRole('button', { name: 'T Terrorists', exact: true })
-    .click();
-  await terrorists.getByRole('button', { name: 'Expand Terrorists loadouts', exact: true }).click();
-  await expect(terrorists.locator('.broadcast-player')).toHaveCount(5);
+    hud.locator('.broadcast-bank-heading,.broadcast-compact-card,.observed-player'),
+  ).toHaveCount(0);
+  await page.setViewportSize({ width: 320, height: 740 });
+  const toggle = hud.getByRole('button', { name: 'Expand team lineups', exact: true });
+  await expect(toggle).toBeVisible();
+  await toggle.click();
+  await expect(hud.locator('.broadcast-player').first()).toBeVisible();
+  await hud.locator('.broadcast-player[data-player-id="6"] button').click();
+  await expect(hud.locator('.broadcast-player button[aria-pressed="true"]')).toHaveCount(1);
+  await page.keyboard.press('Escape');
+  await expect(toggle).toBeFocused();
+  await toggle.click();
   await hud.getByRole('button', { name: 'Close team lineups', exact: true }).click();
-  await expect(hud.locator('.broadcast-compact-card')).toBeVisible();
+  await expect(toggle).toBeFocused();
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(hud.locator('.broadcast-player').last()).toBeVisible();
+  await expect(hud.locator('.broadcast-player button[aria-pressed="true"]')).toHaveCount(1);
+});
+
+test('native demo artwork differentiates selected kills, deaths and objective symbols with an honest fallback', async ({
+  page,
+}) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE));
+  await enableEquipment(page);
+  let installed = true;
+  const keys = [
+    'demokill',
+    'demodeath',
+    'bombplanted',
+    'bombdefused',
+    'bombexploded',
+    'teamct',
+    'teamt',
+    'roundmarker',
+  ];
+  await page.route('**/api/assets/equipment', (route) =>
+    route.fulfill({
+      json: {
+        icons: installed
+          ? Object.fromEntries(keys.map((key) => [key, `/api/assets/equipment/${key}.png`]))
+          : {},
+      },
+    }),
+  );
+  await page.goto('/watch/sample');
+  const markers = page.locator('.timeline-event-markers');
+  for (const key of ['demokill', 'bombplanted', 'bombdefused'])
+    await expect(markers.locator(`[data-asset-key="${key}"][data-artwork="operator"]`)).toHaveCount(
+      1,
+    );
+  await page.locator('.broadcast-player[data-player-id="6"] .broadcast-player-select').click();
+  await expect(
+    markers.locator('[data-asset-key="demodeath"][data-artwork="operator"]'),
+  ).toHaveCount(1);
+  await expect(markers.locator('[data-asset-key="demokill"]')).toHaveCount(0);
+  installed = false;
+  await page.reload();
+  await expect(
+    markers.locator('svg[data-asset-key="demokill"][data-artwork="original-fallback"]'),
+  ).toHaveCount(1);
+  await expect(markers.locator('[data-artwork="operator"]')).toHaveCount(0);
 });

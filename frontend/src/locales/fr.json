@@ -831,5 +831,13 @@
   "Selected player loadout": "Équipement du joueur sélectionné",
   "Expand team lineups": "Afficher les équipes",
   "Close team lineups": "Replier les équipes",
-  "Position view": "Vue de positions"
+  "Position view": "Vue de positions",
+  "Timeline options": "Options de la chronologie",
+  "Close timeline options": "Fermer les options de la chronologie",
+  "Mouse buttons and movement": "Boutons et mouvements de la souris",
+  "Show recorded attack actions and mouse movement on a mouse diagram.": "Afficher les actions de tir et les mouvements enregistrés sur un schéma de souris.",
+  "Hide playback controls": "Masquer les commandes de lecture",
+  "Hide the playback dock. Use Show controls or press H to bring it back.": "Masquer la barre de lecture. Utilisez Afficher les commandes ou appuyez sur H pour la rétablir.",
+  "Show controls": "Afficher les commandes",
+  "Show controls (H)": "Afficher les commandes (H)"
 }

@@ -15,6 +15,9 @@ test('viewer streams only nearby time slices, pauses on a failed seek, retries a
   let failFar = true;
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
+  await page.addInitScript(() =>
+    localStorage.setItem('viewer-settings', JSON.stringify({ economy: true, quality: 'low' })),
+  );
   try {
     await writeReplay(dir, {
       ...sample,
@@ -64,11 +67,13 @@ test('viewer streams only nearby time slices, pauses on a failed seek, retries a
     expect(calls).toEqual([0, 1]);
     await slider.fill('8000');
     await expect(page.getByRole('alert')).toContainText('This moment could not be loaded.');
+    await expect(page.getByRole('complementary', { name: 'Analysis HUD' })).toBeHidden();
     await page.getByRole('button', { name: 'Play', exact: true }).click();
     await page.waitForTimeout(150);
     await expect(slider).toHaveValue('8000');
     await page.getByRole('button', { name: 'Try again', exact: true }).click();
     await expect(page.locator('.replay-buffer')).toHaveCount(0);
+    await expect(page.getByRole('complementary', { name: 'Analysis HUD' })).toBeVisible();
     await expect.poll(async () => Number(await slider.inputValue())).toBeGreaterThan(8000);
     await page.getByRole('button', { name: 'Pause', exact: true }).click();
     await page.getByRole('combobox', { name: 'Round', exact: true }).click();

@@ -1,13 +1,12 @@
-/* Edge-only composition: two broadcast banks and a 190px input instrument.
-   The left bank reserves the instrument's measured height, keeping both legible. */
+/* Right-edge roster and left-corner input instrument leave the camera clear. */
 .viewer-review-hud {
   position: absolute;
-  inset: 150px 16px
+  inset: 132px 16px
     calc(var(--viewer-dock-height, 180px) + 16px + var(--review-communications-gap, 0px));
   z-index: 3;
   pointer-events: none;
   color: var(--text);
-  --broadcast-bank-width: clamp(190px, 22vw, 260px);
+  --broadcast-bank-width: clamp(240px, 22vw, 280px);
   --broadcast-bank-max-height: 100%;
 }
 .viewer-review-hud[hidden] {
@@ -15,12 +14,9 @@
 }
 .review-economy-frame {
   position: absolute;
-  inset: 0;
+  inset: 0 0 0 auto;
+  width: var(--broadcast-bank-width);
   min-height: 0;
-}
-.viewer-review-hud[data-inputs='true'] .broadcast-bank[data-team='3'] {
-  margin-bottom: calc(var(--review-input-height, 134px) + 12px);
-  max-height: calc(100% - var(--review-input-height, 134px) - 12px);
 }
 .review-inputs-panel {
   position: absolute;
@@ -30,7 +26,7 @@
   max-width: 100%;
   max-height: 100%;
   border: 0;
-  border-radius: 5px;
+  border-radius: 2px;
   background: var(--surface);
   pointer-events: auto;
   overflow-y: auto;
@@ -91,19 +87,12 @@
 }
 @media (max-width: 760px) {
   .viewer-review-hud {
-    inset: 150px 8px
+    inset: 132px 8px
       calc(var(--viewer-dock-height, 180px) + 12px + var(--review-communications-gap, 0px));
     --broadcast-bank-width: min(100%, 210px);
   }
   .viewer-frame:has(.objective-hud) .viewer-review-hud {
-    top: 244px;
-  }
-  .viewer-review-hud[data-inputs='true'] .broadcast-bank[data-team='3'] {
-    margin-bottom: 0;
-    max-height: 100%;
-  }
-  .viewer-review-hud[data-inputs='true'] .broadcast-compact-card {
-    max-width: calc(100vw - 174px);
+    top: 158px;
   }
   .review-inputs-panel {
     width: 150px;
@@ -124,10 +113,6 @@
     top: 58px;
     bottom: calc(var(--viewer-dock-height, 150px) + 12px + var(--review-communications-gap, 0px));
     --broadcast-bank-width: 210px;
-  }
-  .viewer-review-hud[data-inputs='true'] .broadcast-bank[data-team='3'] {
-    margin-bottom: 0;
-    max-height: 100%;
   }
   .review-inputs-panel {
     max-height: 100%;
@@ -151,5 +136,31 @@
     width: 24px;
     height: 24px;
     margin-top: 3px;
+  }
+  .review-inputs-panel:not(.is-collapsed) {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr);
+    width: 236px;
+    overflow: hidden;
+  }
+  .review-inputs-panel:not(.is-collapsed) .review-inputs-header {
+    flex-direction: column;
+    position: static;
+    width: 44px;
+    min-height: 88px;
+  }
+  .review-inputs-panel:not(.is-collapsed) .review-input-toggle {
+    flex: none;
+    justify-content: center;
+    width: 44px;
+    padding: 0;
+  }
+  .review-inputs-panel:not(.is-collapsed) .review-input-toggle span {
+    display: none;
+  }
+  .review-inputs-panel:not(.is-collapsed) .review-inputs-body {
+    padding: 4px 6px;
+    max-height: 100%;
+    overflow-y: auto;
   }
 }

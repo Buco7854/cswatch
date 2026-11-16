@@ -1,4 +1,6 @@
 import { equipmentLabel } from './equipment-labels';
+import { equipmentKey } from './equipment-key';
+export { equipmentKey } from './equipment-key';
 
 export type EquipmentKind =
   | 'ak'
@@ -21,11 +23,6 @@ export type EquipmentKind =
   | 'helmet'
   | 'defuser'
   | 'unknown';
-export const equipmentKey = (value: string) =>
-  value
-    .replace(/^weapon_/i, '')
-    .replace(/[^a-z0-9]/gi, '')
-    .toLowerCase();
 const labels: Record<string, string> = {
   ak47: 'AK-47',
   m4a4: 'M4A4',

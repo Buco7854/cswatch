@@ -95,12 +95,15 @@ export default function PlayerInputs({
   layout,
   compact = false,
   detailsExpanded,
+  mouseInput = false,
 }: {
   state: Position | undefined;
   layout: 'wasd' | 'zqsd';
   compact?: boolean;
   /** A containing edge widget can expose metadata through its own action menu. */
   detailsExpanded?: boolean;
+  /** The physical mouse diagram is opt-in; recorded metadata remains available. */
+  mouseInput?: boolean;
 }) {
   const input = state?.input;
   if (!input)
@@ -148,7 +151,9 @@ export default function PlayerInputs({
   );
   return (
     <section
-      className={'player-inputs' + (compact ? ' is-compact' : '')}
+      className={
+        'player-inputs' + (compact ? ' is-compact' : '') + (mouseInput ? ' has-mouse-input' : '')
+      }
       aria-label={t('Selected player input actions')}
     >
       <div className="input-device-stage">
@@ -172,16 +177,18 @@ export default function PlayerInputs({
           <ActionKey className="input-back" label="S" action={t('Backward')} pressed={input.back} />
           <ActionKey className="input-right" label="D" action={t('Right')} pressed={input.right} />
         </div>
-        <div className="input-mouse-device" role="group" aria-label={t('Mouse action display')}>
-          <div className="input-mouse-shell">
-            <div className="input-mouse-buttons">
-              <MouseButton side="primary" pressed={input.attack} />
-              <MouseButton side="secondary" pressed={input.attack2} />
+        {mouseInput && (
+          <div className="input-mouse-device" role="group" aria-label={t('Mouse action display')}>
+            <div className="input-mouse-shell">
+              <div className="input-mouse-buttons">
+                <MouseButton side="primary" pressed={input.attack} />
+                <MouseButton side="secondary" pressed={input.attack2} />
+              </div>
+              <span className="input-mouse-wheel" aria-hidden="true" />
+              <MouseMovement dx={input.mouseDx} dy={input.mouseDy} />
             </div>
-            <span className="input-mouse-wheel" aria-hidden="true" />
-            <MouseMovement dx={input.mouseDx} dy={input.mouseDy} />
           </div>
-        </div>
+        )}
         <div className="input-keyboard input-utility-keys">
           <ActionKey className="input-use" label="E" action={t('Use')} pressed={input.use} />
           <ActionKey

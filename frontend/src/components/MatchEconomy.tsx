@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { ChevronDown, ChevronUp, Users, X } from 'lucide-react';
+import { ChevronDown, Skull, Users, X } from 'lucide-react';
 import { locale, t } from '../i18n';
 import type { Frame, Player, Position } from '../types';
 import { equipmentKey, equipmentKind, equipmentName, utilityInventory } from '../equipment-display';
@@ -12,7 +12,7 @@ const number = (value: number | undefined) => known(value)?.toLocaleString(local
 const money = (value: number | undefined) =>
   known(value) === undefined ? '—' : '$' + number(value);
 const yesNo = (value: boolean | undefined) => (value === undefined ? '—' : t(value ? 'Yes' : 'No'));
-type Member = { player: Player; state: Position | undefined };
+export type LoadoutMember = { player: Player; state: Position | undefined };
 
 function UtilityInventory({ state }: { state: Position | undefined }) {
   const items = utilityInventory(state?.inventory);
@@ -60,12 +60,10 @@ function PlayerRow({
   member,
   selected,
   onSelect,
-  compact = false,
 }: {
-  member: Member;
+  member: LoadoutMember;
   selected: boolean;
   onSelect: (id: string) => void;
-  compact?: boolean;
 }) {
   const { player, state } = member;
   const descriptionId = useId();
@@ -76,11 +74,12 @@ function PlayerRow({
   return (
     <li
       className={
-        (compact ? 'broadcast-compact-player' : 'broadcast-player') +
+        'broadcast-player' +
         (selected ? ' is-selected' : '') +
         (state && !state.alive ? ' is-out' : '')
       }
       data-player-id={player.id}
+      data-health={health === undefined ? 'unknown' : health <= 25 ? 'low' : 'normal'}
     >
       <button
         type="button"
@@ -92,32 +91,42 @@ function PlayerRow({
       >
         <span className="broadcast-player-heading">
           <strong className="broadcast-player-name" title={player.name}>
+            {state && !state.alive && <Skull size={13} aria-hidden="true" />}
             {player.name}
           </strong>
           <span className="broadcast-health-value num" title={t('Health')}>
-            {health === undefined ? '—' : `${number(health)} ${t('HP')}`}
-          </span>
-          <span className="broadcast-cash num" title={t('Money')}>
-            {money(state?.money)}
-          </span>
-        </span>
-        <span className="broadcast-active-weapon">
-          <span className="broadcast-weapon-identity">
-            {state?.weapon ? (
-              <>
-                <EquipmentGlyph item={state.weapon} />
-                <span title={equipmentName(state.weapon)}>{equipmentName(state.weapon)}</span>
-              </>
+            {health === undefined ? (
+              '—'
             ) : (
-              <span className="broadcast-unavailable">{t('Weapon unavailable')}</span>
+              <>
+                {number(health)} <small className="visually-hidden">{t('HP')}</small>
+              </>
             )}
           </span>
-          <span className="broadcast-ammo num" title={t('Ammo')}>
-            {number(state?.ammo)}
-            <span className="visually-hidden"> {t('Ammo')}</span>
+          <span className="broadcast-active-weapon">
+            <span
+              className="broadcast-weapon-identity"
+              title={state?.weapon ? equipmentName(state.weapon) : undefined}
+            >
+              {state?.weapon ? (
+                <>
+                  <EquipmentGlyph item={state.weapon} />
+                  <span className="visually-hidden">{equipmentName(state.weapon)}</span>
+                </>
+              ) : (
+                <span className="broadcast-unavailable">{t('Weapon unavailable')}</span>
+              )}
+            </span>
+            <span className="broadcast-ammo num" title={t('Ammo')}>
+              {number(state?.ammo)}
+              <span className="visually-hidden"> {t('Ammo')}</span>
+            </span>
           </span>
         </span>
         <span className="broadcast-player-equipment">
+          <span className="broadcast-cash num" title={t('Money')}>
+            {money(state?.money)}
+          </span>
           <UtilityInventory state={state} />
           <span className="broadcast-protection">
             <span
@@ -173,7 +182,7 @@ function PlayerRow({
   );
 }
 
-function SelectedLoadout({ member }: { member: Member }) {
+export function SelectedLoadout({ member }: { member: LoadoutMember }) {
   const { player, state } = member;
   const items = useMemo(() => {
     if (state?.inventory === undefined) return null;
@@ -272,72 +281,45 @@ function TeamBank({
   onSelect,
 }: {
   team: 2 | 3;
-  members: Member[];
+  members: LoadoutMember[];
   selected: string;
   onSelect: (id: string) => void;
 }) {
-  const [collapsed, setCollapsed] = useState(false);
+  const descriptionId = useId();
   const name = t(team === 3 ? 'Counter-terrorists' : 'Terrorists');
-  const selectedMember = members.find((member) => member.player.id === selected);
   const complete = members.every((member) => member.state !== undefined);
   const alive = members.filter((member) => member.state?.alive).length;
   return (
     <section
-      className={'broadcast-bank' + (collapsed ? ' is-collapsed' : '')}
+      className="broadcast-bank"
       data-team={team}
       aria-label={t('{{team}} live loadouts', { team: name })}
+      aria-describedby={descriptionId}
     >
-      <header className="broadcast-bank-heading">
-        <div>
-          <strong className="broadcast-team-code">{team === 3 ? 'CT' : 'T'}</strong>
-          <span className="broadcast-team-name">
-            {name}
-            <small>
-              {complete
-                ? t('{{alive}} / {{count}} alive', { alive, count: members.length })
-                : t('State incomplete')}
-            </small>
-          </span>
-        </div>
-        <button
-          type="button"
-          className="icon-button"
-          aria-label={t(collapsed ? 'Expand {{team}} loadouts' : 'Collapse {{team}} loadouts', {
-            team: name,
-          })}
-          aria-expanded={!collapsed}
-          onClick={() => setCollapsed((value) => !value)}
-        >
-          {collapsed ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-        </button>
-      </header>
-      {!collapsed && (
-        <div className="broadcast-bank-content">
-          {members.length ? (
-            <ul className="broadcast-roster">
-              {members.map((member) => (
-                <PlayerRow
-                  key={member.player.id}
-                  member={member}
-                  selected={member.player.id === selected}
-                  onSelect={onSelect}
-                />
-              ))}
-            </ul>
-          ) : (
-            <p className="broadcast-empty">{t('No recorded players on this side.')}</p>
-          )}
-          {selectedMember ? (
-            <SelectedLoadout member={selectedMember} />
-          ) : (
-            <p className="broadcast-select-hint">{t('Select a player')}</p>
-          )}
-        </div>
+      <span id={descriptionId} className="visually-hidden">
+        {complete
+          ? t('{{alive}} / {{count}} alive', { alive, count: members.length })
+          : t('State incomplete')}
+      </span>
+      {members.length ? (
+        <ul className="broadcast-roster">
+          {members.map((member) => (
+            <PlayerRow
+              key={member.player.id}
+              member={member}
+              selected={member.player.id === selected}
+              onSelect={onSelect}
+            />
+          ))}
+        </ul>
+      ) : (
+        <p className="broadcast-empty">{t('No recorded players on this side.')}</p>
       )}
     </section>
   );
 }
 
+/** One lineup stack on the picture's edge; full inventory is requested in Players. */
 export default function MatchEconomy({
   players,
   frame,
@@ -353,25 +335,37 @@ export default function MatchEconomy({
     () => new Map(frame.players.map((state) => [state.id, state])),
     [frame.players],
   );
-  const selectedTeam =
-    states.get(selected)?.team ?? players.find((player) => player.id === selected)?.team;
-  const [activeTeam, setActiveTeam] = useState<2 | 3>(selectedTeam === 2 ? 2 : 3);
   const [lineupsOpen, setLineupsOpen] = useState(false);
+  const root = useRef<HTMLElement>(null);
   const openLineups = useRef<HTMLButtonElement>(null);
   const closeLineups = useRef<HTMLButtonElement>(null);
-  const previousLineupsOpen = useRef(lineupsOpen);
-  const selectedPlayer = players.find((player) => player.id === selected);
+  const previousLineupsOpen = useRef(false);
+  const contentId = useId();
   useEffect(() => {
     if (previousLineupsOpen.current !== lineupsOpen) {
-      (lineupsOpen ? closeLineups : openLineups).current?.focus({ preventScroll: true });
+      const media = window.matchMedia('(max-width:760px),(max-height:560px)');
+      if (media.matches)
+        (lineupsOpen ? closeLineups : openLineups).current?.focus({ preventScroll: true });
       previousLineupsOpen.current = lineupsOpen;
     }
   }, [lineupsOpen]);
   useEffect(() => {
-    if (selectedTeam === 2 || selectedTeam === 3) setActiveTeam(selectedTeam);
-  }, [selected, selectedTeam]);
+    const media = window.matchMedia('(max-width:760px),(max-height:560px)');
+    const update = () => {
+      const active = document.activeElement;
+      if (!active || !root.current?.contains(active)) return;
+      if (media.matches) setLineupsOpen(true);
+      else if (active === openLineups.current || active === closeLineups.current) {
+        root.current
+          .querySelector<HTMLButtonElement>('.broadcast-player-select[aria-pressed="true"]')
+          ?.focus({ preventScroll: true });
+      }
+    };
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
   const teams = useMemo(() => {
-    const grouped: Record<2 | 3, Member[]> = { 2: [], 3: [] };
+    const grouped: Record<2 | 3, LoadoutMember[]> = { 2: [], 3: [] };
     for (const player of players) {
       const state = states.get(player.id),
         team = state?.team ?? player.team;
@@ -381,70 +375,48 @@ export default function MatchEconomy({
   }, [players, states]);
   return (
     <section
+      ref={root}
       className={'broadcast-economy' + (lineupsOpen ? ' is-lineups-open' : '')}
-      data-active-team={activeTeam}
       aria-label={t('Economy and loadouts')}
       onKeyDown={(event) => {
-        if (event.key === 'Escape' && lineupsOpen) {
+        if (
+          event.key === 'Escape' &&
+          !event.defaultPrevented &&
+          window.matchMedia('(max-width:760px),(max-height:560px)').matches
+        ) {
           event.preventDefault();
           setLineupsOpen(false);
+          openLineups.current?.focus({ preventScroll: true });
         }
       }}
     >
-      <section
-        className="broadcast-compact-card"
-        data-team={selectedTeam === 2 ? '2' : '3'}
-        aria-label={t('Selected player loadout')}
+      <button
+        type="button"
+        ref={openLineups}
+        className="broadcast-lineups-open"
+        aria-label={t('Expand team lineups')}
+        aria-expanded={lineupsOpen}
+        aria-controls={contentId}
+        onClick={() => setLineupsOpen(true)}
       >
-        {selectedPlayer ? (
-          <ul className="broadcast-compact-roster">
-            <PlayerRow
-              compact
-              member={{ player: selectedPlayer, state: states.get(selected) }}
-              selected
-              onSelect={onSelect}
-            />
-          </ul>
-        ) : (
-          <p className="broadcast-empty">{t('State unavailable')}</p>
-        )}
-        <button
-          type="button"
-          ref={openLineups}
-          className="broadcast-lineups-open"
-          aria-expanded={lineupsOpen}
-          onClick={() => setLineupsOpen(true)}
-        >
-          <Users size={15} />
-          {t('Expand team lineups')}
-          <ChevronDown size={14} />
-        </button>
-      </section>
+        <Users size={16} />
+        <span>{t('Expand team lineups')}</span>
+        <ChevronDown size={14} />
+      </button>
       <button
         type="button"
         ref={closeLineups}
         className="broadcast-lineups-close"
+        aria-controls={contentId}
         onClick={() => setLineupsOpen(false)}
       >
+        <span>{t('Close team lineups')}</span>
         <X size={16} />
-        {t('Close team lineups')}
       </button>
-      <div className="broadcast-team-switch" role="group" aria-label={t('Visible team loadouts')}>
-        {[3, 2].map((team) => (
-          <button
-            type="button"
-            key={team}
-            data-team={team}
-            aria-pressed={activeTeam === team}
-            onClick={() => setActiveTeam(team as 2 | 3)}
-          >
-            <span>{team === 3 ? 'CT' : 'T'}</span>
-            {t(team === 3 ? 'Counter-terrorists' : 'Terrorists')}
-          </button>
-        ))}
+      <div id={contentId} className="broadcast-lineup-stack">
+        <TeamBank team={3} members={teams[3]} selected={selected} onSelect={onSelect} />
+        <TeamBank team={2} members={teams[2]} selected={selected} onSelect={onSelect} />
       </div>
-      <TeamBank team={3} members={teams[3]} selected={selected} onSelect={onSelect} />
-      <TeamBank team={2} members={teams[2]} selected={selected} onSelect={onSelect} />
     </section>
   );
 }

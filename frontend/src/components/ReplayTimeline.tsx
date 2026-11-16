@@ -1,5 +1,14 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { Check, ListFilter, ListVideo } from 'lucide-react';
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
+import { createPortal } from 'react-dom';
+import { ListVideo, X } from 'lucide-react';
 import { t } from '../i18n';
 import type { Playback } from '../types';
 import { roundEvents, type ReviewRound } from '../review-events';
@@ -13,6 +22,43 @@ const clock = (seconds: number) => {
   return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`;
 };
 
+function TimelineOptionsDialog({ close, children }: { close: () => void; children: ReactNode }) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  useEffect(() => {
+    const modal = dialog.current;
+    modal?.showModal();
+    return () => modal?.close();
+  }, []);
+  return (
+    <dialog
+      ref={dialog}
+      className="options-dialog member-dialog timeline-options-dialog"
+      aria-labelledby={titleId}
+      onCancel={(event) => {
+        event.preventDefault();
+        close();
+      }}
+      onClick={(event) => {
+        if (event.target === dialog.current) close();
+      }}
+    >
+      <div className="panel-heading">
+        <h2 id={titleId}>{t('Timeline options')}</h2>
+        <button
+          type="button"
+          className="icon-button"
+          aria-label={t('Close timeline options')}
+          onClick={close}
+        >
+          <X size={20} />
+        </button>
+      </div>
+      {children}
+    </dialog>
+  );
+}
+
 export default function ReplayTimeline({
   data,
   tick,
@@ -22,6 +68,8 @@ export default function ReplayTimeline({
   selected,
   onSeek,
   onReview,
+  optionsOpen,
+  onCloseOptions,
 }: {
   data: Playback;
   tick: number;
@@ -31,6 +79,8 @@ export default function ReplayTimeline({
   selected: string;
   onSeek: (tick: number) => void;
   onReview: (trigger: HTMLButtonElement) => void;
+  optionsOpen: boolean;
+  onCloseOptions: () => void;
 }) {
   const [scope, setScope] = useState('match');
   const [players, setPlayers] = useState<'player' | 'all'>('player');
@@ -57,7 +107,7 @@ export default function ReplayTimeline({
     [events, window.start, window.end],
   );
   const groups = useMemo(
-    () => timelineGroups(visible, window, width),
+    () => timelineGroups(visible, window, width, 32),
     [visible, window.start, window.end, width],
   );
   const player = data.players.find((player) => player.id === selected);
@@ -90,74 +140,14 @@ export default function ReplayTimeline({
     }
   }, [groups]);
   const progress = timelinePosition(tick, window) * 100;
+  const contextLabel = `${scope === 'round' ? t('Round {{round}}', { round: round.number }) : t('All match')} · ${players === 'player' ? player?.name || t('Selected player') : t('All players')}`;
   return (
     <section className="replay-timeline" aria-label={t('Replay timeline')}>
       <div className="timeline-context">
         <span className="timeline-time num">{clock((tick - first) / data.tickRate)}</span>
-        <SelectControl
-          label={t('Timeline range')}
-          className="timeline-scope"
-          value={scope}
-          displayValue={
-            scope === 'round' ? t('Round {{round}}', { round: round.number }) : t('All match')
-          }
-          onValueChange={setScope}
-          options={[
-            { value: 'match', label: t('All match') },
-            { value: 'round', label: t('Current round'), disabled: !data.rounds.length },
-          ]}
-        />
-        <ActionMenu
-          label={t('Timeline events')}
-          heading={players === 'player' ? player?.name || t('Selected player') : t('All players')}
-          trigger={
-            <button
-              className="timeline-filter icon-button"
-              aria-label={t('Timeline events')}
-              title={
-                players === 'player'
-                  ? t('Selected player: {{player}}', { player: player?.name || '—' })
-                  : t('All players')
-              }
-            >
-              <ListFilter size={16} />
-              <span className="timeline-player-name">
-                {players === 'player' ? player?.name || t('Selected player') : t('All players')}
-              </span>
-            </button>
-          }
-          items={[
-            {
-              id: 'player',
-              label: t('Selected player'),
-              icon: players === 'player' ? <Check size={14} /> : undefined,
-              onSelect: () => setPlayers('player'),
-            },
-            {
-              id: 'all',
-              label: t('All players'),
-              icon: players === 'all' ? <Check size={14} /> : undefined,
-              onSelect: () => setPlayers('all'),
-            },
-            {
-              id: 'utility',
-              separatorBefore: true,
-              label: t(utilities ? 'Hide utility throws' : 'Show utility throws'),
-              onSelect: () => setUtilities((value) => !value),
-            },
-          ]}
-        />
-        <button
-          className="timeline-review icon-button"
-          title={summary}
-          aria-label={t('Review round {{round}} events. {{summary}}', {
-            round: round.number,
-            summary,
-          })}
-          onClick={(event) => onReview(event.currentTarget)}
-        >
-          <ListVideo size={16} />
-        </button>
+        <span className="timeline-context-label" title={contextLabel}>
+          {contextLabel}
+        </span>
         <span className="timeline-duration num">{clock((last - first) / data.tickRate)}</span>
       </div>
       <div
@@ -170,7 +160,7 @@ export default function ReplayTimeline({
         </div>
         <svg
           className="timeline-event-stems"
-          viewBox="0 0 1000 88"
+          viewBox="0 0 1000 76"
           preserveAspectRatio="none"
           aria-hidden="true"
         >
@@ -184,7 +174,7 @@ export default function ReplayTimeline({
                     ? !['kill', 'death'].includes(event.type)
                     : event.type === type,
                 )
-                .map((event) => `M${timelinePosition(event.tick, window) * 1000},26 V66`)
+                .map((event) => `M${timelinePosition(event.tick, window) * 1000},26 V40`)
                 .join(' ')}
             />
           ))}
@@ -216,7 +206,7 @@ export default function ReplayTimeline({
                 }}
                 onClick={group.events.length === 1 ? () => onSeek(event.tick) : undefined}
               >
-                {eventIcon(event, 15)}
+                {eventIcon(event, 20)}
                 {group.events.length > 1 && (
                   <span className="timeline-cluster-count">{group.events.length}</span>
                 )}
@@ -268,6 +258,65 @@ export default function ReplayTimeline({
           </span>
         )}
       </div>
+      {optionsOpen &&
+        createPortal(
+          <TimelineOptionsDialog close={onCloseOptions}>
+            <div className="timeline-options-fields">
+              <label className="timeline-options-field">
+                <span>{t('Timeline range')}</span>
+                <SelectControl
+                  label={t('Timeline range')}
+                  value={scope}
+                  onValueChange={setScope}
+                  options={[
+                    { value: 'match', label: t('All match') },
+                    { value: 'round', label: t('Current round'), disabled: !data.rounds.length },
+                  ]}
+                />
+              </label>
+              <label className="timeline-options-field">
+                <span>{t('Event players')}</span>
+                <SelectControl
+                  label={t('Event players')}
+                  value={players}
+                  onValueChange={(value) => setPlayers(value as 'player' | 'all')}
+                  options={[
+                    { value: 'player', label: t('Selected player') },
+                    { value: 'all', label: t('All players') },
+                  ]}
+                />
+              </label>
+              <label className="toggle-row">
+                <span>{t('Show utility throws')}</span>
+                <input
+                  type="checkbox"
+                  role="switch"
+                  checked={utilities}
+                  onChange={(event) => setUtilities(event.target.checked)}
+                />
+              </label>
+            </div>
+            <p>{t('Bomb objectives remain visible for every player.')}</p>
+            <button
+              type="button"
+              className="button timeline-options-review"
+              title={summary}
+              aria-label={t('Review round {{round}} events. {{summary}}', {
+                round: round.number,
+                summary,
+              })}
+              onClick={(event) => {
+                event.currentTarget.closest('dialog')?.close();
+                onCloseOptions();
+                onReview(event.currentTarget);
+              }}
+            >
+              <ListVideo size={16} />
+              {t('Current round events')}
+            </button>
+          </TimelineOptionsDialog>,
+          plot.current?.closest('.viewer-frame') ?? document.body,
+        )}
       <p className="visually-hidden">
         {players === 'player'
           ? t('Selected player: {{player}}', { player: player?.name || '—' })

@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
-import { Bomb, Check, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import EquipmentGlyph from './EquipmentGlyph';
+import ReviewEventGlyph from './ReviewEventGlyph';
 import type { Playback } from '../types';
 import { buildObjectiveTimeline, objectiveAt, type ObjectiveMeter } from '../objective-state';
 import { locale, t } from '../i18n';
@@ -24,7 +25,7 @@ function Meter({
     <div className={'objective-meter' + (fuse ? ' objective-meter-fuse' : '')}>
       <div className="objective-meter-caption">
         <span>
-          {fuse && <Bomb size={12} aria-hidden="true" />}
+          {fuse && <EquipmentGlyph item="c4" />}
           {label}
         </span>
         <span
@@ -84,7 +85,6 @@ export default function ObjectiveHud({
   const phase = objective?.phase;
   const label = phase ? labels[phase] : '';
   const terminal = phase === 'defused' || phase === 'exploded';
-  const Icon = phase === 'defused' ? Check : X;
   return (
     <>
       {/* This stable live region changes only with lifecycle/visibility, never each timer frame. */}
@@ -94,8 +94,17 @@ export default function ObjectiveHud({
       {objective && !hidden && (
         <aside className="objective-hud" data-phase={phase} aria-label={t('Bomb objective')}>
           <div className="objective-heading">
-            {phase === 'defused' || phase === 'plant-aborted' || phase === 'defuse-aborted' ? (
-              <Icon size={22} className="objective-symbol" aria-hidden="true" />
+            {phase === 'plant-aborted' || phase === 'defuse-aborted' ? (
+              <X size={22} className="objective-symbol" aria-hidden="true" />
+            ) : phase === 'defused' || phase === 'planted' || phase === 'exploded' ? (
+              <ReviewEventGlyph
+                event={{
+                  type:
+                    phase === 'defused' ? 'defuse' : phase === 'planted' ? 'plant' : 'explosion',
+                }}
+                size={24}
+                className="objective-symbol"
+              />
             ) : (
               <EquipmentGlyph
                 item={phase === 'defusing' ? 'defuser' : 'c4'}
