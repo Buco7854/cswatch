@@ -1,0 +1,34 @@
+name: cswatch
+x-app: &app
+  image: ${CSWATCH_IMAGE:-cswatch:local}
+  build: .
+  env_file: .env
+  restart: unless-stopped
+  read_only: true
+  user: '1000:1000'
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  pids_limit: 128
+  tmpfs:
+    - /tmp:size=768m,mode=1777
+  volumes:
+    - cswatch-data:/data
+  stop_grace_period: 20s
+services:
+  web:
+    <<: *app
+    ports:
+      - '127.0.0.1:${HOST_PORT:-8000}:8000'
+    mem_limit: 1536m
+    cpus: 2
+  worker:
+    <<: *app
+    command: [node, dist/worker.js]
+    network_mode: none
+    mem_limit: 5g
+    cpus: 2
+    healthcheck:
+      disable: true
+    stop_grace_period: 330s
+volumes:
+  cswatch-data:
