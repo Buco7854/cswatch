@@ -18,6 +18,20 @@ import sharp from 'sharp';
 const registry = JSON.parse(
   await readFile(new URL('../../shared/equipment-icons.json', import.meta.url), 'utf8'),
 );
+if (
+  registry.schema !== 1 ||
+  !registry.items ||
+  Object.keys(registry.items).length > 128 ||
+  Object.entries(registry.items).some(
+    ([key, filename]) =>
+      !/^[a-z0-9]{1,40}$/.test(key) ||
+      typeof filename !== 'string' ||
+      !/^(?:(?:icons\/ui|hud\/teamcounter|hud\/deathnotice)\/)?[a-z0-9_-]{1,80}\.svg$/.test(
+        filename,
+      ),
+  )
+)
+  throw new Error('Invalid version-controlled equipment registry.');
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const MAX_SVG_BYTES = 256 * 1024;
 
@@ -30,8 +44,56 @@ export function equipmentSvg(bytes) {
     .replace(/<\?xml\s[^?]*\?>/gi, '')
     .replace(/<!--[\s\S]*?-->/g, '')
     .replace(/<!DOCTYPE[^>]*>/gi, '');
+  if (/[&\\]|url\s*\(/i.test(svg))
+    throw new Error('SVG encoded references and paint URLs are not allowed.');
+  // Adobe's native one-color CT emblem uses these presentation declarations.
+  // Convert a closed subset, never an arbitrary stylesheet, into SVG attributes.
+  svg = svg.replace(/\sstyle\s*=\s*(["'])(.*?)\1/gis, (_match, _quote, text, offset, original) => {
+    const tag = original.slice(
+      original.lastIndexOf('<', offset),
+      original.indexOf('>', offset) + 1,
+    );
+    if ((tag.match(/\bstyle\s*=/gi) || []).length !== 1)
+      throw new Error('Duplicate SVG presentation style.');
+    const otherAttributes = tag.replace(/\sstyle\s*=\s*(["'])(.*?)\1/gis, '');
+    const attributes = [];
+    const seen = new Set();
+    for (const declaration of text
+      .split(';')
+      .map((part) => part.trim())
+      .filter(Boolean)) {
+      const match = /^([a-z-]+)\s*:\s*(.*?)$/i.exec(declaration);
+      if (!match || seen.has(match[1].toLowerCase()))
+        throw new Error('Unsupported SVG presentation style.');
+      const name = match[1].toLowerCase(),
+        value = match[2];
+      seen.add(name);
+      if (new RegExp(`\\s${name}\\s*=`, 'i').test(otherAttributes))
+        throw new Error('Conflicting SVG presentation attributes.');
+      if (
+        name === 'enable-background' &&
+        /^new(?:\s+-?(?:\d+(?:\.\d+)?|\.\d+)){4}$/i.test(value) &&
+        value
+          .trim()
+          .split(/\s+/)
+          .slice(1)
+          .every((part) => Number.isFinite(Number(part)))
+      )
+        continue;
+      if (
+        (['fill-rule', 'clip-rule'].includes(name) && /^(evenodd|nonzero)$/.test(value)) ||
+        (name === 'fill' &&
+          /^(#[0-9a-f]{3}|#[0-9a-f]{4}|#[0-9a-f]{6}|#[0-9a-f]{8}|none|currentColor|white|black)$/i.test(
+            value,
+          ))
+      )
+        attributes.push(`${name}="${value}"`);
+      else throw new Error('Unsupported SVG presentation style.');
+    }
+    return attributes.length ? ' ' + attributes.join(' ') : '';
+  });
   if (
-    /<\?|<!|\b(?:href|src|on[a-z]+|style)\s*=|url\s*\(/i.test(svg) ||
+    /[&\\]|<\?|<!|\b(?:href|src|on[a-z]+|style)\s*=|url\s*\(/i.test(svg) ||
     !/^\s*<svg\b/i.test(svg) ||
     !/<\/svg>\s*$/i.test(svg)
   )
@@ -44,6 +106,39 @@ export function equipmentSvg(bytes) {
     )
       throw new Error(`Unsupported SVG element: ${tag[1]}.`);
   return Buffer.from(svg);
+}
+
+async function sourceFile(root, filename) {
+  // Existing flat equipment exports and full panorama/images exports both work.
+  const candidates = filename.includes('/')
+    ? [filename]
+    : [filename, 'icons/equipment/' + filename];
+  for (const candidate of candidates) {
+    let current = root;
+    const parts = candidate.split('/');
+    let missing = false;
+    for (let index = 0; index < parts.length; index++) {
+      current = join(current, parts[index]);
+      let info;
+      try {
+        info = await lstat(current);
+      } catch (error) {
+        if (error.code === 'ENOENT') {
+          missing = true;
+          break;
+        }
+        throw error;
+      }
+      if (
+        info.isSymbolicLink() ||
+        (index < parts.length - 1
+          ? !info.isDirectory()
+          : !info.isFile() || info.size > MAX_SVG_BYTES)
+      )
+        throw new Error(`Invalid SVG file or ancestor: ${candidate}.`);
+    }
+    if (!missing) return current;
+  }
 }
 
 export async function prepareEquipment({ input, output, version, source }) {
@@ -60,13 +155,15 @@ export async function prepareEquipment({ input, output, version, source }) {
   const items = {};
   try {
     for (const [key, filename] of Object.entries(registry.items)) {
-      const path = join(inputRoot, filename);
-      if (!existsSync(path)) continue;
-      const info = await lstat(path);
-      if (!info.isFile() || info.isSymbolicLink() || info.size > MAX_SVG_BYTES)
-        throw new Error(`Invalid SVG file: ${filename}.`);
+      const path = await sourceFile(inputRoot, filename);
+      if (!path) continue;
       const original = await readFile(path);
-      const svg = equipmentSvg(original);
+      let svg;
+      try {
+        svg = equipmentSvg(original);
+      } catch (error) {
+        throw new Error(`Invalid SVG ${filename}: ${error.message}`);
+      }
       const image = await sharp(svg, { density: 144, limitInputPixels: 1024 * 1024 })
         .resize(512, 128, { fit: 'inside' })
         .trim({ background: '#00000000', threshold: 0 })

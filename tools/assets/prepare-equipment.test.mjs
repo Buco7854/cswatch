@@ -71,6 +71,9 @@ test('equipment SVG preflight rejects executable content, remote references, ent
     '<path onload="alert(1)"/>',
     '<style>path{fill:red}</style>',
     '<path style="fill:url(https://example.invalid/image)"/>',
+    '<path fill="&#117;rl(file:///tmp/outside.svg#x)"/>',
+    '<path fill="u&#114;l(file:///tmp/outside.svg#x)"/>',
+    String.raw`<path fill="\75rl(file:///tmp/outside.svg#x)"/>`,
     '<use href="#a"/>',
     '<foreignObject/>',
   ])
@@ -87,4 +90,66 @@ test('equipment SVG preflight rejects executable content, remote references, ent
     ).toString(),
     /^<svg/,
   );
+  const presentation = equipmentSvg(
+    Buffer.from(
+      drawing.replace('fill="white"', 'style="fill:#FFFFFF;fill-rule:evenodd;clip-rule:evenodd;"'),
+    ),
+  ).toString();
+  assert.match(presentation, /fill="#FFFFFF" fill-rule="evenodd" clip-rule="evenodd"/);
+  assert.equal(presentation.includes('style='), false);
+  assert.throws(() => equipmentSvg(Buffer.from('<svg><path style="font-size:14px"/></svg>')));
+  for (const path of [
+    '<path fill="#000" style="fill:#FFF"/>',
+    '<path style="fill:#FFF;fill:#000"/>',
+    '<path style="fill:#FFF" style="fill:#000"/>',
+    '<path style="fill:#FFF;--custom:red"/>',
+    '<path style="fill:#FFF !important"/>',
+    '<path style="fill:#FFF" onload="alert(1)"/>',
+  ])
+    assert.throws(() => equipmentSvg(Buffer.from('<svg>' + path + '</svg>')));
+});
+
+test('full Panorama image exports map only fixed nested sources and reject symlinked source ancestors', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'cswatch-equipment-tree-'));
+  try {
+    const input = join(root, 'images'),
+      output = join(root, 'pack');
+    for (const folder of ['icons/equipment', 'icons/ui', 'hud/teamcounter'])
+      await mkdir(join(input, folder), { recursive: true });
+    for (const name of [
+      'icons/equipment/awp.svg',
+      'icons/ui/crosshair_circle.svg',
+      'hud/teamcounter/killtype_blast.svg',
+    ])
+      await writeFile(join(input, name), drawing);
+    const result = await prepareEquipment({
+      input,
+      output,
+      version: 'test',
+      source: 'Original nested synthetic drawings',
+    });
+    assert.equal(result.count, 3);
+    assert.deepEqual((await readdir(output)).sort(), [
+      'awp.png',
+      'bombexploded.png',
+      'demokill.png',
+      'provenance.json',
+    ]);
+    await rm(join(input, 'icons/ui'), { recursive: true });
+    const outside = join(root, 'outside');
+    await mkdir(outside);
+    await writeFile(join(outside, 'crosshair_circle.svg'), drawing);
+    await symlink(outside, join(input, 'icons/ui'), 'dir');
+    await assert.rejects(
+      prepareEquipment({
+        input,
+        output: join(root, 'invalid'),
+        version: 'test',
+        source: 'Synthetic',
+      }),
+      /ancestor/,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });

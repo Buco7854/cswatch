@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import catalog from '../../shared/equipment-icons.json';
-import { equipmentKey } from './equipment-display';
+import { equipmentKey } from './equipment-key';
 
 type Icons = Readonly<Record<string, string>>;
 const empty: Icons = Object.freeze({});

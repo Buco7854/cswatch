@@ -89,20 +89,27 @@ export default function ViewerOptions({
           t('Show sampled movement, attack, and interaction actions for the selected player.'),
         )}
         {settings.inputs && (
-          <label>
-            {t('Keyboard display layout')}
-            <SelectControl
-              label={t('Keyboard display layout')}
-              value={settings.inputLayout}
-              onValueChange={(value) =>
-                onChange({ ...settings, inputLayout: value as ViewerSettings['inputLayout'] })
-              }
-              options={[
-                { value: 'wasd', label: 'WASD' },
-                { value: 'zqsd', label: 'ZQSD' },
-              ]}
-            />
-          </label>
+          <div className="input-display-preferences">
+            {toggle(
+              'mouseInput',
+              t('Mouse buttons and movement'),
+              t('Show recorded attack actions and mouse movement on a mouse diagram.'),
+            )}
+            <label>
+              {t('Keyboard display layout')}
+              <SelectControl
+                label={t('Keyboard display layout')}
+                value={settings.inputLayout}
+                onValueChange={(value) =>
+                  onChange({ ...settings, inputLayout: value as ViewerSettings['inputLayout'] })
+                }
+                options={[
+                  { value: 'wasd', label: 'WASD' },
+                  { value: 'zqsd', label: 'ZQSD' },
+                ]}
+              />
+            </label>
+          </div>
         )}
         {toggle(
           'economy',
@@ -117,6 +124,11 @@ export default function ViewerOptions({
       </section>
       <section>
         <h3>{t('Playback & performance')}</h3>
+        {toggle(
+          'controlsHidden',
+          t('Hide playback controls'),
+          t('Hide the playback dock. Use Show controls or press H to bring it back.'),
+        )}
         {toggle(
           'autoSkip',
           t('Skip dead time automatically'),

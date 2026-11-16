@@ -4,47 +4,43 @@
 .timeline-context {
   display: flex;
   align-items: center;
-  gap: 4px;
-  min-height: 28px;
+  gap: 8px;
+  height: 20px;
+  min-height: 20px;
+  line-height: 20px;
 }
 .timeline-time,
 .timeline-duration {
+  flex: none;
+  min-width: 38px;
   color: var(--muted);
   font-size: 11px;
-  min-width: 38px;
-}
-.timeline-time {
-  margin-right: auto;
 }
 .timeline-duration {
-  margin-left: auto;
   text-align: right;
 }
-.viewer-shell .timeline-context .timeline-scope {
-  border: 0;
-  background: transparent;
-  min-height: 32px;
-  max-width: 150px;
-  padding: 4px 6px;
+.timeline-context-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--faint);
   font-size: 11px;
-}
-.viewer-shell .timeline-context .icon-button {
-  min-width: 36px;
-  min-height: 32px;
-  padding: 4px;
-  border: 0;
+  text-align: center;
 }
 .replay-timeline-plot {
-  /* Two independent 44px touch rows share one x axis. Empty ranges only need
-     the scrubber row; the message sits below its visual track inside that row. */
-  --timeline-axis: 66px;
-  --timeline-slider-top: 44px;
+  /* 32px secondary event targets and a separate 44px scrubber hit area. Its
+     16px content box sits above 28px bottom padding, bringing the thumb/axis
+     to 40px without changing native horizontal travel or endpoint geometry. */
+  --timeline-axis: 40px;
+  --timeline-slider-top: 32px;
   position: relative;
-  height: 88px;
-  margin: 0 22px;
+  height: 76px;
+  margin: 0 16px;
 }
 .replay-timeline-plot.is-empty {
-  --timeline-axis: 22px;
+  --timeline-axis: 8px;
   --timeline-slider-top: 0px;
   height: 44px;
 }
@@ -94,16 +90,16 @@
   position: absolute;
   top: 0;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
-  gap: 2px;
-  width: 44px;
-  height: 44px;
-  min-width: 44px;
-  padding: 0;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0 0 1px;
   transform: translateX(-50%);
   border: 0;
-  border-radius: 4px;
+  border-radius: 0;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
@@ -115,7 +111,7 @@
 }
 .viewer-shell .timeline-event-marker:focus-visible {
   outline: 2px solid var(--signal);
-  outline-offset: -3px;
+  outline-offset: -2px;
   background: var(--raised);
 }
 .timeline-event-marker.event-kill {
@@ -129,7 +125,13 @@
   color: var(--text);
 }
 .timeline-cluster-count {
+  position: absolute;
+  top: 0;
+  right: 1px;
+  padding-inline: 1px;
+  background: var(--surface);
   font-size: 11px;
+  line-height: 11px;
   font-variant-numeric: tabular-nums;
 }
 .viewer-shell input.timeline-slider {
@@ -141,8 +143,9 @@
   width: calc(100% + 16px);
   height: 44px;
   min-height: 44px;
+  box-sizing: border-box;
   margin: 0;
-  padding: 0;
+  padding: 0 0 28px;
   border: 0;
   background: transparent;
   cursor: pointer;
@@ -181,7 +184,7 @@
 }
 .timeline-no-events {
   position: absolute;
-  top: 31px;
+  top: 22px;
   left: 0;
   right: 0;
   color: var(--faint);
@@ -192,32 +195,30 @@
   text-overflow: ellipsis;
   pointer-events: none;
 }
-@media (max-width: 760px) {
-  .viewer-shell .timeline-context .icon-button {
-    min-width: 44px;
-    min-height: 44px;
-  }
-  .viewer-shell .timeline-context .timeline-scope {
-    min-height: 44px;
-    max-width: 116px;
-  }
-  .timeline-context {
-    gap: 0;
-  }
+.member-dialog.timeline-options-dialog {
+  width: 440px;
 }
-.timeline-player-name {
-  max-width: 110px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  font-size: 11px;
+.timeline-options-fields {
+  display: grid;
+  gap: 16px;
+  margin-top: 20px;
 }
-.viewer-shell .timeline-context .timeline-filter {
-  gap: 5px;
-  width: auto;
+.timeline-options-dialog .timeline-options-field {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
 }
-@media (max-width: 760px) {
-  .timeline-player-name {
-    display: none;
-  }
+.timeline-options-field .select-control {
+  width: 100%;
+  min-height: 44px;
+}
+.timeline-options-dialog .toggle-row {
+  min-height: 44px;
+  padding: 0;
+}
+.timeline-options-dialog .timeline-options-review {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 18px;
 }

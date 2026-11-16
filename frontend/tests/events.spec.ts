@@ -30,6 +30,8 @@ test('timeline markers use recorded time positions, clustered events seek exactl
   await expect(menu.getByRole('menuitem', { name: /Bomb planted at 0:15/ })).toBeVisible();
   await menu.getByRole('menuitem', { name: /Bomb planted at 0:15/ }).click();
   await expect(slider).toHaveValue('960');
+  await page.getByRole('button', { name: 'More controls', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Timeline options', exact: true }).click();
   await page.getByRole('combobox', { name: 'Timeline range' }).click();
   await page.getByRole('option', { name: 'Current round', exact: true }).click();
   await expect(slider).toHaveAttribute('min', '0');
@@ -43,7 +45,7 @@ test('timeline markers use recorded time positions, clustered events seek exactl
   await page.getByRole('option', { name: 'All players', exact: true }).click();
   await expect(page.locator('.round-review-row')).toHaveCount(6);
   await page.getByRole('button', { name: 'Close panel' }).click();
-  await expect(page.getByRole('button', { name: /Review round 1 events/ })).toBeFocused();
+  await expect(page.getByRole('button', { name: 'More controls', exact: true })).toBeFocused();
   await slider.focus();
   await page.keyboard.press('ArrowRight');
   await expect(slider).toHaveValue('961');
@@ -112,7 +114,7 @@ test('event stems and native scrubber share endpoint and midpoint coordinates', 
           .closest('.replay-timeline-plot')!
           .querySelector('input')!
           .getBoundingClientRect();
-        return marker.height >= 44 && slider.height >= 44 && marker.bottom <= slider.top;
+        return marker.height >= 32 && slider.height >= 44 && marker.bottom <= slider.top;
       }),
     ).toBe(true);
     const box = await slider.boundingBox();

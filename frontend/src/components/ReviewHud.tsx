@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type CSSProperties } from 'react';
+import { useId, useRef, useState } from 'react';
 import { Check, ChevronDown, ChevronUp, Keyboard, MoreHorizontal, X } from 'lucide-react';
 import { t } from '../i18n';
 import type { Frame, Playback } from '../types';
@@ -28,21 +28,9 @@ export default function ReviewHud({
 }) {
   const [inputCollapsed, setInputCollapsed] = useState(false);
   const [detailsExpanded, setDetailsExpanded] = useState(false);
-  const [inputHeight, setInputHeight] = useState(134);
-  const inputPanel = useRef<HTMLElement>(null);
   const inputToggle = useRef<HTMLButtonElement>(null);
   const contentId = useId();
   const player = data.players.find((player) => player.id === selected);
-  useEffect(() => {
-    const panel = inputPanel.current;
-    if (!panel || hidden || !settings.inputs) return;
-    const observer = new ResizeObserver(([entry]) => {
-      const height = entry.borderBoxSize[0]?.blockSize ?? panel.getBoundingClientRect().height;
-      setInputHeight(Math.ceil(height));
-    });
-    observer.observe(panel);
-    return () => observer.disconnect();
-  }, [hidden, settings.inputs]);
   if (!settings.inputs && !settings.economy) return null;
   return (
     <aside
@@ -51,7 +39,6 @@ export default function ReviewHud({
       data-inputs={settings.inputs}
       hidden={hidden}
       aria-label={t('Analysis HUD')}
-      style={{ '--review-input-height': `${inputHeight}px` } as CSSProperties}
     >
       {settings.economy && (
         <div className="review-economy-frame">
@@ -65,7 +52,6 @@ export default function ReviewHud({
       )}
       {settings.inputs && (
         <section
-          ref={inputPanel}
           className={'review-inputs-panel' + (inputCollapsed ? ' is-collapsed' : '')}
           aria-label={t('Recorded inputs')}
           onKeyDown={(event) => {
@@ -132,6 +118,7 @@ export default function ReviewHud({
                 layout={settings.inputLayout}
                 compact
                 detailsExpanded={detailsExpanded}
+                mouseInput={settings.mouseInput}
               />
             </div>
           )}

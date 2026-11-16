@@ -1,0 +1,158 @@
+/* One video workspace: toolbar, rosters, instruments and playback share a plane.
+   Team colors carry identity; controls retain the selected application theme. */
+.viewer-frame {
+  --viewer-plane: #181c1f;
+  --viewer-raised: #2b3237;
+  --viewer-ink: #f2f5f7;
+  --viewer-muted: #b5bfc7;
+  --viewer-faint: #a1adb6;
+  --viewer-line: #3b464e;
+  --team-ct: #83c6ed;
+  --team-t: #ee916b;
+  --team-ct-wash: #203846;
+  --team-t-wash: #422e25;
+  --surface: var(--viewer-plane);
+  --raised: var(--viewer-raised);
+  --text: var(--viewer-ink);
+  --muted: var(--viewer-muted);
+  --faint: var(--viewer-faint);
+  --control: var(--viewer-line);
+  --border: var(--viewer-line);
+  --broadcast-plane: var(--viewer-plane);
+  --broadcast-text: var(--viewer-ink);
+  --broadcast-muted: var(--viewer-muted);
+  --broadcast-faint: var(--viewer-faint);
+  --broadcast-raised: var(--viewer-raised);
+}
+[data-theme='light'] .viewer-frame {
+  --viewer-plane: #edf1f3;
+  --viewer-raised: #dce4e9;
+  --viewer-ink: #17232c;
+  --viewer-muted: #4e606d;
+  --viewer-faint: #5d707c;
+  --viewer-line: #b7c6cf;
+  --team-ct: #166a99;
+  --team-t: #a84328;
+  --team-ct-wash: #d2e5f0;
+  --team-t-wash: #f0ddd4;
+}
+.viewer-frame .viewer-titlebar,
+.viewer-frame .viewer-dock,
+.viewer-frame .viewer-scene-tools {
+  background: var(--viewer-plane);
+  color: var(--viewer-ink);
+}
+.viewer-frame .viewer-scene-tools {
+  top: 0;
+  left: 0;
+  right: 0;
+  min-height: 52px;
+  padding: 4px 16px;
+  align-items: center;
+}
+.viewer-frame .viewer-context {
+  background: transparent;
+  padding: 7px 0;
+}
+.viewer-frame .viewer-camera-tools > .select-control,
+.viewer-frame .viewer-camera-tools > .options-button {
+  background: transparent;
+  border: 0;
+  border-radius: 2px;
+}
+.viewer-frame .viewer-dock {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 8px 16px;
+  border-radius: 0;
+  box-shadow: none;
+}
+.viewer-frame .viewer-dock[hidden] {
+  display: none;
+}
+.viewer-frame .viewer-show-controls {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  min-width: 44px;
+  border: 0;
+  border-radius: 2px;
+  background: var(--viewer-plane);
+  color: var(--viewer-ink);
+  padding: 8px 12px;
+  font-size: 12px;
+}
+.viewer-frame.has-review-hud .killfeed {
+  top: 54px;
+}
+.viewer-frame.has-review-hud .killfeed > div {
+  padding: 2px 8px;
+  font-size: 11px;
+  line-height: 12px;
+}
+.viewer-frame .killfeed > div {
+  background: var(--viewer-plane);
+  color: var(--viewer-ink);
+}
+.viewer-frame .killfeed span {
+  color: var(--viewer-muted);
+}
+.viewer-frame .viewer-hint {
+  bottom: calc(var(--viewer-dock-height, 160px) + 12px);
+  background: var(--viewer-plane);
+  color: var(--viewer-muted);
+  border-radius: 0;
+}
+.viewer-frame .communication-overlay > div,
+.viewer-frame .communication-overlay p {
+  background: var(--viewer-plane);
+  color: var(--viewer-ink);
+}
+.viewer-frame .broadcast-loadout {
+  --text: var(--broadcast-text);
+  --muted: var(--broadcast-muted);
+  --faint: var(--broadcast-faint);
+  --surface: var(--broadcast-plane);
+  --raised: var(--broadcast-raised);
+}
+@media (max-width: 760px) {
+  .viewer-frame .viewer-scene-tools {
+    padding-inline: 8px;
+  }
+  .viewer-frame .viewer-dock {
+    padding: 8px;
+  }
+  .viewer-frame .timeline-context {
+    padding-inline: 8px;
+  }
+  .viewer-frame .viewer-controlbar .icon-button {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
+  }
+  .viewer-frame .options-button {
+    min-width: 44px;
+    min-height: 44px !important;
+  }
+  .viewer-frame .viewer-round-controls {
+    display: none;
+  }
+}
+@media (max-height: 560px) {
+  .viewer-frame .viewer-scene-tools {
+    min-height: 48px;
+    padding-block: 2px;
+  }
+  .viewer-frame .viewer-dock {
+    padding-block: 5px;
+  }
+}

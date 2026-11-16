@@ -22,6 +22,7 @@ import {
   Moon,
   ChevronDown,
   MoreHorizontal,
+  PanelBottomOpen,
 } from 'lucide-react';
 import { api } from '../api';
 import { useReplay } from '../useReplay';
@@ -33,6 +34,7 @@ import { RoundEventReview } from './RoundEvents';
 import ReplayTimeline from './ReplayTimeline';
 import ObjectiveHud from './ObjectiveHud';
 import ReviewHud from './ReviewHud';
+import { SelectedLoadout } from './MatchEconomy';
 import Communications from './Communications';
 import ViewerOptions from './ViewerOptions';
 import TacticalPlot from './TacticalPlot';
@@ -89,6 +91,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     [options, setOptions] = useState(false),
     [manage, setManage] = useState(false);
   const [communicationsOpen, setCommunicationsOpen] = useState(false);
+  const [timelineOptionsOpen, setTimelineOptionsOpen] = useState(false);
   const [mapAvailable, setMapAvailable] = useState(false);
   const communicationsTrigger = useRef<HTMLElement | null>(null);
   const communicationsWasOpen = useRef(false);
@@ -113,6 +116,9 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
   const panelWasOpen = useRef(false);
   const full = useRef<HTMLDivElement>(null);
   const playbackDock = useRef<HTMLDivElement>(null);
+  const showControlsTrigger = useRef<HTMLButtonElement>(null);
+  const playTrigger = useRef<HTMLButtonElement>(null);
+  const previousControlsHidden = useRef(settings.controlsHidden);
   const mobileMoreTrigger = useRef<HTMLButtonElement>(null);
   const momentMenuTrigger = useRef<HTMLButtonElement>(null);
   const eventMenuTrigger = useRef<HTMLElement | null>(null);
@@ -144,7 +150,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     const update = () =>
       full.current?.style.setProperty(
         '--viewer-dock-height',
-        `${dock.getBoundingClientRect().height}px`,
+        `${settings.controlsHidden ? 48 : dock.getBoundingClientRect().height}px`,
       );
     update();
     if (typeof ResizeObserver !== 'undefined') {
@@ -154,7 +160,18 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     }
     window.addEventListener('resize', update);
     return () => window.removeEventListener('resize', update);
-  }, [Boolean(data)]);
+  }, [Boolean(data), settings.controlsHidden]);
+  useEffect(() => {
+    if (previousControlsHidden.current === settings.controlsHidden) return;
+    previousControlsHidden.current = settings.controlsHidden;
+    const frame = requestAnimationFrame(() => {
+      if (document.querySelector('dialog[open],[aria-modal="true"]')) return;
+      (settings.controlsHidden ? showControlsTrigger : playTrigger).current?.focus({
+        preventScroll: true,
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [settings.controlsHidden]);
   function closePanel() {
     setPanel(null);
   }
@@ -226,6 +243,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     setOptions(false);
     setManage(false);
     setCommunicationsOpen(false);
+    setTimelineOptionsOpen(false);
     return () => {
       scope.active = false;
     };
@@ -276,13 +294,21 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
   }, [playing, data, buffering, rate, speed, last, settings.autoSkip]);
   useEffect(() => {
     function keys(e: KeyboardEvent) {
+      const target = e.target as HTMLElement;
+      if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
       if (
-        e.defaultPrevented ||
-        (e.target as HTMLElement).closest(
-          'input,select,textarea,button,a,dialog,[data-keyboard-managed]',
-        )
-      )
+        e.code === 'KeyH' &&
+        !target.closest(
+          'input,select,textarea,dialog,[role="dialog"],[contenteditable],[data-keyboard-managed]',
+        ) &&
+        !document.querySelector('dialog[open],[aria-modal="true"]')
+      ) {
+        if (e.repeat) return;
+        e.preventDefault();
+        setSettings((current) => ({ ...current, controlsHidden: !current.controlsHidden }));
         return;
+      }
+      if (target.closest('input,select,textarea,button,a,dialog,[data-keyboard-managed]')) return;
       if (e.code === 'Space') {
         e.preventDefault();
         setPlaying((p) => !p);
@@ -510,11 +536,13 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     },
   ];
   const { frame } = frameAt(data, tick);
+  const selectedPlayer = data.players.find((player) => player.id === selected);
   const round = data.rounds.filter((r) => r.tick <= tick).at(-1);
   const reviewRound = roundAt(data, tick, last);
   return (
     <div
       className={'viewer-frame' + (settings.inputs || settings.economy ? ' has-review-hud' : '')}
+      data-controls-hidden={settings.controlsHidden}
       ref={full}
     >
       <header className="viewer-titlebar" role="banner" inert={Boolean(panel) && compactPanels}>
@@ -725,14 +753,22 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
                                 </small>
                                 {state?.money !== undefined && (
                                   <small>
-                                    ${state.money.toLocaleString(locale())} · {state.armor ?? 0}{' '}
+                                    ${state.money.toLocaleString(locale())} · {state.armor ?? '—'}{' '}
                                     {t('armor')}
                                   </small>
                                 )}
                               </span>
-                              <span className={'health num ' + (!state?.alive ? 'dead' : '')}>
-                                {state?.alive ? state.health : '—'}
-                                <small>{state?.alive ? t('HP') : t('Out')}</small>
+                              <span
+                                className={'health num ' + (state && !state.alive ? 'dead' : '')}
+                              >
+                                {state?.health ?? '—'}
+                                <small>
+                                  {!state
+                                    ? t('State unavailable')
+                                    : state.alive
+                                      ? t('HP')
+                                      : t('Out')}
+                                </small>
                               </span>
                             </button>
                           );
@@ -743,6 +779,14 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
                   <div className="roster-foot">
                     {t('Select a player, then choose player perspective.')}
                   </div>
+                  {selectedPlayer && (
+                    <SelectedLoadout
+                      member={{
+                        player: selectedPlayer,
+                        state: frame.players.find((state) => state.id === selected),
+                      }}
+                    />
+                  )}
                 </div>
               ) : (
                 <>
@@ -843,7 +887,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
           frame={frame}
           selected={selected}
           settings={settings}
-          hidden={Boolean(panel)}
+          hidden={Boolean(panel) || buffering}
           onSelect={setSelected}
           onCloseInputs={() => {
             setSettings((value) => ({ ...value, inputs: false }));
@@ -855,6 +899,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
           ref={playbackDock}
           inert={Boolean(panel) && compactPanels}
           className={'viewer-dock' + (roundsOpen ? ' rounds-visible' : '')}
+          hidden={settings.controlsHidden}
           role="region"
           aria-label={t('Playback controls')}
         >
@@ -866,7 +911,15 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
             round={reviewRound}
             selected={selected}
             onSeek={seekEvent}
-            onReview={openRoundReview}
+            onReview={() => openRoundReview(mobileMoreTrigger.current)}
+            optionsOpen={timelineOptionsOpen}
+            onCloseOptions={() => {
+              setTimelineOptionsOpen(false);
+              requestAnimationFrame(() => {
+                if (panelClose.current?.isConnected) panelClose.current.focus();
+                else restoreViewerFocus(mobileMoreTrigger.current);
+              });
+            }}
           />
           <div className="viewer-controlbar">
             <div className="viewer-transport">
@@ -879,6 +932,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
               </button>
               <button
                 className="play-button"
+                ref={playTrigger}
                 aria-label={playing ? t('Pause') : t('Play')}
                 onClick={() => {
                   if (tick >= last) seek(first);
@@ -1007,6 +1061,46 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
                 }
                 items={[
                   {
+                    id: 'timeline-options',
+                    label: t('Timeline options'),
+                    icon: <SlidersHorizontal size={16} />,
+                    onSelect: () => setTimelineOptionsOpen(true),
+                  },
+                  {
+                    id: 'next-live-round',
+                    label: t('Next live round'),
+                    icon: <SkipForward size={16} />,
+                    onSelect: () => {
+                      const next = data.rounds.find(
+                        (round) => (round.liveTick ?? round.tick) > tick,
+                      );
+                      if (next) seek(next.liveTick ?? next.tick);
+                      else notify('You are in the last recorded round.');
+                    },
+                  },
+                  {
+                    id: 'skip-dead-time',
+                    label: t('Skip dead time'),
+                    icon: <FastForward size={16} />,
+                    onSelect: () => {
+                      const target = skipDeadTime(data, tick, 'all', last);
+                      if (target === tick) notify('No freeze period or timeout at this position.');
+                      else seek(target);
+                    },
+                  },
+                  {
+                    id: 'rounds',
+                    label: t('Rounds'),
+                    onSelect: () => setRoundsOpen((value) => !value),
+                  },
+                  {
+                    id: 'hide-controls',
+                    label: t('Hide playback controls'),
+                    onSelect: () =>
+                      setSettings((current) => ({ ...current, controlsHidden: true })),
+                    separatorBefore: true,
+                  },
+                  {
                     id: 'add-note',
                     label: t('Add note'),
                     icon: <BookmarkPlus size={16} />,
@@ -1083,7 +1177,20 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
             )}
           </div>
         </div>
-        {!panel && !settings.inputs && !settings.economy && (
+        {settings.controlsHidden && (
+          <button
+            ref={showControlsTrigger}
+            className="viewer-show-controls button"
+            aria-label={t('Show controls')}
+            title={t('Show controls (H)')}
+            inert={Boolean(panel) && compactPanels}
+            onClick={() => setSettings((current) => ({ ...current, controlsHidden: false }))}
+          >
+            <PanelBottomOpen size={18} aria-hidden="true" />
+            <span>{t('Show controls')}</span>
+          </button>
+        )}
+        {!panel && !settings.controlsHidden && !settings.inputs && !settings.economy && (
           <p className="viewer-hint">
             {mode === 'orbit'
               ? t('Drag to orbit · pinch or scroll to zoom')

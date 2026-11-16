@@ -1,25 +1,19 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Bomb, CheckCircle2, Crosshair, Flag, Flame, Skull, Waypoints } from 'lucide-react';
 import { t } from '../i18n';
 import { roundEvents, type ReviewEvent, type ReviewRound } from '../review-events';
 import type { Playback } from '../types';
 import { equipmentLabel } from '../equipment-labels';
 import { SelectControl } from './Controls';
+import ReviewEventGlyph from './ReviewEventGlyph';
 import './round-events.css';
 
 const clock = (seconds: number) => {
   const value = Math.max(0, Math.floor(seconds));
   return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`;
 };
-export const eventIcon = (event: ReviewEvent, size = 16): ReactNode => {
-  if (event.type === 'death') return <Skull size={size} />;
-  if (event.type === 'plant') return <Bomb size={size} />;
-  if (event.type === 'defuse') return <CheckCircle2 size={size} />;
-  if (event.type === 'explosion') return <Flame size={size} />;
-  if (event.type === 'round-end') return <Flag size={size} />;
-  if (event.type === 'throw') return <Waypoints size={size} />;
-  return <Crosshair size={size} />;
-};
+export const eventIcon = (event: ReviewEvent, size = 16): ReactNode => (
+  <ReviewEventGlyph event={event} size={size} />
+);
 export function eventTitle(event: ReviewEvent) {
   if (event.type === 'kill') return t('Kill');
   if (event.type === 'death') return t('Death');
@@ -160,7 +154,12 @@ export function RoundEventReview({
                   {event.weapon && event.type !== 'throw'
                     ? ' · ' + event.weapon.replace('weapon_', '').replaceAll('_', ' ').toUpperCase()
                     : ''}
-                  {event.headshot ? ' · ' + t('Headshot') : ''}
+                  {event.headshot ? (
+                    <>
+                      {' · '}
+                      <ReviewEventGlyph event={event} detail="headshot" size={12} /> {t('Headshot')}
+                    </>
+                  ) : null}
                 </small>
               </span>
             </button>

@@ -34,6 +34,6 @@ Opus packets and speech outputs are untrusted. Parent schema/byte/time/identity 
 
 The worker is intentionally network-isolated; S2V conversion is operator-only. Do not expose conversion tools or install arbitrary user-supplied maps through a public endpoint. Only install assets you trust. External model URLs are excluded by both policy and CSP.
 
-Equipment SVG conversion is also operator-only. Its source checks reject external resources, scripts and symlink inputs before producing bounded PNGs; this is not a sandbox for arbitrary hostile artwork. Install trusted exports in the dedicated equipment directory. Proprietary game artwork is not committed or bundled, and the browser accepts only known same-origin raster paths from the equipment manifest.
+Equipment SVG conversion is also operator-only. Its source checks reject external resources, encoded references, CSS escapes, scripts, conflicting presentation declarations and symlinked files/ancestors before producing bounded PNGs; this is not a sandbox for arbitrary hostile artwork. Install trusted exports in the dedicated equipment directory. Proprietary game artwork is not committed or bundled, and the browser accepts only known same-origin raster paths from the equipment manifest.
 
 GitHub scheduled rebuilds update base image packages but do not change pinned application dependencies without a lockfile update. Review/merge dependency PRs and redeploy. CI runs production npm audits and emits image SBOM/provenance; this is not an independent security audit or a guarantee of vulnerability absence.

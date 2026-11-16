@@ -25,9 +25,9 @@ export default function TacticalPlot({
       role="img"
       aria-label={t('Player position plot. No map geometry.')}
     >
-      <rect width="120" height="120" rx="4" fill="#171b19" />
+      <rect width="120" height="120" rx="2" fill="var(--viewer-plane, #171b19)" />
       {[30, 60, 90].map((v) => (
-        <g key={v} stroke="#3b403d" strokeWidth=".2">
+        <g key={v} stroke="var(--viewer-line, #3b403d)" strokeWidth=".2">
           <path d={`M${v} 5V115 M5 ${v}H115`} />
         </g>
       ))}
@@ -40,13 +40,13 @@ export default function TacticalPlot({
           >
             <circle
               r={p.id === selected ? 2.7 : 1.8}
-              fill={p.team === 3 ? '#9ec7da' : '#e7ba73'}
-              stroke={p.id === selected ? '#fff' : 'none'}
+              fill={p.team === 3 ? 'var(--team-ct, #9ec7da)' : 'var(--team-t, #e7ba73)'}
+              stroke={p.id === selected ? 'var(--viewer-ink, #fff)' : 'none'}
               strokeWidth=".5"
             />
             <path
               d="M0 0h4"
-              stroke={p.team === 3 ? '#9ec7da' : '#e7ba73'}
+              stroke={p.team === 3 ? 'var(--team-ct, #9ec7da)' : 'var(--team-t, #e7ba73)'}
               strokeWidth=".6"
               transform={`rotate(${-p.yaw})`}
             />

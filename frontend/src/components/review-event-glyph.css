@@ -1,0 +1,15 @@
+.review-event-glyph {
+  display: inline-block;
+  flex: none;
+  vertical-align: middle;
+  color: currentColor;
+}
+.review-event-glyph[data-artwork='operator'] {
+  background: currentColor;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
+}

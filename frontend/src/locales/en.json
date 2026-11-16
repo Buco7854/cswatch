@@ -831,5 +831,13 @@
   "Selected player loadout": "Selected player loadout",
   "Expand team lineups": "Expand team lineups",
   "Close team lineups": "Close team lineups",
-  "Position view": "Position view"
+  "Position view": "Position view",
+  "Timeline options": "Timeline options",
+  "Close timeline options": "Close timeline options",
+  "Mouse buttons and movement": "Mouse buttons and movement",
+  "Show recorded attack actions and mouse movement on a mouse diagram.": "Show recorded attack actions and mouse movement on a mouse diagram.",
+  "Hide playback controls": "Hide playback controls",
+  "Hide the playback dock. Use Show controls or press H to bring it back.": "Hide the playback dock. Use Show controls or press H to bring it back.",
+  "Show controls": "Show controls",
+  "Show controls (H)": "Show controls (H)"
 }
