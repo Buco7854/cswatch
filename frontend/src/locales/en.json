@@ -855,5 +855,21 @@
   "Synthetic captions for the practice scene. No speech was recorded or transcribed.": "Synthetic captions for the practice scene. No speech was recorded or transcribed.",
   "Smoke is down. Cross now.": "Smoke is down. Cross now.",
   "One close right. Flashing over.": "One close right. Flashing over.",
-  "Bomb planted. Hold the crossfire.": "Bomb planted. Hold the crossfire."
+  "Bomb planted. Hold the crossfire.": "Bomb planted. Hold the crossfire.",
+  "Moment shortcuts": "Moment shortcuts",
+  "Grenade landing shortcut": "Grenade landing shortcut",
+  "Offer a view of the recorded detonation after the observed player throws a grenade.": "Offer a view of the recorded detonation after the observed player throws a grenade.",
+  "Kill replay shortcut": "Kill replay shortcut",
+  "Offer a short replay after an elimination by the observed player.": "Offer a short replay after an elimination by the observed player.",
+  "View grenade landing": "View grenade landing",
+  "Replay kill": "Replay kill",
+  "Return to playback": "Return to playback",
+  "Utility landing": "Utility landing",
+  "Kill replay": "Kill replay",
+  "Reviewing grenade landing": "Reviewing grenade landing",
+  "Recorded grenades remain visible at every quality level. Paths and analytical zones have separate controls.": "Recorded grenades remain visible at every quality level. Paths and analytical zones have separate controls.",
+  "View the recorded detonation position from a separate camera.": "View the recorded detonation position from a separate camera.",
+  "Replay the observed player’s recent elimination.": "Replay the observed player’s recent elimination.",
+  "Show the recorded flight paths. Grenade projectiles stay visible.": "Show the recorded flight paths. Grenade projectiles stay visible.",
+  "Show recorded detonation markers and approximate smoke and fire zones.": "Show recorded detonation markers and approximate smoke and fire zones."
 }

@@ -51,6 +51,27 @@ export default function Communications({
   const isSampleCue = (cue: CaptionCue) => sampleExample && cue.id.startsWith('sample-caption-');
   const captionText = (cue: CaptionCue) => (isSampleCue(cue) ? t(cue.text) : cue.text);
   const dialog = useRef<HTMLDialogElement>(null);
+  const overlay = useRef<HTMLDivElement>(null);
+  const overlaysEnabled = settings.subtitles || settings.chat;
+  useEffect(() => {
+    const element = overlay.current;
+    const viewer = element?.closest<HTMLElement>('.viewer-frame');
+    if (!element || !viewer) return;
+    const update = () =>
+      viewer.style.setProperty(
+        '--review-communications-gap',
+        `${element.childElementCount ? element.getBoundingClientRect().height + 24 : 0}px`,
+      );
+    update();
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null;
+    observer?.observe(element);
+    window.addEventListener('resize', update);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', update);
+      viewer.style.removeProperty('--review-communications-gap');
+    };
+  }, [id, overlaysEnabled]);
   const engine = useRef<VoicePlayback | null>(null);
   const [audioError, setAudioError] = useState('');
   const [captionError, setCaptionError] = useState('');
@@ -247,7 +268,7 @@ export default function Communications({
   return (
     <>
       {(settings.subtitles || settings.chat) && (
-        <div className="communication-overlay" aria-live="off">
+        <div ref={overlay} className="communication-overlay" aria-live="off">
           {settings.chat &&
             visibleChat.map((message) => (
               <div className="chat-caption" key={message.id}>

@@ -40,10 +40,13 @@ test('timeline markers use recorded time positions, clustered events seek exactl
   await expect(page.getByRole('dialog', { name: 'Match review' })).toBeVisible();
   await page.getByRole('combobox', { name: 'Event range' }).click();
   await page.getByRole('option', { name: 'All match', exact: true }).click();
-  await expect(page.locator('.round-review-row')).toHaveCount(5);
+  await expect(page.locator('.round-review-row')).toHaveCount(6);
+  await expect(page.locator('.round-review-row.event-throw')).toHaveText(
+    /marlow threw Smoke grenade/,
+  );
   await page.getByRole('combobox', { name: 'Event players' }).click();
   await page.getByRole('option', { name: 'All players', exact: true }).click();
-  await expect(page.locator('.round-review-row')).toHaveCount(6);
+  await expect(page.locator('.round-review-row')).toHaveCount(7);
   await page.getByRole('button', { name: 'Close panel' }).click();
   await expect(page.getByRole('button', { name: 'More controls', exact: true })).toBeFocused();
   await slider.focus();

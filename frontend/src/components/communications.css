@@ -180,12 +180,14 @@
 .viewer-frame:has(.communication-overlay .is-synthetic) {
   --review-communications-gap: 80px;
 }
-.viewer-frame:has(.viewer-review-hud:not([hidden]):not(.is-collapsed))
+.viewer-frame[data-chrome-visible='true']:has(.viewer-review-hud:not([hidden]):not(.is-collapsed))
   .communication-overlay
   > div:not(:last-child) {
   display: none;
 }
-.viewer-frame:has(.viewer-review-hud:not([hidden]):not(.is-collapsed)) .communication-overlay p {
+.viewer-frame[data-chrome-visible='true']:has(.viewer-review-hud:not([hidden]):not(.is-collapsed))
+  .communication-overlay
+  p {
   -webkit-line-clamp: 2;
 }
 .viewer-frame:has(.viewer-drawer[aria-modal='true']) .communication-overlay {

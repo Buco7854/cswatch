@@ -22,10 +22,10 @@
   position: absolute;
   bottom: 0;
   left: 0;
-  width: 190px;
+  width: 174px;
   max-width: 100%;
   max-height: 100%;
-  padding: 6px 8px 8px;
+  padding: 4px 6px 6px;
   border: 0;
   border-radius: 2px;
   background: var(--surface);
@@ -35,13 +35,13 @@
   scrollbar-width: thin;
 }
 .viewer-review-hud .review-inputs-player {
-  margin: 0 0 6px;
+  margin: 0 0 4px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--muted);
   font-size: 11px;
-  line-height: 14px;
+  line-height: 12px;
 }
 .viewer-frame.has-review-hud .position-radar {
   width: 64px;
@@ -59,9 +59,6 @@
   .review-inputs-panel {
     width: 150px;
     padding-inline: 6px;
-  }
-  .player-inputs.is-compact .input-device-stage {
-    gap: 4px;
   }
 }
 @media (max-width: 360px) {
@@ -91,22 +88,5 @@
     top: calc(var(--viewer-toolbar-height, 48px) + 10px);
     bottom: calc(var(--viewer-dock-height, 150px) + 12px + var(--review-communications-gap, 0px));
     --broadcast-bank-width: 180px;
-  }
-  .player-inputs.is-compact .input-utility-keys {
-    grid-template-rows: repeat(4, 14px);
-  }
-  .player-inputs.is-compact .input-movement-keys {
-    grid-template-rows: repeat(2, 16px);
-  }
-  .player-inputs.is-compact .input-mouse-shell {
-    height: 62px;
-  }
-  .player-inputs.is-compact .input-mouse-buttons {
-    height: 31px;
-  }
-  .player-inputs.is-compact .input-mouse-motion {
-    width: 24px;
-    height: 24px;
-    margin-top: 3px;
   }
 }

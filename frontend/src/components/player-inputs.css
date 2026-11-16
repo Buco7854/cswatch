@@ -1,5 +1,5 @@
-/* Keyboard actions are the default. The mouse diagram is an explicit preference.
-   Labels represent recorded game actions, never physical-key evidence. */
+/* Recorded actions form one compact keyboard. A mouse is an opt-in companion;
+   all labels remain conventional bindings, never evidence of physical keys. */
 .input-hud-empty h3 {
   margin: 0 0 8px;
   color: var(--text);
@@ -17,29 +17,43 @@
 .input-hud-empty p:last-child {
   margin-bottom: 0;
 }
+/* 38px direction cluster + 2px separation + 34px modifiers = 74px.
+   With mouse on, the phone's 138px inner width is 84 + 6 + 48px. */
 .player-inputs .input-device-stage {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
-  gap: 10px;
-  max-width: 258px;
+  gap: 6px;
+  max-width: 174px;
   margin-inline: auto;
 }
 .player-inputs.has-mouse-input .input-device-stage {
-  grid-template-columns: minmax(0, 1fr) 60px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 48px;
+}
+.player-inputs .input-keyboard-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 112px;
+  max-width: 100%;
+  min-width: 0;
+  justify-self: center;
 }
 .player-inputs .input-keyboard {
   display: grid;
-  gap: 3px;
+  gap: 2px;
   align-items: stretch;
+  min-width: 0;
 }
 .player-inputs .input-movement-keys {
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  grid-template-rows: repeat(2, 24px);
+  grid-template-rows: repeat(2, 18px);
+  width: min(70px, 100%);
+  margin-inline: auto;
 }
 .player-inputs .input-utility-keys {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-rows: repeat(4, 24px);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(2, 16px);
 }
 .player-inputs .input-action-key {
   display: flex;
@@ -47,17 +61,17 @@
   justify-content: center;
   min-width: 0;
   min-height: 0;
-  padding: 3px;
+  padding: 1px;
   border: 0;
-  border-radius: 4px;
+  border-radius: 3px;
   background: var(--raised);
   color: var(--muted);
-  box-shadow: inset 0 -2px 0 #0001;
+  box-shadow: inset 0 -1px 0 #0001;
   line-height: 1;
 }
 .player-inputs .input-action-key kbd {
   font-family: inherit;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
 }
 .player-inputs .input-action-key[data-state='pressed'] {
@@ -74,14 +88,6 @@
   grid-column: 2;
   grid-row: 1;
 }
-.player-inputs .input-use {
-  grid-column: 1;
-  grid-row: 1;
-}
-.player-inputs .input-reload {
-  grid-column: 2;
-  grid-row: 1;
-}
 .player-inputs .input-left {
   grid-column: 1;
   grid-row: 2;
@@ -95,16 +101,24 @@
   grid-row: 2;
 }
 .player-inputs .input-walk {
-  grid-column: 1 / span 2;
-  grid-row: 2;
+  grid-column: 1;
+  grid-row: 1;
 }
 .player-inputs .input-duck {
-  grid-column: 1 / span 2;
-  grid-row: 3;
+  grid-column: 2;
+  grid-row: 1;
+}
+.player-inputs .input-use {
+  grid-column: 3;
+  grid-row: 1;
 }
 .player-inputs .input-jump {
   grid-column: 1 / span 2;
-  grid-row: 4;
+  grid-row: 2;
+}
+.player-inputs .input-reload {
+  grid-column: 3;
+  grid-row: 2;
 }
 .player-inputs .input-mouse-device {
   display: flex;
@@ -113,29 +127,30 @@
 }
 .player-inputs .input-mouse-shell {
   position: relative;
-  width: 60px;
-  height: 104px;
+  box-sizing: border-box;
+  width: 48px;
+  height: 74px;
   border: 1px solid var(--control);
-  border-radius: 30px 30px 25px 25px;
+  border-radius: 24px 24px 21px 21px;
   background: var(--ground);
   overflow: hidden;
 }
 .player-inputs .input-mouse-buttons {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  height: 45px;
+  height: 34px;
   border-bottom: 1px solid var(--control);
 }
 .player-inputs .input-mouse-button {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  padding: 0 1px 7px;
+  padding: 0 0 5px;
+  color: var(--muted);
+  background: var(--raised);
   font-size: 11px;
   line-height: 1;
   font-weight: 500;
-  color: var(--muted);
-  background: var(--raised);
 }
 .player-inputs .input-mouse-primary {
   border-right: 1px solid var(--control);
@@ -150,19 +165,19 @@
 }
 .player-inputs .input-mouse-wheel {
   position: absolute;
-  left: 26px;
-  top: 10px;
-  width: 6px;
-  height: 17px;
+  left: 21px;
+  top: 6px;
+  width: 4px;
+  height: 11px;
   border-radius: 4px;
   background: var(--faint);
   pointer-events: none;
 }
 .player-inputs .input-mouse-motion {
   display: block;
-  width: 36px;
-  height: 36px;
-  margin: 10px auto 0;
+  width: 26px;
+  height: 26px;
+  margin: 5px auto 0;
   color: var(--signal);
 }
 .input-mouse-motion-axes {
@@ -256,95 +271,9 @@
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
-.player-inputs.is-compact .input-device-stage {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  max-width: 174px;
-  gap: 6px;
-}
-.player-inputs.is-compact.has-mouse-input .input-device-stage {
-  grid-template-columns: minmax(0, 1fr) 50px minmax(0, 1fr);
-}
-.player-inputs.is-compact .input-keyboard {
-  grid-auto-rows: 18px;
-  gap: 2px;
-}
-.player-inputs.is-compact .input-movement-keys {
-  grid-template-rows: repeat(2, 18px);
-}
-.player-inputs.is-compact .input-utility-keys {
-  grid-template-rows: repeat(4, 18px);
-}
-.player-inputs.is-compact .input-action-key {
-  padding: 1px;
-  border-radius: 3px;
-}
-.player-inputs.is-compact .input-action-key kbd {
-  font-size: 11px;
-}
-.player-inputs.is-compact .input-mouse-shell {
-  width: 50px;
-  height: 78px;
-  border-radius: 25px 25px 21px 21px;
-}
-.player-inputs.is-compact .input-mouse-buttons {
-  height: 35px;
-}
-.player-inputs.is-compact .input-mouse-button {
-  padding: 0 0 5px;
-}
-.player-inputs.is-compact .input-mouse-wheel {
-  left: 22px;
-  top: 6px;
-  width: 4px;
-  height: 12px;
-}
-.player-inputs.is-compact .input-mouse-motion {
-  width: 28px;
-  height: 28px;
-  margin-top: 5px;
-}
 .player-inputs .input-visual-metadata {
   padding-top: 12px;
 }
-@media (max-width: 360px) {
-  .player-inputs .input-device-stage {
-    gap: 8px;
-  }
-  .player-inputs.has-mouse-input:not(.is-compact) .input-device-stage {
-    grid-template-columns: minmax(0, 1fr) 54px minmax(0, 1fr);
-  }
-  .player-inputs .input-mouse-shell {
-    width: 54px;
-    height: 100px;
-  }
-  .player-inputs .input-mouse-wheel {
-    left: 23px;
-  }
-}
 .options-dialog .input-display-preferences {
   padding-inline-start: 12px;
-}
-@media (max-height: 560px) {
-  .player-inputs .input-movement-keys {
-    grid-template-rows: repeat(2, 20px);
-  }
-  .player-inputs .input-utility-keys {
-    grid-template-rows: repeat(4, 18px);
-  }
-  .player-inputs .input-mouse-shell {
-    width: 48px;
-    height: 76px;
-  }
-  .player-inputs .input-mouse-device {
-    min-height: 76px;
-  }
-  .player-inputs .input-mouse-wheel {
-    left: 20px;
-    height: 13px;
-  }
-  .player-inputs .input-mouse-motion {
-    width: 25px;
-    height: 25px;
-    margin-top: 3px;
-  }
 }

@@ -33,6 +33,16 @@ import { RoundEventReview } from './RoundEvents';
 import ReplayTimeline from './ReplayTimeline';
 import ObjectiveHud from './ObjectiveHud';
 import ReviewHud from './ReviewHud';
+import ReviewActions, { type ReviewAction } from './ReviewActions';
+import ReviewEventGlyph from './ReviewEventGlyph';
+import EquipmentGlyph from './EquipmentGlyph';
+import {
+  buildReviewPrompts,
+  reviewPromptsAt,
+  type KillPrompt,
+  type LandingPrompt,
+} from '../review-prompts';
+import type { SceneFocus } from './Scene';
 import { SelectedLoadout } from './MatchEconomy';
 import Communications from './Communications';
 import ViewerOptions from './ViewerOptions';
@@ -91,6 +101,16 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     [manage, setManage] = useState(false);
   const [communicationsOpen, setCommunicationsOpen] = useState(false);
   const [timelineOptionsOpen, setTimelineOptionsOpen] = useState(false);
+  const [grenadeFocus, setGrenadeFocus] = useState<SceneFocus>();
+  const focusSequence = useRef(0);
+  const promptIndex = useMemo(
+    () => (data ? buildReviewPrompts(data, selected, first, last) : null),
+    [data, selected, first, last],
+  );
+  const prompts = useMemo(
+    () => (promptIndex ? reviewPromptsAt(promptIndex, tick) : { kill: null, landing: null }),
+    [promptIndex, tick],
+  );
   const [mapAvailable, setMapAvailable] = useState(false);
   const communicationsTrigger = useRef<HTMLElement | null>(null);
   const communicationsWasOpen = useRef(false);
@@ -265,6 +285,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     setManage(false);
     setCommunicationsOpen(false);
     setTimelineOptionsOpen(false);
+    setGrenadeFocus(undefined);
     return () => {
       scope.active = false;
     };
@@ -510,6 +531,26 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     setPlaying(false);
     seek(value);
   }
+  function replayKill(prompt: KillPrompt) {
+    seek(prompt.startTick);
+    setPlaying(true);
+    chrome.show();
+    requestAnimationFrame(() => playTrigger.current?.focus({ preventScroll: true }));
+  }
+  function viewGrenadeLanding(prompt: LandingPrompt) {
+    seek(prompt.startTick);
+    setGrenadeFocus({
+      id: `${prompt.id}:${++focusSequence.current}`,
+      target: prompt.target,
+      origin: prompt.origin,
+      fromTick: prompt.tick,
+      untilTick: prompt.endTick,
+    });
+    if (mode !== '2d') setMode('orbit');
+    setPlaying(true);
+    chrome.show();
+    requestAnimationFrame(() => playTrigger.current?.focus({ preventScroll: true }));
+  }
   const momentActions: MenuAction[] = [
     {
       id: 'communications',
@@ -574,6 +615,33 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
   const selectedPlayer = data.players.find((player) => player.id === selected);
   const round = data.rounds.filter((r) => r.tick <= tick).at(-1);
   const reviewRound = roundAt(data, tick, last);
+  const reviewActions: ReviewAction[] =
+    panel || buffering
+      ? []
+      : [
+          ...(settings.grenadeLanding && prompts.landing
+            ? [
+                {
+                  id: prompts.landing.id,
+                  label: t('View grenade landing'),
+                  title: t('View the recorded detonation position from a separate camera.'),
+                  icon: <EquipmentGlyph item={prompts.landing.weapon} />,
+                  run: () => viewGrenadeLanding(prompts.landing!),
+                },
+              ]
+            : []),
+          ...(settings.killReplay && prompts.kill
+            ? [
+                {
+                  id: prompts.kill.id,
+                  label: t('Replay kill'),
+                  title: t('Replay the observed player’s recent elimination.'),
+                  icon: <ReviewEventGlyph event={{ type: 'kill' }} size={18} />,
+                  run: () => replayKill(prompts.kill!),
+                },
+              ]
+            : []),
+        ];
   const viewerMenuActions: MenuAction[] = [
     ...(['en', 'fr'] as const).map((language) => ({
       id: 'language-' + language,
@@ -612,6 +680,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       className={'viewer-frame' + (settings.inputs || settings.economy ? ' has-review-hud' : '')}
       data-controls-hidden={settings.controlsHidden}
       data-chrome-visible={chrome.visible}
+      data-review-action-count={reviewActions.length}
       ref={full}
     >
       <header
@@ -663,7 +732,10 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
             className="camera-select"
             icon={<Eye size={16} />}
             value={mode}
-            onValueChange={setMode}
+            onValueChange={(value) => {
+              setGrenadeFocus(undefined);
+              setMode(value);
+            }}
             options={[
               { value: 'orbit', label: t('Free camera') },
               { value: 'tactical', label: t('Overhead') },
@@ -714,6 +786,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
               selected={selected}
               settings={settings}
               onMapAvailability={setMapAvailable}
+              focus={grenadeFocus}
             />
           </Suspense>
           {buffering && (
@@ -755,7 +828,13 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
               </div>
             )}
             {settings.radar && mode !== '2d' && (
-              <TacticalPlot data={data} tick={tick} selected={selected} compact />
+              <TacticalPlot
+                data={data}
+                tick={tick}
+                selected={selected}
+                settings={settings}
+                compact
+              />
             )}
           </div>
         </div>
@@ -1251,6 +1330,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
             )}
           </div>
         </div>
+        <ReviewActions actions={reviewActions} />
       </div>
       {manage && demo && (
         <ManageDemo demo={demo} onChange={setDemo} close={() => setManage(false)} />

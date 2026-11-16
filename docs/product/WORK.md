@@ -31,3 +31,9 @@ The latest user correction requires a single CT/T roster on the right, no visibl
 Toolbar, roster, objective ribbon, physical input instrument and flush full-width playback deck share one palette per dark/light theme. Keep the camera center clear. Exact native CS2 demo kill/death symbols replace generic icons; objective events use the corresponding native HUD symbols. The same operator-only, PNG-only pipeline now supports 73 equipment assets plus 10 native review symbols. Preserve exact event timing, all review options, data honesty, EN/FR and the approved public landing.
 
 Specialist source ownership has returned to root. Run native/browser-heavy checks sequentially; finish rendered review and release checks before pushing the authorized main branch. Proprietary artwork stays ignored and unbundled.
+
+## Recorded review follow-up
+
+Low quality retains recorded grenade projectiles independently of flight-path controls; 2D includes projectiles and analytical utility effects. Inputs are a compact ZQSD/WASD block with modifiers beneath and optional mouse alongside. New-device default is ZQSD, while saved WASD remains valid.
+
+Optional observed-player moment actions offer a recorded grenade landing/detonation view and a rewind to a recent kill. Each can be disabled in Options. Actual attributable global detonation coordinates drive the alternate view; missing/ambiguous data suppresses it. The user rejected temporary clip/return navigation. Replay now seeks back and plays in the current camera at the current speed; grenade viewing seeks back and centers the ordinary free camera (or retains 2D). Playback continues normally with no back button or end stop. Both actions share one compact filled card. Contextual actions and captions remain usable while menus/player HUD fade. Preserve these distinctions in future work.
