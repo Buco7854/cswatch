@@ -11,7 +11,7 @@ type Match = {
   competition_name?: string;
   teams?: Record<string, { nickname: string }>;
 };
-export default function Connections() {
+export default function Connections({ embedded = false }: { embedded?: boolean }) {
   const { user, config, refresh, notify, signIn } = useApp();
   const nav = useNavigate();
   const [busy, setBusy] = useState(''),
@@ -54,16 +54,18 @@ export default function Connections() {
   }
   return (
     <>
-      <header className="page-heading">
-        <div>
-          <h1>{t('Connected accounts')}</h1>
-          <p>{t('Less fetching. More reviewing.')}</p>
-        </div>
-        <Link className="button" to="/library">
-          {t('Back to library')}
-          <ArrowUpRight size={16} />
-        </Link>
-      </header>
+      {!embedded && (
+        <header className="page-heading">
+          <div>
+            <h1>{t('Connected accounts')}</h1>
+            <p>{t('Less fetching. More reviewing.')}</p>
+          </div>
+          <Link className="button" to="/library">
+            {t('Back to library')}
+            <ArrowUpRight size={16} />
+          </Link>
+        </header>
+      )}
       {!user ? (
         <div className="inline-state">
           <h2>{t('Your accounts, in one place.')}</h2>
@@ -113,7 +115,7 @@ export default function Connections() {
                     )}
               </p>
               {config.steam_enabled && (
-                <a className="button" href="/api/auth/steam?returnTo=%2Fconnections">
+                <a className="button" href="/api/auth/steam?returnTo=%2Faccount%2Fconnections">
                   {steam ? t('Verify Steam again') : t('Connect Steam')}
                   <ArrowUpRight size={16} />
                 </a>
@@ -179,7 +181,11 @@ export default function Connections() {
                     {t('Connected')}
                   </>
                 ) : config.faceit_enabled ? (
-                  t('Available')
+                  config.faceit_configured ? (
+                    t('Available')
+                  ) : (
+                    t('Administrator setup required')
+                  )
                 ) : (
                   t('Disabled by administrator')
                 )}
@@ -230,8 +236,8 @@ export default function Connections() {
                         })
                       }
                     >
-                      <RefreshCw size={15} />
-                      {t('Recent matches')}
+                      <RefreshCw size={15} className={busy === 'history' ? 'spin' : ''} />
+                      {busy === 'history' ? t('Loading matches…') : t('Recent matches')}
                     </button>
                   )}
                 </div>
@@ -248,7 +254,7 @@ export default function Connections() {
                       'Automatic demo downloads need an approved FACEIT Downloads API token. Manual uploads always work.',
                     )}
               </p>
-              {config.faceit_enabled && (
+              {config.faceit_enabled && config.faceit_downloads && faceit && (
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
@@ -271,6 +277,12 @@ export default function Connections() {
                     <ArrowUpRight size={16} />
                   </button>
                 </form>
+              )}
+              {config.faceit_enabled && !config.faceit_downloads && (
+                <Link className="button" to="/library?upload=1">
+                  {t('Add a demo')}
+                  <ArrowUpRight size={16} />
+                </Link>
               )}
             </div>
           </div>

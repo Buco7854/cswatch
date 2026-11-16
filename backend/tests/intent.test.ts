@@ -13,4 +13,5 @@ test('auth return paths preserve local intent and reject external/protocol/API r
     assert.equal(safeReturnPath(value), '/library');
   assert.equal(safeReturnPath('/watch/sample?tick=128#notes'), '/watch/sample?tick=128#notes');
   assert.equal(safeReturnPath('/connections'), '/connections');
+  assert.equal(safeReturnPath('/account/connections'), '/account/connections');
 });

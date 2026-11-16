@@ -1,5 +1,9 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 const privateInstance = Boolean(process.env.E2E_PRIVATE);
+async function choose(page: Page, label: string, option: string) {
+  await page.getByRole('combobox', { name: label, exact: true }).click();
+  await page.getByRole('option', { name: option, exact: true }).click();
+}
 test('public landing has working proof, feature navigation, and guest viewer', async ({ page }) => {
   test.skip(privateInstance, 'Private entry has its own assertions.');
   const errors: string[] = [];
@@ -22,7 +26,7 @@ test('public landing has working proof, feature navigation, and guest viewer', a
       .locator('.viewer-frame')
       .evaluate((el) => Math.abs(el.getBoundingClientRect().height - innerHeight) < 2),
   ).toBe(true);
-  await page.getByLabel('Camera mode').selectOption('2d');
+  await choose(page, 'Camera mode', '2D tactical · low power');
   await expect(
     page.getByRole('img', { name: 'Player position plot. No map geometry.' }),
   ).toBeVisible();
@@ -34,7 +38,7 @@ test('public landing has working proof, feature navigation, and guest viewer', a
   expect(Number(await slider.inputValue())).toBeGreaterThan(Number(before));
   await page.getByRole('button', { name: 'Options', exact: true }).click();
   await page.getByRole('switch', { name: /X-ray silhouettes/ }).uncheck();
-  await page.getByLabel('Rendering quality').selectOption('low');
+  await choose(page, 'Rendering quality', 'Low · reduced resolution, no shadows');
   await page.getByRole('button', { name: 'Close viewer options' }).click();
   await page.reload();
   await page.getByRole('button', { name: 'Options', exact: true }).click();
@@ -79,13 +83,28 @@ test('account-required upload preserves route intent, registration and logout wo
   await expect(page.getByText('Your matches belong here.')).toBeVisible();
   await page.getByRole('button', { name: new RegExp(username) }).click();
   await page
-    .getByRole('navigation', { name: 'Account and mobile navigation' })
-    .getByRole('link', { name: 'Account settings' })
+    .getByRole('menu', { name: 'Account menu' })
+    .getByRole('menuitem', { name: 'Account settings' })
     .click();
   await expect(page.getByRole('heading', { name: 'Account settings', exact: true })).toBeVisible();
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Main navigation', exact: true })
+      .getByRole('link', { name: 'Account settings' }),
+  ).toHaveCount(0);
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Main navigation', exact: true })
+      .getByRole('link', { name: 'Connections', exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole('link', { name: 'Connected accounts', exact: true }).click();
+  await expect(page).toHaveURL(/\/account\/connections$/);
+  await expect(page.getByRole('heading', { name: 'Steam identity' })).toBeVisible();
+  await page.goto('/connections');
+  await expect(page).toHaveURL(/\/account\/connections$/);
   await page.getByRole('button', { name: new RegExp(username) }).click();
-  await page.getByRole('button', { name: 'Sign out' }).click();
-  await expect(page.getByRole('heading', { name: 'Your review needs a home.' })).toBeVisible();
+  await page.getByRole('menuitem', { name: 'Sign out' }).click();
+  await expect(page.getByRole('heading', { name: 'Your accounts, in one place.' })).toBeVisible();
 });
 test('French covers public pages, viewer, auth errors and saved language choice', async ({
   page,
@@ -99,7 +118,7 @@ test('French covers public pages, viewer, auth errors and saved language choice'
   await expect(page.getByRole('heading', { name: 'Chaque round. Chaque angle.' })).toBeVisible();
   await page.getByRole('link', { name: 'Essayer le lecteur', exact: true }).first().click();
   await expect(page.getByRole('heading', { name: 'Cour d’entraînement' })).toBeVisible();
-  await page.getByLabel('Mode de caméra').selectOption('2d');
+  await choose(page, 'Mode de caméra', 'Vue tactique 2D · économe');
   await page.getByRole('button', { name: 'Options', exact: true }).click();
   await expect(page.getByRole('switch', { name: /Silhouettes à travers les murs/ })).toBeVisible();
   await page.getByRole('button', { name: 'Fermer les options du lecteur' }).click();
@@ -109,7 +128,7 @@ test('French covers public pages, viewer, auth errors and saved language choice'
   await page.getByRole('dialog').getByRole('button', { name: 'Se connecter', exact: true }).click();
   await expect(page.getByRole('alert')).toHaveText('Nom d’utilisateur ou mot de passe incorrect.');
   await page.getByRole('button', { name: 'Fermer la connexion' }).click();
-  await page.getByLabel('Langue').selectOption('en');
+  await choose(page, 'Langue', 'EN');
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
 });
 test('private entry gates feature and demo routes and respects registrations policy', async ({
@@ -208,4 +227,145 @@ test('viewer keeps scene, dock, panels and fullscreen within the browser tab', a
       .toBe(true);
     await page.evaluate(() => document.exitFullscreen());
   }
+});
+
+test('viewer menus support keyboard selection, bounded touch lists and fullscreen dialogs', async ({
+  page,
+}) => {
+  test.skip(privateInstance);
+  test.setTimeout(90000);
+  await page.goto('/watch/sample');
+  for (const theme of ['dark', 'light']) {
+    if ((await page.locator('html').getAttribute('data-theme')) !== theme)
+      await page
+        .getByRole('button', {
+          name: theme === 'light' ? 'Switch to light theme' : 'Switch to dark theme',
+        })
+        .click();
+    for (const [width, height] of [
+      [320, 740],
+      [768, 1024],
+      [1440, 900],
+      [844, 390],
+    ]) {
+      await page.setViewportSize({ width, height });
+      const camera = page.getByRole('combobox', { name: 'Camera mode' });
+      await camera.focus();
+      await expect(camera).toBeFocused();
+      await page.keyboard.press('ArrowRight');
+      await expect(page.getByRole('button', { name: 'Options', exact: true })).toBeFocused();
+      await page.keyboard.press('ArrowLeft');
+      await expect(camera).toBeFocused();
+      await page.keyboard.press('ArrowDown');
+      await expect(page.getByRole('listbox')).toBeVisible();
+      expect(
+        await page.getByRole('listbox').evaluate((el) => {
+          const bounds = el.getBoundingClientRect();
+          return (
+            bounds.left >= 0 &&
+            bounds.top >= 0 &&
+            bounds.right <= innerWidth &&
+            bounds.bottom <= innerHeight
+          );
+        }),
+      ).toBe(true);
+      await page.keyboard.press('End');
+      await expect(
+        page.getByRole('option', { name: 'Player perspective', exact: true }),
+      ).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect(camera).toContainText('Player perspective');
+      const compact = width <= 760 || (width <= 1100 && height <= 560);
+      const triggerName = compact ? 'More controls' : 'More navigation';
+      const menuName = compact ? 'Viewer controls' : 'More navigation';
+      await page.getByRole('button', { name: triggerName, exact: true }).click();
+      await expect(page.getByRole('menu', { name: menuName })).toBeVisible();
+      expect(
+        await page.getByRole('menu', { name: menuName }).evaluate((el) => {
+          const bounds = el.getBoundingClientRect();
+          return (
+            bounds.left >= 0 &&
+            bounds.top >= 0 &&
+            bounds.right <= innerWidth &&
+            bounds.bottom <= innerHeight
+          );
+        }),
+      ).toBe(true);
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('button', { name: triggerName, exact: true })).toBeFocused();
+      if (compact) {
+        expect(
+          await page.locator('.viewer-controlbar button:visible').evaluateAll((elements) =>
+            elements.every((element) => {
+              const bounds = element.getBoundingClientRect();
+              return bounds.width >= 44 && bounds.height >= 44;
+            }),
+          ),
+        ).toBe(true);
+        await page.getByRole('button', { name: 'More controls' }).click();
+        await page.getByRole('menuitem', { name: 'Add note', exact: true }).click();
+        await expect(page.getByPlaceholder('What happened here?')).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Close panel' })).toBeFocused();
+        await page.getByRole('button', { name: 'Close panel' }).click();
+      }
+    }
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.getByRole('button', { name: 'Players', exact: true }).click();
+  await page.getByRole('button', { name: 'More navigation', exact: true }).click();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.viewer-drawer')).toBeVisible();
+  await page.getByRole('button', { name: 'Close panel' }).click();
+  if (await page.evaluate(() => document.fullscreenEnabled)) {
+    await page.getByRole('button', { name: 'Toggle fullscreen' }).click();
+    await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBe(true);
+    await choose(page, 'Camera mode', 'Overhead');
+    await page.getByRole('button', { name: 'Options', exact: true }).click();
+    await choose(page, 'Rendering quality', 'Low · reduced resolution, no shadows');
+    await expect(page.getByRole('combobox', { name: 'Rendering quality' })).toContainText('Low');
+    await page.getByRole('button', { name: 'Close viewer options' }).click();
+    await page.evaluate(() => document.exitFullscreen());
+  }
+});
+
+test('library searches the full collection and keeps loaded pages on refresh', async ({ page }) => {
+  test.skip(privateInstance);
+  const rows = Array.from({ length: 120 }, (_, index) => ({
+    id: 'library-fixture-' + index,
+    name: index === 119 ? 'unique-final-match.dem' : 'team-review-' + index + '.dem',
+    source: 'upload',
+    status: 'ready',
+    size: 1024,
+    created_at: 1700000000 - index,
+    public: true,
+    owned: false,
+    map: 'de_mirage',
+    duration: 1200,
+    rounds: 24,
+    error: null,
+  }));
+  await page.route('**/api/demos?*', async (route) => {
+    const url = new URL(route.request().url());
+    const query = (url.searchParams.get('q') || '').toLowerCase();
+    const offset = Number(url.searchParams.get('offset') || 0);
+    const matches = rows.filter((row) => (row.name + ' ' + row.map).toLowerCase().includes(query));
+    await route.fulfill({
+      json: { demos: matches.slice(offset, offset + 50), total: matches.length },
+    });
+  });
+  await page.goto('/explore');
+  await expect(page.locator('.demo-row:not(.table-head)')).toHaveCount(50);
+  await page.getByRole('button', { name: 'Load more demos' }).click();
+  await expect(page.locator('.demo-row:not(.table-head)')).toHaveCount(100);
+  await page.getByRole('button', { name: 'Refresh demos' }).click();
+  await expect(page.locator('.library-section')).toHaveAttribute('aria-busy', 'false');
+  await expect(page.locator('.demo-row:not(.table-head)')).toHaveCount(100);
+  await page.getByRole('textbox', { name: 'Search demos' }).fill('unique-final');
+  await expect(page.locator('.demo-row:not(.table-head)')).toHaveCount(1);
+  await expect(page.getByText('unique-final-match.dem', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Load more demos' })).toHaveCount(0);
+  await page.getByRole('textbox', { name: 'Search demos' }).fill('no-such-match');
+  await expect(page.getByRole('heading', { name: 'No matching demos.' })).toBeVisible();
+  await page.getByRole('textbox', { name: 'Search demos' }).clear();
+  await expect(page.locator('.demo-row:not(.table-head)')).toHaveCount(50);
 });

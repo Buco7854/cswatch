@@ -15,9 +15,12 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           cache: npm
@@ -26,10 +29,19 @@ jobs:
             backend/package-lock.json
             frontend/package-lock.json
             tools/assets/package-lock.json
-      - run: npm ci && npm ci --prefix backend && npm ci --prefix frontend && npm ci --prefix tools/assets
+            tools/transcription/package-lock.json
+      - run: npm ci && npm ci --prefix backend && npm ci --prefix frontend && npm ci --prefix tools/assets && npm ci --prefix tools/transcription
+        env:
+          ONNXRUNTIME_NODE_INSTALL: skip
       - run: node scripts/fetch-test-demo.mjs
+      - name: Prepare checksum-pinned offline CPU speech model
+        run: node tools/transcription/prepare-model.mjs --out var/transcription-models/whisper-tiny
       - run: npm run format:check && npm run check:locales && npm run build && npm test
-      - run: npm audit --prefix backend --omit=dev --audit-level=high && npm audit --prefix frontend --omit=dev --audit-level=high && npm audit --prefix tools/assets --omit=dev --audit-level=high
+        env:
+          CSWATCH_TRANSCRIPTION_TEST_MODEL: ${{ github.workspace }}/var/transcription-models/whisper-tiny
+      - name: Prepare public speech replay fixture for container verification
+        run: node tools/transcription/verify-transcription.mjs --model var/transcription-models/whisper-tiny --keep-job var/transcription-jfk-job
+      - run: npm audit --prefix backend --omit=dev --audit-level=high && npm audit --prefix frontend --omit=dev --audit-level=high && npm audit --prefix tools/assets --omit=dev --audit-level=high && npm audit --prefix tools/transcription --audit-level=high
       - run: npx --prefix frontend playwright install --with-deps chromium
       - run: npm run test:e2e
       - name: Private instance, registrations closed
@@ -42,8 +54,8 @@ jobs:
         env:
           E2E_PRIVATE: '1'
           E2E_REGISTRATIONS: 'true'
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
-      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           push: false
@@ -59,25 +71,34 @@ jobs:
           done
           docker logs cswatch-smoke
           exit 1
+      - name: Verify isolated parsing and replay in the hardened image
+        run: |
+          chmod a+rx var/fixture
+          chmod a+r var/fixture/input.dem
+          chmod -R a+rX var/transcription-models/whisper-tiny var/transcription-jfk-job
+          docker run --rm -i --read-only --network none --cap-drop=ALL --security-opt no-new-privileges --pids-limit 128 --memory 5g --cpus 2 -e CSWATCH_REQUIRE_ASR_SMOKE=true --tmpfs /tmp:rw,size=3g,mode=1777 --mount type=bind,source="$PWD/var/fixture",target=/fixture,readonly --mount type=bind,source="$PWD/var/transcription-models/whisper-tiny",target=/models,readonly --mount type=bind,source="$PWD/var/transcription-jfk-job",target=/voice-fixture,readonly cswatch:verify node --input-type=module < scripts/runtime-smoke.mjs
   publish:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: verify
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     permissions:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Image name
         id: image
         run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
-      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           push: true

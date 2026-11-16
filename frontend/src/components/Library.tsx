@@ -2,9 +2,8 @@ import { t, locale } from '../i18n';
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowRight, ArrowUpRight, Search, Play, RefreshCw, Lock, Globe } from 'lucide-react';
-import { api } from '../api';
 import { useApp } from '../context';
-import type { Demo } from '../types';
+import { useDemoLibrary } from '../useDemoLibrary';
 import UploadDialog from './UploadDialog';
 export default function Library({ publicOnly = false }: { publicOnly?: boolean }) {
   const { user, config } = useApp();
@@ -18,41 +17,16 @@ export default function Library({ publicOnly = false }: { publicOnly?: boolean }
       setParams(next, { replace: true });
     }
   }
-  const [demos, setDemos] = useState<Demo[]>([]),
-    [search, setSearch] = useState(''),
-    [error, setError] = useState(''),
-    [loading, setLoading] = useState(false),
-    [more, setMore] = useState(false);
+  const [search, setSearch] = useState('');
   const effectiveScope = publicOnly ? 'public' : 'mine';
+  const { demos, total, loading, error, more, load } = useDemoLibrary(
+    effectiveScope,
+    user?.id,
+    search,
+  );
   useEffect(() => {
     if (user && !publicOnly && params.get('upload') === '1') setUploadOpen(true);
   }, [user?.id, publicOnly, params]);
-  async function load(append = false) {
-    setLoading(true);
-    setError('');
-    try {
-      const r = await api<{ demos: Demo[] }>(
-        `/api/demos?scope=${effectiveScope}&offset=${append ? demos.length : 0}`,
-      );
-      setDemos(append ? [...demos, ...r.demos] : r.demos);
-      setMore(r.demos.length === 50);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }
-  useEffect(() => {
-    void load();
-  }, [effectiveScope, user?.id]); // eslint-disable-line
-  useEffect(() => {
-    if (!demos.some((d) => ['queued', 'uploading', 'processing'].includes(d.status))) return;
-    const t = setInterval(() => void load(), 5000);
-    return () => clearInterval(t);
-  }, [demos]);
-  const filtered = demos.filter((d) =>
-    (d.name + ' ' + d.map).toLowerCase().includes(search.toLowerCase()),
-  );
   return (
     <>
       <header className="page-heading">
@@ -90,7 +64,11 @@ export default function Library({ publicOnly = false }: { publicOnly?: boolean }
       </header>
       <div className="library-workspace">
         <div className="library-primary">
-          <section className="library-section" aria-labelledby="matches-heading">
+          <section
+            className="library-section"
+            aria-labelledby="matches-heading"
+            aria-busy={loading}
+          >
             <div className="section-heading">
               <nav className="tabs" aria-label={t('Demo source')}>
                 <Link id="matches-heading" className={!publicOnly ? 'active' : ''} to="/library">
@@ -107,6 +85,7 @@ export default function Library({ publicOnly = false }: { publicOnly?: boolean }
                     aria-label={t('Search demos')}
                     placeholder={t('Search demos or maps')}
                     value={search}
+                    maxLength={120}
                     onChange={(e) => setSearch(e.target.value)}
                   />
                 </label>
@@ -120,14 +99,15 @@ export default function Library({ publicOnly = false }: { publicOnly?: boolean }
                 </button>
               </div>
             </div>
-            {error ? (
+            {error && (
               <div className="inline-state" role="alert">
                 <p>{t(error)}</p>
                 <button className="text-button" onClick={() => void load()}>
                   {t('Try again')}
                 </button>
               </div>
-            ) : filtered.length ? (
+            )}
+            {demos.length ? (
               <>
                 <div className="demo-table">
                   <div className="demo-row table-head">
@@ -137,7 +117,7 @@ export default function Library({ publicOnly = false }: { publicOnly?: boolean }
                     <span>{t('Added')}</span>
                     <span>{t('Playback')}</span>
                   </div>
-                  {filtered.map((d) => (
+                  {demos.map((d) => (
                     <Link
                       key={d.id}
                       className="demo-row"
@@ -154,7 +134,11 @@ export default function Library({ publicOnly = false }: { publicOnly?: boolean }
                         </span>
                       </div>
                       <span className="source">
-                        {d.source === 'faceit' ? 'FACEIT' : t('Upload')}
+                        {d.source === 'faceit'
+                          ? 'FACEIT'
+                          : d.source === 'hltv'
+                            ? 'HLTV'
+                            : t('Upload')}
                         <small>
                           {d.public ? (
                             <>
@@ -169,7 +153,12 @@ export default function Library({ publicOnly = false }: { publicOnly?: boolean }
                           )}
                         </small>
                       </span>
-                      <span className="num rounds-count">{d.rounds ?? '—'}</span>
+                      <span className="num rounds-count">
+                        <span className="desktop-round-count">{d.rounds ?? '—'}</span>
+                        <span className="mobile-round-count">
+                          {d.rounds === null ? '—' : t('round_count', { count: d.rounds })}
+                        </span>
+                      </span>
                       <span className="added">
                         {new Date(d.created_at * 1000).toLocaleDateString(locale(), {
                           month: 'short',
@@ -194,44 +183,50 @@ export default function Library({ publicOnly = false }: { publicOnly?: boolean }
                   ))}
                 </div>
                 {more && (
-                  <button className="button load-more" onClick={() => void load(true)}>
-                    {t('Load more demos')}
+                  <button
+                    className="button load-more"
+                    disabled={loading}
+                    onClick={() => void load(true)}
+                  >
+                    {loading ? t('Loading matches…') : t('Load more demos')}
                   </button>
                 )}
               </>
             ) : (
-              <div className="library-empty">
-                <div>
-                  <h2>
-                    {loading
-                      ? t('Loading matches…')
-                      : search
-                        ? t('No matching demos.')
+              !error && (
+                <div className="library-empty">
+                  <div>
+                    <h2>
+                      {loading
+                        ? t('Loading matches…')
+                        : search
+                          ? t('No matching demos.')
+                          : effectiveScope === 'mine'
+                            ? t('Your matches belong here.')
+                            : t('The next match could be yours.')}
+                    </h2>
+                    <p>
+                      {search
+                        ? t('Try a different map or match name.')
                         : effectiveScope === 'mine'
-                          ? t('Your matches belong here.')
-                          : t('The next match could be yours.')}
-                  </h2>
-                  <p>
-                    {search
-                      ? t('Try a different map or match name.')
-                      : effectiveScope === 'mine'
-                        ? t('Upload a demo above, or connect an account to start reviewing.')
-                        : t(
-                            config.public_access
-                              ? 'No public demos yet. Explore the sample or add your own match.'
-                              : 'No shared demos yet. Explore the sample or add your own match.',
-                          )}
-                  </p>
+                          ? t('Upload a demo above, or connect an account to start reviewing.')
+                          : t(
+                              config.public_access
+                                ? 'No public demos yet. Explore the sample or add your own match.'
+                                : 'No shared demos yet. Explore the sample or add your own match.',
+                            )}
+                    </p>
+                  </div>
+                  <Link
+                    className="button"
+                    to="/watch/sample"
+                    state={{ from: publicOnly ? '/explore' : '/library' }}
+                  >
+                    {t('Take a look around')}
+                    <ArrowRight size={17} />
+                  </Link>
                 </div>
-                <Link
-                  className="button"
-                  to="/watch/sample"
-                  state={{ from: publicOnly ? '/explore' : '/library' }}
-                >
-                  {t('Take a look around')}
-                  <ArrowRight size={17} />
-                </Link>
-              </div>
+              )
             )}
             <div className="library-meta">
               <span>
@@ -241,9 +236,9 @@ export default function Library({ publicOnly = false }: { publicOnly?: boolean }
                       ? 'community_demo_count'
                       : 'shared_demo_count'
                     : 'demo_count',
-                  { count: filtered.length },
+                  { count: total },
                 )}
-                {more ? t(' shown') : ''}
+                {more ? ' · ' + t('{{v0}} shown', { v0: demos.length }) : ''}
               </span>
               <span>
                 {config.retention_days > 0

@@ -5,28 +5,26 @@ import {
   existsSync,
   readdirSync,
   writeFileSync,
-  renameSync,
   unlinkSync,
   openSync,
   writeSync,
   closeSync,
+  statSync,
 } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createGunzip, createGzip } from 'node:zlib';
+import { createGunzip } from 'node:zlib';
 import { pipeline } from 'node:stream/promises';
 import { Transform } from 'node:stream';
 import { Decompress } from 'fzstd';
 import { parseHeader, parseTicks, parseEvent, parseGrenades } from '@laihoe/demoparser2';
-import type {
-  Playback,
-  Frame,
-  Position,
-  GameEvent,
-  DeadTime,
-  Grenade,
-} from '../../shared/playback.js';
-import { validateMagic } from './ingestion.js';
+import type { Playback, GameEvent, Grenade } from '../../shared/playback.js';
+import { validateMagic } from './demo-format.js';
+import { collectFrameState } from './frame-state.js';
+import { writeReplay } from './replay.js';
+import { readPlayerRows } from './parser-fields.js';
+import { replayCapabilities } from './player-input.js';
+import { readCommunications } from './communications.js';
 const finite = (v: unknown, fallback = 0) =>
   typeof v === 'number' && Number.isFinite(v) ? v : fallback;
 const round = (v: unknown) => Math.round(finite(v) * 100) / 100;
@@ -35,6 +33,8 @@ export async function parse(folder: string, maxExpanded: number) {
     folder,
     readdirSync(folder).find((n) => n.startsWith('input.'))!,
   );
+  if (!Number.isSafeInteger(maxExpanded) || maxExpanded < 1 || statSync(source).size > maxExpanded)
+    throw new Error('Expanded limit exceeded');
   const expanded = join(folder, 'expanded.dem');
   if (!source.endsWith('.dem')) {
     let total = 0;
@@ -84,14 +84,6 @@ export async function parse(folder: string, maxExpanded: number) {
     throw new Error('Demo has no ticks or exceeds 3 hours');
   const sampled = ticks.filter((t) => t % 4 === 0);
   if (sampled.length > 180000) throw new Error('Frame limit');
-  const optional = [
-    'armor_value',
-    'balance',
-    'active_weapon_ammo',
-    'duck_amount',
-    'flash_duration',
-  ];
-  let rows: Record<string, any>[];
   const base = [
     'X',
     'Y',
@@ -108,71 +100,54 @@ export async function parse(folder: string, maxExpanded: number) {
     'is_technical_timeout',
   ];
   const warnings: string[] = [];
-  try {
-    rows = parseTicks(source, [...base, ...optional], sampled);
-  } catch {
-    rows = parseTicks(source, base, sampled);
-    warnings.push('Equipment detail is unavailable in this demo.');
-  }
-  const roster = new Map<string, { id: string; name: string; team: number }>(),
-    frames: Frame[] = [],
-    deadTimes: DeadTime[] = [];
-  let previous = -1,
-    frame: Frame | undefined,
-    segment: DeadTime | undefined;
-  for (const r of rows) {
-    if (![r.X, r.Y, r.Z].every((v) => typeof v === 'number' && Number.isFinite(v))) continue;
-    if (r.tick !== previous) {
-      previous = r.tick;
-      frame = { tick: r.tick, players: [] };
-      frames.push(frame);
-      const kind = r.is_technical_timeout
-        ? 'technical'
-        : r.is_ct_timeout || r.is_terrorist_timeout
-          ? 'timeout'
-          : r.is_freeze_period
-            ? 'freeze'
-            : null;
-      if (segment && kind !== segment.kind) {
-        segment.end = r.tick;
-        deadTimes.push(segment);
-        segment = undefined;
-      }
-      if (kind && !segment) segment = { start: r.tick, end: r.tick, kind };
-    }
-    const id = String(r.steamid);
-    roster.set(id, { id, name: String(r.name || 'Player').slice(0, 80), team: finite(r.team_num) });
-    const p: Position = {
-      id,
-      x: round(r.X),
-      y: round(r.Y),
-      z: round(r.Z),
-      yaw: round(r.yaw),
-      pitch: round(r.pitch),
-      health: finite(r.health),
-      team: finite(r.team_num),
-      alive: Boolean(r.is_alive),
-      weapon: String(r.active_weapon_name || '').slice(0, 50),
-    };
-    if (r.armor_value !== undefined) p.armor = finite(r.armor_value);
-    if (r.balance !== undefined) p.money = finite(r.balance);
-    if (r.active_weapon_ammo !== undefined) p.ammo = finite(r.active_weapon_ammo);
-    if (r.duck_amount !== undefined) p.duck = round(r.duck_amount);
-    if (r.flash_duration !== undefined) p.flash = round(r.flash_duration);
-    frame!.players.push(p);
-  }
-  if (segment) {
-    segment.end = frames.at(-1)!.tick;
-    deadTimes.push(segment);
-  }
-  if (!frames.length || roster.size > 64) throw new Error('Invalid roster');
-  // Some native versions do not promise row ordering. Keep grouping stable.
-  frames.sort((a, b) => a.tick - b.tick);
+  const rows = readPlayerRows((fields) => parseTicks(source, fields, sampled), base, [
+    [
+      'armor_value',
+      'balance',
+      'active_weapon_ammo',
+      'duck_amount',
+      'flash_duration',
+      'has_helmet',
+      'has_defuser',
+      'is_scoped',
+      'is_defusing',
+      'current_equip_value',
+      'start_balance',
+      'cash_spent_this_round',
+      'inventory',
+    ],
+    [
+      'buttons',
+      'FORWARD',
+      'BACK',
+      'LEFT',
+      'RIGHT',
+      'JUMP',
+      'DUCK',
+      'WALK',
+      'FIRE',
+      'RIGHTCLICK',
+      'RELOAD',
+      'USE',
+    ],
+    [
+      'usercmd_buttonstate_1',
+      'usercmd_buttonstate_2',
+      'usercmd_buttonstate_3',
+      'usercmd_buttons_held',
+      'usercmd_buttons_pressed',
+      'usercmd_buttons_released',
+      'usercmd_mouse_dx',
+      'usercmd_mouse_dy',
+    ],
+  ]);
+  const { frames, players, deadTimes } = collectFrameState(rows);
   const events: GameEvent[] = [];
   for (const kind of [
     'player_death',
     'player_hurt',
     'weapon_fire',
+    'grenade_thrown',
     'round_start',
     'round_freeze_end',
     'round_end',
@@ -187,8 +162,15 @@ export async function parse(folder: string, maxExpanded: number) {
     'inferno_expire',
   ]) {
     try {
-      for (const r of parseEvent(source, kind) as any[])
-        events.push({ ...r, type: kind, tick: r.tick });
+      let parsed: any[];
+      if (kind === 'weapon_fire' || kind === 'grenade_thrown') {
+        try {
+          parsed = parseEvent(source, kind, ['X', 'Y', 'Z']);
+        } catch {
+          parsed = parseEvent(source, kind);
+        }
+      } else parsed = parseEvent(source, kind);
+      for (const r of parsed) events.push({ ...r, type: kind, tick: r.tick });
     } catch {
       warnings.push(`Event ${kind} is unavailable.`);
     }
@@ -219,7 +201,9 @@ export async function parse(folder: string, maxExpanded: number) {
     });
   const grenades: Grenade[] = [];
   try {
-    const raw = parseGrenades(source, undefined, false) as any[];
+    const raw = (parseGrenades(source, undefined, false) as any[])
+      .filter((row) => Number.isSafeInteger(row.tick) && row.tick >= 0 && row.tick <= 64 * 60 * 180)
+      .sort((a, b) => a.tick - b.tick);
     const paths = new Map<string, Grenade>();
     for (const r of raw) {
       if (r.tick % 4 !== 0) continue;
@@ -257,30 +241,26 @@ export async function parse(folder: string, maxExpanded: number) {
   } catch {
     warnings.push('Grenade trajectories are unavailable.');
   }
+  const media = await readCommunications(source, tickRate, frames.at(-1)!.tick);
+  warnings.push(...media.warnings);
   const data: Playback = {
     version: 1,
     map: String(header.map_name || 'unknown').slice(0, 80),
     tickRate,
     sample: false,
-    players: [...roster.values()],
+    players,
     frames,
     events,
     rounds,
     deadTimes,
     grenades,
     warnings,
+    capabilities: replayCapabilities(frames, events),
+    voice: media.voice,
+    chat: media.chat,
+    communications: media.communications,
   };
-  const serialized = JSON.stringify(data, (_, v) => (typeof v === 'bigint' ? String(v) : v));
-  // Bound client memory as well as server output. Long demos fail honestly rather than crashing mobile browsers.
-  if (Buffer.byteLength(serialized) > 200 * 1024 ** 2)
-    throw new Error('Playback output exceeds 200MB');
-  const { Readable } = await import('node:stream');
-  await pipeline(
-    Readable.from([serialized]),
-    createGzip(),
-    createWriteStream(join(folder, 'playback.tmp'), { mode: 0o600 }),
-  );
-  renameSync(join(folder, 'playback.tmp'), join(folder, 'playback.json.gz'));
+  await writeReplay(folder, data);
   writeFileSync(
     join(folder, 'summary.json'),
     JSON.stringify({

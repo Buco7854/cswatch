@@ -1,15 +1,31 @@
 import { ArrowUpRight, LockKeyhole } from 'lucide-react';
 import { useApp } from '../context';
 import { t } from '../i18n';
-export default function AccountGate() {
+export default function AccountGate({
+  kind = 'library',
+}: {
+  kind?: 'library' | 'account' | 'connections';
+}) {
   const { signIn, config } = useApp();
   return (
     <section className="account-gate">
       <LockKeyhole size={30} strokeWidth={1.4} />
-      <h1>{t('Your review needs a home.')}</h1>
+      <h1>
+        {t(
+          kind === 'library'
+            ? 'Your review needs a home.'
+            : kind === 'connections'
+              ? 'Your accounts, in one place.'
+              : 'Account settings',
+        )}
+      </h1>
       <p>
         {t(
-          'Sign in to upload demos, keep a private library, and save your notes. You will return here after signing in.',
+          kind === 'library'
+            ? 'Sign in to upload demos, keep a private library, and save your notes. You will return here after signing in.'
+            : kind === 'connections'
+              ? 'Sign in to connect Steam and verify your FACEIT profile.'
+              : 'Sign in to manage your identity, password, and connected accounts.',
         )}
       </p>
       <button className="button primary" onClick={signIn}>

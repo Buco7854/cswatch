@@ -23,5 +23,7 @@ core.*
 .design/qa/
 .design/member-qa/
 .design/public-regression/
+.design/
 .taste-skill/member-before/
 .taste-skill/member-after/
+.taste-skill/ux-inspection/

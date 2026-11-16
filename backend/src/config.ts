@@ -42,6 +42,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
       registrations_enabled: boolean(env.REGISTRATIONS_ENABLED),
       steam_enabled: boolean(env.STEAM_ENABLED),
       faceit_enabled: boolean(env.FACEIT_ENABLED),
+      transcription_enabled: boolean(env.TRANSCRIPTION_ENABLED),
     },
     steamApiKey: env.STEAM_API_KEY || '',
     faceitApiKey: env.FACEIT_API_KEY || '',
@@ -53,6 +54,25 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     userDemoLimit: integer(env.USER_DEMO_LIMIT, 50),
     parserTimeoutSeconds: integer(env.PARSER_TIMEOUT_SECONDS, 300),
     parserMemoryMb: integer(env.PARSER_MEMORY_MB, 4096),
+    parserSandbox: z.enum(['required', 'off']).parse(env.PARSER_SANDBOX || 'required'),
+    parserSandboxBinary: env.PARSER_SANDBOX_BINARY ? resolve(env.PARSER_SANDBOX_BINARY) : '',
+    workerRole: z.enum(['parse', 'transcription', 'all']).parse(env.WORKER_ROLE || 'all'),
+    transcriptionModelDir: env.TRANSCRIPTION_MODEL_DIR ? resolve(env.TRANSCRIPTION_MODEL_DIR) : '',
+    transcriptionTimeoutSeconds: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(3600)
+      .parse(env.TRANSCRIPTION_TIMEOUT_SECONDS || 600),
+    transcriptionMaxAudioSeconds: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(10800)
+      .parse(env.TRANSCRIPTION_MAX_AUDIO_SECONDS || 600),
+    transcriptionLanguage: z
+      .union([z.literal('auto'), z.string().regex(/^[a-z]{2,3}$/)])
+      .parse(env.TRANSCRIPTION_LANGUAGE || 'auto'),
     sessionDays: integer(env.SESSION_DAYS, 7),
     retentionDays: integer(env.RETENTION_DAYS, 30, 0),
   };
@@ -63,5 +83,6 @@ export const flagDefaults = {
   registrations_enabled: true,
   steam_enabled: false,
   faceit_enabled: false,
+  transcription_enabled: false,
 };
 export type Flag = keyof typeof flagDefaults;

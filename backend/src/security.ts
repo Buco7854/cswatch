@@ -4,19 +4,22 @@ import * as argon2 from 'argon2';
 import type { Store } from './db.js';
 import { now } from './db.js';
 import type { Config } from './config.js';
+import { HttpError } from './errors.js';
+export { HttpError } from './errors.js';
 export const COOKIE = 'cswatch_session';
+export const sessionCookieName = (config: Pick<Config, 'cookieSecure'>) =>
+  config.cookieSecure ? '__Host-cswatch_session' : COOKIE;
+export const steamStateCookie = (config: Pick<Config, 'cookieSecure'>) =>
+  config.cookieSecure
+    ? { name: '__Host-cswatch_steam_state', path: '/' }
+    : { name: 'steam_state', path: '/api/auth/steam' };
 export const token = () => randomBytes(32).toString('hex');
 export const digest = (value: string) => createHash('sha256').update(value).digest('hex');
-export const equal = (a: string, b: string) =>
-  a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
-export class HttpError extends Error {
-  constructor(
-    readonly statusCode: number,
-    message: string,
-  ) {
-    super(message);
-  }
-}
+export const equal = (a: string, b: string) => {
+  const left = Buffer.from(a),
+    right = Buffer.from(b);
+  return left.length === right.length && timingSafeEqual(left, right);
+};
 export type SessionUser = { id: string; username: string; is_admin: number; csrf: string };
 declare module 'fastify' {
   interface FastifyRequest {
@@ -34,8 +37,12 @@ export async function verifyPassword(hash: string | null | undefined, password: 
     return false;
   }
 }
-export function currentUser(db: Store, request: FastifyRequest): SessionUser | null {
-  const raw = request.cookies[COOKIE];
+export function currentUser(
+  db: Store,
+  request: FastifyRequest,
+  config: Pick<Config, 'cookieSecure'>,
+): SessionUser | null {
+  const raw = request.cookies[sessionCookieName(config)];
   if (!raw || raw.length > 100) return null;
   return (
     (db.one(
@@ -86,7 +93,7 @@ export function newSession(
     csrf = token();
   db.transaction(() => {
     db.run('DELETE FROM sessions WHERE expires_at<?', now());
-    const old = request.cookies[COOKIE];
+    const old = request.cookies[sessionCookieName(config)];
     if (old) db.run('DELETE FROM sessions WHERE token_hash=?', digest(old));
     db.run(
       'INSERT INTO sessions VALUES(?,?,?,?)',
@@ -96,7 +103,7 @@ export function newSession(
       now() + config.sessionDays * 86400,
     );
   });
-  reply.setCookie(COOKIE, raw, {
+  reply.setCookie(sessionCookieName(config), raw, {
     httpOnly: true,
     secure: config.cookieSecure,
     sameSite: 'lax',
@@ -120,7 +127,9 @@ export function safeReturnPath(value: unknown, fallback = '/library') {
     const url = new URL(value, 'https://cswatch.invalid');
     if (
       url.origin !== 'https://cswatch.invalid' ||
-      !/^\/(?:library|connections|account|explore|watch\/[A-Za-z0-9_-]+)(?:\/)?$/.test(url.pathname)
+      !/^\/(?:library|connections|account(?:\/connections)?|explore|watch\/[A-Za-z0-9_-]+)(?:\/)?$/.test(
+        url.pathname,
+      )
     )
       return fallback;
     return url.pathname + url.search + url.hash;

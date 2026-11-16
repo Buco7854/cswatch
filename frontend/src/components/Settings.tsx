@@ -3,12 +3,14 @@ import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { api, setCsrf } from '../api';
 import { useApp } from '../context';
-import { Link } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
+import Connections from './Connections';
 const names: Record<string, string> = {
   public_access: 'Public access',
   registrations_enabled: 'New registrations',
   steam_enabled: 'Steam sign-in',
   faceit_enabled: 'FACEIT integration',
+  transcription_enabled: 'Local speech transcription',
 };
 type AdminData = {
   flags: Record<string, { value: boolean; locked: boolean }>;
@@ -16,7 +18,7 @@ type AdminData = {
   queue: { status: string; count: number }[];
   audit: { action: string; created_at: number }[];
 };
-export function Account() {
+export function Account({ section = 'security' }: { section?: 'security' | 'connections' }) {
   const { user, signIn, refresh, notify } = useApp();
   const [busy, setBusy] = useState(false),
     [error, setError] = useState('');
@@ -49,10 +51,18 @@ export function Account() {
           <p>{t('Your identity and security.')}</p>
         </div>
       </header>
+      <nav className="account-tabs" aria-label={t('Account settings')}>
+        <NavLink end to="/account">
+          {t('Your account')}
+        </NavLink>
+        <NavLink to="/account/connections">{t('Connected accounts')}</NavLink>
+      </nav>
       {!user ? (
         <button className="button primary" onClick={signIn}>
           {t('Sign in')}
         </button>
+      ) : section === 'connections' ? (
+        <Connections embedded />
       ) : (
         <>
           <div className="settings-section">
@@ -71,9 +81,9 @@ export function Account() {
                       .join(' · ')
                   : t('No external accounts linked.')}
               </p>
-              <Link className="button" to="/connections">
+              <NavLink className="button" to="/account/connections">
                 {t('Manage connections')}
-              </Link>
+              </NavLink>
             </div>
           </div>
           <div className="settings-section">

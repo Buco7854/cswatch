@@ -11,17 +11,26 @@ Start with `docs/HANDOFF.md` for current state and `docs/product/WORK.md` for th
 - `backend/src/ingestion.ts`: quotas, storage paths, magic validation, ownership.
 - `backend/src/worker.ts`: durable queue, disposable child lifetime, retention.
 - `backend/src/parser.ts`: native demoparser adapter and bounded decompression. Never import native parsing into HTTP handlers.
+- `backend/src/parser-job.ts`, `backend/native/parser-sandbox.c`: required Linux Landlock/seccomp boundary, job lifetime and bounded scratch polling. Native code is untrusted; never grant the parser database/provider/other-demo access or silently fall back to unsandboxed parsing.
+- `backend/src/replay.ts`: bounded version 2 chunk writer and validation of untrusted native artifacts before publication.
+- `backend/src/communications.ts`, `voice-packets.ts`: bounded recorded media extraction and Steam/Opus framing. `transcription-worker.ts`, `captions.ts`, `transcription-job.ts`, `transcription.ts`: independent durable CPU subtitles, leases, output validation and offline inference. Keep primary replay ready on speech failure; never enable remote model/audio services as a fallback.
+- `backend/src/remote-download.ts`: DNS-pinned approved provider imports. No scraping, arbitrary client URLs or public signed download URLs. External HLTV files use normal uploads; no catalog wrapper.
 - `shared/playback.d.ts`: browser/worker replay contract; version every incompatible change.
 - `frontend/src/components/PublicSite.tsx`, `Brand.tsx`, `ReviewPreview.tsx`, `PublicProofs.tsx`: public narrative and real, labeled practice interactions. `main.tsx` selects public/workspace/private entry shells.
 - `frontend/src/i18n.ts`, `locales/*.json`: EN/FR message/locale policy. Add both languages and run `npm run check:locales`.
 - `frontend/src/components/Viewer.tsx`: timeline/controller; `Scene.tsx`: WebGL rendering; `TacticalPlot.tsx`: 2D fallback; `ViewerOptions.tsx`: device-local display preferences.
 - `frontend/src/playback.ts`: pure seeking/frame lookup/skip logic. Keep this independent of Three.js.
+- `frontend/src/replay-cache.ts`, `useReplay.ts`: bounded chunk caching, buffering and identity-safe loading. Whole-match navigation must use manifest bounds, not current chunk bounds.
+- `frontend/src/review-events.ts`, `components/RoundEvents.tsx`: recorded round-event identity/grouping and progressive event review. Match real players by string Steam ID, never nickname.
+- `frontend/src/components/ReviewHud.tsx`, `PlayerInputs.tsx`, `MatchEconomy.tsx`: optional recorded inputs/economy. `Communications.tsx`, `voice-playback.ts`: local voice decoding, subtitles/chat, bounded scheduling and identity-safe lifecycle. Missing inputs/communications stay unavailable; physical bindings cannot be inferred.
+- `frontend/src/components/WorkspaceShell.tsx`, `AccountMenu.tsx`, `Controls.tsx`: work navigation, account destinations, accessible fullscreen/dialog-aware menus/selects. `/account/connections` is canonical; preserve `/connections` redirects.
 - `tools/assets`: trusted operator-only S2V export/optimization. No proprietary assets in Git/images.
+- `tools/transcription`: pinned offline model preparation and public speech verification. Models/audio remain under ignored `var/`; use `CSWATCH_TRANSCRIPTION_TEST_MODEL` to exercise actual English/French/kernel inference instead of accepting intentional skips.
 - `.github/workflows/ci.yaml`: verification and Monday image refresh; `.github/dependabot.yml`: dependency updates.
 
 ## Commands
 
-`npm ci` at root, then `npm ci --prefix backend`, `npm ci --prefix frontend`; optional tools with `npm ci --prefix tools/assets`. `npm run build`; `node scripts/fetch-test-demo.mjs`; `npm test`; `npm run test:e2e`; private variants via `E2E_PRIVATE=1 E2E_REGISTRATIONS=false|true`; `npm run check:locales`; `npm run format:check`. See README for same-origin local server/worker and CLI account provisioning. Use Node 24. Native parser tests require the pinned fixture; missing fixtures are reported as skips, never passes.
+`npm ci` at root, then `npm ci --prefix backend`, `npm ci --prefix frontend`; optional tools with `npm ci --prefix tools/assets`. `npm run build`; `node scripts/fetch-test-demo.mjs`; `npm test`; `node scripts/runtime-smoke.mjs`; `npm run test:e2e`; private variants via `E2E_PRIVATE=1 E2E_REGISTRATIONS=false|true`; `npm run check:locales`; `npm run format:check`. See README for same-origin local server/worker and CLI account provisioning. Use Node 24, Linux Landlock ABI3+ and a C compiler/libc headers for the sandbox build. Native tests require the pinned fixture; missing fixtures are skips, never passes. Docker CI executes the same upload/sandbox/chunk smoke in the hardened image.
 
 ## Invariants
 
@@ -30,9 +39,9 @@ Start with `docs/HANDOFF.md` for current state and `docs/product/WORK.md` for th
 - Unsafe methods require exact request Origin; authenticated mutations require CSRF. Steam callbacks require state-cookie binding, one-use state, signed field checks, and server verification at the fixed Steam endpoint.
 - Never infer ownership from nicknames or merge users by display name/email. Provider/subject pairs are unique.
 - File paths derive from random IDs, not filenames. Reserve quotas atomically before streaming. Bound file size, decompression, native process time, and prepared output.
-- Worker has no network in Compose. Parser subprocess gets a stripped environment. Process isolation is not a full filesystem sandbox; read SECURITY.md before changing parsing.
+- Worker has no network in Compose. Parser subprocess gets a stripped environment and required kernel filesystem/process/network restrictions. Unsupported confinement fails closed. Scratch polling does not replace host disk quotas; read SECURITY.md before changing parsing.
 - Replay Steam IDs remain strings. Source coordinates are inches, Z-up. S2V already exports meters/Y-up; do not apply Source scale twice. Viewer world is `(X,Z,-Y) * .0254`; S2V glTF rotates +90° around Y.
-- Use recorded event/flag data for skip controls. Synthetic sample data is labeled and never mixed into personal history.
+- Use recorded event/flag data for skip controls and round-event markers. Synthetic sample data is labeled and never mixed into personal history. Premier/Competitive/Wingman files use the CS2 upload pipeline; Steam OpenID alone is not demo-download authorization.
 - Display approximations honestly. Do not claim Source 2 visual parity, native smoke physics, frame-rate guarantees, Steam auto-downloads, or real-device validation without evidence.
 
 ## Change process

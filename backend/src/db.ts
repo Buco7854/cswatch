@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import { mkdirSync } from 'node:fs';
+import { chmodSync, closeSync, mkdirSync, openSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Config, Flag } from './config.js';
 import { flagDefaults } from './config.js';
@@ -7,9 +7,16 @@ export type Row = Record<string, any>;
 export class Store {
   readonly db: DatabaseSync;
   constructor(readonly root: string) {
-    for (const p of [root, join(root, 'demos'), join(root, 'maps')])
+    for (const p of [root, join(root, 'demos')]) {
       mkdirSync(p, { recursive: true, mode: 0o700 });
-    this.db = new DatabaseSync(join(root, 'replay.db'));
+      chmodSync(p, 0o700);
+    }
+    // Existing operator assets may be mounted read-only independently of private data.
+    mkdirSync(join(root, 'maps'), { recursive: true, mode: 0o700 });
+    const path = join(root, 'replay.db');
+    closeSync(openSync(path, 'a', 0o600));
+    chmodSync(path, 0o600);
+    this.db = new DatabaseSync(path);
     this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=30000;
   CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,username TEXT COLLATE NOCASE UNIQUE NOT NULL,password_hash TEXT,is_admin INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL);
   CREATE TABLE IF NOT EXISTS identities(provider TEXT NOT NULL,subject TEXT NOT NULL,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,PRIMARY KEY(provider,subject),UNIQUE(provider,user_id));
@@ -29,8 +36,23 @@ export class Store {
         this.db.exec(
           "ALTER TABLE auth_states ADD COLUMN return_to TEXT NOT NULL DEFAULT '/library'",
         );
+      const demoColumns = this.all('PRAGMA table_info(demos)');
+      if (!demoColumns.some((column) => column.name === 'source_ref'))
+        this.db.exec('ALTER TABLE demos ADD COLUMN source_ref TEXT');
+      for (const [column, definition] of [
+        ['transcription_status', "TEXT NOT NULL DEFAULT 'disabled'"],
+        ['transcription_started_at', 'INTEGER'],
+        ['transcription_job_id', 'TEXT'],
+        ['transcription_bytes', 'INTEGER NOT NULL DEFAULT 0'],
+        ['transcription_artifact', 'TEXT'],
+      ])
+        if (!demoColumns.some((existing) => existing.name === column))
+          this.db.exec(`ALTER TABLE demos ADD COLUMN ${column} ${definition}`);
       this.db.exec(
-        'DELETE FROM schema_version WHERE version<2; INSERT OR IGNORE INTO schema_version VALUES(2);',
+        'CREATE INDEX IF NOT EXISTS demos_transcription_queue ON demos(transcription_status,created_at)',
+      );
+      this.db.exec(
+        'DELETE FROM schema_version WHERE version<4; INSERT OR IGNORE INTO schema_version VALUES(4);',
       );
     });
   }

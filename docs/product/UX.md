@@ -2,19 +2,20 @@
 
 ## Route families
 
-| Route               | Public guest                                         | Signed-in member                          | Private-instance guest                 |
-| ------------------- | ---------------------------------------------------- | ----------------------------------------- | -------------------------------------- |
-| `/`                 | Public product landing                               | Landing with Open workspace CTA           | Branded private-instance sign-in entry |
-| `/features/viewer`  | Viewer feature page + real sample link               | Same plus library/upload shortcut         | Sign-in gate                           |
-| `/features/imports` | Accurate upload/Steam/FACEIT explanation             | Same plus connections/import shortcut     | Sign-in gate                           |
-| `/self-host`        | Hosting/control page with real docs/repository links | Same                                      | Sign-in gate                           |
-| `/explore`          | Explicitly shared demos only                         | Same, with ownership-aware actions        | Sign-in gate                           |
-| `/watch/sample`     | Synthetic practice demo, no account needed           | Same; sample notes remain local/temporary | Sign-in gate                           |
-| `/watch/:id`        | Public demo only, otherwise indistinguishable 404    | Public or own demo                        | Sign-in gate                           |
-| `/library`          | Explain account requirement, sign-in returns here    | Own demos, upload, status, recovery       | Sign-in gate                           |
-| `/connections`      | Sign-in with return intent                           | Verified links/history/imports            | Sign-in gate                           |
-| `/account`          | Sign-in with return intent                           | Own identity/password                     | Sign-in gate                           |
-| `/admin`            | Sign-in then enforce role                            | Admin only; members see forbidden state   | Sign-in gate then role check           |
+| Route                  | Public guest                                         | Signed-in member                          | Private-instance guest                 |
+| ---------------------- | ---------------------------------------------------- | ----------------------------------------- | -------------------------------------- |
+| `/`                    | Public product landing                               | Landing with Open workspace CTA           | Branded private-instance sign-in entry |
+| `/features/viewer`     | Viewer feature page + real sample link               | Same plus library/upload shortcut         | Sign-in gate                           |
+| `/features/imports`    | Accurate upload/Steam/FACEIT explanation             | Same plus connections/import shortcut     | Sign-in gate                           |
+| `/self-host`           | Hosting/control page with real docs/repository links | Same                                      | Sign-in gate                           |
+| `/explore`             | Explicitly shared demos only                         | Same, with ownership-aware actions        | Sign-in gate                           |
+| `/watch/sample`        | Synthetic practice demo, no account needed           | Same; sample notes remain local/temporary | Sign-in gate                           |
+| `/watch/:id`           | Public demo only, otherwise indistinguishable 404    | Public or own demo                        | Sign-in gate                           |
+| `/library`             | Explain account requirement, sign-in returns here    | Own demos, upload, status, recovery       | Sign-in gate                           |
+| `/connections`         | Sign-in with return intent                           | Verified links/history/imports            | Sign-in gate                           |
+| `/account/connections` | Sign-in with return intent                           | Canonical connected-services account tab  | Sign-in gate                           |
+| `/account`             | Sign-in with return intent                           | Own identity/password                     | Sign-in gate                           |
+| `/admin`               | Sign-in then enforce role                            | Admin only; members see forbidden state   | Sign-in gate then role check           |
 
 Private mode must protect APIs and game assets independently of SPA navigation. It may serve the generic frontend shell for routes so users receive a useful gate; it must not fetch or show gated content before authentication. Public registration is independent: private + registrations enabled permits account creation; private + registrations disabled offers sign-in and operator contact guidance only.
 
@@ -22,7 +23,7 @@ Private mode must protect APIs and game assets independently of SPA navigation. 
 
 Public shell: cswatch wordmark/home, Viewer, Imports, Self-host, Explore (public only), language/theme, Sign in or Open workspace. No personal-library sidebar for an anonymous marketing visitor. No disabled provider badges in the hero.
 
-Member shell: brand, Demo library, Explore when public, Connections, Account, Admin for admins only. Viewer keeps a compact contextual shell and a clear back destination; it does not carry every marketing link next to playback controls.
+Member shell: brand, Demo library, Explore/Shared demos. Account settings, Connections and Administration belong in the user dropdown; account security/connected services are tabs in Account. `/connections` preserves old links by redirecting to `/account/connections`. Mobile navigation opens a bounded named sheet. Viewer has its own whole-tab shell, a clear back destination and a compact user menu.
 
 The public site remains accessible to members when the instance is public. Do not forcibly redirect every signed-in visit to `/`; the Open workspace action is explicit. Brand in the workspace links to the library; a secondary public-site link leads back to `/`.
 
@@ -43,6 +44,8 @@ A public demo opens without forcing account creation. Read-only review controls 
 Permanent: play/pause, scrub time, speed, round selection, camera/player selection, current context and fullscreen. Secondary: next round, skip dead time, event jumps, notes. Advanced options: x-ray shapes, crosshair, radar, elimination feed, trails, grenade paths, utility approximations, quality. Open these in a named, keyboard-safe surface rather than showing an undifferentiated wall of toggles.
 
 Mobile: prioritize match/camera/playback, then a compact player/round/event region. TV: readable labels, focus-visible actions and directional navigation; do not depend on hover or tiny pointer targets. Low-power/2D remains a real selectable mode.
+
+At phone widths and short landscape, Play/Speed and Players/Review/More stay permanent. More controls contains rewind/forward, note, fullscreen and advanced moment jumps. Round controls remain available, with 44 px primary touch targets. Menus/selects support keyboard selection, typeahead, Escape and collision-aware scrolling; their portals stay inside native dialogs/fullscreen. Escape dismisses the top floating control before its underlying panel. Chunk failures preserve the timeline and expose retry while playback waits.
 
 ## Policy-aware calls to action
 

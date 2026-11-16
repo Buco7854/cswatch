@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import type { Playback, Position } from '../types';
 import { api } from '../api';
 import TacticalPlot from './TacticalPlot';
-import { frameAt, defaultSettings, type ViewerSettings } from '../playback';
+import { frameAt, playbackBounds, defaultSettings, type ViewerSettings } from '../playback';
 import { Line } from '@react-three/drei';
 import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 
@@ -282,14 +282,15 @@ function World({
   const { frame, next, alpha } = frameAt(data, tick);
   const bounds = useMemo(() => {
     if (data.sample) return { center: new THREE.Vector3(0, 0, 0), extent: 52 };
-    const box = new THREE.Box3();
-    data.frames
-      .filter((_, i) => i % 32 === 0)
-      .forEach((f) => f.players.forEach((p) => box.expandByPoint(vector(p))));
+    const b = playbackBounds(data);
+    const box = new THREE.Box3(
+      new THREE.Vector3(b.minX * UNIT, b.minZ * UNIT, -b.maxY * UNIT),
+      new THREE.Vector3(b.maxX * UNIT, b.maxZ * UNIT, -b.minY * UNIT),
+    );
     if (box.isEmpty()) return { center: new THREE.Vector3(), extent: 80 };
     const size = box.getSize(new THREE.Vector3());
     return { center: box.getCenter(new THREE.Vector3()), extent: Math.max(size.x, size.z, 20) };
-  }, [data]);
+  }, [data.sample, data.worldBounds, data.worldBounds ? null : data.frames]);
   useEffect(() => {
     if (mode === 'orbit') {
       camera.position
@@ -515,19 +516,30 @@ export default function Scene({
     t: null,
   });
   useEffect(() => {
+    const controller = new AbortController();
+    setAgents({ ct: null, t: null });
     if (!data.sample)
       api<{ ct: string | null; t: string | null }>('/api/assets/agents')
-        .then(setAgents)
+        .then((agents) => {
+          if (!controller.signal.aborted) setAgents(agents);
+        })
         .catch(() => {});
+    return () => controller.abort();
   }, [data.sample]);
   useEffect(() => {
+    const controller = new AbortController();
+    setModel(null);
     if (!data.sample)
       api<{ model: string | null; mobile?: string | null }>(
         '/api/maps/' + encodeURIComponent(data.map),
+        { signal: controller.signal },
       )
-        .then((r) => setModel(low ? r.mobile || r.model : r.model))
-        .catch(() => setModel(null));
-  }, [data, low]);
+        .then((r) => {
+          if (!controller.signal.aborted) setModel(low ? r.mobile || r.model : r.model);
+        })
+        .catch(() => {});
+    return () => controller.abort();
+  }, [data.map, data.sample, low]);
   if (mode === '2d') return <TacticalPlot data={data} tick={tick} selected={selected} />;
   return (
     <div

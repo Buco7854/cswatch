@@ -5,6 +5,7 @@
 **/dist
 var
 .taste-skill
+.design
 **/__pycache__
 **/.pytest_cache
 **/test-results
