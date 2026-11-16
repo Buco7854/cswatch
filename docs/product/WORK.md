@@ -8,6 +8,8 @@ Keep the approved public landing and neutral member design. Account and connecti
 
 The latest user requests are implemented as recorded round-event review, optional player inputs/economy/inventory, voice/chat and optional offline CPU subtitles. Premier/Competitive/Wingman files have a clear manual import path. Steam OpenID is identity, not automatic demo-download authorization. The user explicitly removed the HLTV catalog/wrapper; retain only source guidance and normal uploads.
 
+Production Compose defaults to the repository's published `ghcr.io/buco7854/cswatch:latest` image, with an optional `CSWATCH_IMAGE` override and explicit source-build instructions. All services, including optional transcription, share that image. CI validates the complete Compose configuration before image verification/publication.
+
 ## Release gate
 
 1. Format, locales, build, meaningful backend/browser checks, rendered production review and dependency audits.

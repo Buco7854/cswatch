@@ -18,13 +18,15 @@ Product decisions and follow-up tasks live in [the product brief](docs/product/B
 
 Requirements: Docker with Compose on Linux with Landlock ABI 3 or newer (kernel 6.2+ with Landlock enabled), a CPU supporting the native parser, storage for demos/assets, and your own HTTPS reverse proxy. Budget approximately 2 CPU cores and 6–8 GB RAM for the two services. Limits are configurable; these are deployment defaults, not benchmark guarantees.
 
+Compose uses the published `ghcr.io/buco7854/cswatch:latest` image for web, parsing and optional transcription. Set `CSWATCH_IMAGE` to pin a different tag or digest. A source checkout/build is not required for deployment; use `compose.yaml` and `.env.example` from this repository.
+
 ```sh
 cp .env.example .env
 # Edit APP_URL to your public HTTPS origin.
-docker compose build --pull
+docker compose pull
 docker compose run --rm worker ./dist/parser-sandbox --check
-docker compose up -d --build
-docker compose exec web node dist/cli.js create-admin YOUR_USERNAME
+docker compose run --rm web node dist/cli.js create-admin YOUR_USERNAME
+docker compose up -d
 ```
 
 The command prompts for a password without echoing it. There is no default password, automatic first-user admin, or public bootstrap endpoint. It refuses to promote an existing account. Create the operator account before allowing registrations.
@@ -135,17 +137,23 @@ Playwright needs Chromium: `cd frontend && npx playwright install chromium`. Set
 
 ## Updates
 
-The GitHub workflow tests/builds on PRs and main pushes, and runs **every Monday**. After verification it rebuilds without cache, pulls the current Node/Debian base, and publishes to `ghcr.io/OWNER/REPOSITORY` on main. It prepares checksum-pinned parser/speech fixtures, exercises actual offline English/French inference, and runs upload/ownership/parsing/transcription checks inside the hardened networkless image. Publishing requires the Actions token's package write access. Repository permissions and GHCR visibility are operator-controlled.
+The GitHub workflow tests/builds on PRs and main pushes, and runs **every Monday**. After verification it rebuilds without cache, pulls the current Node/Debian base, and publishes to `ghcr.io/buco7854/cswatch` on main. It prepares checksum-pinned parser/speech fixtures, exercises actual offline English/French inference, and runs upload/ownership/parsing/transcription checks inside the hardened networkless image. Publishing requires the Actions token's package write access. Repository permissions and GHCR visibility are operator-controlled.
 
 Dependabot opens weekly dependency and base/action update PRs; locked npm dependencies change through reviewed PRs. A weekly rebuild alone does not upgrade a lockfile. Versioned image tags contain the commit and workflow run number. Scheduled builds do **not** automatically replace a running self-hosted deployment.
 
 ```sh
-# Build from source with current base images:
-docker compose build --pull --no-cache
+docker compose pull
 docker compose up -d
 ```
 
-For published images set `CSWATCH_IMAGE=ghcr.io/OWNER/REPOSITORY:TAG`, then use `docker compose pull` and `docker compose up -d --no-build` (include `--profile transcription` when enabled). Back up data before upgrades. Schema migrations are additive: safe auth return paths (v2), nullable import provenance (v3), and separate transcription state/leases/artifact pointers (v4). Production host-prefixed cookies require a fresh sign-in when upgrading from the initial proof of concept. Future changes must use explicit migrations.
+Include `--profile transcription` when enabled. Pin a published tag/digest through `CSWATCH_IMAGE` when needed. To build a local image explicitly from a source checkout:
+
+```sh
+docker build --pull --no-cache -t cswatch:local .
+CSWATCH_IMAGE=cswatch:local docker compose up -d --pull never
+```
+
+Back up data before upgrades. Schema migrations are additive: safe auth return paths (v2), nullable import provenance (v3), and separate transcription state/leases/artifact pointers (v4). Production host-prefixed cookies require a fresh sign-in when upgrading from the initial proof of concept. Future changes must use explicit migrations.
 
 ## Project guide
 

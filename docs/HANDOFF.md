@@ -25,6 +25,8 @@ The latest follow-up keeps grenades visible at every quality level and independe
 
 The consolidated local record is in `VERIFICATION.md`: backend tests with no skips, public/private browser journeys, actual sandboxed upload/streaming/subtitle smoke and rendered locale/theme/device checks. The Mirage fixture has no voice/chat; communication protocol fixtures and actual public speech validate those paths separately. Docker is unavailable locally; the release workflow performs actual hardened-image verification before publishing.
 
+Compose now pulls `ghcr.io/buco7854/cswatch:latest` for all services; `CSWATCH_IMAGE` overrides the tag/digest. There is no automatic source build. README documents first deployment, updates and explicit local builds. The latest Node 24 browser rerun passed 39 cases with one intentional private-policy skip; the old two-worker French communications timeout was already resolved by serial browser execution.
+
 Specialist responsibilities were workspace UX, native processing/security and offline speech/imports. They worked in the shared checkout with root integration; no parallel agent commits. Use focused ownership and shared contracts for future changes, and update factual status/evidence with every capability change.
 
 Highest-value follow-up is operator CS2 asset/export validation, live provider integration, real voiced-demo corpus and physical S24/TV measurements, followed by independent security review. Exact Source 2 lighting, weapon animation/audio/effects, Game Coordinator downloads and encrypted-chat key import remain incomplete. Do not substitute decorative switches for those capabilities.
