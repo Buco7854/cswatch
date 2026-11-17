@@ -87,14 +87,78 @@ try {
     url: `/api/demos/${id}/playback`,
     headers: authenticated,
   });
+  assert.equal(playback.statusCode, 200, playback.body);
   const manifest = JSON.parse(gunzipSync(playback.rawPayload).toString());
   assert.equal(manifest.version, 2);
   assert.equal(manifest.map, 'de_mirage');
+  assert.equal(
+    manifest.matchState?.complete,
+    true,
+    'Recorded match metadata survives worker publication.',
+  );
+  assert.ok(manifest.matchState.samples.length > 0 && manifest.matchState.samples.length <= 10000);
+  assert.ok(
+    manifest.matchState.samples.some(
+      (state) =>
+        Number.isSafeInteger(state.ctScore) &&
+        state.ctScore >= 0 &&
+        Number.isSafeInteger(state.tScore) &&
+        state.tScore >= 0 &&
+        (state.ctScore > 0 || state.tScore > 0),
+    ),
+    'The prepared replay carries actual recorded side scores, not default zeroes.',
+  );
+  assert.ok(
+    manifest.matchState.samples.some(
+      (state) =>
+        state.phase === 'live' &&
+        state.clock?.kind === 'round' &&
+        Number.isFinite(state.clock.endTick),
+    ),
+    'Recorded round clocks survive manifest delivery.',
+  );
+  assert.deepEqual(manifest.eventAvailability, { player_death: true, player_hurt: true });
+  assert.ok(manifest.throwInputs?.length > 0 && manifest.throwInputs.length <= 10000);
+  const actors = new Set(manifest.players.map((player) => player.id));
+  assert.ok(
+    manifest.throwInputs.some(
+      (snapshot) =>
+        snapshot.provenance !== 'unavailable' &&
+        typeof snapshot.input?.buttons === 'string' &&
+        /^\d{1,20}$/.test(snapshot.input.buttons),
+    ),
+    'Actual recorded throw input snapshots survive publication.',
+  );
+  for (const snapshot of manifest.throwInputs) {
+    const event = manifest.events[snapshot.eventIndex];
+    assert.ok(actors.has(snapshot.actorId), 'Throw input belongs to a declared immutable player.');
+    assert.equal(event?.tick, snapshot.tick, 'Throw input retains its exact global event index.');
+    assert.equal(event?.user_steamid, snapshot.actorId);
+  }
+  assert.equal(
+    (await app.inject({ method: 'GET', url: `/api/demos/${id}/playback`, headers })).statusCode,
+    404,
+    'Scores and input metadata remain private with the demo.',
+  );
   const path = `/api/demos/${id}/playback/chunks/0`;
   assert.equal((await app.inject({ method: 'GET', url: path, headers })).statusCode, 404);
   const slice = await app.inject({ method: 'GET', url: path, headers: authenticated });
   assert.equal(slice.statusCode, 200);
-  assert.ok(JSON.parse(gunzipSync(slice.rawPayload).toString()).frames.length <= 561);
+  const chunk = JSON.parse(gunzipSync(slice.rawPayload).toString());
+  assert.ok(chunk.frames.length <= 561);
+  assert.ok(
+    chunk.frames.some((frame) =>
+      frame.players.some(
+        (player) =>
+          actors.has(player.id) &&
+          player.stats &&
+          ['kills', 'deaths', 'assists', 'headshotKills', 'damage'].some(
+            (field) => Number.isSafeInteger(player.stats[field]) && player.stats[field] >= 0,
+          ),
+      ),
+    ),
+    'Actual native controller counters survive validation, publication and chunk delivery; absent fields remain optional.',
+  );
   const note = await app.inject({
     method: 'POST',
     url: `/api/demos/${id}/bookmarks`,
@@ -110,6 +174,15 @@ try {
   });
   assert.equal(share.statusCode, 200, share.body);
   assert.equal((await app.inject({ method: 'GET', url: path, headers })).statusCode, 200);
+  const sharedPlayback = await app.inject({
+    method: 'GET',
+    url: `/api/demos/${id}/playback`,
+    headers,
+  });
+  assert.equal(sharedPlayback.statusCode, 200, sharedPlayback.body);
+  const sharedManifest = JSON.parse(gunzipSync(sharedPlayback.rawPayload).toString());
+  assert.deepEqual(sharedManifest.matchState, manifest.matchState);
+  assert.deepEqual(sharedManifest.throwInputs, manifest.throwInputs);
   let transcription = 'not_requested';
   const model = process.env.CSWATCH_SMOKE_ASR_MODEL || '/models';
   const voiceSource = process.env.CSWATCH_SMOKE_VOICE_FIXTURE || '/voice-fixture';
@@ -177,6 +250,9 @@ try {
       map: manifest.map,
       chunks: manifest.chunks.length,
       players: manifest.players.length,
+      matchStateSamples: manifest.matchState.samples.length,
+      throwInputs: manifest.throwInputs.length,
+      recordedPlayerCounters: true,
       sandbox: 'required',
       upload: true,
       ownership: true,

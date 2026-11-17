@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import type { Playback } from '../../shared/playback';
+import { selectOptionsCategory } from './fixtures/viewer-options';
 
 type Language = 'en' | 'fr';
 type Theme = 'light' | 'dark';
@@ -56,13 +57,13 @@ const replay: Playback = {
       alive: !(index === 5 && tick >= 560),
       team: player.team,
       weapon: index === 3 ? 'awp' : 'ak47',
-      money: index === 0 ? 0 : 4200,
+      money: index === 0 ? 0 : 16000,
       armor: 100,
       ammo: 30,
       helmet: true,
       defuser: player.team === 3,
       equipmentValue: 5200,
-      inventory: ['SmokeGrenade', 'Flashbang', 'Flashbang', 'ak47'],
+      inventory: ['SmokeGrenade', 'Flashbang', 'Flashbang', 'HEGrenade', 'ak47'],
       input: {
         source: 'usercmd',
         buttons: '65545',
@@ -140,7 +141,12 @@ const replay: Playback = {
   worldBounds: { minX: -500, maxX: 500, minY: -500, maxY: 500, minZ: 0, maxZ: 200 },
 };
 
-async function openFixture(page: Page, language: Language, theme: Theme) {
+async function openFixture(
+  page: Page,
+  language: Language,
+  theme: Theme,
+  playback: Playback = replay,
+) {
   await page.addInitScript(
     ({ language, theme }) => {
       localStorage.setItem('theme', theme);
@@ -154,6 +160,7 @@ async function openFixture(page: Page, language: Language, theme: Theme) {
           inputLayout: 'zqsd',
           inputDetails: false,
           economy: true,
+          teamLayout: 'split',
           radar: true,
           killfeed: true,
           subtitles: true,
@@ -183,7 +190,7 @@ async function openFixture(page: Page, language: Language, theme: Theme) {
     }),
   );
   await page.route('**/api/demos/viewer-design-fixture/playback', (route) =>
-    route.fulfill({ json: replay }),
+    route.fulfill({ json: playback }),
   );
   await page.route('**/api/demos/viewer-design-fixture/captions', (route) =>
     route.fulfill({
@@ -352,6 +359,18 @@ async function layoutIssues(page: Page) {
       issues.push('Scene does not fill the browser tab');
     const header = document.querySelector('.viewer-titlebar')!.getBoundingClientRect();
     if (Math.abs(header.height - 48) > 1) issues.push('Toolbar is not one compact 48px row');
+    const play = document.querySelector('.play-button')!.getBoundingClientRect();
+    if (Math.abs(play.left + play.width / 2 - innerWidth / 2) > 1)
+      issues.push('Play must be centered on the viewport');
+    const dock = document.querySelector('.viewer-dock')!.getBoundingClientRect();
+    if (dock.width > 1001) issues.push('The playback deck must retain its narrow maximum width');
+    const input = document.querySelector('.review-inputs-panel')?.getBoundingClientRect();
+    if (innerWidth >= 1101 && input) {
+      if (input.right + 12 > dock.left)
+        issues.push('Desktop inputs need their own lane beside the playback deck');
+      if (Math.abs(input.bottom - dock.bottom) > 1)
+        issues.push('Desktop inputs and the playback deck must share a bottom baseline');
+    }
     if (
       document.documentElement.scrollWidth > innerWidth + 1 ||
       document.documentElement.scrollHeight > innerHeight + 1
@@ -362,28 +381,71 @@ async function layoutIssues(page: Page) {
 }
 
 async function rosterEdgeIssues(page: Page) {
-  return page.locator('.broadcast-lineup-stack').evaluate((stack) => {
-    const viewport = stack.getBoundingClientRect();
-    const visibleRows = [...stack.querySelectorAll('.broadcast-player-select')]
-      .map((node) => ({ name: node.getAttribute('aria-label'), box: node.getBoundingClientRect() }))
-      .filter(({ box }) => box.bottom > viewport.top + 1 && box.top < viewport.bottom - 1);
+  return page.locator('.broadcast-lineup-stack').evaluateAll((stacks) => {
     const issues: string[] = [];
-    if (!visibleRows.length) return ['Enabled roster must show at least one complete player'];
-    for (const row of [visibleRows[0], visibleRows.at(-1)!])
-      if (row.box.top < viewport.top - 1 || row.box.bottom > viewport.bottom + 1)
-        issues.push(
-          `${row.name}: player row [${row.box.top.toFixed(1)},${row.box.bottom.toFixed(1)}] is cropped by roster [${viewport.top.toFixed(1)},${viewport.bottom.toFixed(1)}], scrollTop=${stack.scrollTop}`,
-        );
-    if (visibleRows.some(({ box }) => box.height < 44))
-      issues.push('Visible player rows must retain 44px touch targets');
-    if (stack.scrollHeight > stack.clientHeight + 1) {
-      const cue = stack.parentElement?.querySelector('.broadcast-scroll-cue');
-      const box = cue?.getBoundingClientRect();
-      if (!cue || !box?.width || !box.height || getComputedStyle(cue).display === 'none')
-        issues.push('Hidden players need a persistent visible scroll cue on touch screens');
+    if (!stacks.length) return ['Enabled roster must be present'];
+    for (const stack of stacks) {
+      const viewport = stack.getBoundingClientRect();
+      const visibleRows = [...stack.querySelectorAll('.broadcast-player-select')]
+        .map((node) => ({
+          name: node.getAttribute('aria-label'),
+          box: node.getBoundingClientRect(),
+        }))
+        .filter(({ box }) => box.bottom > viewport.top + 1 && box.top < viewport.bottom - 1);
+      if (!visibleRows.length) {
+        issues.push('Enabled roster must show at least one complete player');
+        continue;
+      }
+      for (const row of [visibleRows[0], visibleRows.at(-1)!])
+        if (row.box.top < viewport.top - 1 || row.box.bottom > viewport.bottom + 1)
+          issues.push(
+            `${row.name}: player row [${row.box.top.toFixed(1)},${row.box.bottom.toFixed(1)}] is cropped by roster [${viewport.top.toFixed(1)},${viewport.bottom.toFixed(1)}], scrollTop=${stack.scrollTop}`,
+          );
+      if (visibleRows.some(({ box }) => box.height < 44))
+        issues.push('Visible player rows must retain 44px touch targets');
+      for (const row of stack.querySelectorAll('.broadcast-player-select')) {
+        const equipment = row.querySelector('.broadcast-player-equipment')!;
+        const status = row.querySelector('.broadcast-player-status')!;
+        const equipmentBox = equipment.getBoundingClientRect();
+        const statusBox = status.getBoundingClientRect();
+        if (equipmentBox.bottom > statusBox.top - 3)
+          issues.push('Full equipment kit must have clearance above health/armor');
+        for (const glyph of equipment.querySelectorAll('.equipment-glyph')) {
+          const box = glyph.getBoundingClientRect();
+          if (
+            box.bottom > statusBox.top - 3 ||
+            box.left < equipmentBox.left - 1 ||
+            box.right > equipmentBox.right + 1
+          )
+            issues.push('Equipment glyph escapes its own row or enters health/armor');
+        }
+      }
+      if (stack.scrollHeight > stack.clientHeight + 1) {
+        const cue = stack.parentElement?.querySelector('.broadcast-scroll-cue');
+        const box = cue?.getBoundingClientRect();
+        if (!cue || !box?.width || !box.height || getComputedStyle(cue).display === 'none')
+          issues.push('Hidden players need a persistent visible scroll cue on touch screens');
+      }
     }
     return issues;
   });
+}
+
+async function teamLayout(
+  page: Page,
+  language: Language,
+  option: 'Teams on both sides' | 'Teams on the right',
+) {
+  await page.getByRole('button', { name: 'Options', exact: true }).click();
+  await selectOptionsCategory(page, 'Visuals');
+  await page
+    .getByRole('combobox', { name: message(language, 'Player overview layout'), exact: true })
+    .click();
+  await page.getByRole('option', { name: message(language, option), exact: true }).click();
+  await page
+    .getByRole('button', { name: message(language, 'Close viewer options'), exact: true })
+    .click();
+  await expect(page.locator('.broadcast-player-select')).toHaveCount(10);
 }
 
 async function checkDialog(page: Page, language: Language) {
@@ -420,8 +482,13 @@ async function checkDialog(page: Page, language: Language) {
 }
 
 async function checkPlayersPanel(page: Page, language: Language, modal: boolean) {
-  const trigger = page.getByRole('button', { name: message(language, 'Players'), exact: true });
+  const direct = page.getByRole('button', { name: message(language, 'Players'), exact: true });
+  const trigger = (await direct.isVisible())
+    ? direct
+    : page.getByRole('button', { name: message(language, 'More controls'), exact: true });
   await trigger.click();
+  if (trigger !== direct)
+    await page.getByRole('menuitem', { name: message(language, 'Players'), exact: true }).click();
   const drawer = page.locator('.viewer-drawer');
   const header = page.locator('.viewer-titlebar');
   const dock = page.locator('.viewer-dock');
@@ -488,6 +555,10 @@ for (const language of ['en', 'fr'] as const)
           await expect.poll(() => inputTextIssues(page)).toEqual([]);
           await expect.poll(() => layoutIssues(page)).toEqual([]);
           await expect.poll(() => rosterEdgeIssues(page)).toEqual([]);
+          await expect(page.locator('.broadcast-player-select')).toHaveCount(10);
+          await expect(page.locator('.broadcast-lineup-stack')).toHaveCount(
+            size.width >= 1440 ? 2 : 1,
+          );
           const keyboard = (await page.locator('.input-keyboard-block').boundingBox())!;
           const mouse = (await page.locator('.input-mouse-device').boundingBox())!;
           expect(mouse.x).toBeGreaterThanOrEqual(keyboard.x + keyboard.width - 1);
@@ -508,10 +579,28 @@ for (const language of ['en', 'fr'] as const)
           }
           await checkDialog(page, language);
           await checkPlayersPanel(page, language, size.width <= 390 || size.height <= 390);
+          if (size.width === 1440) {
+            const ct = (await page.locator('.broadcast-bank[data-team="3"]').boundingBox())!;
+            const opponents = (await page.locator('.broadcast-bank[data-team="2"]').boundingBox())!;
+            expect(ct.x + ct.width).toBeLessThan(size.width / 2);
+            expect(opponents.x).toBeGreaterThan(size.width / 2);
+            await teamLayout(page, language, 'Teams on the right');
+            await expect(page.locator('.broadcast-lineup-stack')).toHaveCount(1);
+            expect(
+              (await page.locator('.broadcast-bank[data-team="3"]').boundingBox())!.x,
+            ).toBeGreaterThan(size.width / 2);
+            await expect.poll(() => layoutIssues(page)).toEqual([]);
+            await expect.poll(() => rosterEdgeIssues(page)).toEqual([]);
+            await teamLayout(page, language, 'Teams on both sides');
+            await expect(page.locator('.broadcast-lineup-stack')).toHaveCount(2);
+          }
         });
       // Include the actual optional radar once, without running WebGL at every size.
       await setCamera(page, language, 'Free camera');
       await expect(page.locator('.position-radar')).toBeVisible();
+      expect((await page.locator('.position-radar').boundingBox())!.width).toBeGreaterThanOrEqual(
+        80,
+      );
       await expect.poll(() => layoutIssues(page)).toEqual([]);
       const lastPlayer = page.locator('.broadcast-player-select').last();
       await lastPlayer.click();
@@ -529,7 +618,7 @@ for (const language of ['en', 'fr'] as const)
       await expect(page.locator('.viewer-frame')).toHaveAttribute('data-chrome-visible', 'false');
       await expect(page.locator('.voice-caption')).toBeVisible();
       await expect(page.locator('.viewer-review-hud')).toHaveAttribute('inert', '');
-      await page.keyboard.press('Tab');
+      await page.keyboard.press('Shift+Tab');
       await expect(page.locator('.viewer-frame')).toHaveAttribute('data-chrome-visible', 'true');
       await expect(page.getByRole('button', { name: 'Options', exact: true })).toBeFocused();
       expect(errors).toEqual([]);
@@ -557,7 +646,20 @@ test.describe('touch design recovery', () => {
       await expect(page.locator('.viewer-frame')).toHaveAttribute('data-chrome-visible', 'true');
       await page.locator('.broadcast-player-select').first().tap();
       await expect(page.locator('.viewer-context-actions button')).toHaveCount(2);
-      const center = { x: size.width / 2, y: size.height * 0.45 };
+      // The optional short-landscape moment card now owns the middle lane.
+      // Exercise a real scene tap rather than activating that deliberate control.
+      const center = await page.evaluate(() => {
+        for (let y = 160; y < innerHeight - 100; y += 20)
+          for (let x = 24; x < innerWidth - 24; x += 20) {
+            const target = document.elementFromPoint(x, y);
+            if (
+              target?.closest('.viewer-stage') &&
+              !target.closest('button,a,input,select,textarea,[data-viewer-chrome]')
+            )
+              return { x, y };
+          }
+        throw new Error('No unobscured scene point remains for touch viewing');
+      });
       await page.touchscreen.tap(center.x, center.y);
       await expect(page.locator('.viewer-frame')).toHaveAttribute('data-chrome-visible', 'false');
       await expect(page.locator('.voice-caption')).toBeVisible();
@@ -568,3 +670,154 @@ test.describe('touch design recovery', () => {
     }
   });
 });
+
+for (const language of ['en', 'fr'] as const)
+  for (const theme of ['dark', 'light'] as const)
+    test(`${language} ${theme}: round review uses a bounded modal on compact screens and restores instruments`, async ({
+      page,
+    }) => {
+      test.skip(Boolean(process.env.E2E_PRIVATE), 'Synthetic public replay UI fixture.');
+      const objectiveReplay: Playback = {
+        ...replay,
+        matchState: {
+          complete: true,
+          samples: [
+            {
+              tick: 0,
+              ctScore: 8,
+              tScore: 4,
+              roundNumber: 13,
+              phase: 'live',
+              clock: { kind: 'round', startTick: 0, endTick: 1536 },
+            },
+          ],
+        },
+        objectives: {
+          complete: true,
+          samples: [
+            {
+              kind: 'bomb',
+              entity: 'synthetic-objective',
+              tick: 512,
+              present: true,
+              ticking: true,
+              beingDefused: true,
+              actor,
+              endTick: 5120,
+              duration: 75,
+              defuseEndTick: 960,
+              defuseDuration: 7,
+              site: 1,
+            },
+          ],
+        },
+      };
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await openFixture(page, language, theme, objectiveReplay);
+      for (const size of [
+        { width: 1440, height: 900 },
+        { width: 768, height: 1024 },
+        { width: 390, height: 844 },
+        { width: 844, height: 390 },
+      ]) {
+        await page.setViewportSize(size);
+        await expect(page.locator('.objective-hud')).toBeVisible();
+        await expect
+          .poll(
+            () =>
+              page.evaluate(() => {
+                const objective = document.querySelector('.objective-hud')!.getBoundingClientRect();
+                return [...document.querySelectorAll('.killfeed > div')].some((node) => {
+                  const box = node.getBoundingClientRect();
+                  return (
+                    Math.min(box.right, objective.right) - Math.max(box.left, objective.left) > 1 &&
+                    Math.min(box.bottom, objective.bottom) - Math.max(box.top, objective.top) > 1
+                  );
+                });
+              }),
+            { message: 'Recorded killfeed must remain visible outside the objective ribbon' },
+          )
+          .toBe(false);
+        const more = page.getByRole('button', {
+          name: message(language, 'More controls'),
+          exact: true,
+        });
+        await more.click();
+        await page
+          .getByRole('menuitem', {
+            name: message(language, 'Kills and utility review'),
+            exact: true,
+          })
+          .click();
+        const feed = page.locator('.review-feed');
+        await feed.getByRole('tab', { name: new RegExp('^' + message(language, 'Kills')) }).click();
+        const modal = size.width <= 540 || size.height <= 560;
+        await expect(page.locator('.review-feed-dialog[open]')).toHaveCount(modal ? 1 : 0);
+        if (modal) {
+          await expect(
+            page.getByRole('dialog', { name: message(language, 'Round review'), exact: true }),
+          ).toBeVisible();
+          await expect(page.locator('.viewer-review-hud')).toBeHidden();
+          await expect(page.locator('.viewer-match-score')).toBeHidden();
+          await expect(page.locator('.viewer-objective-layer')).toBeHidden();
+        } else {
+          await expect(page.locator('.viewer-review-hud')).toBeVisible();
+          const area = (await feed.boundingBox())!;
+          for (const roster of await page.locator('.broadcast-lineup-stack').all()) {
+            const bounds = (await roster.boundingBox())!;
+            const width =
+              Math.min(area.x + area.width, bounds.x + bounds.width) - Math.max(area.x, bounds.x);
+            const height =
+              Math.min(area.y + area.height, bounds.y + bounds.height) - Math.max(area.y, bounds.y);
+            expect(width > 1 && height > 1, 'Inline round review must clear the player lists').toBe(
+              false,
+            );
+          }
+        }
+        const action = feed.getByRole('button', {
+          name: message(language, 'Replay kill from {{player}}’s perspective').replace(
+            '{{player}}',
+            players[0].name,
+          ),
+          exact: true,
+        });
+        expect(
+          await action.evaluate((node) => {
+            const bounds = node.getBoundingClientRect();
+            return (
+              bounds.width >= 44 &&
+              bounds.height >= 44 &&
+              node.contains(
+                document.elementFromPoint(
+                  bounds.left + bounds.width / 2,
+                  bounds.top + bounds.height / 2,
+                ),
+              )
+            );
+          }),
+          'Replay perspective action must remain touch sized and unobscured',
+        ).toBe(true);
+        await feed
+          .getByRole('tab', { name: new RegExp('^' + message(language, 'Utility')) })
+          .click();
+        if (modal) {
+          const bounds = (await page.locator('.review-feed-dialog[open]').boundingBox())!;
+          expect(bounds.x + bounds.width / 2).toBeCloseTo(size.width / 2, 0);
+          expect(bounds.y + bounds.height / 2).toBeCloseTo(size.height / 2, 0);
+        }
+        await expect(
+          feed.getByRole('button', {
+            name: message(language, 'View grenade landing'),
+            exact: true,
+          }),
+        ).toBeVisible();
+        await feed
+          .getByRole('button', { name: message(language, 'Close round review'), exact: true })
+          .click();
+        await expect(feed).toHaveCount(0);
+        await expect(more).toBeFocused();
+        await expect(page.locator('.viewer-review-hud')).toBeVisible();
+        await expect(page.locator('.viewer-match-score')).toBeVisible();
+        await expect(page.locator('.objective-hud')).toBeVisible();
+      }
+    });

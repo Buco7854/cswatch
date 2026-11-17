@@ -25,6 +25,13 @@ import { writeReplay } from './replay.js';
 import { readPlayerRows } from './parser-fields.js';
 import { replayCapabilities } from './player-input.js';
 import { readCommunications } from './communications.js';
+import {
+  collectThrowInputs,
+  eventInputFields,
+  readEventRows,
+  removeEventInputExtras,
+} from './throw-input.js';
+import type { EventAvailability } from '../../shared/match-state.js';
 const finite = (v: unknown, fallback = 0) =>
   typeof v === 'number' && Number.isFinite(v) ? v : fallback;
 const round = (v: unknown) => Math.round(finite(v) * 100) / 100;
@@ -140,9 +147,11 @@ export async function parse(folder: string, maxExpanded: number) {
       'usercmd_mouse_dx',
       'usercmd_mouse_dy',
     ],
+    ['kills_total', 'deaths_total', 'assists_total', 'headshot_kills_total', 'damage_total'],
   ]);
   const { frames, players, deadTimes } = collectFrameState(rows);
   const events: GameEvent[] = [];
+  const eventAvailability: EventAvailability = { player_death: false, player_hurt: false };
   for (const kind of [
     'player_death',
     'player_hurt',
@@ -168,11 +177,17 @@ export async function parse(folder: string, maxExpanded: number) {
     try {
       let parsed: any[];
       if (kind === 'weapon_fire' || kind === 'grenade_thrown') {
-        try {
-          parsed = parseEvent(source, kind, ['X', 'Y', 'Z']);
-        } catch {
-          parsed = parseEvent(source, kind);
-        }
+        parsed = readEventRows(
+          (fields) => parseEvent(source, kind, fields),
+          [
+            ['X', 'Y', 'Z'],
+            eventInputFields.filter((field) => !field.startsWith('usercmd_')),
+            eventInputFields.filter((field) => field.startsWith('usercmd_')),
+          ],
+        );
+      } else if (kind === 'player_death' || kind === 'player_hurt') {
+        parsed = readEventRows((fields) => parseEvent(source, kind, fields), [['team_num']]);
+        eventAvailability[kind] = true;
       } else if (kind.startsWith('bomb_')) {
         try {
           parsed = parseEvent(source, kind, ['has_defuser'], ['game_time']);
@@ -186,6 +201,9 @@ export async function parse(folder: string, maxExpanded: number) {
     }
   }
   events.sort((a, b) => a.tick - b.tick);
+  const throwInputs = collectThrowInputs(events, players);
+  removeEventInputExtras(events);
+  if (!throwInputs.complete) warnings.push('Throw input metadata reached the processing limit.');
   const starts = events.filter((e) => e.type === 'round_start');
   const rounds = starts.map((e, i) => {
     const next = starts[i + 1]?.tick ?? Infinity;
@@ -270,6 +288,9 @@ export async function parse(folder: string, maxExpanded: number) {
     chat: media.chat,
     communications: media.communications,
     objectives: media.objectives,
+    matchState: media.matchState,
+    eventAvailability,
+    throwInputs: throwInputs.snapshots,
   };
   await writeReplay(folder, data);
   writeFileSync(

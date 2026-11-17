@@ -1,4 +1,6 @@
+import { activateViewerAction } from './fixtures/viewer-actions';
 import { test, expect, type Page } from '@playwright/test';
+import { selectOptionsCategory } from './fixtures/viewer-options';
 const privateInstance = Boolean(process.env.E2E_PRIVATE);
 async function choose(page: Page, label: string, option: string) {
   if (label === 'Language' || label === 'Langue') {
@@ -50,6 +52,7 @@ test('public landing has working proof, feature navigation, and guest viewer', a
   expect(Number(await slider.inputValue())).toBeGreaterThan(Number(before));
   await page.getByRole('button', { name: 'Options', exact: true }).click();
   await page.getByRole('switch', { name: /X-ray silhouettes/ }).uncheck();
+  await selectOptionsCategory(page, 'Performance');
   await choose(page, 'Rendering quality', 'Low · reduced resolution, no shadows');
   await page.getByRole('button', { name: 'Close viewer options' }).click();
   await page.reload();
@@ -205,7 +208,7 @@ test('viewer keeps scene, dock, panels and fullscreen within the browser tab', a
         return r.left >= 0 && r.right <= innerWidth && r.bottom <= innerHeight;
       }),
     ).toBe(true);
-    await page.getByRole('button', { name: 'Players', exact: true }).click();
+    await activateViewerAction(page, 'Players');
     await expect(page.locator('.viewer-drawer')).toBeVisible();
     expect(
       await page.locator('.viewer-drawer').evaluate((el) => {
@@ -222,7 +225,7 @@ test('viewer keeps scene, dock, panels and fullscreen within the browser tab', a
     await page.getByRole('button', { name: 'Close panel' }).click();
   }
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.getByRole('button', { name: 'Players', exact: true }).click();
+  await activateViewerAction(page, 'Players');
   await page.getByRole('button', { name: /echo/ }).click();
   await expect(page.locator('.player-row.selected strong')).toHaveText('echo');
   await page.getByRole('button', { name: 'Close panel' }).click();
@@ -327,7 +330,7 @@ test('viewer menus support keyboard selection, bounded touch lists and fullscree
     }
   }
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.getByRole('button', { name: 'Players', exact: true }).click();
+  await activateViewerAction(page, 'Players');
   await page.getByRole('button', { name: 'More controls', exact: true }).click();
   await page.keyboard.press('Escape');
   await expect(page.locator('.viewer-drawer')).toBeVisible();
@@ -337,6 +340,7 @@ test('viewer menus support keyboard selection, bounded touch lists and fullscree
     await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBe(true);
     await choose(page, 'Camera mode', 'Overhead');
     await page.getByRole('button', { name: 'Options', exact: true }).click();
+    await selectOptionsCategory(page, 'Performance');
     await choose(page, 'Rendering quality', 'Low · reduced resolution, no shadows');
     await expect(page.getByRole('combobox', { name: 'Rendering quality' })).toContainText('Low');
     await page.getByRole('button', { name: 'Close viewer options' }).click();

@@ -28,7 +28,7 @@ export function roundAt(data: Playback, tick: number, last: number): ReviewRound
   };
 }
 
-function eventPlayer(data: Playback, event: GameEvent, role: 'attacker' | 'user') {
+export function eventPlayer(data: Playback, event: GameEvent, role: 'attacker' | 'user') {
   const id = event[`${role}_steamid`];
   if (typeof id === 'string' && id !== '0') return data.players.find((player) => player.id === id);
   // Names are never identity in real replays. The original practice fixture alone has synthetic IDs.

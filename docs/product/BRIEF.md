@@ -15,7 +15,7 @@ cswatch is a public-capable, self-hostable review product with private-by-defaul
 - Desktop, mobile/touch, TV/keyboard/remote; low-power/2D fallback; English/French; dark/light.
 - Docker without a bundled reverse proxy, durable storage/queue, bounded untrusted parsing, weekly image rebuild and dependency maintenance.
 - Premier/Competitive/Wingman demos use the normal CS2 file pipeline. Steam identity is separate from download authorization. External HLTV demos are downloaded at their source and uploaded; no HLTV catalog or scraping wrapper.
-- Advanced review follows csdemo.tv as a completeness reference: recorded round events, utility releases, all-player economy/status/inventory, inputs with WASD/ZQSD labels, voice, chat and optional local speech subtitles. Present these progressively and preserve unknown/missing data.
+- Advanced review follows csdemo.tv as a completeness reference: recorded scores/clocks, native-counter scoreboard, symmetric kill/death replays, round kill/utility lists, throw/landing navigation, all-player economy/status/inventory, event-bound throw inputs and continuous inputs with WASD/ZQSD labels, voice, chat and optional local speech subtitles. Present these progressively and preserve unknown/missing data.
 
 ## Product surfaces
 
@@ -44,4 +44,4 @@ Account settings and connected services belong in the user dropdown and account 
 
 ## Spectator HUD direction
 
-The HUD takes its review navigation from CS demos and its live information from esports broadcasts. Recorded events sit at their actual timeline positions. An optional right-side roster uses CT blue and T orange/red to show equipment and status at a glance, with selection only as a row highlight and no role headers; input actions use recognizable mouse/key shapes. Bomb actions show actor, icon and recorded progress. On small screens, expose advanced overlays progressively instead of squeezing every element onto the scene. Use space, alignment and neutral surface changes to group controls; avoid nested outlines around every panel and button.
+The HUD takes its review navigation from CS demos and its live information from esports broadcasts. Recorded events sit at their actual timeline positions. Optional team rosters split across both edges on wide/tall screens, with a right-only preference and narrow-screen fallback. They use CT blue and T orange/red to show equipment and status at a glance, with selection only as a row highlight and no role headers; input actions use recognizable mouse/key shapes. Bomb actions show actor, icon and recorded progress. On small screens, expose advanced overlays progressively instead of squeezing every element onto the scene. Use space, alignment and neutral surface changes to group controls; avoid nested outlines around every panel and button.

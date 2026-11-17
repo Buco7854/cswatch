@@ -1,0 +1,106 @@
+/* Position belongs to viewer-layout.css; this ribbon owns only its contents. */
+.match-score {
+  display: grid;
+  place-items: center;
+  width: 300px;
+  min-height: 58px;
+  box-sizing: border-box;
+  padding: 3px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--viewer-plane);
+  color: var(--viewer-ink);
+  font: inherit;
+  line-height: 1;
+  text-align: center;
+}
+.match-score[hidden] {
+  display: none;
+}
+button.match-score {
+  cursor: pointer;
+  pointer-events: auto;
+}
+button.match-score:hover {
+  background: var(--viewer-raised);
+}
+button.match-score:focus-visible {
+  outline: 2px solid var(--viewer-ink);
+  outline-offset: 3px;
+}
+.match-score-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(100px, 1.2fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+}
+.match-score-side {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  color: var(--team-ct);
+}
+.match-score-side[data-team='2'] {
+  color: var(--team-t);
+}
+.match-score-side .review-event-glyph {
+  flex: none;
+}
+.match-score-side-label {
+  font-size: 11px;
+  font-weight: 500;
+}
+.match-score-side strong {
+  font-size: 27px;
+  font-weight: 600;
+  line-height: 32px;
+}
+.match-score-clock {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.match-score-clock strong {
+  font-size: 19px;
+  line-height: 23px;
+  font-weight: 500;
+}
+.match-score-phase,
+.match-score-round {
+  color: var(--viewer-muted);
+  font-size: 11px;
+  line-height: 12px;
+  white-space: nowrap;
+}
+@media (max-width: 1100px), (max-height: 560px) {
+  .match-score {
+    padding: 2px 7px;
+    min-height: 52px;
+  }
+  .match-score-body {
+    grid-template-columns: minmax(0, 1fr) 104px minmax(0, 1fr);
+    gap: 4px;
+  }
+  .match-score-side {
+    gap: 4px;
+  }
+  .match-score-side .review-event-glyph {
+    display: none;
+  }
+  .match-score-side strong {
+    font-size: 24px;
+    line-height: 28px;
+  }
+  .match-score-clock strong {
+    font-size: 18px;
+    line-height: 21px;
+  }
+}
+@media (max-width: 360px) {
+  .match-score-body {
+    grid-template-columns: minmax(0, 1fr) 88px minmax(0, 1fr);
+  }
+}

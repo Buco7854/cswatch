@@ -1,0 +1,222 @@
+.review-feed-inline[open] {
+  display: contents;
+}
+.review-feed-dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  transform: translate(-50%, -50%);
+  width: min(440px, calc(100% - 24px));
+  max-width: none;
+  max-height: calc(100dvh - 24px);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: var(--viewer-plane);
+  color: var(--text);
+}
+.review-feed-dialog::backdrop {
+  background: #0008;
+}
+.review-feed-dialog .review-feed {
+  position: static;
+  width: 100%;
+  max-width: none;
+  max-height: calc(100dvh - 24px);
+}
+.review-feed-dialog .review-feed-list {
+  max-height: min(440px, calc(100dvh - 100px));
+}
+.viewer-frame:has(.review-feed-dialog[open])
+  :is(
+    .viewer-review-hud,
+    .position-radar,
+    .viewer-match-score,
+    .viewer-objective-layer,
+    .killfeed
+  ) {
+  visibility: hidden;
+}
+.review-feed {
+  position: absolute;
+  top: var(--viewer-feed-top, calc(var(--viewer-toolbar-height, 48px) + 16px));
+  right: var(--viewer-edge, 16px);
+  z-index: 3;
+  width: 360px;
+  max-width: calc(100% - 32px);
+  max-height: max(
+    52px,
+    calc(100dvh - var(--viewer-feed-top, 64px) - var(--viewer-dock-height, 116px) - 12px)
+  );
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  border-radius: 8px;
+  background: var(--viewer-plane);
+  color: var(--text);
+}
+.review-feed-heading {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: none;
+}
+.review-feed-tabs {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+.review-feed-tabs button,
+.review-feed-actions button,
+.review-feed-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 10px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.review-feed-tabs button {
+  flex: 1;
+  gap: 6px;
+}
+.review-feed-tabs button[aria-selected='true'] {
+  background: var(--raised);
+  color: var(--text);
+}
+.review-feed-tabs .num {
+  color: var(--faint);
+  font-size: 11px;
+}
+.review-feed button:hover {
+  background: var(--raised);
+  color: var(--text);
+}
+.review-feed button:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: -2px;
+}
+.review-feed-list {
+  flex: 1;
+  min-height: 0;
+  max-height: 96px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.review-feed-list ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.review-feed-row {
+  min-width: 0;
+}
+.review-feed-event {
+  display: flex;
+  align-items: stretch;
+  min-height: 44px;
+}
+.review-feed-summary {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+div.review-feed-summary {
+  cursor: default;
+}
+.review-feed-time {
+  flex: none;
+  color: var(--faint);
+  font-size: 11px;
+}
+.review-feed-event-people {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px 5px;
+  min-width: 0;
+}
+.review-feed-player {
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+}
+.review-feed-player[data-team='3'] {
+  color: var(--team-ct);
+}
+.review-feed-player[data-team='2'] {
+  color: var(--team-t);
+}
+.review-feed-weapon {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--muted);
+}
+.review-feed-weapon .equipment-glyph.is-weapon {
+  width: 36px;
+  height: 13px;
+}
+.review-feed-weapon .equipment-glyph:not(.is-weapon) {
+  width: 12px;
+  height: 14px;
+}
+.review-feed-actions {
+  display: flex;
+  flex: none;
+}
+.review-feed-inputs {
+  padding: 0 6px 7px;
+}
+.review-feed-empty {
+  margin: 0;
+  padding: 12px 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+@media (max-width: 1200px) {
+  .review-feed-list {
+    max-height: 72px;
+  }
+}
+@media (max-width: 760px), (max-height: 560px) {
+  .review-feed {
+    top: var(--viewer-feed-top, calc(var(--viewer-toolbar-height, 48px) + 12px));
+    width: 360px;
+    max-width: calc(100% - 16px);
+  }
+  .review-feed-list {
+    max-height: min(240px, calc(100dvh - var(--viewer-dock-height, 116px) - 132px));
+  }
+}

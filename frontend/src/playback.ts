@@ -1,4 +1,5 @@
 import type { Playback, Frame } from './types';
+import { defaultCrosshairStyle, normalizeCrosshairStyle, type CrosshairStyle } from './crosshair';
 export function playbackBounds(data: Playback) {
   if (data.worldBounds) return data.worldBounds;
   const bounds = {
@@ -56,6 +57,11 @@ export function skipDeadTime(
 export type ViewerSettings = {
   xray: boolean;
   crosshair: boolean;
+  crosshairStyle: CrosshairStyle;
+  cameraFov: number;
+  teamLayout: 'split' | 'right';
+  matchScore: boolean;
+  reviewFeed: boolean;
   utilities: boolean;
   trajectories: boolean;
   trails: boolean;
@@ -81,6 +87,11 @@ export type ViewerSettings = {
 export const defaultSettings: ViewerSettings = {
   xray: true,
   crosshair: true,
+  crosshairStyle: defaultCrosshairStyle,
+  cameraFov: 48,
+  teamLayout: 'split',
+  matchScore: true,
+  reviewFeed: false,
   utilities: true,
   trajectories: true,
   trails: false,
@@ -109,16 +120,20 @@ export function readSettings(): ViewerSettings {
     const settings = { ...defaultSettings };
     for (const k of Object.keys(defaultSettings) as (keyof ViewerSettings)[]) {
       if (
+        k !== 'crosshairStyle' &&
         typeof saved[k] === typeof settings[k] &&
         (k !== 'inputLayout' || ['wasd', 'zqsd'].includes(saved[k])) &&
         (k !== 'voiceScope' || ['selected', 'team', 'all'].includes(saved[k])) &&
         (k !== 'voiceVolume' || (Number.isFinite(saved[k]) && saved[k] >= 0 && saved[k] <= 1)) &&
-        (k !== 'quality' || ['auto', 'low', 'high'].includes(saved[k]))
+        (k !== 'quality' || ['auto', 'low', 'high'].includes(saved[k])) &&
+        (k !== 'cameraFov' || (Number.isFinite(saved[k]) && saved[k] >= 40 && saved[k] <= 110)) &&
+        (k !== 'teamLayout' || ['split', 'right'].includes(saved[k]))
       )
         (settings as any)[k] = saved[k];
     }
+    settings.crosshairStyle = normalizeCrosshairStyle(saved.crosshairStyle);
     return settings;
   } catch {
-    return defaultSettings;
+    return { ...defaultSettings, crosshairStyle: { ...defaultCrosshairStyle } };
   }
 }

@@ -108,6 +108,24 @@ export function collectFrameState(rows: Record<string, unknown>[]): {
       player.inventory = row.inventory;
     const input = recordedInput(row, aliasesAvailable);
     if (input) player.input = input;
+    const stats: NonNullable<Position['stats']> = {};
+    for (const [field, property] of [
+      ['kills_total', 'kills'],
+      ['deaths_total', 'deaths'],
+      ['assists_total', 'assists'],
+      ['headshot_kills_total', 'headshotKills'],
+      ['damage_total', 'damage'],
+    ] as const) {
+      const value = row[field];
+      if (
+        typeof value === 'number' &&
+        Number.isSafeInteger(value) &&
+        value >= 0 &&
+        value <= 1000000000
+      )
+        stats[property] = value;
+    }
+    if (Object.keys(stats).length) player.stats = stats;
     frame.players.push(player);
   }
   if (segment) {

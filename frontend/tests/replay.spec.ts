@@ -76,8 +76,28 @@ test('viewer streams only nearby time slices, pauses on a failed seek, retries a
     await expect(page.getByRole('complementary', { name: 'Analysis HUD' })).toBeVisible();
     await expect.poll(async () => Number(await slider.inputValue())).toBeGreaterThan(8000);
     await page.getByRole('button', { name: 'Pause', exact: true }).click();
-    await page.getByRole('combobox', { name: 'Round', exact: true }).click();
-    await page.getByRole('option', { name: 'Round 2', exact: true }).click();
+    await page.getByRole('button', { name: 'More controls', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Rounds', exact: true }).click();
+    const context = page.locator('.timeline-context-label');
+    const transport = page.locator('.viewer-controlbar');
+    const rail = page.locator('.viewer-rounds-rail');
+    const secondRound = page.getByRole('button', { name: 'Jump to round 2', exact: true });
+    await expect(context).toHaveCSS('pointer-events', 'none');
+    const contextBounds = (await context.boundingBox())!;
+    const transportBounds = (await transport.boundingBox())!;
+    const railBounds = (await rail.boundingBox())!;
+    expect(contextBounds.y).toBeCloseTo(transportBounds.y, 0);
+    expect(contextBounds.y + contextBounds.height).toBeLessThanOrEqual(railBounds.y + 1);
+    expect(
+      await secondRound.evaluate((button) => {
+        const bounds = button.getBoundingClientRect();
+        return button.contains(
+          document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2),
+        );
+      }),
+      'Expanded round navigation must receive the actual pointer hit',
+    ).toBe(true);
+    await secondRound.click();
     await expect(slider).toHaveValue('1280');
     await expect(slider).toHaveAttribute('max', '9600');
     expect(errors).toEqual([]);

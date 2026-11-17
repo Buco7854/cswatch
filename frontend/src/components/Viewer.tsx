@@ -1,5 +1,14 @@
 import i18n, { t, locale, setLanguage } from '../i18n';
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { Link, useParams, useLocation } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -25,6 +34,7 @@ import {
 import { api } from '../api';
 import { useReplay } from '../useReplay';
 import { useViewerChrome } from '../useViewerChrome';
+import { useReviewLayout } from '../useReviewLayout';
 import { useApp } from '../context';
 import type { Bookmark } from '../types';
 import { frameAt, readSettings, skipDeadTime } from '../playback';
@@ -36,16 +46,23 @@ import ReviewHud from './ReviewHud';
 import ReviewActions, { type ReviewAction } from './ReviewActions';
 import ReviewEventGlyph from './ReviewEventGlyph';
 import EquipmentGlyph from './EquipmentGlyph';
+import type { LandingPrompt, ThrowPrompt } from '../review-prompts';
 import {
-  buildReviewPrompts,
-  reviewPromptsAt,
-  type KillPrompt,
-  type LandingPrompt,
-} from '../review-prompts';
+  buildReviewMoments,
+  recentReviewMoment,
+  indexThrowInputs,
+  throwInputAt,
+  type CombatMoment,
+} from '../review-moments';
+import MatchScore from './MatchScore';
+import Scoreboard from './Scoreboard';
+import ReviewFeed, { type ReviewFeedTab } from './ReviewFeed';
+import ThrowInputBadges from './ThrowInputBadges';
 import type { SceneFocus } from './Scene';
 import { SelectedLoadout } from './MatchEconomy';
 import Communications from './Communications';
 import ViewerOptions from './ViewerOptions';
+import Crosshair from './Crosshair';
 import TacticalPlot from './TacticalPlot';
 import ManageDemo from './ManageDemo';
 import AccountMenu from './AccountMenu';
@@ -101,16 +118,26 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     [manage, setManage] = useState(false);
   const [communicationsOpen, setCommunicationsOpen] = useState(false);
   const [timelineOptionsOpen, setTimelineOptionsOpen] = useState(false);
+  const [scoreboardOpen, setScoreboardOpen] = useState(false);
+  const [feedTab, setFeedTab] = useState<ReviewFeedTab>('kills');
+  const scoreboardHeld = useRef(false);
+  const scoreboardTrigger = useRef<HTMLElement | null>(null);
   const [grenadeFocus, setGrenadeFocus] = useState<SceneFocus>();
   const focusSequence = useRef(0);
-  const promptIndex = useMemo(
-    () => (data ? buildReviewPrompts(data, selected, first, last) : null),
-    [data, selected, first, last],
+  const reviewIndex = useMemo(
+    () => (data ? buildReviewMoments(data, first, last) : null),
+    [data?.events, data?.players, data?.rounds, data?.tickRate, data?.sample, first, last],
   );
-  const prompts = useMemo(
-    () => (promptIndex ? reviewPromptsAt(promptIndex, tick) : { kill: null, landing: null }),
-    [promptIndex, tick],
+  const throwInputs = useMemo(
+    () => (data ? indexThrowInputs(data) : new Map()),
+    [data?.throwInputs],
   );
+  const recentMoment = reviewIndex
+    ? recentReviewMoment(reviewIndex, tick, selected, {
+        kills: settings.killReplay,
+        utilities: settings.grenadeLanding,
+      })
+    : null;
   const [mapAvailable, setMapAvailable] = useState(false);
   const communicationsTrigger = useRef<HTMLElement | null>(null);
   const communicationsWasOpen = useRef(false);
@@ -127,6 +154,15 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     } catch {}
   }, [settings]);
   const [panel, setPanel] = useState<'players' | 'review' | null>(null);
+  const showReviewFeed =
+    settings.reviewFeed &&
+    !panel &&
+    !buffering &&
+    !options &&
+    !manage &&
+    !communicationsOpen &&
+    !timelineOptionsOpen &&
+    !scoreboardOpen;
   const mutationScope = useRef({ active: true });
   const [roundsOpen, setRoundsOpen] = useState(false);
   const [eventReviewKey, setEventReviewKey] = useState(0);
@@ -134,6 +170,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
   const panelTrigger = useRef<HTMLElement | null>(null);
   const panelWasOpen = useRef(false);
   const full = useRef<HTMLDivElement>(null);
+  useReviewLayout(full, Boolean(data));
   const playbackDock = useRef<HTMLDivElement>(null);
   const stage = useRef<HTMLDivElement>(null);
   const playTrigger = useRef<HTMLButtonElement>(null);
@@ -162,6 +199,8 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       manage ||
       communicationsOpen ||
       timelineOptionsOpen ||
+      scoreboardOpen ||
+      settings.reviewFeed ||
       roundsOpen ||
       buffering,
     ready: Boolean(data),
@@ -182,9 +221,42 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     // React removes the native dialog before its normal close algorithm can
     // restore the opener. Wait for teardown and never steal another modal's focus.
     requestAnimationFrame(() => {
-      if (!full.current?.isConnected || document.querySelector('dialog[open]')) return;
+      if (
+        !full.current?.isConnected ||
+        document.querySelector('dialog[open]:not(.review-feed-inline)')
+      )
+        return;
       restoreViewerFocus(optionsTrigger.current);
     });
+  }
+  function openScoreboard(trigger: HTMLElement | null, held = false) {
+    scoreboardHeld.current = held;
+    scoreboardTrigger.current = trigger;
+    setScoreboardOpen(true);
+    chrome.show();
+  }
+  function closeScoreboard() {
+    const held = scoreboardHeld.current;
+    scoreboardHeld.current = false;
+    setScoreboardOpen(false);
+    requestAnimationFrame(() => {
+      if (
+        !full.current?.isConnected ||
+        document.querySelector('dialog[open]:not(.review-feed-inline)')
+      )
+        return;
+      if (held) stage.current?.focus({ preventScroll: true });
+      else restoreViewerFocus(scoreboardTrigger.current);
+    });
+  }
+  function closeReviewFeed() {
+    setSettings((value) => ({ ...value, reviewFeed: false }));
+    requestAnimationFrame(() => restoreViewerFocus(mobileMoreTrigger.current));
+  }
+  function toggleReviewFeed() {
+    setSettings((value) => ({ ...value, reviewFeed: !value.reviewFeed }));
+    setPanel(null);
+    chrome.show();
   }
   const [compactPanels, setCompactPanels] = useState(
     () => window.matchMedia('(max-width:540px),(max-height:560px)').matches,
@@ -221,7 +293,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     // A closing native dialog may return focus after this commit. Wait for its
     // teardown before handing focus to the scene rather than an inert trigger.
     const handoff = requestAnimationFrame(() => {
-      if (!document.querySelector('dialog[open],[aria-modal="true"]'))
+      if (!document.querySelector('dialog[open]:not(.review-feed-inline),[aria-modal="true"]'))
         stage.current?.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(handoff);
@@ -250,7 +322,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
         compactPanels &&
         panel &&
         !e.defaultPrevented &&
-        !document.querySelector('dialog[open]') &&
+        !document.querySelector('dialog[open]:not(.review-feed-inline)') &&
         !document.querySelector('[role="listbox"],[role="menu"]')
       ) {
         const candidates = [
@@ -276,7 +348,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
         !e.defaultPrevented &&
         e.key === 'Escape' &&
         panel &&
-        !document.querySelector('dialog[open]')
+        !document.querySelector('dialog[open]:not(.review-feed-inline)')
       )
         closePanel();
     }
@@ -298,6 +370,8 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     setManage(false);
     setCommunicationsOpen(false);
     setTimelineOptionsOpen(false);
+    setScoreboardOpen(false);
+    scoreboardHeld.current = false;
     setGrenadeFocus(undefined);
     return () => {
       scope.active = false;
@@ -352,11 +426,38 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       const target = e.target as HTMLElement;
       if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
       if (
+        e.code === 'Escape' &&
+        settings.reviewFeed &&
+        !document.querySelector(
+          'dialog[open]:not(.review-feed-inline),[role="menu"],[role="listbox"]',
+        )
+      ) {
+        e.preventDefault();
+        closeReviewFeed();
+        return;
+      }
+      if (e.code === 'Tab' && scoreboardHeld.current) {
+        e.preventDefault();
+        return;
+      }
+      if (
+        e.code === 'Tab' &&
+        !e.shiftKey &&
+        !e.repeat &&
+        target === stage.current &&
+        !panel &&
+        !scoreboardOpen
+      ) {
+        e.preventDefault();
+        openScoreboard(stage.current, true);
+        return;
+      }
+      if (
         e.code === 'KeyH' &&
         !target.closest(
           'input,select,textarea,dialog,[role="dialog"],[contenteditable],[data-keyboard-managed]',
         ) &&
-        !document.querySelector('dialog[open],[aria-modal="true"]')
+        !document.querySelector('dialog[open]:not(.review-feed-inline),[aria-modal="true"]')
       ) {
         if (e.repeat) return;
         e.preventDefault();
@@ -394,7 +495,88 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     }
     window.addEventListener('keydown', keys);
     return () => window.removeEventListener('keydown', keys);
-  }, [last, first, rate, chrome.visible, chrome.toggle, chrome.show]);
+  }, [
+    last,
+    first,
+    rate,
+    chrome.visible,
+    chrome.toggle,
+    chrome.show,
+    panel,
+    scoreboardOpen,
+    settings.reviewFeed,
+  ]);
+  useEffect(() => {
+    const release = (event: KeyboardEvent) => {
+      if (event.code === 'Tab' && scoreboardHeld.current) closeScoreboard();
+    };
+    const blur = () => {
+      if (scoreboardHeld.current) closeScoreboard();
+    };
+    window.addEventListener('keyup', release);
+    window.addEventListener('blur', blur);
+    return () => {
+      window.removeEventListener('keyup', release);
+      window.removeEventListener('blur', blur);
+    };
+  }, [scoreboardOpen]);
+  const feedRound = data ? roundAt(data, tick, last) : undefined;
+  const { feedKills, feedUtilities } = useMemo(() => {
+    if (!data || !feedRound) return { feedKills: [], feedUtilities: [] };
+    const reviewRound = feedRound;
+    const feedKills = (reviewIndex?.kills || [])
+      .filter((moment) => moment.tick >= reviewRound.start && moment.tick <= reviewRound.end)
+      .map((moment) => ({
+        id: moment.id,
+        tick: moment.tick,
+        timeLabel: clock((moment.tick - first) / rate),
+        actor: { id: moment.attackerId || '', name: moment.attacker, team: moment.attackerTeam },
+        target: { id: moment.victimId || '', name: moment.victim, team: moment.victimTeam },
+        weapon: moment.weapon,
+        headshot: moment.headshot,
+        canReplayAttacker: Boolean(moment.attackerId && moment.attackerId !== moment.victimId),
+        canReplayVictim: Boolean(moment.victimId),
+      }));
+    const feedUtilities = (reviewIndex?.utilities || [])
+      .filter((moment) => moment.tick >= reviewRound.start && moment.tick <= reviewRound.end)
+      .map((moment) => {
+        const player = data.players.find((player) => player.id === moment.throwerId);
+        const event = data.events[moment.eventIndex];
+        const team = event?.user_team_num;
+        return {
+          id: moment.id,
+          tick: moment.tick,
+          timeLabel: clock((moment.tick - first) / rate),
+          actor: {
+            id: moment.throwerId,
+            name: typeof event?.user_name === 'string' ? event.user_name : player?.name || '',
+            team: team === 2 || team === 3 ? team : undefined,
+          },
+          weapon: moment.weapon,
+          canReplayThrow: true,
+          canViewLanding: Boolean(moment.landing),
+          inputBadges: (
+            <ThrowInputBadges
+              snapshot={throwInputAt(throwInputs, moment)}
+              layout={settings.inputLayout}
+              synthetic={data.sample}
+            />
+          ),
+        };
+      });
+    return { feedKills, feedUtilities };
+  }, [
+    reviewIndex,
+    throwInputs,
+    settings.inputLayout,
+    first,
+    rate,
+    feedRound?.start,
+    feedRound?.end,
+    i18n.language,
+    data?.events,
+    data?.players,
+  ]);
   async function toggleFull() {
     try {
       if (document.fullscreenElement) await document.exitFullscreen();
@@ -544,14 +726,28 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     setPlaying(false);
     seek(value);
   }
-  function replayKill(prompt: KillPrompt) {
+  function replayCombat(prompt: CombatMoment, perspective: 'attacker' | 'victim') {
+    const playerId = perspective === 'attacker' ? prompt.attackerId : prompt.victimId;
+    if (!playerId) return;
+    setSelected(playerId);
+    setGrenadeFocus(undefined);
+    if (mode !== '2d') setMode('pov');
+    seek(prompt.startTick);
+    setPlaying(true);
+    chrome.show();
+    requestAnimationFrame(() => playTrigger.current?.focus({ preventScroll: true }));
+  }
+  function replayThrow(prompt: ThrowPrompt) {
+    setSelected(prompt.throwerId);
+    setGrenadeFocus(undefined);
+    if (mode !== '2d') setMode('pov');
     seek(prompt.startTick);
     setPlaying(true);
     chrome.show();
     requestAnimationFrame(() => playTrigger.current?.focus({ preventScroll: true }));
   }
   function viewGrenadeLanding(prompt: LandingPrompt) {
-    seek(prompt.startTick);
+    seek(Math.max(first, Math.floor(prompt.impactTick - rate / 4)));
     setGrenadeFocus({
       id: `${prompt.id}:${++focusSequence.current}`,
       target: prompt.target,
@@ -565,6 +761,12 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     requestAnimationFrame(() => playTrigger.current?.focus({ preventScroll: true }));
   }
   const momentActions: MenuAction[] = [
+    {
+      id: 'scoreboard',
+      label: t('Scoreboard'),
+      onSelect: () => openScoreboard(eventMenuTrigger.current),
+    },
+    { id: 'round-review', label: t('Kills and utility review'), onSelect: toggleReviewFeed },
     {
       id: 'communications',
       label: t('Communications'),
@@ -628,33 +830,70 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
   const selectedPlayer = data.players.find((player) => player.id === selected);
   const round = data.rounds.filter((r) => r.tick <= tick).at(-1);
   const reviewRound = roundAt(data, tick, last);
-  const reviewActions: ReviewAction[] =
-    panel || buffering
-      ? []
-      : [
-          ...(settings.grenadeLanding && prompts.landing
-            ? [
-                {
-                  id: prompts.landing.id,
-                  label: t('View grenade landing'),
-                  title: t('View the recorded detonation position from a separate camera.'),
-                  icon: <EquipmentGlyph item={prompts.landing.weapon} />,
-                  run: () => viewGrenadeLanding(prompts.landing!),
-                },
-              ]
-            : []),
-          ...(settings.killReplay && prompts.kill
-            ? [
-                {
-                  id: prompts.kill.id,
-                  label: t('Replay kill'),
-                  title: t('Replay the observed player’s recent elimination.'),
-                  icon: <ReviewEventGlyph event={{ type: 'kill' }} size={18} />,
-                  run: () => replayKill(prompts.kill!),
-                },
-              ]
-            : []),
-        ];
+  const reviewActions: ReviewAction[] = [];
+  let reviewHeading: ReactNode;
+  if (!panel && !buffering && recentMoment) {
+    if (recentMoment.kind === 'combat') {
+      const moment = recentMoment;
+      reviewHeading = (
+        <>
+          <EquipmentGlyph item={moment.weapon} />
+          <strong title={`${moment.attacker} → ${moment.victim}`}>
+            {moment.attacker || t('Unknown player')} → {moment.victim || t('Unknown player')}
+          </strong>
+        </>
+      );
+      if (moment.attackerId && moment.attackerId !== moment.victimId)
+        reviewActions.push({
+          id: moment.id + ':attacker',
+          label: t('Replay kill'),
+          shortLabel: t('Killer POV'),
+          title: t('Replay this elimination from the killer’s perspective.'),
+          icon: <ReviewEventGlyph event={{ type: 'kill' }} size={18} />,
+          run: () => replayCombat(moment, 'attacker'),
+        });
+      if (moment.victimId)
+        reviewActions.push({
+          id: moment.id + ':victim',
+          label: t('Replay death'),
+          shortLabel: t('Victim POV'),
+          title: t('Replay this elimination from the victim’s perspective.'),
+          icon: <ReviewEventGlyph event={{ type: 'death' }} size={18} />,
+          run: () => replayCombat(moment, 'victim'),
+        });
+    } else {
+      const moment = recentMoment;
+      const actor = data.players.find((player) => player.id === moment.throwerId);
+      reviewHeading = (
+        <>
+          <EquipmentGlyph item={moment.weapon} />
+          <strong>{actor?.name || t('Unknown player')}</strong>
+          <ThrowInputBadges
+            snapshot={throwInputAt(throwInputs, moment)}
+            layout={settings.inputLayout}
+            synthetic={data.sample}
+          />
+        </>
+      );
+      reviewActions.push({
+        id: moment.id + ':throw',
+        label: t('Replay throw'),
+        shortLabel: t('Replay'),
+        title: t('Watch the recorded throw from the thrower’s perspective.'),
+        icon: <Eye size={18} />,
+        run: () => replayThrow(moment),
+      });
+      if (moment.landing)
+        reviewActions.push({
+          id: moment.id + ':landing',
+          label: t('View grenade landing'),
+          shortLabel: t('Landing'),
+          title: t('View the recorded detonation position from a separate camera.'),
+          icon: <EquipmentGlyph item={moment.weapon} />,
+          run: () => viewGrenadeLanding(moment.landing!),
+        });
+    }
+  }
   const viewerMenuActions: MenuAction[] = [
     ...(['en', 'fr'] as const).map((language) => ({
       id: 'language-' + language,
@@ -694,6 +933,8 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       data-controls-hidden={settings.controlsHidden}
       data-chrome-visible={chrome.visible}
       data-review-action-count={reviewActions.length}
+      data-score-visible={settings.matchScore}
+      data-review-feed={showReviewFeed}
       ref={full}
     >
       <header
@@ -717,9 +958,11 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
             </h1>
             <div className="viewer-context">
               {data.sample && <span>{t('Interactive sample')}</span>}
-              <span>
-                {t('Round')} {round?.number ?? 1}
-              </span>
+              {!settings.matchScore && (
+                <span>
+                  {t('Round')} {round?.number ?? 1}
+                </span>
+              )}
               {!data.sample && mode !== '2d' && !mapAvailable && (
                 <span
                   className="viewer-map-status"
@@ -782,13 +1025,59 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
         </div>
       </header>
       <div className="viewer-surface">
+        {settings.matchScore && !buffering && (
+          <MatchScore
+            data={data}
+            tick={tick}
+            chromeVisible={chrome.visible && !(panel && compactPanels)}
+            onOpenScoreboard={() =>
+              openScoreboard(
+                full.current?.querySelector('.viewer-match-score') as HTMLElement | null,
+              )
+            }
+          />
+        )}
+        {showReviewFeed && (
+          <ReviewFeed
+            kills={feedKills}
+            utilities={feedUtilities}
+            activeTab={feedTab}
+            onTabChange={setFeedTab}
+            chromeVisible={chrome.visible}
+            modal={compactPanels}
+            focusOnOpen
+            onClose={closeReviewFeed}
+            onSeek={(value) => {
+              if (compactPanels) closeReviewFeed();
+              seekEvent(value);
+            }}
+            onReplayKill={(momentId, perspective) => {
+              const moment = reviewIndex?.kills.find((value) => value.id === momentId);
+              if (moment) {
+                if (compactPanels) closeReviewFeed();
+                replayCombat(moment, perspective);
+              }
+            }}
+            onReviewUtility={(momentId, action) => {
+              const moment = reviewIndex?.utilities.find((value) => value.id === momentId);
+              if (!moment) return;
+              if (compactPanels) closeReviewFeed();
+              if (action === 'landing' && moment.landing) viewGrenadeLanding(moment.landing);
+              else if (action === 'throw') replayThrow(moment);
+            }}
+          />
+        )}
+
         <div
           className="viewer-stage"
           ref={stage}
           role="group"
           tabIndex={0}
           aria-label={t('Demo view · tap or press H to show or hide controls')}
-          aria-keyshortcuts="H Enter"
+          aria-keyshortcuts="H Enter Tab"
+          aria-description={t(
+            'Hold Tab in the scene to view the scoreboard. Shift+Tab navigates to controls.',
+          )}
           inert={Boolean(panel) && compactPanels}
         >
           <Suspense fallback={<div className="scene-fallback">{t('Starting renderer…')}</div>}>
@@ -812,19 +1101,14 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
               )}
             </div>
           )}
-          {settings.crosshair && mode === 'pov' && (
-            <span className="crosshair" aria-hidden="true">
-              <i />
-              <i />
-            </span>
-          )}
+          {settings.crosshair && mode === 'pov' && <Crosshair value={settings.crosshairStyle} />}
           <div
             className="viewer-game-hud"
             data-viewer-chrome
             inert={!chrome.visible}
             aria-hidden={!chrome.visible}
           >
-            {settings.killfeed && (
+            {settings.killfeed && !settings.reviewFeed && (
               <div className="killfeed">
                 {data.events
                   .filter(
@@ -1230,6 +1514,23 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
                 }
                 items={[
                   {
+                    id: 'players',
+                    label: t('Players'),
+                    onSelect: () => togglePanel('players', mobileMoreTrigger.current!),
+                  },
+                  {
+                    id: 'key-moments',
+                    label: t('Key moments'),
+                    onSelect: () => openRoundReview(mobileMoreTrigger.current),
+                  },
+                  ...[0.25, 0.5, 1, 2, 4].map((value, index) => ({
+                    id: 'speed-' + value,
+                    label: t('Playback speed: {{speed}}', { speed: value + '×' }),
+                    separatorBefore: index === 0,
+                    disabled: speed === value,
+                    onSelect: () => setSpeed(value),
+                  })),
+                  {
                     id: 'timeline-options',
                     label: t('Timeline options'),
                     icon: <SlidersHorizontal size={16} />,
@@ -1345,8 +1646,23 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
             )}
           </div>
         </div>
-        <ReviewActions actions={reviewActions} />
+        <ReviewActions actions={reviewActions} heading={reviewHeading} />
       </div>
+      {scoreboardOpen && (
+        <Scoreboard
+          data={data}
+          frame={frame}
+          tick={tick}
+          selected={selected}
+          buffering={buffering}
+          close={closeScoreboard}
+          onSelect={(playerId) => {
+            setSelected(playerId);
+            if (mode !== '2d') setMode('pov');
+            closeScoreboard();
+          }}
+        />
+      )}
       {manage && demo && (
         <ManageDemo demo={demo} onChange={setDemo} close={() => setManage(false)} />
       )}

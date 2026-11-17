@@ -57,11 +57,15 @@ export default function Communications({
     const element = overlay.current;
     const viewer = element?.closest<HTMLElement>('.viewer-frame');
     if (!element || !viewer) return;
-    const update = () =>
+    const update = () => {
+      const gutter = Number.parseFloat(
+        getComputedStyle(element).getPropertyValue('--communication-deck-gap'),
+      );
       viewer.style.setProperty(
         '--review-communications-gap',
-        `${element.childElementCount ? element.getBoundingClientRect().height + 24 : 0}px`,
+        `${element.childElementCount ? element.getBoundingClientRect().height + (Number.isFinite(gutter) ? gutter : 24) : 0}px`,
       );
+    };
     update();
     const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null;
     observer?.observe(element);

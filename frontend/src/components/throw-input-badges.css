@@ -1,0 +1,28 @@
+.throw-input-badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: var(--viewer-muted);
+}
+.throw-input-badges kbd {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 2px 5px;
+  border: 0;
+  border-radius: 3px;
+  background: var(--viewer-raised);
+  color: var(--viewer-ink);
+  font: inherit;
+  font-size: 11px;
+  line-height: 16px;
+}
+.throw-input-mouse {
+  flex: none;
+}
+.throw-input-unavailable {
+  color: var(--viewer-faint);
+  font-size: 12px;
+}

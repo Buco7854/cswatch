@@ -1,6 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { frameAt, skipDeadTime } from '../../frontend/src/playback.js';
+import {
+  frameAt,
+  skipDeadTime,
+  readSettings,
+  defaultSettings,
+} from '../../frontend/src/playback.js';
 import { sample } from '../../frontend/src/sample.js';
 test('frame lookup clamps ends and interpolates between adjacent ticks', () => {
   assert.equal(frameAt(sample, -1).frame.tick, 0);
@@ -16,4 +21,55 @@ test('dead-time skip respects freeze and timeout boundaries', () => {
   assert.equal(skipDeadTime(sample, 1664), 1792);
   assert.equal(skipDeadTime(sample, 2000), 2000);
   assert.equal(skipDeadTime(sample, 1792), 1792);
+});
+
+test('saved display settings validate new fields and keep older preferences', () => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  let stored = '{}';
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: { getItem: () => stored },
+  });
+  try {
+    stored = JSON.stringify({ economy: true, quality: 'low', inputLayout: 'wasd' });
+    const legacy = readSettings();
+    assert.equal(legacy.economy, true);
+    assert.equal(legacy.inputLayout, 'wasd');
+    assert.equal(legacy.quality, 'low');
+    assert.equal(legacy.teamLayout, 'split');
+    assert.equal(legacy.cameraFov, 48);
+    stored = JSON.stringify({
+      teamLayout: 'right',
+      cameraFov: 110,
+      crosshairStyle: { color: '#00aaff', length: 500, opacity: -1, tStyle: true },
+    });
+    const saved = readSettings();
+    assert.equal(saved.teamLayout, 'right');
+    assert.equal(saved.cameraFov, 110);
+    assert.equal(saved.crosshairStyle.color, '#00aaff');
+    assert.equal(saved.crosshairStyle.length, 24);
+    assert.equal(saved.crosshairStyle.opacity, 0);
+    assert.equal(saved.crosshairStyle.tStyle, true);
+    for (const value of [
+      null,
+      'malformed',
+      {
+        teamLayout: 'left',
+        cameraFov: 1000,
+        crosshairStyle: { color: 'url(https://invalid.example)' },
+      },
+    ]) {
+      stored = typeof value === 'string' ? value : JSON.stringify(value);
+      assert.equal(readSettings().teamLayout, 'split');
+      assert.equal(readSettings().cameraFov, 48);
+      assert.equal(readSettings().crosshairStyle.color, defaultSettings.crosshairStyle.color);
+    }
+    stored = 'malformed';
+    const fallback = readSettings();
+    fallback.economy = true;
+    assert.equal(readSettings().economy, false);
+  } finally {
+    if (original) Object.defineProperty(globalThis, 'localStorage', original);
+    else Reflect.deleteProperty(globalThis, 'localStorage');
+  }
 });

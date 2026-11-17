@@ -6,20 +6,47 @@
   z-index: 4;
   display: flex;
   flex-direction: column;
-  width: 208px;
+  width: 320px;
   padding: 4px;
   box-sizing: border-box;
   border-radius: 8px;
   background: var(--viewer-plane);
   color: var(--viewer-ink);
 }
+.review-moment-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  min-height: 28px;
+  padding: 4px 8px;
+  color: var(--viewer-muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+.review-moment-heading > strong {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--viewer-ink);
+  font-weight: 500;
+}
+.review-moment-heading > .equipment-glyph.is-weapon {
+  width: 40px;
+}
+.review-moment-buttons {
+  display: flex;
+  min-width: 0;
+}
 .viewer-frame .viewer-context-actions .review-action {
   display: flex;
   align-items: center;
   justify-content: flex-start;
   gap: 8px;
-  flex: none;
-  width: 100%;
+  flex: 1;
+  width: auto;
   box-sizing: border-box;
   height: 44px;
   min-height: 44px;
@@ -61,7 +88,7 @@
 .viewer-frame[data-review-action-count='2'] {
   --review-actions-gap: 108px;
 }
-.viewer-frame .review-economy-frame {
+.viewer-frame .viewer-review-hud[data-layout='right'] .review-economy-frame {
   max-height: calc(100% - var(--review-actions-gap, 0px));
 }
 @media (max-width: 760px) {
@@ -75,7 +102,6 @@
 @media (max-width: 360px) {
   .viewer-frame .viewer-context-actions,
   .viewer-frame:has(.review-inputs-panel) .viewer-context-actions {
-    flex-direction: row;
     width: calc(100% - 16px);
   }
   .viewer-frame .viewer-context-actions .review-action {
@@ -91,7 +117,7 @@
         var(--review-actions-gap, 0px)
     );
   }
-  .viewer-frame .review-economy-frame {
+  .viewer-frame .viewer-review-hud[data-layout='right'] .review-economy-frame {
     max-height: 100%;
   }
 }
@@ -100,7 +126,6 @@
     right: 16px;
   }
   .viewer-frame[data-review-action-count='2'] .viewer-context-actions {
-    flex-direction: row;
     width: min(386px, calc(100% - 216px));
   }
   .viewer-frame .viewer-context-actions .review-action {
@@ -108,5 +133,14 @@
   }
   .viewer-frame[data-review-action-count='2'] {
     --review-actions-gap: 60px;
+  }
+  /* Moment navigation occupies the center lane between optional inputs and
+     the right roster, so a short screen can retain a complete player plate. */
+  .viewer-frame:has(.review-economy-frame) .viewer-context-actions {
+    right: calc(var(--viewer-roster-width, 180px) + 24px);
+    width: min(386px, calc(100% - 208px - var(--viewer-roster-width, 180px) - 24px));
+  }
+  .viewer-frame .viewer-review-hud[data-layout='right'] .review-economy-frame {
+    max-height: 100%;
   }
 }

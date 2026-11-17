@@ -1,13 +1,19 @@
 /* Settings-owned instruments share the viewer palette and reserve only the
    toolbar/deck safe area. No display controls float over the picture. */
 .viewer-review-hud {
+  --review-hud-top: max(
+    calc(var(--viewer-toolbar-height, 48px) + 16px),
+    var(--review-objective-bottom, 0px),
+    var(--viewer-score-bottom, 0px)
+  );
+  --review-bank-top: max(var(--viewer-team-top, 230px), var(--review-hud-top));
   position: absolute;
-  inset: calc(var(--viewer-toolbar-height, 48px) + 16px) var(--viewer-edge, 16px)
+  inset: var(--review-hud-top) var(--viewer-edge, 16px)
     calc(var(--viewer-dock-height, 180px) + 16px + var(--review-communications-gap, 0px));
   z-index: 3;
   pointer-events: none;
   color: var(--text);
-  --broadcast-bank-width: var(--viewer-roster-width, 312px);
+  --broadcast-bank-width: var(--viewer-roster-width, 280px);
 }
 .viewer-review-hud[hidden] {
   display: none;
@@ -17,6 +23,35 @@
   inset: 0 0 0 auto;
   width: var(--broadcast-bank-width);
   min-height: 0;
+}
+.viewer-review-hud[data-layout='split'] .review-economy-frame {
+  inset: calc(var(--review-bank-top) - var(--review-hud-top)) 0 0;
+  width: 100%;
+  max-height: none;
+}
+.review-team-frame {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: var(--review-actions-gap, 0px);
+  width: var(--broadcast-bank-width);
+  min-height: 0;
+}
+.review-team-frame[data-team='3'] {
+  right: auto;
+  left: 0;
+  bottom: 0;
+}
+.viewer-frame:has(.review-feed) .review-team-frame[data-team='2'] {
+  top: max(
+    0px,
+    calc(
+      var(--viewer-feed-top, 64px) + var(--review-feed-height, 0px) + 16px - var(--review-bank-top)
+    )
+  );
+}
+.viewer-review-hud[data-inputs='true'] .review-team-frame[data-team='3'] {
+  bottom: calc(var(--review-input-height, 126px) + 16px);
 }
 .review-inputs-panel {
   position: absolute;
@@ -46,12 +81,40 @@
   font-size: 12px;
   line-height: 16px;
 }
+.viewer-review-hud[data-layout='split'] .review-inputs-player {
+  display: none;
+}
+@media (min-width: 1101px) {
+  /* The input instrument shares the bottom lane with the narrower deck. The
+     aside's upper space still reserves captions and the measured playback deck. */
+  .review-inputs-panel {
+    bottom: calc(-1 * (var(--viewer-dock-height, 116px) + var(--review-communications-gap, 0px)));
+    max-height: min(280px, calc(100dvh - var(--viewer-team-top, 230px) - 104px));
+  }
+  .viewer-frame:has(.review-inputs-panel) .communication-overlay {
+    width: min(720px, calc(100% - 512px));
+  }
+  .viewer-review-hud[data-inputs='true'] .review-team-frame[data-team='3'] {
+    bottom: max(
+      0px,
+      calc(
+        var(--review-input-height, 126px) + 16px - var(--viewer-dock-height, 116px) -
+          var(--review-communications-gap, 0px)
+      )
+    );
+  }
+}
+.viewer-frame:has(.review-feed) .viewer-review-hud[data-layout='right'] {
+  --review-hud-top: max(
+    calc(var(--viewer-toolbar-height, 48px) + 16px),
+    var(--review-objective-bottom, 0px),
+    var(--viewer-score-bottom, 0px),
+    calc(var(--viewer-feed-top, 64px) + var(--review-feed-height, 0px) + 12px)
+  );
+}
 @media (max-width: 760px) {
   .viewer-review-hud {
     bottom: calc(var(--viewer-dock-height, 180px) + 12px + var(--review-communications-gap, 0px));
-  }
-  .viewer-frame:has(.objective-hud) .viewer-review-hud {
-    top: calc(var(--viewer-toolbar-height, 48px) + 98px);
   }
   .review-inputs-panel {
     width: 144px;
@@ -86,9 +149,7 @@
   }
 }
 @media (max-height: 560px) {
-  .viewer-review-hud,
-  .viewer-frame:has(.objective-hud) .viewer-review-hud {
-    top: calc(var(--viewer-toolbar-height, 48px) + 10px);
+  .viewer-review-hud {
     bottom: calc(var(--viewer-dock-height, 150px) + 12px + var(--review-communications-gap, 0px));
   }
   .review-inputs-panel,

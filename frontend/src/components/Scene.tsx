@@ -296,6 +296,12 @@ function World({
   utilityState: UtilityPresentation;
 }) {
   const { camera } = useThree();
+  useEffect(() => {
+    if (camera instanceof THREE.PerspectiveCamera) {
+      camera.fov = settings.cameraFov;
+      camera.updateProjectionMatrix();
+    }
+  }, [camera, settings.cameraFov]);
   const orbit = useRef<React.ComponentRef<typeof OrbitControls>>(null);
   const freeView = useRef<{ position: THREE.Vector3; target: THREE.Vector3 } | null>(null);
   const { frame, next, alpha } = frameAt(data, tick);
@@ -680,7 +686,7 @@ export default function Scene({
         <Canvas
           shadows={!low}
           dpr={low ? 1 : [1, 1.75]}
-          camera={{ position: [32, 36, 34], fov: 48, near: 0.05, far: 3000 }}
+          camera={{ position: [32, 36, 34], fov: settings.cameraFov, near: 0.05, far: 3000 }}
           gl={{ antialias: true, powerPreference: 'high-performance' }}
           fallback={
             <TacticalPlot
