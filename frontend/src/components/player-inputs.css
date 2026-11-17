@@ -146,7 +146,7 @@
   height: var(--input-device-height);
   border: 1px solid var(--control);
   border-radius: 28px 28px 24px 24px;
-  background: var(--ground);
+  background: var(--raised);
 }
 .player-inputs .input-mouse-buttons {
   display: grid;
@@ -190,7 +190,7 @@
   top: 8px;
   width: 6px;
   height: 15px;
-  border: 1px solid var(--ground);
+  border: 1px solid var(--raised);
   border-radius: 3px;
   background: var(--faint);
   transform: translateX(-50%);
