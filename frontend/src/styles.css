@@ -636,10 +636,6 @@ select {
   border: 0;
   background: transparent;
 }
-.viewer-stage {
-  position: relative;
-  aspect-ratio: 16/9;
-}
 .view-hint {
   position: absolute;
   bottom: 12px;
@@ -694,19 +690,6 @@ select {
 .transport select {
   border: 0;
   background: none;
-}
-.play-button {
-  width: 36px;
-  height: 36px;
-  display: grid;
-  place-items: center;
-  border: 0;
-  border-radius: 50%;
-  color: #111;
-  background: white;
-}
-.play-button:hover {
-  background: #ddd;
 }
 .transport .button {
   font-size: 12px;
@@ -934,11 +917,6 @@ select {
   border-radius: 0;
   height: 100vh;
   overflow: auto;
-}
-.playback:fullscreen .viewer-stage {
-  aspect-ratio: auto;
-  flex: 1;
-  min-height: 150px;
 }
 .note-form {
   display: flex;
@@ -1326,10 +1304,6 @@ details form {
   .roster-foot {
     font-size: 10px;
   }
-  .viewer-stage {
-    aspect-ratio: auto;
-    height: 370px;
-  }
   .viewer-toolbar small {
     display: none;
   }
@@ -1389,10 +1363,6 @@ details form {
   }
   .viewer-grid {
     grid-template-columns: 1fr;
-  }
-  .viewer-stage {
-    aspect-ratio: 16/9;
-    height: auto;
   }
   .roster-panel {
     padding: 20px;
@@ -1675,10 +1645,6 @@ details form {
     font-size: 11px;
     max-width: 155px;
   }
-  .viewer-stage {
-    height: 260px;
-    aspect-ratio: auto;
-  }
   .view-hint {
     font-size: 11px;
     left: 10px;
@@ -1708,10 +1674,6 @@ details form {
   .icon-button {
     min-width: 40px;
     min-height: 40px;
-  }
-  .play-button {
-    width: 40px;
-    height: 40px;
   }
   .scrubber input {
     min-height: 24px;
@@ -1859,11 +1821,6 @@ details form {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-.options-button {
-  padding: 4px 8px;
-  font-size: 12px;
-  min-height: 30px;
 }
 .crosshair {
   position: absolute;
@@ -2113,10 +2070,6 @@ details form {
 [data-theme='light'] .scrubber {
   color: #555;
 }
-[data-theme='light'] .play-button {
-  background: #151515;
-  color: #fff;
-}
 [data-theme='light'] .player-row.selected,
 [data-theme='light'] .player-row:hover {
   background: #e5e5e5;
@@ -2170,12 +2123,6 @@ details form {
   outline-color: #111;
 }
 @media (max-width: 540px) {
-  .options-button span {
-    display: none;
-  }
-  .options-button {
-    min-width: 34px;
-  }
   .viewer-toolbar-actions {
     gap: 2px;
   }
@@ -2298,10 +2245,4 @@ details form {
 }
 .camera-label {
   flex-direction: row;
-}
-@media (min-width: 1101px) {
-  .viewer-stage {
-    aspect-ratio: auto;
-    height: clamp(300px, 48vh, 540px);
-  }
 }

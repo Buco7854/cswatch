@@ -19,6 +19,7 @@ Start with `docs/HANDOFF.md` for current state and `docs/product/WORK.md` for th
 - `frontend/src/components/PublicSite.tsx`, `Brand.tsx`, `ReviewPreview.tsx`, `PublicProofs.tsx`: public narrative and real, labeled practice interactions. `main.tsx` selects public/workspace/private entry shells.
 - `frontend/src/i18n.ts`, `locales/*.json`: EN/FR message/locale policy. Add both languages and run `npm run check:locales`.
 - `frontend/src/components/Viewer.tsx`: timeline/controller; `Scene.tsx`: WebGL rendering; `TacticalPlot.tsx`: 2D fallback; `ViewerOptions.tsx`: device-local display preferences.
+- `frontend/src/viewer-layout.css`: sole viewer shell and responsive density rules; `viewer-presentation.css`: shared viewer/dialog/portal palette and visibility transitions. Keep instrument geometry in its component CSS. Do not reintroduce competing viewer rules in member.css, member-controls.css, styles.css or workspace.css.
 - `frontend/src/useViewerChrome.ts`: scene tap/gesture discrimination, playback idle fade and focus-safe visibility; subtitles remain independent.
 - `frontend/src/playback.ts`: pure seeking/frame lookup/skip logic. Keep this independent of Three.js.
 - `frontend/src/review-prompts.ts`: global-event, identity-safe landing/kill suggestions; `utility-state.ts`: recorded projectile interpolation and analytical utility effects. Never treat a chunk’s final trajectory point as a landing.

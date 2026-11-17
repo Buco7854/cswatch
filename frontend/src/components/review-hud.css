@@ -2,12 +2,12 @@
    toolbar/deck safe area. No display controls float over the picture. */
 .viewer-review-hud {
   position: absolute;
-  inset: calc(var(--viewer-toolbar-height, 48px) + 12px) 16px
+  inset: calc(var(--viewer-toolbar-height, 48px) + 16px) var(--viewer-edge, 16px)
     calc(var(--viewer-dock-height, 180px) + 16px + var(--review-communications-gap, 0px));
   z-index: 3;
   pointer-events: none;
   color: var(--text);
-  --broadcast-bank-width: clamp(240px, 22vw, 280px);
+  --broadcast-bank-width: var(--viewer-roster-width, 312px);
 }
 .viewer-review-hud[hidden] {
   display: none;
@@ -22,43 +22,46 @@
   position: absolute;
   bottom: 0;
   left: 0;
-  width: 174px;
+  width: 160px;
   max-width: 100%;
   max-height: 100%;
-  padding: 4px 6px 6px;
+  padding: 10px 12px 12px;
   border: 0;
-  border-radius: 2px;
+  border-radius: 8px;
   background: var(--surface);
   pointer-events: auto;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
 }
+.review-inputs-panel:has(.has-mouse-input) {
+  width: 224px;
+}
 .viewer-review-hud .review-inputs-player {
-  margin: 0 0 4px;
+  margin: 0 0 8px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--muted);
-  font-size: 11px;
-  line-height: 12px;
-}
-.viewer-frame.has-review-hud .position-radar {
-  width: 64px;
-  height: 64px;
+  font-size: 12px;
+  line-height: 16px;
 }
 @media (max-width: 760px) {
   .viewer-review-hud {
-    inset-inline: 8px;
     bottom: calc(var(--viewer-dock-height, 180px) + 12px + var(--review-communications-gap, 0px));
-    --broadcast-bank-width: 180px;
   }
   .viewer-frame:has(.objective-hud) .viewer-review-hud {
     top: calc(var(--viewer-toolbar-height, 48px) + 98px);
   }
   .review-inputs-panel {
-    width: 150px;
-    padding-inline: 6px;
+    width: 144px;
+    padding: 8px;
+  }
+  .review-inputs-panel:has(.has-mouse-input) {
+    width: 184px;
+  }
+  .viewer-review-hud .review-inputs-player {
+    display: none;
   }
 }
 @media (max-width: 360px) {
@@ -87,6 +90,18 @@
   .viewer-frame:has(.objective-hud) .viewer-review-hud {
     top: calc(var(--viewer-toolbar-height, 48px) + 10px);
     bottom: calc(var(--viewer-dock-height, 150px) + 12px + var(--review-communications-gap, 0px));
-    --broadcast-bank-width: 180px;
+  }
+  .review-inputs-panel,
+  .review-inputs-panel:has(.has-mouse-input) {
+    bottom: calc(-1 * var(--review-communications-gap, 0px));
+    width: 184px;
+    max-height: calc(100% + var(--review-communications-gap, 0px));
+    padding: 8px;
+  }
+  .review-inputs-panel:not(:has(.has-mouse-input)) {
+    width: 144px;
+  }
+  .viewer-review-hud .review-inputs-player {
+    display: none;
   }
 }

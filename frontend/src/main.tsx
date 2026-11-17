@@ -33,6 +33,7 @@ import './brand.css';
 import './public.css';
 import './member.css';
 import './member-controls.css';
+import './viewer-layout.css';
 import './viewer-presentation.css';
 import '@fontsource/barlow-condensed/latin-600.css';
 import '@fontsource/barlow-condensed/latin-700.css';
