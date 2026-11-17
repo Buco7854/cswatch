@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, type ReactNode } from 'react';
-import { Crosshair, Eye, Keyboard, LocateFixed, Skull, X } from 'lucide-react';
+import { Crosshair, Eye, Keyboard, MapPin, Skull, X } from 'lucide-react';
 import { t } from '../i18n';
 import { equipmentName } from '../equipment-display';
 import EquipmentGlyph from './EquipmentGlyph';
@@ -257,7 +257,7 @@ export default function ReviewFeed({
                           aria-label={t('View grenade landing')}
                           title={t('View grenade landing')}
                         >
-                          <LocateFixed size={16} />
+                          <MapPin size={16} />
                         </button>
                       )}
                       {utility?.inputBadges && onOpenInputs && (

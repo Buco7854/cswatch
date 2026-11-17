@@ -30,6 +30,7 @@ import {
   Moon,
   ChevronDown,
   MoreHorizontal,
+  MapPin,
 } from 'lucide-react';
 import { api } from '../api';
 import { useReplay } from '../useReplay';
@@ -900,7 +901,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
           label: t('View grenade landing'),
           shortLabel: t('Landing'),
           title: t('View the recorded detonation position from a separate camera.'),
-          icon: <EquipmentGlyph item={moment.weapon} />,
+          icon: <MapPin size={18} />,
           run: () => viewGrenadeLanding(moment.landing!),
         });
     }
