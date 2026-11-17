@@ -73,9 +73,13 @@ Keep the camera center clear. CT/T banks split across both edges on wide/tall sc
 
 Timeline event positions share the seek thumb axis. Dense markers expose named, exact events; they are never evenly spaced chips. Match and current-round ranges are explicit. Objective progress shows recorded actor/site/kit and server deadlines, with elapsed/unavailable fallback. Missing map status belongs in round context instead of a central banner. Neutral surfaces and spacing replace decorative frames; focus indicators and form affordances remain visible.
 
+The latest broadcast refinement keeps only official side artwork and scores, with accessible side names and a clock centered on the viewport independently of score widths. During a bomb lifecycle, the score centre instead shows the native bomb/defuse emblem, recorded circular progress and countdown; a shared full-width caption retains actor/site/kit. It replaces the separate objective card. Scores can be disabled without losing the standalone objective instrument. The visual reference is the [BLAST broadcast defuse example](https://blast.tv/article/learn-how-to-play-cs2); source imagery is inspection-only and never shipped.
+
 ## Moment shortcuts and low quality
 
 After a recorded throw or elimination involving the observed player, one compact optional toast offers the relevant recorded perspectives. Combat has distinct Killer POV / Victim POV actions; utility has Replay / Landing and small input marks when the exact event has evidence. Missing landing coordinates disable landing only. One newest enabled moment occupies the card; every recorded moment remains available in the Kills/Utility round list. The utility and combat prompt switches are independent.
+
+Moment appearance must not resize the player banks. Desktop gives the prompt a bottom-right lane alongside the deck and keeps the bottom-left lane for inputs; the centered deck clears both player columns. Compact layouts reserve a stable prompt lane from the enabled preferences, never the current event's height. Player rows remain internally scrollable without dropping identities.
 
 Replays select the corresponding immutable player and POV, rewind, and continue normally at the current speed. Landing jumps near the recorded detonation in the ordinary free camera; it may be an airborne flash, not simulated ground contact. 2D remains 2D. There is no temporary clip, end stop or return button. Network input snapshots are identified as such and never claim physical key bindings or a verified launch command. Inputs remain a compact ZQSD/WASD block with modifiers beneath and an independently optional mouse alongside.
 

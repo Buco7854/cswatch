@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { selectOptionsCategory } from './fixtures/viewer-options';
 
 // Explicit protocol/UI fixture, separate from personal history and the practice scene.
 const planter = '76561198000000001',
@@ -167,21 +168,51 @@ test('broadcast objective HUD follows recorded custom timers, interruptions and 
   );
   await page.goto('/watch/objective-fixture');
   const slider = page.getByRole('slider', { name: 'Playback position' });
-  const hud = page.getByRole('complementary', { name: 'Bomb objective' });
+  const hud = page.getByRole('group', { name: 'Bomb objective', exact: true });
+  const context = page.locator('.objective-context');
+  const announcer = page.locator('.viewer-frame > [role="status"]');
+  await expect(announcer).toHaveText('');
+  const liveRegion = await announcer.elementHandle();
   await expect(hud).toHaveCount(0);
+  await slider.fill('640');
+  await expect(hud).toHaveAttribute('data-phase', 'planting');
+  await expect(hud.locator('.objective-progress')).toHaveClass(/is-unknown/);
+  await expect(hud.locator('.objective-progress-value')).toHaveCount(0);
+  await expect(hud.locator('.objective-seconds')).toHaveText('Elapsed 0.0 s');
+  await expect(announcer).toContainText('Planting');
+  expect(await announcer.evaluate((element, original) => element === original, liveRegion)).toBe(
+    true,
+  );
   await slider.fill('1024');
   await expect(hud).toHaveAttribute('data-phase', 'planting');
-  await expect(hud).toContainText('planter');
+  await expect(context).toBeVisible();
+  await expect(context).toContainText('planter');
   await expect(hud.locator('.objective-seconds')).toHaveText('2.0 s');
+  expect(
+    Number(await hud.locator('.objective-progress-value').getAttribute('stroke-dashoffset')),
+  ).toBeCloseTo(2 / 3, 5);
+  await expect(page.locator('.viewer-match-score .objective-hud-score')).toBeVisible();
+  await expect(page.locator('.viewer-objective-layer .objective-hud')).toHaveCount(0);
   await slider.fill('1280');
   await expect(hud).toHaveAttribute('data-phase', 'planted');
-  await expect(hud).toContainText('Bombsite B');
+  await expect(context).toContainText('Bombsite B');
   await expect(hud.locator('.objective-seconds')).toHaveText('73.0 s');
+  await slider.fill('1920');
+  const score = page.getByRole('button', { name: 'Open scoreboard', exact: true });
+  const description = () =>
+    score.evaluate(
+      (element) => document.getElementById(element.getAttribute('aria-describedby')!)?.textContent,
+    );
+  const phaseDescription = await description();
+  await expect(score).not.toHaveAttribute('aria-live');
+  await expect(hud.locator('.objective-seconds').first()).toHaveText('7.0 s');
   await slider.fill('1984');
   await expect(hud).toHaveAttribute('data-phase', 'defusing');
-  await expect(hud).toContainText('defuser');
-  await expect(hud).toContainText('No defuse kit');
+  await expect(context).toContainText('defuser');
+  await expect(context).toContainText('No defuse kit');
+  await expect(hud.locator('.objective-emblem .equipment-glyph')).toBeVisible();
   await expect(hud.locator('.objective-seconds').first()).toHaveText('6.0 s');
+  expect(await description()).toBe(phaseDescription);
   await slider.fill('1856');
   await expect(hud).toHaveAttribute('data-phase', 'defuse-aborted');
   await slider.fill('2368');
@@ -191,6 +222,22 @@ test('broadcast objective HUD follows recorded custom timers, interruptions and 
   await slider.fill('0');
   await expect(hud).toHaveCount(0);
   await slider.fill('1984');
+  await page.getByRole('button', { name: 'Options', exact: true }).click();
+  await selectOptionsCategory(page, 'Visuals');
+  const scoreToggle = page.getByRole('switch', { name: /^Match score and clock/ });
+  await scoreToggle.uncheck();
+  await page.getByRole('button', { name: 'Close viewer options', exact: true }).click();
+  const floating = page.getByRole('complementary', { name: 'Bomb objective', exact: true });
+  await expect(floating).toBeVisible();
+  await expect(floating.locator('.objective-seconds').first()).toHaveText('6.0 s');
+  await expect(floating).toContainText('defuser');
+  await expect(hud).toHaveCount(0);
+  await page.getByRole('button', { name: 'Options', exact: true }).click();
+  await selectOptionsCategory(page, 'Visuals');
+  await scoreToggle.check();
+  await page.getByRole('button', { name: 'Close viewer options', exact: true }).click();
+  await expect(hud).toBeVisible();
+  await expect(floating).toHaveCount(0);
   for (const language of ['en', 'fr']) {
     if (language === 'fr') {
       await page.getByRole('button', { name: 'Viewer menu', exact: true }).click();
@@ -207,7 +254,9 @@ test('broadcast objective HUD follows recorded custom timers, interruptions and 
         await page.setViewportSize({ width, height });
         expect(
           await page.locator('.objective-hud').evaluate((element) => {
-            const objective = element.getBoundingClientRect();
+            const objective = element.closest('.viewer-match-score')!.getBoundingClientRect();
+            const emblem = element.querySelector('.objective-emblem')!.getBoundingClientRect();
+            if (Math.abs(emblem.left + emblem.width / 2 - window.innerWidth / 2) > 1) return false;
             return ['.viewer-context', '.viewer-camera-tools'].every((selector) => {
               const other = document.querySelector(selector)!.getBoundingClientRect();
               return (
@@ -222,4 +271,61 @@ test('broadcast objective HUD follows recorded custom timers, interruptions and 
       }
     }
   }
+});
+
+test('opening a replay mid-defuse registers the live region before its first notice', async ({
+  page,
+}) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE));
+  await page.addInitScript(() => {
+    const notices: string[] = [];
+    Object.assign(window, { objectiveStatusObservations: notices });
+    const observer = new MutationObserver(() => {
+      const status = document.querySelector('.viewer-frame > [role="status"]');
+      if (status && (!notices.length || notices.at(-1) !== status.textContent))
+        notices.push(status.textContent || '');
+    });
+    observer.observe(document, { subtree: true, childList: true, characterData: true });
+  });
+  await page.route('**/api/demos/objective-mid-recording', (route) =>
+    route.fulfill({
+      json: {
+        id: 'objective-mid-recording',
+        name: 'Explicit mid-objective UI fixture',
+        source: 'upload',
+        status: 'ready',
+        public: true,
+        owned: false,
+        map: replay.map,
+        duration: 69,
+        rounds: 1,
+        size: 1024,
+        created_at: 1700000000,
+      },
+    }),
+  );
+  await page.route('**/api/demos/objective-mid-recording/playback', (route) =>
+    route.fulfill({
+      json: {
+        ...replay,
+        frames: replay.frames.map((frame, index) =>
+          index === 0 ? { ...frame, tick: 1984 } : frame,
+        ),
+      },
+    }),
+  );
+  await page.goto('/watch/objective-mid-recording');
+  await expect(page.getByRole('group', { name: 'Bomb objective', exact: true })).toHaveAttribute(
+    'data-phase',
+    'defusing',
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as unknown as { objectiveStatusObservations: string[] })
+            .objectiveStatusObservations,
+      ),
+    )
+    .toEqual(['', 'Defusing, defuser, Bombsite B, No defuse kit']);
 });

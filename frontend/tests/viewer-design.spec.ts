@@ -365,6 +365,21 @@ async function layoutIssues(page: Page) {
     const dock = document.querySelector('.viewer-dock')!.getBoundingClientRect();
     if (dock.width > 1001) issues.push('The playback deck must retain its narrow maximum width');
     const input = document.querySelector('.review-inputs-panel')?.getBoundingClientRect();
+    if (innerWidth >= 1101) {
+      const column = document.querySelector('.broadcast-economy')?.getBoundingClientRect();
+      if (column) {
+        const gutter = Number.parseFloat(
+          getComputedStyle(document.querySelector('.viewer-frame')!).getPropertyValue(
+            '--viewer-edge',
+          ),
+        );
+        if (
+          dock.left < column.width + gutter + 12 ||
+          innerWidth - dock.right < column.width + gutter + 12
+        )
+          issues.push('Desktop playback must clear both roster column widths');
+      }
+    }
     if (innerWidth >= 1101 && input) {
       if (input.right + 12 > dock.left)
         issues.push('Desktop inputs need their own lane beside the playback deck');
@@ -821,3 +836,46 @@ for (const language of ['en', 'fr'] as const)
         await expect(page.locator('.objective-hud')).toBeVisible();
       }
     });
+
+// Event-driven prompts must never change the geometry of the player list. The
+// fixture keeps equipment and caption dimensions constant across these seeks.
+test('roster lanes stay fixed when a kill prompt appears and expires', async ({ page }) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE), 'Synthetic public replay UI fixture.');
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openFixture(page, 'en', 'dark');
+  const slider = page.getByRole('slider', { name: 'Playback position', exact: true });
+  const bounds = () =>
+    page.locator('.broadcast-lineup-stack').evaluateAll((elements) =>
+      elements.map((element) => {
+        const box = element.getBoundingClientRect();
+        return [box.x, box.y, box.width, box.height].map((value) => Math.round(value * 100) / 100);
+      }),
+    );
+  for (const size of [...sizes, { width: 1101, height: 900 }, { width: 1280, height: 900 }]) {
+    await page.setViewportSize(size);
+    await slider.fill('0');
+    await expect(page.locator('.viewer-context-actions')).toHaveCount(0);
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
+    await expect.poll(() => layoutIssues(page)).toEqual([]);
+    await expect.poll(() => rosterEdgeIssues(page)).toEqual([]);
+    const initial = await bounds();
+    await slider.fill('560');
+    await expect(page.locator('.viewer-context-actions button')).toHaveCount(2);
+    await expect
+      .poll(bounds, {
+        message: `A prompt must not resize the roster at ${size.width}×${size.height}`,
+      })
+      .toEqual(initial);
+    await expect.poll(() => layoutIssues(page)).toEqual([]);
+    await slider.fill('1536');
+    await expect(page.locator('.viewer-context-actions')).toHaveCount(0);
+    await expect
+      .poll(bounds, { message: 'Expiring a prompt must not enlarge the roster again' })
+      .toEqual(initial);
+  }
+});

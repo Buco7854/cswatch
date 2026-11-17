@@ -41,7 +41,12 @@ import { frameAt, readSettings, skipDeadTime } from '../playback';
 import { roundAt, roundEvents } from '../review-events';
 import { RoundEventReview } from './RoundEvents';
 import ReplayTimeline from './ReplayTimeline';
-import ObjectiveHud from './ObjectiveHud';
+import ObjectiveHud, {
+  ObjectiveContext,
+  ObjectiveAnnouncement,
+  objectiveDescription,
+} from './ObjectiveHud';
+import { buildObjectiveTimeline, objectiveAt } from '../objective-state';
 import ReviewHud from './ReviewHud';
 import ReviewActions, { type ReviewAction } from './ReviewActions';
 import ReviewEventGlyph from './ReviewEventGlyph';
@@ -132,6 +137,12 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     () => (data ? indexThrowInputs(data) : new Map()),
     [data?.throwInputs],
   );
+  const objectiveTimeline = useMemo(
+    () => (data ? buildObjectiveTimeline(data) : null),
+    [data?.events, data?.objectives, data?.rounds, data?.players, data?.tickRate],
+  );
+  const objective =
+    !buffering && objectiveTimeline ? objectiveAt(objectiveTimeline, tick) : undefined;
   const recentMoment = reviewIndex
     ? recentReviewMoment(reviewIndex, tick, selected, {
         kills: settings.killReplay,
@@ -933,10 +944,14 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       data-controls-hidden={settings.controlsHidden}
       data-chrome-visible={chrome.visible}
       data-review-action-count={reviewActions.length}
+      data-review-prompts={settings.killReplay || settings.grenadeLanding}
       data-score-visible={settings.matchScore}
       data-review-feed={showReviewFeed}
       ref={full}
     >
+      <ObjectiveAnnouncement
+        message={chrome.visible && objective && !panel ? objectiveDescription(objective) : ''}
+      />
       <header
         className="viewer-titlebar"
         role="banner"
@@ -1029,6 +1044,13 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
           <MatchScore
             data={data}
             tick={tick}
+            objective={
+              objective && !panel ? <ObjectiveHud value={objective} variant="score" /> : undefined
+            }
+            objectiveCaption={
+              objective && !panel ? <ObjectiveContext value={objective} /> : undefined
+            }
+            objectiveDescription={objective && !panel ? objectiveDescription(objective) : undefined}
             chromeVisible={chrome.visible && !(panel && compactPanels)}
             onOpenScoreboard={() =>
               openScoreboard(
@@ -1343,7 +1365,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
           inert={!chrome.visible}
           aria-hidden={!chrome.visible}
         >
-          <ObjectiveHud data={data} tick={tick} hidden={Boolean(panel)} />
+          {!settings.matchScore && objective && !panel && <ObjectiveHud value={objective} />}
         </div>
         <div
           ref={playbackDock}

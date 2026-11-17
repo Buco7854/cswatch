@@ -33,7 +33,7 @@
   position: absolute;
   top: 0;
   right: 0;
-  bottom: var(--review-actions-gap, 0px);
+  bottom: 0;
   width: var(--broadcast-bank-width);
   min-height: 0;
 }
@@ -91,8 +91,8 @@
     bottom: calc(-1 * (var(--viewer-dock-height, 116px) + var(--review-communications-gap, 0px)));
     max-height: min(280px, calc(100dvh - var(--viewer-team-top, 230px) - 104px));
   }
-  .viewer-frame:has(.review-inputs-panel) .communication-overlay {
-    width: min(720px, calc(100% - 512px));
+  .viewer-frame .communication-overlay {
+    width: min(720px, calc(100% - 2 * var(--viewer-bottom-lane)));
   }
   .viewer-review-hud[data-inputs='true'] .review-team-frame[data-team='3'] {
     bottom: max(
@@ -127,6 +127,13 @@
     display: none;
   }
 }
+@media (max-width: 599px) {
+  /* The narrow screen reserves this bounded prompt lane from the first frame,
+     based on the saved option rather than whether a moment currently exists. */
+  .viewer-frame[data-review-prompts='true'] .review-economy-frame {
+    bottom: 160px;
+  }
+}
 @media (max-width: 360px) {
   /* Both opt-in instruments remain readable at 320px without covering each
      other. The roster uses the remaining height above the input instrument. */
@@ -139,13 +146,20 @@
     position: static;
     align-self: flex-end;
     flex: 1;
-    min-height: 44px;
+    min-height: 88px;
   }
   .viewer-review-hud[data-economy='true'][data-inputs='true'] .review-inputs-panel {
     position: static;
     align-self: flex-start;
     flex: none;
-    max-height: 45%;
+    max-height: calc(100% - 96px);
+  }
+}
+@media (max-width: 360px) {
+  .viewer-frame[data-review-prompts='true'] .viewer-review-hud[data-inputs='true'] {
+    bottom: calc(
+      var(--viewer-dock-height, 180px) + 12px + var(--review-communications-gap, 0px) + 160px
+    );
   }
 }
 @media (max-height: 560px) {

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { t } from '../i18n';
 import './review-actions.css';
 
@@ -19,34 +19,9 @@ export default function ReviewActions({
   actions: ReviewAction[];
   heading?: ReactNode;
 }) {
-  const card = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    const element = card.current;
-    const viewer = element?.closest<HTMLElement>('.viewer-frame');
-    if (!element || !viewer) return;
-    const update = () =>
-      viewer.style.setProperty(
-        '--review-actions-gap',
-        `${element.getBoundingClientRect().height + 12}px`,
-      );
-    update();
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
-    observer?.observe(element);
-    window.addEventListener('resize', update);
-    return () => {
-      observer?.disconnect();
-      window.removeEventListener('resize', update);
-      viewer.style.removeProperty('--review-actions-gap');
-    };
-  }, [actions.length]);
   if (!actions.length) return null;
   return (
-    <div
-      ref={card}
-      className="viewer-context-actions"
-      role="group"
-      aria-label={t('Moment shortcuts')}
-    >
+    <div className="viewer-context-actions" role="group" aria-label={t('Moment shortcuts')}>
       {heading && <div className="review-moment-heading">{heading}</div>}
       <div className="review-moment-buttons">
         {actions.map((action) => (

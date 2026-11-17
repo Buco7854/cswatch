@@ -173,6 +173,7 @@ async function fixture(
     eventOnly?: boolean;
     incomplete?: boolean;
     wideScores?: boolean;
+    scorePairs?: { ct: number; t: number; round: number }[];
   } = {},
 ) {
   await page.addInitScript(
@@ -224,7 +225,7 @@ async function fixture(
           : {}),
         ...(policy.legacy
           ? { matchState: undefined, eventAvailability: undefined }
-          : policy.incomplete || policy.wideScores
+          : policy.incomplete || policy.wideScores || policy.scorePairs
             ? {
                 matchState: {
                   ...replay.matchState,
@@ -232,11 +233,14 @@ async function fixture(
                   samples: (policy.incomplete
                     ? replay.matchState.samples.slice(0, 2)
                     : replay.matchState.samples
-                  ).map((sample) =>
-                    policy.wideScores
-                      ? { ...sample, ctScore: 13, tScore: 15, roundNumber: 29 }
-                      : sample,
-                  ),
+                  ).map((sample, index) => {
+                    const pair = policy.scorePairs?.[index];
+                    return pair
+                      ? { ...sample, ctScore: pair.ct, tScore: pair.t, roundNumber: pair.round }
+                      : policy.wideScores
+                        ? { ...sample, ctScore: 13, tScore: 15, roundNumber: 29 }
+                        : sample;
+                  }),
                 },
               }
             : {}),
@@ -258,6 +262,70 @@ const closeScore = (page: Page, language: Language = 'en') =>
   page.getByRole('button', { name: message(language, 'Close scoreboard'), exact: true }).click();
 const row = (page: Page, id: string) =>
   page.locator(`.scoreboard-team tbody tr[data-player-id="${id}"]`);
+
+async function expectCenteredMatchScore(page: Page) {
+  const ribbon = page.locator('.viewer-match-score');
+  await expect(ribbon).not.toHaveAttribute('aria-live', /.+/);
+  await expect(ribbon.getByRole('timer')).toHaveAttribute('aria-live', 'off');
+  for (const [team, key] of [
+    ['3', 'teamct'],
+    ['2', 'teamt'],
+  ]) {
+    const side = ribbon.locator(`.match-score-side[data-team="${team}"]`);
+    await expect(side.locator(`.review-event-glyph[data-asset-key="${key}"]`)).toBeVisible();
+    await expect(side.locator('.match-score-side-label')).toHaveClass(/visually-hidden/);
+    await expect(side.locator('.match-score-side-label')).not.toHaveText(/^(CT|T)$/);
+  }
+  const offset = await ribbon.evaluate((element) => {
+    const ribbonBox = element.getBoundingClientRect();
+    const clock = element.querySelector('.match-score-clock > strong')!;
+    const range = document.createRange();
+    range.selectNodeContents(clock);
+    const text = range.getBoundingClientRect();
+    return Math.abs((text.left + text.right) / 2 - (ribbonBox.left + ribbonBox.right) / 2);
+  });
+  expect(offset, 'the actual clock text stays centered in the score strip').toBeLessThanOrEqual(
+    0.6,
+  );
+}
+
+test('ordinary score clocks stay centered independently of asymmetric digit widths with native side marks', async ({
+  page,
+}) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE), 'Explicit score geometry fixture.');
+  await fixture(page, 'en', 'dark', {
+    scorePairs: [
+      { ct: 1, t: 15, round: 17 },
+      { ct: 100, t: 1, round: 102 },
+      { ct: 13, t: 15, round: 29 },
+      { ct: 0, t: 0, round: 1 },
+    ],
+  });
+  const description = page.locator('.match-score-description');
+  const stableContext = await description.textContent();
+  await expect(description).toContainText('Counter-terrorists: 1');
+  await expect(description).toContainText('Terrorists: 15');
+  expect(
+    await description.evaluate((node) => !node.closest('.match-score-body,[role="timer"]')),
+  ).toBe(true);
+  await page.getByRole('slider', { name: 'Playback position', exact: true }).fill('64');
+  await expect(page.locator('.match-score-clock > strong')).toHaveText('0:01');
+  await expect(description).toHaveText(stableContext!);
+  for (const size of [
+    { width: 320, height: 740 },
+    { width: 768, height: 1024 },
+    { width: 1440, height: 900 },
+    { width: 844, height: 390 },
+  ]) {
+    await page.setViewportSize(size);
+    for (const tick of [0, 128, 640, 768]) {
+      await page.getByRole('slider', { name: 'Playback position', exact: true }).fill(String(tick));
+      await expectCenteredMatchScore(page);
+      await expect(page.locator('.match-score-phase')).toBeVisible();
+      await expect(page.locator('.match-score-round')).toBeVisible();
+    }
+  }
+});
 
 test('recorded side scores, clock and native match totals follow exact seeks and scene-only Tab remains accessible', async ({
   page,
@@ -397,15 +465,18 @@ for (const language of ['en', 'fr'] as const)
           await ribbon.locator('.match-score-side').evaluateAll((sides) =>
             sides.every((side) => {
               const box = side.getBoundingClientRect();
-              return [...side.querySelectorAll('strong,.match-score-side-label')].every((label) => {
+              return [...side.querySelectorAll('strong,.review-event-glyph')].every((label) => {
                 const range = document.createRange();
                 range.selectNodeContents(label);
-                const text = range.getBoundingClientRect();
+                const text = label.classList.contains('review-event-glyph')
+                  ? label.getBoundingClientRect()
+                  : range.getBoundingClientRect();
                 return text.left >= box.left - 1 && text.right <= box.right + 1;
               });
             }),
           ),
         ).toBe(true);
+        await expectCenteredMatchScore(page);
         await openScore(page, language);
         const dialog = page.getByRole('dialog', {
           name: message(language, 'Scoreboard'),

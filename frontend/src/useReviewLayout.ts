@@ -9,11 +9,12 @@ export function useReviewLayout(frame: RefObject<HTMLElement | null>, ready: boo
     const observed = new Set<Element>();
     const measure = () => {
       scheduled = undefined;
-      const objective = root.querySelector<HTMLElement>('.objective-hud');
+      const objective = root.querySelector<HTMLElement>('.viewer-objective-layer .objective-hud');
+      const score = root.querySelector<HTMLElement>('.viewer-match-score');
       const candidate = root.querySelector<HTMLElement>('.review-feed');
       const feed = candidate?.closest('.review-feed-dialog') ? null : candidate;
       const wanted = new Set(
-        [objective, feed].filter((element): element is HTMLElement => !!element),
+        [objective, score, feed].filter((element): element is HTMLElement => !!element),
       );
       for (const element of observed)
         if (!wanted.has(element as HTMLElement)) {
@@ -26,10 +27,14 @@ export function useReviewLayout(frame: RefObject<HTMLElement | null>, ready: boo
           observed.add(element);
         }
       const bounds = root.getBoundingClientRect();
-      root.style.setProperty(
-        '--review-objective-bottom',
-        `${objective ? Math.max(0, objective.getBoundingClientRect().bottom - bounds.top) + 12 : 0}px`,
-      );
+      const occupiedBottom = (element: HTMLElement | null) => {
+        const box = element?.getBoundingClientRect();
+        return box && box.width > 0 && box.height > 0
+          ? Math.max(0, box.bottom - bounds.top) + 12
+          : 0;
+      };
+      root.style.setProperty('--review-objective-bottom', `${occupiedBottom(objective)}px`);
+      root.style.setProperty('--review-score-bottom', `${occupiedBottom(score)}px`);
       root.style.setProperty(
         '--review-feed-height',
         `${feed?.getBoundingClientRect().height ?? 0}px`,
@@ -49,6 +54,7 @@ export function useReviewLayout(frame: RefObject<HTMLElement | null>, ready: boo
       window.removeEventListener('resize', schedule);
       if (scheduled !== undefined) cancelAnimationFrame(scheduled);
       root.style.removeProperty('--review-objective-bottom');
+      root.style.removeProperty('--review-score-bottom');
       root.style.removeProperty('--review-feed-height');
     };
   }, [frame, ready]);
