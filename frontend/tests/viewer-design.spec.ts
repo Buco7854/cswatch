@@ -844,6 +844,19 @@ test('roster lanes stay fixed when a kill prompt appears and expires', async ({ 
   await page.setViewportSize({ width: 1440, height: 900 });
   await openFixture(page, 'en', 'dark');
   const slider = page.getByRole('slider', { name: 'Playback position', exact: true });
+  const caption = page.locator('.voice-caption');
+  const settleLayout = () =>
+    page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
+  const captionBounds = () =>
+    caption.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      return [box.x, box.y, box.width, box.height].map((value) => Math.round(value * 100) / 100);
+    });
   const bounds = () =>
     page.locator('.broadcast-lineup-stack').evaluateAll((elements) =>
       elements.map((element) => {
@@ -855,25 +868,34 @@ test('roster lanes stay fixed when a kill prompt appears and expires', async ({ 
     await page.setViewportSize(size);
     await slider.fill('0');
     await expect(page.locator('.viewer-context-actions')).toHaveCount(0);
-    await page.evaluate(
-      () =>
-        new Promise<void>((resolve) =>
-          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-        ),
-    );
+    await expect(caption).toBeVisible();
+    await settleLayout();
     await expect.poll(() => layoutIssues(page)).toEqual([]);
     await expect.poll(() => rosterEdgeIssues(page)).toEqual([]);
     const initial = await bounds();
+    const initialCaption = await captionBounds();
     await slider.fill('560');
     await expect(page.locator('.viewer-context-actions button')).toHaveCount(2);
+    await expect(caption).toBeVisible();
+    await settleLayout();
+    expect(await captionBounds(), 'The caption must retain its occupied lane').toEqual(
+      initialCaption,
+    );
     await expect
       .poll(bounds, {
         message: `A prompt must not resize the roster at ${size.width}×${size.height}`,
       })
       .toEqual(initial);
     await expect.poll(() => layoutIssues(page)).toEqual([]);
-    await slider.fill('1536');
+    // The moment has expired, but the fixture caption still runs until 1536.
+    // Seeking to the last tick would also reclaim the caption's occupied lane.
+    await slider.fill('1200');
     await expect(page.locator('.viewer-context-actions')).toHaveCount(0);
+    await expect(caption).toBeVisible();
+    await settleLayout();
+    expect(await captionBounds(), 'Prompt expiry must not also expire the caption').toEqual(
+      initialCaption,
+    );
     await expect
       .poll(bounds, { message: 'Expiring a prompt must not enlarge the roster again' })
       .toEqual(initial);

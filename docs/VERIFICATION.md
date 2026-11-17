@@ -1,6 +1,6 @@
 # Verification record
 
-Current verification on 2026-11-17 uses Linux 6.12 / Landlock ABI 6, Node 24.22.3 and Chromium (Playwright build 1254). Earlier 2026-11-16 evidence used Node 22.23.4. Node 24 is the supported CI/container target. Tests use disposable accounts and explicit synthetic or checksum-pinned public fixtures, never production accounts or private user demos.
+Current verification on 2026-11-17 uses Linux 6.12 / Landlock ABI 6, Node 24.22.3 and CI-matching Chromium (Playwright build 1255); the preceding rendered captures used build 1254. Earlier 2026-11-16 evidence used Node 22.23.4. Node 24 is the supported CI/container target. Tests use disposable accounts and explicit synthetic or checksum-pinned public fixtures, never production accounts or private user demos.
 
 ## Automated checks
 
@@ -8,7 +8,7 @@ Current verification on 2026-11-17 uses Linux 6.12 / Landlock ABI 6, Node 24.22.
 | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Build, formatting and EN/FR coverage   | `npm run build`, `npm run format:check`, `npm run check:locales`                                                                                                                                                          |
 | Backend and shared domain              | 127 passed, 0 skipped with the pinned Mirage fixture and `CSWATCH_TRANSCRIPTION_TEST_MODEL` set                                                                                                                           |
-| Public browser journeys                | 73 cases: 72 public journeys passed and 1 private-policy-only case skipped; final broadcast refinement under Node 24 passed in 4.1 minutes                                                                                |
+| Public browser journeys                | 73 cases: 72 public journeys passed and 1 private-policy-only case skipped; the final Node 24 rerun with CI-matching Chromium 1255 passed in 4.0 minutes                                                                  |
 | Private instance, registrations closed | Targeted private-entry policy journey passed                                                                                                                                                                              |
 | Private instance, registrations open   | Targeted private-entry policy journey passed                                                                                                                                                                              |
 | Runtime integration                    | HTTP upload pipeline → required native sandbox → 31 replay chunks / 10 players → ownership/private 404 → private notes → explicit sharing; separate required-sandbox CPU captions and authorized caption HTTP read passed |
@@ -109,3 +109,11 @@ Production app inspection in both themes reported 0 failures and 0 warnings at d
 The previous spectator revision [82e2293](https://github.com/Buco7854/cswatch/commit/82e229303c3406c4ec5d3dde4593f56891f231a6) passed [actual hardened Docker verification and image publication](https://github.com/Buco7854/cswatch/actions/runs/44103421672). This UI follow-up has no backend, dependency or data-contract changes. Consult its commit-specific workflow for the final Docker/publication result.
 
 The final surface/icon correction changes only the physical mouse shell from the page ground to the HUD's raised surface and uses a location-pin glyph consistently for landing in the toast and round list. The build and eight targeted HUD/review journeys passed (25.6 seconds). A fresh 64-capture/16-context native-asset pass verifies the new landing button glyph is rendered; desktop/tablet/phone images in both themes were opened and inspected. Layout, playback/navigation, metadata and dependencies are unchanged. The release workflow reruns the complete suite on this final source.
+
+## Isolating the roster-prompt regression in CI
+
+The [first final-image CI run](https://github.com/Buco7854/cswatch/actions/runs/44111742141) passed 71 browser cases and exposed a fixture interaction in the new roster-prompt check. At tick 1536 it expired both the moment and the caption. Releasing caption space legitimately let another 88 px row plus a 6 px gap fit, matching the reported 276 → 370 px change. The faster local observer ordering had allowed the old immediate assertion to pass before that unrelated lane was released.
+
+The test now seeks tick 1200, after all prompts have expired but before the caption ends. It explicitly checks caption visibility and identical caption geometry at every seek, settles the two animation-frame layout cycle, and retains exact roster x/y/width/height equality with the original five-second assertion deadline. It changes no product CSS or fixture deadline. The local browser installation is aligned with the Playwright lock's Chromium 1255/headless shell 1255, instead of the old 1254 executable override. The full suite and release workflow are rerun against this corrected isolation.
+
+The final complete local rerun with the CI-default Chromium 1255 headless shell passed 72 cases with the one intentional private-policy skip in 4.0 minutes. The corrected roster/caption check passed across all nine viewport sizes; no assertions or time limits were relaxed. The final commit's workflow remains the source of truth for Docker verification and image publication.
