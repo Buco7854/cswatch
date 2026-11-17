@@ -26,32 +26,29 @@ button.match-score:hover {
 }
 button.match-score:focus-visible {
   outline: 2px solid var(--viewer-ink);
-  outline-offset: 3px;
+  outline-offset: -3px;
 }
 .match-score-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(100px, 1.2fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 72px minmax(0, 1fr);
   align-items: center;
-  gap: 7px;
+  gap: 6px 8px;
   width: 100%;
 }
 .match-score-side {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 5px;
+  justify-content: flex-start;
+  gap: 8px;
   min-width: 0;
   color: var(--team-ct);
 }
 .match-score-side[data-team='2'] {
+  justify-content: flex-end;
   color: var(--team-t);
 }
 .match-score-side .review-event-glyph {
   flex: none;
-}
-.match-score-side-label {
-  font-size: 11px;
-  font-weight: 500;
 }
 .match-score-side strong {
   font-size: 27px;
@@ -60,10 +57,15 @@ button.match-score:focus-visible {
 }
 .match-score-clock {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
   gap: 1px;
   min-width: 0;
 }
-.match-score-clock strong {
+.match-score-clock > strong {
+  display: block;
+  width: 100%;
+  text-align: center;
   font-size: 19px;
   line-height: 23px;
   font-weight: 500;
@@ -74,6 +76,17 @@ button.match-score:focus-visible {
   font-size: 11px;
   line-height: 12px;
   white-space: nowrap;
+  justify-self: center;
+}
+.match-score-objective-caption {
+  grid-column: 1 / -1;
+  display: block;
+  min-width: 0;
+  width: 100%;
+  color: var(--viewer-muted);
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
 }
 @media (max-width: 1100px), (max-height: 560px) {
   .match-score {
@@ -81,26 +94,30 @@ button.match-score:focus-visible {
     min-height: 52px;
   }
   .match-score-body {
-    grid-template-columns: minmax(0, 1fr) 104px minmax(0, 1fr);
-    gap: 4px;
+    grid-template-columns: minmax(0, 1fr) 64px minmax(0, 1fr);
+    gap: 6px;
   }
   .match-score-side {
-    gap: 4px;
-  }
-  .match-score-side .review-event-glyph {
-    display: none;
+    gap: 6px;
   }
   .match-score-side strong {
     font-size: 24px;
     line-height: 28px;
   }
-  .match-score-clock strong {
+  .match-score-clock > strong {
     font-size: 18px;
     line-height: 21px;
   }
 }
 @media (max-width: 360px) {
   .match-score-body {
-    grid-template-columns: minmax(0, 1fr) 88px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) 52px minmax(0, 1fr);
+    column-gap: 4px;
+  }
+  .match-score-side {
+    gap: 4px;
+  }
+  .match-score-side strong {
+    font-size: 22px;
   }
 }

@@ -30,6 +30,15 @@
   --viewer-roster-width: 280px;
   --viewer-radar-size: 150px;
   --viewer-team-top: 230px;
+  --viewer-input-width-base: 160px;
+  --viewer-input-width-mouse: 224px;
+  --viewer-input-width: var(--viewer-input-width-base);
+  --viewer-input-lane: 0px;
+  --viewer-column-lane: 0px;
+  --viewer-roster-lane: calc(var(--viewer-roster-width) + var(--viewer-edge) + 16px);
+  --viewer-bottom-lane: max(var(--viewer-input-lane), var(--viewer-column-lane));
+  --viewer-score-bottom: var(--review-score-bottom, 0px);
+  --viewer-radar-top: calc(var(--viewer-toolbar-height) + 16px);
   --viewer-feed-base-top: calc(var(--viewer-toolbar-height) + 16px);
   --viewer-feed-top: var(--viewer-feed-base-top);
   position: relative;
@@ -37,6 +46,16 @@
   height: 100%;
   overflow: hidden;
   background: var(--viewer-ground);
+}
+.viewer-frame:has(.review-inputs-panel) {
+  --viewer-input-lane: calc(var(--viewer-input-width) + var(--viewer-edge) + 16px);
+}
+.viewer-frame:has(.review-inputs-panel .has-mouse-input) {
+  --viewer-input-width: var(--viewer-input-width-mouse);
+}
+.viewer-frame[data-review-prompts='true'],
+.viewer-frame:has(.viewer-review-hud[data-economy='true']) {
+  --viewer-column-lane: var(--viewer-roster-lane);
 }
 .viewer-frame:fullscreen {
   width: 100vw;
@@ -120,9 +139,6 @@
 }
 .viewer-frame[data-score-visible='true'] .viewer-identity {
   max-width: calc(50% - 182px);
-}
-.viewer-frame[data-score-visible='true'] {
-  --viewer-score-bottom: 78px;
 }
 .viewer-frame .viewer-objective-layer .objective-hud {
   top: max(14px, var(--viewer-score-bottom, 0px));
@@ -397,7 +413,7 @@
   outline-offset: 2px;
 }
 .viewer-frame .position-radar {
-  top: calc(var(--viewer-toolbar-height) + 16px);
+  top: var(--viewer-radar-top);
   left: var(--viewer-edge);
   width: var(--viewer-radar-size);
   height: var(--viewer-radar-size);
@@ -489,12 +505,18 @@
 @media (min-width: 1101px) {
   /* Symmetric side lanes keep Play on the viewport centre while the physical
      instrument occupies the bottom-left lane at the same level as the deck. */
-  .viewer-frame:has(.review-inputs-panel) .viewer-dock {
-    max-width: min(1000px, calc(100% - 512px));
+  .viewer-frame .viewer-dock {
+    max-width: min(1000px, calc(100% - 2 * var(--viewer-bottom-lane)));
   }
 }
-@media (min-width: 1101px) and (max-width: 1280px) {
-  .viewer-frame:has(.review-inputs-panel) .viewer-panel-controls > :not(.mobile-viewer-menu) {
+@media (min-width: 1101px) and (max-width: 1360px) {
+  .viewer-frame:is(
+      [data-review-prompts='true'],
+      :has(.review-inputs-panel),
+      :has(.viewer-review-hud[data-economy='true'])
+    )
+    .viewer-panel-controls
+    > :not(.mobile-viewer-menu) {
     display: none;
   }
 }
@@ -528,22 +550,32 @@
     visibility: hidden;
   }
   .viewer-frame[data-score-visible='true'] {
-    --viewer-feed-base-top: calc(var(--viewer-toolbar-height) + 76px);
-    --viewer-score-bottom: calc(var(--viewer-toolbar-height) + 76px);
+    --viewer-feed-base-top: var(--viewer-score-bottom);
   }
   .viewer-frame .viewer-match-score {
     top: calc(var(--viewer-toolbar-height) + 12px);
-    right: var(--viewer-edge);
-    left: auto;
-    transform: none;
+    right: auto;
+    left: 50%;
+    transform: translateX(-50%);
     width: 248px;
     min-height: 52px;
   }
   .viewer-frame[data-score-visible='true'] .viewer-identity {
     max-width: 54%;
   }
+  .viewer-frame .killfeed {
+    top: max(
+      calc(var(--viewer-toolbar-height) + 16px),
+      var(--viewer-score-bottom),
+      var(--review-objective-bottom, 0px)
+    );
+  }
   .viewer-frame {
-    --viewer-feed-top: max(var(--viewer-feed-base-top), var(--review-objective-bottom, 0px));
+    --viewer-feed-top: max(
+      var(--viewer-feed-base-top),
+      var(--review-objective-bottom, 0px),
+      var(--viewer-score-bottom)
+    );
   }
   .viewer-frame .viewer-objective-layer .objective-hud {
     top: max(calc(var(--viewer-toolbar-height) + 12px), var(--viewer-score-bottom, 0px));
@@ -554,6 +586,9 @@
     --viewer-edge: 8px;
     --viewer-roster-width: 180px;
     --viewer-radar-size: 80px;
+    --viewer-radar-top: max(calc(var(--viewer-toolbar-height) + 12px), var(--viewer-score-bottom));
+    --viewer-input-width-base: 144px;
+    --viewer-input-width-mouse: 184px;
     --viewer-feed-base-top: calc(var(--viewer-toolbar-height) + 12px);
   }
   .viewer-titlebar {
@@ -588,7 +623,7 @@
     width: 64px;
   }
   .viewer-frame .position-radar {
-    top: calc(var(--viewer-toolbar-height) + 12px);
+    top: var(--viewer-radar-top);
   }
   .viewer-frame .viewer-objective-layer .objective-hud {
     left: var(--viewer-edge);
@@ -602,14 +637,14 @@
   }
   .viewer-frame:has(.position-radar),
   .viewer-frame[data-score-visible='true']:has(.position-radar) {
-    --viewer-feed-base-top: calc(var(--viewer-toolbar-height) + var(--viewer-radar-size) + 24px);
+    --viewer-feed-base-top: calc(var(--viewer-radar-top) + var(--viewer-radar-size) + 12px);
   }
   .viewer-frame[data-score-visible='true']:not(:has(.position-radar)) {
-    --viewer-feed-base-top: calc(var(--viewer-toolbar-height) + 76px);
+    --viewer-feed-base-top: var(--viewer-score-bottom);
   }
   .viewer-frame .killfeed {
     top: max(
-      calc(var(--viewer-toolbar-height) + var(--viewer-radar-size) + 24px),
+      calc(var(--viewer-radar-top) + var(--viewer-radar-size) + 12px),
       var(--review-objective-bottom, 0px),
       var(--viewer-score-bottom, 0px)
     );
@@ -648,6 +683,9 @@
     --viewer-roster-width: 180px;
     --viewer-edge: 8px;
     --viewer-radar-size: 80px;
+    --viewer-radar-top: calc(var(--viewer-toolbar-height) + 16px);
+    --viewer-input-width-base: 144px;
+    --viewer-input-width-mouse: 184px;
   }
   .viewer-frame .viewer-dock {
     padding-block: 4px;
@@ -668,7 +706,6 @@
 }
 @media (max-height: 560px) and (min-width: 600px) {
   .viewer-frame[data-score-visible='true'] {
-    --viewer-score-bottom: 64px;
     --viewer-feed-base-top: 64px;
   }
   .viewer-frame .viewer-match-score {

@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { sample } from '../src/sample';
+import { activateViewerAction } from './fixtures/viewer-actions';
 
 test('a late private note response cannot reopen review after leaving and revisiting a demo', async ({
   page,
@@ -56,7 +57,7 @@ test('a late private note response cannot reopen review after leaving and revisi
     });
   });
   await page.goto('/watch/note-a');
-  await page.getByRole('button', { name: 'Add note', exact: true }).click();
+  await activateViewerAction(page, 'Add note');
   await page.getByPlaceholder('What happened here?').fill('Private pending note from old visit');
   await page.getByRole('button', { name: 'Save note', exact: true }).click();
   await expect.poll(() => posts).toBe(1);
@@ -77,7 +78,7 @@ test('a late private note response cannot reopen review after leaving and revisi
   await expect(page.getByText('Private pending note from old visit', { exact: true })).toHaveCount(
     0,
   );
-  await page.getByRole('button', { name: 'Add note', exact: true }).click();
+  await activateViewerAction(page, 'Add note');
   await expect(page.getByPlaceholder('What happened here?')).toBeEmpty();
   await page.getByPlaceholder('What happened here?').fill('Note from current visit');
   await page.getByRole('button', { name: 'Save note', exact: true }).click();
