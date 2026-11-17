@@ -1822,32 +1822,6 @@ details form {
   align-items: center;
   gap: 8px;
 }
-.crosshair {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 17px;
-  height: 17px;
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-  filter: drop-shadow(0 1px 1px #000);
-}
-.crosshair i {
-  position: absolute;
-  background: #c6f24e;
-}
-.crosshair i:first-child {
-  width: 17px;
-  height: 2px;
-  top: 7px;
-  left: 0;
-}
-.crosshair i:last-child {
-  width: 2px;
-  height: 17px;
-  left: 7px;
-  top: 0;
-}
 .position-radar {
   position: absolute;
   left: 12px;

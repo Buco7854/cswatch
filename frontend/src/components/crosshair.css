@@ -1,0 +1,17 @@
+/* A CSS-pixel coordinate system keeps the preview faithful to the POV overlay. */
+.viewer-crosshair {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 1;
+  display: block;
+  width: 96px;
+  height: 96px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.viewer-crosshair.is-preview {
+  position: static;
+  flex: none;
+  transform: none;
+}

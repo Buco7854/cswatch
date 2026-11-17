@@ -1,9 +1,10 @@
-import { useId, useLayoutEffect, useMemo, useRef } from 'react';
+import { useId, useMemo } from 'react';
 import { ChevronDown, Skull } from 'lucide-react';
 import { locale, t } from '../i18n';
 import type { Frame, Player, Position } from '../types';
 import { equipmentKey, equipmentKind, equipmentName, utilityInventory } from '../equipment-display';
 import EquipmentGlyph from './EquipmentGlyph';
+import useLineupViewport from './useLineupViewport';
 import './broadcast-economy.css';
 
 const known = (value: number | undefined) =>
@@ -68,6 +69,7 @@ function PlayerRow({
   const { player, state } = member;
   const descriptionId = useId();
   const health = state ? known(state.health) : undefined;
+  const armor = known(state?.armor);
   const bomb =
     state?.inventory?.some((item) => equipmentKind(item) === 'bomb') ||
     (state?.weapon && equipmentKind(state.weapon) === 'bomb');
@@ -80,6 +82,7 @@ function PlayerRow({
       }
       data-player-id={player.id}
       data-health={health === undefined ? 'unknown' : health <= 25 ? 'low' : 'normal'}
+      data-armor={armor === undefined ? 'unknown' : 'known'}
     >
       <button
         type="button"
@@ -94,15 +97,11 @@ function PlayerRow({
             {state && !state.alive && <Skull size={13} aria-hidden="true" />}
             {player.name}
           </strong>
-          <span className="broadcast-health-value num" title={t('Health')}>
-            {health === undefined ? (
-              '—'
-            ) : (
-              <>
-                {number(health)} <small className="visually-hidden">{t('HP')}</small>
-              </>
-            )}
+          <span className="broadcast-cash num" title={t('Money')}>
+            {money(state?.money)}
           </span>
+        </span>
+        <span className="broadcast-player-equipment">
           <span className="broadcast-active-weapon">
             <span
               className="broadcast-weapon-identity"
@@ -122,22 +121,8 @@ function PlayerRow({
               <span className="visually-hidden"> {t('Ammo')}</span>
             </span>
           </span>
-        </span>
-        <span className="broadcast-player-equipment">
-          <span className="broadcast-cash num" title={t('Money')}>
-            {money(state?.money)}
-          </span>
           <UtilityInventory state={state} />
           <span className="broadcast-protection">
-            <span
-              className="broadcast-armor"
-              role="img"
-              aria-label={t('Armor: {{value}}', { value: number(state?.armor) })}
-              title={t('Armor: {{value}}', { value: number(state?.armor) })}
-            >
-              <EquipmentGlyph kind="armor" />
-              <span className="num">{number(state?.armor)}</span>
-            </span>
             {state?.helmet === true && (
               <span role="img" aria-label={t('Helmet')} title={t('Helmet')}>
                 <EquipmentGlyph kind="helmet" />
@@ -160,6 +145,27 @@ function PlayerRow({
             )}
           </span>
         </span>
+        <span className="broadcast-player-status">
+          <span className="broadcast-health-value num" title={t('Health')}>
+            {number(health)}
+            <small className="visually-hidden"> {t('HP')}</small>
+          </span>
+          <span className="broadcast-health-track" aria-hidden="true">
+            <span style={{ width: `${health === undefined ? 0 : Math.min(100, health)}%` }} />
+          </span>
+          <span className="broadcast-armor-track" aria-hidden="true">
+            <span style={{ width: `${armor === undefined ? 0 : Math.min(100, armor)}%` }} />
+          </span>
+          <span
+            className="broadcast-armor"
+            role="img"
+            aria-label={t('Armor: {{value}}', { value: number(armor) })}
+            title={t('Armor: {{value}}', { value: number(armor) })}
+          >
+            <EquipmentGlyph kind="armor" />
+            <span className="num">{number(armor)}</span>
+          </span>
+        </span>
         {!state && <span className="visually-hidden">{t('State unavailable')}</span>}
         {state && !state.alive && <span className="visually-hidden">{t('Out')}</span>}
         <span id={descriptionId} className="visually-hidden">
@@ -173,9 +179,6 @@ function PlayerRow({
               ? t('Inventory is unavailable at this moment.')
               : `${t('Weapons and equipment')}: ${state.inventory.length ? state.inventory.map(equipmentName).join(', ') : t('No items carried at this moment.')}`,
           ].join('. ')}
-        </span>
-        <span className="broadcast-health-track" aria-hidden="true">
-          <span style={{ width: `${health === undefined ? 0 : Math.min(100, health)}%` }} />
         </span>
       </button>
     </li>
@@ -321,18 +324,18 @@ function TeamBank({
 
 /** One lineup stack on the picture's edge; full inventory is requested in Players. */
 export default function MatchEconomy({
+  team,
   players,
   frame,
   selected,
   onSelect,
 }: {
+  team?: 2 | 3;
   players: Player[];
   frame: Frame;
   selected: string;
   onSelect: (id: string) => void;
 }) {
-  const availableRef = useRef<HTMLElement>(null);
-  const lineupRef = useRef<HTMLDivElement>(null);
   const states = useMemo(
     () => new Map(frame.players.map((state) => [state.id, state])),
     [frame.players],
@@ -346,101 +349,12 @@ export default function MatchEconomy({
     }
     return grouped;
   }, [players, states]);
-  const lineupKey = JSON.stringify([
-    teams[3].map(({ player }) => player.id),
-    teams[2].map(({ player }) => player.id),
-  ]);
+  const visibleTeams: (2 | 3)[] = team ? [team] : [3, 2];
+  const lineupKey = JSON.stringify(
+    visibleTeams.map((side) => [side, teams[side].map(({ player }) => player.id)]),
+  );
 
-  useLayoutEffect(() => {
-    const availableBox = availableRef.current;
-    const viewport = lineupRef.current;
-    if (!availableBox || !viewport || typeof ResizeObserver === 'undefined') return;
-
-    const rows = [...viewport.querySelectorAll<HTMLElement>('.broadcast-player, .broadcast-empty')];
-    let scheduled: number | undefined;
-    let previousHeight: number | undefined;
-    // Touch browsers may hide native scrollbars even while a roster is clipped.
-    // Keep a noninteractive position cue; scrolling itself remains native.
-    const updateScrollCue = () => {
-      const height = viewport.clientHeight;
-      const maximum = Math.max(0, viewport.scrollHeight - height);
-      const thumb = viewport.scrollHeight
-        ? Math.min(height, Math.max(20, (height * height) / viewport.scrollHeight))
-        : 0;
-      availableBox.dataset.scrollable = String(maximum > 1);
-      availableBox.style.setProperty('--lineup-scroll-height', `${height}px`);
-      availableBox.style.setProperty('--lineup-scroll-thumb', `${thumb || 0}px`);
-      availableBox.style.setProperty(
-        '--lineup-scroll-offset',
-        `${maximum ? (Math.min(maximum, Math.max(0, viewport.scrollTop)) / maximum) * (height - thumb) : 0}px`,
-      );
-    };
-    availableBox.dataset.scrollCue = '';
-    viewport.addEventListener('scroll', updateScrollCue, { passive: true });
-
-    const measure = () => {
-      scheduled = undefined;
-      const viewportTop = viewport.getBoundingClientRect().top;
-      const availableHeight = availableBox.getBoundingClientRect().bottom - viewportTop;
-      if (availableHeight <= 0) return;
-
-      // Content-space coordinates retain the real team gap and any wrapped kit
-      // rows, independently of the user's current scroll position.
-      let completeBottom = 0;
-      for (const row of rows) {
-        const bottom = row.getBoundingClientRect().bottom - viewportTop + viewport.scrollTop;
-        if (bottom > availableHeight) break;
-        completeBottom = bottom;
-      }
-      // A viewport shorter than one row keeps the CSS scrolling fallback.
-      const height =
-        completeBottom > 0 ? Math.min(availableHeight, Math.ceil(completeBottom)) : undefined;
-      if (height === previousHeight) {
-        updateScrollCue();
-        return;
-      }
-      previousHeight = height;
-      if (height === undefined) viewport.style.removeProperty('--lineup-viewport-height');
-      else viewport.style.setProperty('--lineup-viewport-height', `${height}px`);
-
-      // Resizing must not leave the keyboard's focused player below the new
-      // cutoff. Scroll this viewport only; keep focus and every row mounted.
-      const active = document.activeElement;
-      if (active instanceof HTMLElement && viewport.contains(active)) {
-        const focusedRow = active.closest<HTMLElement>('.broadcast-player');
-        if (focusedRow) {
-          const bounds = viewport.getBoundingClientRect();
-          const focusedBounds = focusedRow.getBoundingClientRect();
-          if (focusedBounds.bottom > bounds.bottom)
-            viewport.scrollTop += focusedBounds.bottom - bounds.bottom;
-          else if (focusedBounds.top < bounds.top)
-            viewport.scrollTop -= bounds.top - focusedBounds.top;
-        }
-      }
-      updateScrollCue();
-    };
-    const schedule = () => {
-      if (scheduled === undefined) scheduled = requestAnimationFrame(measure);
-    };
-    const observer = new ResizeObserver(schedule);
-    // The available-height box never takes its height from the capped viewport.
-    // Observing rows/banks catches font, equipment wrapping and breakpoint changes
-    // without observing our own changed viewport height.
-    observer.observe(availableBox);
-    for (const element of viewport.querySelectorAll('.broadcast-bank, .broadcast-player'))
-      observer.observe(element);
-    measure();
-    return () => {
-      observer.disconnect();
-      if (scheduled !== undefined) cancelAnimationFrame(scheduled);
-      viewport.style.removeProperty('--lineup-viewport-height');
-      viewport.removeEventListener('scroll', updateScrollCue);
-      delete availableBox.dataset.scrollCue;
-      delete availableBox.dataset.scrollable;
-      for (const key of ['height', 'thumb', 'offset'])
-        availableBox.style.removeProperty('--lineup-scroll-' + key);
-    };
-  }, [lineupKey]);
+  const { availableRef, lineupRef } = useLineupViewport(lineupKey);
 
   return (
     <section
@@ -449,8 +363,15 @@ export default function MatchEconomy({
       aria-label={t('Economy and loadouts')}
     >
       <div ref={lineupRef} className="broadcast-lineup-stack">
-        <TeamBank team={3} members={teams[3]} selected={selected} onSelect={onSelect} />
-        <TeamBank team={2} members={teams[2]} selected={selected} onSelect={onSelect} />
+        {visibleTeams.map((side) => (
+          <TeamBank
+            key={side}
+            team={side}
+            members={teams[side]}
+            selected={selected}
+            onSelect={onSelect}
+          />
+        ))}
       </div>
       <span className="broadcast-scroll-cue" aria-hidden="true">
         <span />

@@ -76,6 +76,71 @@ for (const compressed of [false, true])
         assert.equal(data.capabilities?.inputButtons, 'network');
         assert.equal(data.capabilities?.mouseInput, false);
         assert.equal(data.capabilities?.utilityThrows, true);
+        assert.ok(
+          data.frames[0].players.some((player: any) => player.stats?.kills > 0),
+          'pre-recording native totals survive instead of invented event-derived zeroes',
+        );
+        assert.ok(
+          data.frames.some((frame: any) =>
+            frame.players.some((player: any) => player.stats?.damage > 0),
+          ),
+        );
+        assert.ok(
+          data.frames[0].players.some((player: any) => player.stats?.damage === undefined),
+          'missing early damage counters stay unknown',
+        );
+        assert.deepEqual(data.eventAvailability, { player_death: true, player_hurt: true });
+        assert.equal(data.matchState?.complete, true);
+        assert.equal(
+          data.matchState.samples.find((state) => state.phase === 'live')?.roundNumber,
+          1,
+        );
+        assert.equal(
+          data.matchState.samples.find((state) => state.phase === 'live')?.roundNumberSource,
+          'completed-counter',
+        );
+        assert.equal(
+          data.matchState.samples.find((state) => state.phase === 'game-over')?.roundNumber,
+          10,
+        );
+        assert.ok(data.matchState.samples.length > 10 && data.matchState.samples.length < 1000);
+        assert.ok(
+          data.matchState.samples.some((state) => state.ctScore === 2 && state.tScore === 8),
+        );
+        assert.ok(
+          data.matchState.samples.some(
+            (state) =>
+              state.phase === 'live' &&
+              state.clock?.kind === 'round' &&
+              state.clock.startTick !== undefined &&
+              state.clock.endTick! - state.clock.startTick === 115 * 64,
+          ),
+        );
+        assert.ok(
+          data.matchState.samples.some(
+            (state) => state.phase === 'freeze' && state.clock?.kind === 'freeze',
+          ),
+        );
+        assert.ok(data.throwInputs && data.throwInputs.length > 20);
+        assert.ok(
+          data.throwInputs.some(
+            (snapshot) =>
+              snapshot.provenance === 'event-network' && typeof snapshot.input.buttons === 'string',
+          ),
+        );
+        for (const snapshot of data.throwInputs) {
+          const event = data.events[snapshot.eventIndex];
+          assert.equal(event.tick, snapshot.tick);
+          assert.equal(event.user_steamid, snapshot.actorId);
+        }
+        assert.ok(
+          data.events.some(
+            (event) =>
+              event.type === 'player_death' &&
+              event.attacker_team_num === 3 &&
+              event.user_team_num === 2,
+          ),
+        );
         assert.equal(data.objectives?.complete, true);
         assert.ok(data.objectives.samples.length > 5 && data.objectives.samples.length < 1000);
         assert.ok(

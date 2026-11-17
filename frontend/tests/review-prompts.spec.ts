@@ -1,6 +1,7 @@
 import { test, expect, type Page, type TestInfo } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { selectOptionsForControl } from './fixtures/viewer-options';
 import type { Playback } from '../../shared/playback';
 
 const actor = '76561198000000001',
@@ -11,76 +12,7 @@ const french = JSON.parse(
 const message = (language: 'en' | 'fr', key: string) =>
   language === 'fr' ? french[key] || key : key;
 
-/** Original protocol-shaped fixture, never a user's match or claimed Source 2 artwork. */
-function recordedReplay(): Playback {
-  return {
-    version: 1,
-    map: 'de_review_prompts_fixture',
-    sample: false,
-    tickRate: 64,
-    players: [
-      { id: actor, name: 'Duplicate name', team: 3 },
-      { id: target, name: 'Duplicate name', team: 2 },
-    ],
-    frames: [0, 256, 512, 768, 1024, 1536].map((tick) => ({
-      tick,
-      players: [actor, target].map((id, index) => ({
-        id,
-        x: index ? 300 : -100,
-        y: index ? 100 : -100,
-        z: 0,
-        yaw: index ? 180 : 0,
-        pitch: 0,
-        health: index && tick >= 768 ? 0 : 100,
-        alive: !(index && tick >= 768),
-        team: index ? 2 : 3,
-        weapon: index ? 'awp' : 'ak47',
-      })),
-    })),
-    rounds: [{ number: 1, tick: 0, liveTick: 64, endTick: 1280 }],
-    events: [
-      {
-        type: 'grenade_thrown',
-        tick: 256,
-        user_steamid: actor,
-        user_name: 'Duplicate name',
-        weapon: 'smokegrenade',
-        entityid: 73,
-      },
-      {
-        type: 'smokegrenade_detonate',
-        tick: 512,
-        user_steamid: actor,
-        user_name: 'Duplicate name',
-        x: 320,
-        y: 0,
-        z: 0,
-        entityid: 73,
-      },
-      {
-        type: 'player_death',
-        tick: 768,
-        attacker_steamid: actor,
-        user_steamid: target,
-        attacker_name: 'Duplicate name',
-        user_name: 'Duplicate name',
-        weapon: 'ak47',
-      },
-    ],
-    grenades: [
-      {
-        id: '73-256',
-        kind: 'CSmokeGrenadeProjectile',
-        points: [
-          { tick: 256, x: 64, y: 0, z: 80 },
-          { tick: 384, x: 192, y: 80, z: 180 },
-          { tick: 512, x: 320, y: 0, z: 0 },
-        ],
-      },
-    ],
-    worldBounds: { minX: -500, maxX: 500, minY: -500, maxY: 500, minZ: 0, maxZ: 200 },
-  };
-}
+import { recordedReplay } from './fixtures/review-playback';
 
 async function openFixture(page: Page, current: () => Playback, language: 'en' | 'fr' = 'en') {
   await page.addInitScript((language) => {
@@ -140,6 +72,7 @@ async function show(page: Page) {
 async function option(page: Page, title: string, enabled: boolean) {
   await show(page);
   await page.getByRole('button', { name: 'Options', exact: true }).click();
+  await selectOptionsForControl(page, title);
   await page.getByRole('switch', { name: new RegExp('^' + title) }).setChecked(enabled);
   await page.getByRole('button', { name: 'Close viewer options', exact: true }).click();
 }
@@ -148,10 +81,12 @@ async function opaqueSharedCard(page: Page) {
     .locator('.viewer-context-actions')
     .evaluate((element) => getComputedStyle(element).backgroundColor);
   expect(color).not.toBe('rgba(0, 0, 0, 0)');
-  const header = await page
-    .locator('.viewer-titlebar')
+  const chrome = await page
+    .locator('.viewer-global-actions')
     .evaluate((element) => getComputedStyle(element).backgroundColor);
-  expect(color).toBe(header);
+  expect(color).toBe(chrome);
+  // Floating groups share the card palette; the space between stays clear.
+  await expect(page.locator('.viewer-titlebar')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 }
 async function captureScene(page: Page, info: TestInfo, name: string) {
   if ((await page.locator('.viewer-frame').getAttribute('data-chrome-visible')) === 'true')
@@ -284,7 +219,7 @@ test('recorded moment actions seek into ordinary playback without changing speed
   await seek(page, 800);
   await opaqueSharedCard(page);
   await page.getByRole('button', { name: 'Replay kill', exact: true }).click();
-  await expect(scene).toHaveAttribute('data-camera-mode', 'tactical');
+  await expect(scene).toHaveAttribute('data-camera-mode', 'pov');
   await expect(speed).toContainText('2×');
   await expect(observed).toHaveAttribute('aria-pressed', 'true');
   expect(Number(await slider.inputValue())).toBeGreaterThanOrEqual(576);
@@ -306,8 +241,8 @@ test('recorded moment actions seek into ordinary playback without changing speed
   await expect(scene).toHaveAttribute('data-focus-z', '0');
   await expect(speed).toContainText('2×');
   await expect(observed).toHaveAttribute('aria-pressed', 'true');
-  expect(Number(await slider.inputValue())).toBeGreaterThanOrEqual(240);
-  expect(Number(await slider.inputValue())).toBeLessThan(384);
+  expect(Number(await slider.inputValue())).toBeGreaterThanOrEqual(496);
+  expect(Number(await slider.inputValue())).toBeLessThan(640);
   await expect(noReturn).toHaveCount(0);
   await expect
     .poll(async () => Number(await slider.inputValue()), { timeout: 7000 })
@@ -355,13 +290,13 @@ test('shortcut preferences suppress suggestions without removing recorded events
   await expect(
     page.getByRole('button', { name: 'View grenade landing', exact: true }),
   ).toBeVisible();
-  await option(page, 'Grenade landing shortcut', false);
+  await option(page, 'Utility replay shortcuts', false);
   await expect(page.getByRole('button', { name: 'View grenade landing', exact: true })).toHaveCount(
     0,
   );
   await seek(page, 800);
   await expect(page.getByRole('button', { name: 'Replay kill', exact: true })).toBeVisible();
-  await option(page, 'Kill replay shortcut', false);
+  await option(page, 'Kill and death replay shortcuts', false);
   await expect(page.getByRole('button', { name: 'Replay kill', exact: true })).toHaveCount(0);
   await expect(page.locator('.timeline-event-marker[data-tick="768"]')).toHaveCount(1);
   await option(page, 'Utility zones', true);
@@ -433,7 +368,12 @@ test('unrecorded or ambiguous ownership and clipped trajectories cannot invent r
     0,
   );
   await seek(page, 800);
-  await expect(page.getByRole('button', { name: 'Replay kill', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Replay death', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Replay kill', exact: true }).click();
+  await expect(
+    page.locator(`.broadcast-player[data-player-id="${actor}"] .broadcast-player-select`),
+  ).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.scene')).toHaveAttribute('data-camera-mode', 'pov');
 });
 
 test('French phone review actions remain named, reachable and usable when viewing chrome is hidden', async ({

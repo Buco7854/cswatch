@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
+import { selectOptionsCategory } from './fixtures/viewer-options';
 
 const catalogs = {
   en: JSON.parse(
@@ -225,6 +226,45 @@ async function hiddenChrome(page: Page) {
   await expect(page.getByRole('button', { name: 'Show controls', exact: true })).toHaveCount(0);
 }
 
+async function unobscuredCanvasPoint(page: Page) {
+  let point: { x: number; y: number } | null = null;
+  await expect
+    .poll(
+      async () => {
+        point = await page.evaluate(() => {
+          const canvas = document.querySelector('.viewer-stage canvas');
+          if (!canvas) return null;
+          const bounds = canvas.getBoundingClientRect();
+          const clearance = 40;
+          // The entire drag/pinch footprint must reach the actual canvas,
+          // including after the scene finishes replacing its loading surface.
+          const offsets = [-clearance, 0, clearance];
+          for (
+            let y = Math.ceil(bounds.top) + clearance + 4;
+            y < bounds.bottom - clearance;
+            y += 16
+          )
+            for (
+              let x = Math.ceil(bounds.left) + clearance + 4;
+              x < bounds.right - clearance;
+              x += 16
+            )
+              if (
+                offsets.every((dx) =>
+                  offsets.every((dy) => document.elementFromPoint(x + dx, y + dy) === canvas),
+                )
+              )
+                return { x, y };
+          return null;
+        });
+        return point !== null;
+      },
+      { message: 'The viewer must retain an unobscured canvas area for touch gestures' },
+    )
+    .toBe(true);
+  return point!;
+}
+
 test('whole viewer controls hide without invisible focus targets and remain recoverable after reload', async ({
   page,
 }) => {
@@ -236,7 +276,9 @@ test('whole viewer controls hide without invisible focus targets and remain reco
   await page.getByRole('button', { name: 'More controls', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Hide viewer controls', exact: true }).click();
   await hiddenChrome(page);
-  await stage.press('Tab');
+  // Plain scene Tab is the scoreboard hold gesture; reverse Tab still reveals
+  // hidden controls and places focus in the toolbar.
+  await stage.press('Shift+Tab');
   await expect(frame).toHaveAttribute('data-chrome-visible', 'true');
   await expect(page.getByRole('button', { name: 'Options', exact: true })).toBeFocused();
   await expect.poll(async () => (await settings(page)).controlsHidden).toBe(false);
@@ -292,7 +334,8 @@ test('H keeps its normal typing behavior and does not change visibility inside d
   await expect.poll(async () => (await settings(page)).controlsHidden).toBe(false);
   await dialog.getByRole('button', { name: 'Close viewer options', exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole('button', { name: 'Players', exact: true }).click();
+  await page.getByRole('button', { name: 'More controls', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Players', exact: true }).click();
   const mobilePanel = page.getByRole('dialog', { name: 'Players', exact: true });
   await expect(mobilePanel).toBeVisible();
   const closePanel = mobilePanel.getByRole('button', { name: 'Close panel', exact: true });
@@ -302,6 +345,7 @@ test('H keeps its normal typing behavior and does not change visibility inside d
   await expect.poll(async () => (await settings(page)).controlsHidden).toBe(false);
   await closePanel.click();
   await page.getByRole('button', { name: 'Options', exact: true }).click();
+  await selectOptionsCategory(page, 'Playback');
   await optionSwitch(page, 'Hide viewer controls').check();
   await page.getByRole('button', { name: 'Close viewer options', exact: true }).click();
   await hiddenChrome(page);
@@ -325,12 +369,7 @@ test.describe('scene touch gestures', () => {
     await fixture(page, 'en', 'dark', false);
     const frame = page.locator('.viewer-frame');
     const stage = page.locator('.viewer-stage');
-    const canvas = page.locator('.viewer-stage canvas');
-    const bounds = (await canvas.boundingBox())!;
-    const point = {
-      x: Math.round(bounds.x + bounds.width / 2),
-      y: Math.round(bounds.y + bounds.height * 0.45),
-    };
+    let point = await unobscuredCanvasPoint(page);
     expect(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.tagName, point)).toBe(
       'CANVAS',
     );
@@ -360,6 +399,7 @@ test.describe('scene touch gestures', () => {
       .locator(`.broadcast-player[data-player-id="${secondPlayer}"] .broadcast-player-select`)
       .tap();
     await expect(frame).toHaveAttribute('data-chrome-visible', 'true');
+    point = await unobscuredCanvasPoint(page);
     const session = await page.context().newCDPSession(page);
     const touch = (id: number, x: number, y: number) => ({
       id,
@@ -438,7 +478,9 @@ test('idle fade follows playback but respects paused state, dialogs, focus, menu
   await expect(page.getByRole('dialog', { name: 'Viewer options', exact: true })).toBeVisible();
   await expect(frame).toHaveAttribute('data-chrome-visible', 'true');
   await page.getByRole('button', { name: 'Close viewer options', exact: true }).click();
-  await stage.focus();
+  // Tab from a visible control remains ordinary keyboard navigation. Holding
+  // Tab on the scene opens the recorded scoreboard in its dedicated tests.
+  await page.getByRole('button', { name: 'Pause', exact: true }).focus();
   await page.keyboard.press('Tab');
   expect(
     await page.evaluate(() =>
@@ -463,6 +505,7 @@ test('idle fade follows playback but respects paused state, dialogs, focus, menu
   await page.mouse.up();
   await expect(frame).toHaveAttribute('data-chrome-visible', 'true');
   await page.getByRole('button', { name: 'Options', exact: true }).click();
+  await selectOptionsCategory(page, 'Playback');
   await optionSwitch(page, 'Hide controls during playback').uncheck();
   await page.getByRole('button', { name: 'Close viewer options', exact: true }).click();
   await stage.focus();
@@ -490,7 +533,7 @@ for (const language of ['en', 'fr'] as const)
         await page.setViewportSize(viewport);
         await expect
           .poll(async () => (await page.locator('.viewer-dock').boundingBox())!.height)
-          .toBeLessThanOrEqual(172);
+          .toBeLessThanOrEqual(108);
         const dock = (await page.locator('.viewer-dock').boundingBox())!;
         expect(dock.y + dock.height).toBeLessThanOrEqual(viewport.height + 1);
         expect(viewport.height - dock.y - dock.height).toBeLessThanOrEqual(12);

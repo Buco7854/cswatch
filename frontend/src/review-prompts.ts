@@ -31,13 +31,26 @@ export type LandingPrompt = {
 export type ReviewPromptIndex = {
   kills: KillPrompt[];
   landings: LandingPrompt[];
+  throws: ThrowPrompt[];
   first: number;
   last: number;
   windowTicks: number;
 };
+export type ThrowPrompt = {
+  kind: 'throw';
+  id: string;
+  eventIndex: number;
+  tick: number;
+  startTick: number;
+  endTick: number;
+  weapon: string;
+  throwerId: string;
+  landing?: LandingPrompt;
+};
 type UtilityKind = 'smoke' | 'flash' | 'he' | 'fire' | 'decoy';
 type Release = {
   id: string;
+  eventIndex: number;
   tick: number;
   weapon: string;
   utility: UtilityKind;
@@ -131,9 +144,17 @@ export function buildReviewPrompts(
   selected: string,
   first: number,
   last: number,
+  options: { includeKills?: boolean } = {},
 ): ReviewPromptIndex {
   const rate = data.tickRate;
-  const result: ReviewPromptIndex = { kills: [], landings: [], first, last, windowTicks: 6 * rate };
+  const result: ReviewPromptIndex = {
+    kills: [],
+    landings: [],
+    throws: [],
+    first,
+    last,
+    windowTicks: 6 * rate,
+  };
   const known = new Set(data.players.map((player) => player.id));
   if (
     !selected ||
@@ -162,28 +183,29 @@ export function buildReviewPrompts(
       end: next < rounds.length ? rounds[next].tick - 1 : last,
     };
   };
-  for (const event of roundEvents(
-    data,
-    { number: 0, start: first, end: last },
-    selected,
-    'player',
-  )) {
-    if (event.type !== 'kill') continue;
-    const round = bounds(event.tick);
-    const startTick = Math.max(first, round.start, Math.floor(event.tick - 3 * rate));
-    const endTick = Math.min(last, round.end, Math.ceil(event.tick + 2 * rate));
-    if (endTick <= startTick) continue;
-    result.kills.push({
-      kind: 'kill',
-      id: 'kill:' + event.id,
-      tick: event.tick,
-      startTick,
-      endTick,
-      weapon: event.weapon,
-      target: event.target,
-      attackerId: selected,
-    });
-  }
+  if (options.includeKills !== false)
+    for (const event of roundEvents(
+      data,
+      { number: 0, start: first, end: last },
+      selected,
+      'player',
+    )) {
+      if (event.type !== 'kill') continue;
+      const round = bounds(event.tick);
+      const startTick = Math.max(first, round.start, Math.floor(event.tick - 3 * rate));
+      const endTick = Math.min(last, round.end, Math.ceil(event.tick + 2 * rate));
+      if (endTick <= startTick) continue;
+      result.kills.push({
+        kind: 'kill',
+        id: 'kill:' + event.id,
+        tick: event.tick,
+        startTick,
+        endTick,
+        weapon: event.weapon,
+        target: event.target,
+        attackerId: selected,
+      });
+    }
 
   const releases: Release[] = [],
     detonations: Detonation[] = [];
@@ -204,6 +226,7 @@ export function buildReviewPrompts(
       const round = bounds(event.tick);
       releases.push({
         id: `${event.tick}:${event.type}:${index}`,
+        eventIndex: index,
         tick: event.tick,
         weapon,
         utility,
@@ -386,6 +409,20 @@ export function buildReviewPrompts(
   }
   result.kills.sort(order);
   result.landings.sort(order);
+  const landings = new Map(
+    result.landings.map((landing) => [landing.id.slice('landing:'.length), landing]),
+  );
+  result.throws = unique.map((release) => ({
+    kind: 'throw',
+    id: 'throw:' + release.id,
+    eventIndex: release.eventIndex,
+    tick: release.tick,
+    startTick: Math.max(first, release.roundStart, Math.floor(release.tick - 1.5 * rate)),
+    endTick: Math.min(last, release.roundEnd, Math.ceil(release.tick + 4 * rate)),
+    weapon: release.weapon,
+    throwerId: selected,
+    landing: landings.get(release.id),
+  }));
   return result;
 }
 

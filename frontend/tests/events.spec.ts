@@ -15,7 +15,7 @@ test('timeline markers use recorded time positions, clustered events seek exactl
     return (box.left + box.width / 2 - parent.left) / parent.width;
   });
   expect(fraction).toBeCloseTo(620 / 3840, 2);
-  // The lower/right edge is still part of the event's 44px touch target.
+  // The marker owns its compact hit target above the clear scrubbing strip.
   // A range input painted across it would scrub past 620 instead of seeking it.
   const markerBox = (await marker.boundingBox())!;
   await page.mouse.click(markerBox.x + markerBox.width - 2, markerBox.y + markerBox.height - 2);
@@ -117,11 +117,26 @@ test('event stems and native scrubber share endpoint and midpoint coordinates', 
           .closest('.replay-timeline-plot')!
           .querySelector('input')!
           .getBoundingClientRect();
-        return marker.height >= 32 && slider.height >= 44 && marker.bottom <= slider.top;
+        const hit = document.elementFromPoint(
+          marker.left + marker.width / 2,
+          marker.top + marker.height / 2,
+        );
+        const clearScrub = document.elementFromPoint(
+          marker.left + marker.width / 2,
+          slider.bottom - 3,
+        );
+        return (
+          marker.width >= 32 &&
+          marker.height >= 24 &&
+          slider.height >= 44 &&
+          slider.bottom - marker.bottom >= 20 &&
+          element.contains(hit) &&
+          clearScrub?.tagName === 'INPUT'
+        );
       }),
     ).toBe(true);
     const box = await slider.boundingBox();
-    await page.mouse.click(expected, box!.y + box!.height / 2);
+    await page.mouse.click(expected, box!.y + box!.height - 3);
     await expect(slider).toHaveValue(String(tick));
   }
   replay.events = [];

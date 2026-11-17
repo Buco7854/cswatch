@@ -160,7 +160,7 @@ export default function ReplayTimeline({
         </div>
         <svg
           className="timeline-event-stems"
-          viewBox="0 0 1000 76"
+          viewBox="0 0 1000 44"
           preserveAspectRatio="none"
           aria-hidden="true"
         >
@@ -174,7 +174,7 @@ export default function ReplayTimeline({
                     ? !['kill', 'death'].includes(event.type)
                     : event.type === type,
                 )
-                .map((event) => `M${timelinePosition(event.tick, window) * 1000},26 V40`)
+                .map((event) => `M${timelinePosition(event.tick, window) * 1000},18 V30`)
                 .join(' ')}
             />
           ))}
@@ -206,7 +206,7 @@ export default function ReplayTimeline({
                 }}
                 onClick={group.events.length === 1 ? () => onSeek(event.tick) : undefined}
               >
-                {eventIcon(event, 20)}
+                {eventIcon(event, 16)}
                 {group.events.length > 1 && (
                   <span className="timeline-cluster-count">{group.events.length}</span>
                 )}

@@ -128,10 +128,11 @@
   white-space: nowrap;
 }
 .communication-overlay {
+  --communication-deck-gap: 24px;
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  bottom: calc(var(--viewer-dock-height, 160px) + 24px);
+  bottom: calc(var(--viewer-dock-height, 160px) + var(--communication-deck-gap));
   width: min(720px, calc(100% - 40px));
   pointer-events: none;
   z-index: 3;
@@ -204,5 +205,13 @@
 @media (max-width: 540px) {
   .speaker-mutes {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Short landscape shares the bottom lane with optional broadcast instruments.
+   A smaller deck gutter preserves a full player plate above moment actions. */
+@media (max-height: 560px) and (min-width: 480px) {
+  .communication-overlay {
+    --communication-deck-gap: 8px;
   }
 }

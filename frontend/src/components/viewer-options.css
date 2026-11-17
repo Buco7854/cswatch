@@ -1,0 +1,469 @@
+/* One bounded settings workspace: categories stay in reach while only the
+   current panel scrolls. All colors come from the shared viewer palette. */
+.viewer-options-dialog {
+  width: min(440px, calc(100vw - 32px));
+  height: min(720px, calc(100dvh - 80px));
+  max-width: none;
+  max-height: none;
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+  position: fixed;
+  inset: 64px auto auto 16px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--viewer-plane);
+  color: var(--viewer-ink);
+  overflow: hidden;
+  font-family: 'IBM Plex Sans', sans-serif;
+}
+.viewer-options-dialog[open] {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+.viewer-options-dialog::backdrop {
+  background: rgb(0 0 0 / 28%);
+}
+.viewer-options-dialog .viewer-options-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 20px 24px 16px;
+}
+.viewer-options-dialog .viewer-options-heading > div {
+  min-width: 0;
+}
+.viewer-options-dialog .viewer-options-heading h2 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 500;
+}
+.viewer-options-dialog .viewer-options-heading p {
+  margin: 5px 0 0;
+  color: var(--viewer-muted);
+  font-size: 13px;
+  line-height: 19px;
+}
+.viewer-options-dialog .viewer-options-heading .icon-button {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  margin: -6px -8px 0 0;
+}
+.viewer-options-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+}
+.viewer-options-dialog .viewer-options-tabs {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 4px;
+  padding: 4px 16px 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+.viewer-options-dialog .viewer-options-tabs button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+  flex: none;
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--viewer-muted);
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  text-align: left;
+  cursor: pointer;
+}
+.viewer-options-dialog .viewer-options-tabs button[aria-selected='true'],
+.viewer-options-dialog .viewer-options-tabs button:hover {
+  background: var(--viewer-raised);
+  color: var(--viewer-ink);
+}
+.viewer-options-dialog .viewer-options-tabs button svg {
+  display: none;
+}
+.viewer-options-content {
+  min-width: 0;
+  min-height: 0;
+}
+.viewer-options-dialog .viewer-options-panel {
+  height: 100%;
+  box-sizing: border-box;
+  padding: 8px 24px 24px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.viewer-options-dialog .viewer-options-panel[hidden] {
+  display: none;
+}
+.viewer-options-dialog .viewer-option-section {
+  margin: 0;
+  padding: 0;
+}
+.viewer-options-dialog .viewer-option-section + .viewer-option-section,
+.viewer-options-dialog .viewer-option-section > h3:not(:first-child) {
+  margin-top: 24px;
+}
+.viewer-options-dialog .viewer-option-section h3 {
+  margin: 0 0 6px;
+  padding: 0;
+  border: 0;
+  color: var(--viewer-ink);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+}
+.viewer-options-dialog .viewer-option-toggle {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  min-height: 56px;
+  margin: 0;
+  padding: 6px 0;
+  color: var(--viewer-ink);
+  cursor: pointer;
+}
+.viewer-option-copy {
+  min-width: 0;
+  font-size: 14px;
+  line-height: 21px;
+}
+.viewer-options-dialog .viewer-option-copy small {
+  display: block;
+  margin-top: 3px;
+  color: var(--viewer-muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+.viewer-option-switch {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+}
+.viewer-options-dialog .viewer-option-switch input {
+  position: absolute;
+  inset: 0;
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.viewer-option-switch-track {
+  display: block;
+  position: relative;
+  width: 36px;
+  height: 20px;
+  border-radius: 20px;
+  background: var(--viewer-line);
+  pointer-events: none;
+}
+.viewer-option-switch-track::before {
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  left: 3px;
+  top: 3px;
+  border-radius: 50%;
+  background: var(--viewer-plane);
+}
+.viewer-option-switch input:checked + .viewer-option-switch-track {
+  background: var(--viewer-ink);
+}
+.viewer-option-switch input:checked + .viewer-option-switch-track::before {
+  transform: translateX(16px);
+}
+.viewer-option-switch input:focus-visible + .viewer-option-switch-track {
+  outline: 2px solid var(--viewer-ink);
+  outline-offset: 4px;
+}
+.viewer-options-dialog .viewer-option-dependent {
+  padding: 6px 14px 12px;
+  margin: 4px 0 8px;
+  border-radius: 6px;
+  background: var(--viewer-ground);
+}
+.viewer-options-dialog .viewer-option-select {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  margin: 12px 0;
+  font-size: 14px;
+  line-height: 21px;
+}
+.viewer-options-dialog .viewer-option-select .select-control {
+  width: 100%;
+  min-height: 44px;
+}
+.viewer-options-dialog .viewer-option-select small {
+  color: var(--viewer-muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+.viewer-options-dialog .viewer-option-note {
+  margin: 14px 0 0;
+  color: var(--viewer-muted);
+  font-size: 12px;
+  line-height: 19px;
+}
+.viewer-crosshair-preview {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin: 12px 0 20px;
+  padding: 12px 16px;
+  border-radius: 6px;
+  background: var(--viewer-ground);
+}
+.viewer-crosshair-preview > :first-child {
+  flex: none;
+}
+.viewer-crosshair-preview > div {
+  min-width: 0;
+}
+.viewer-crosshair-preview strong {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 21px;
+}
+.viewer-options-dialog .viewer-crosshair-preview p {
+  margin: 5px 0 0;
+  color: var(--viewer-muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+.viewer-crosshair-color {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 0 16px;
+  font-size: 14px;
+  flex-wrap: wrap;
+}
+.viewer-crosshair-color > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.viewer-options-dialog .viewer-crosshair-color input[type='color'] {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 4px;
+  border: 0;
+  border-radius: 4px;
+  background: var(--viewer-raised);
+  cursor: pointer;
+}
+.viewer-options-dialog .viewer-crosshair-color input[type='text'] {
+  width: 112px;
+  min-width: 0;
+  height: 44px;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 4px;
+  background: var(--viewer-raised);
+  color: var(--viewer-ink);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+.viewer-option-range {
+  margin: 14px 0;
+}
+.viewer-crosshair-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 18px 0 0;
+}
+.viewer-options-dialog .viewer-crosshair-actions .button {
+  min-height: 44px;
+  background: var(--viewer-raised);
+  color: var(--viewer-ink);
+}
+.viewer-crosshair-copy-fallback {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+  font-size: 13px;
+}
+.viewer-options-dialog .viewer-crosshair-copy-fallback textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  resize: vertical;
+  padding: 10px;
+  border: 0;
+  border-radius: 4px;
+  background: var(--viewer-ground);
+  color: var(--viewer-ink);
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+.viewer-option-range-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 14px;
+  line-height: 21px;
+}
+.viewer-option-range-heading label {
+  min-width: 0;
+}
+.viewer-option-range-heading output {
+  flex: none;
+  color: var(--viewer-muted);
+  font-variant-numeric: tabular-nums;
+}
+.viewer-options-dialog .viewer-option-range > p {
+  margin: 6px 0 0;
+  color: var(--viewer-muted);
+  font-size: 12px;
+  line-height: 19px;
+}
+.viewer-options-dialog .viewer-option-range input[type='range'] {
+  display: block;
+  width: 100%;
+  height: 44px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--viewer-ink);
+  cursor: pointer;
+}
+.viewer-options-dialog .viewer-options-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 24px;
+  background: var(--viewer-ground);
+}
+.viewer-options-footer > svg {
+  flex: none;
+  color: var(--viewer-muted);
+}
+.viewer-options-dialog .viewer-options-footer p {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  color: var(--viewer-muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+.viewer-options-dialog .viewer-options-footer .button {
+  flex: none;
+  min-height: 44px;
+  background: var(--viewer-raised);
+  color: var(--viewer-ink);
+}
+.viewer-options-dialog .viewer-options-tabs button:focus-visible,
+.viewer-options-dialog .viewer-options-panel:focus-visible {
+  outline: 2px solid var(--viewer-ink);
+  outline-offset: -2px;
+}
+@media (max-width: 640px) {
+  .viewer-options-dialog {
+    width: calc(100vw - 16px);
+    height: calc(100dvh - 16px);
+    inset: 8px auto auto 8px;
+    border-radius: 8px;
+  }
+  .viewer-options-dialog .viewer-options-heading {
+    padding: 16px 16px 12px;
+  }
+  .viewer-options-dialog .viewer-options-heading h2 {
+    font-size: 18px;
+    line-height: 25px;
+  }
+  .viewer-options-dialog .viewer-options-heading p {
+    font-size: 12px;
+    line-height: 18px;
+  }
+  .viewer-options-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .viewer-options-dialog .viewer-options-tabs {
+    flex-direction: row;
+    padding: 4px 12px 10px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+  }
+  .viewer-options-dialog .viewer-options-tabs button {
+    gap: 7px;
+    padding: 10px 12px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  .viewer-options-dialog .viewer-options-panel {
+    padding: 8px 16px 20px;
+  }
+  .viewer-options-dialog .viewer-option-toggle {
+    gap: 12px;
+  }
+  .viewer-crosshair-preview {
+    gap: 12px;
+    padding: 12px;
+  }
+  .viewer-crosshair-color {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .viewer-options-dialog .viewer-options-footer {
+    gap: 10px;
+    padding: 12px 16px;
+  }
+  .viewer-options-footer > svg,
+  .viewer-options-dialog .viewer-options-footer p {
+    display: none;
+  }
+  .viewer-options-dialog .viewer-options-footer .button {
+    width: 100%;
+  }
+}
+@media (max-height: 480px) {
+  .viewer-options-dialog .viewer-options-heading {
+    padding-block: 10px;
+  }
+  .viewer-options-dialog .viewer-options-heading p {
+    display: none;
+  }
+  .viewer-options-dialog .viewer-options-footer {
+    padding-block: 8px;
+  }
+}

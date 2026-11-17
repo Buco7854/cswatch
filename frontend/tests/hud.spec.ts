@@ -1,4 +1,6 @@
+import { activateViewerAction } from './fixtures/viewer-actions';
 import { test, expect } from '@playwright/test';
+import { selectOptionsForControl } from './fixtures/viewer-options';
 
 // Explicit test-only replay exercises recorded/unknown fields. It is never a
 // production sample or personal match-history entry.
@@ -101,6 +103,7 @@ test('broadcast HUD shows recorded loadouts and inputs without inventing missing
         inputs: true,
         mouseInput: true,
         economy: true,
+        teamLayout: 'right',
         inputLayout: 'zqsd',
         quality: 'low',
       }),
@@ -133,6 +136,7 @@ test('broadcast HUD shows recorded loadouts and inputs without inventing missing
     hud.locator('.broadcast-bank .broadcast-player[data-player-id="fixture-player-' + index + '"]');
   const setOption = async (title: string, enabled: boolean) => {
     await page.getByRole('button', { name: 'Options', exact: true }).click();
+    await selectOptionsForControl(page, title);
     await page.getByRole('switch', { name: new RegExp('^' + title) }).setChecked(enabled);
     await page.getByRole('button', { name: 'Close viewer options', exact: true }).click();
   };
@@ -158,7 +162,7 @@ test('broadcast HUD shows recorded loadouts and inputs without inventing missing
     row(1).getByLabel('Inventory is unavailable at this moment.', { exact: true }),
   ).toBeVisible();
   await expect(row(3).locator('.broadcast-weapon-identity')).toContainText('AWP');
-  await page.getByRole('button', { name: 'Players', exact: true }).click();
+  await activateViewerAction(page, 'Players');
   const details = page.locator('.viewer-drawer .broadcast-loadout');
   const loadout = details.locator('.broadcast-loadout-values');
   await details.locator('summary').click();
@@ -189,7 +193,7 @@ test('broadcast HUD shows recorded loadouts and inputs without inventing missing
   await expect(row(0).locator('.broadcast-ammo')).toContainText('7');
   await expect(row(0).getByRole('img', { name: 'Flashbang ×1', exact: true })).toBeVisible();
   await expect(row(0).getByRole('img', { name: 'Flashbang ×2', exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Players', exact: true }).click();
+  await activateViewerAction(page, 'Players');
   await details.locator('summary').click();
   await expect(
     loadout
@@ -216,7 +220,7 @@ test('broadcast HUD shows recorded loadouts and inputs without inventing missing
     hud.getByText('Input actions were not recorded for this player at this moment.'),
   ).toBeVisible();
   await expect(hud.locator('.input-action-key')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Players', exact: true }).click();
+  await activateViewerAction(page, 'Players');
   await details.locator('summary').click();
   await expect(
     loadout
@@ -254,7 +258,17 @@ test('broadcast HUD shows recorded loadouts and inputs without inventing missing
     const input = await hud.locator('.review-inputs-panel').boundingBox();
     const dock = await page.locator('.viewer-dock').boundingBox();
     expect(input!.y + input!.height).toBeLessThanOrEqual(dock!.y);
-    expect(input!.x + input!.width).toBeLessThan(width / 2);
+    expect(input!.x).toBeGreaterThanOrEqual(0);
+    expect(input!.x + input!.width).toBeLessThanOrEqual(width);
+    const roster = (await hud.locator('.broadcast-lineup-stack').boundingBox())!;
+    const overlapWidth =
+      Math.min(input!.x + input!.width, roster.x + roster.width) - Math.max(input!.x, roster.x);
+    const overlapHeight =
+      Math.min(input!.y + input!.height, roster.y + roster.height) - Math.max(input!.y, roster.y);
+    expect(
+      overlapWidth > 1 && overlapHeight > 1,
+      'Recorded inputs must not cover visible player rows',
+    ).toBe(false);
   }
   await setOption('Recorded inputs', false);
   await expect(hud.locator('.review-inputs-panel')).toHaveCount(0);

@@ -1,6 +1,8 @@
 /** Versioned browser/server contract. Coordinates are Source units, Z up. IDs are strings. */
 import type { VoicePacket, ChatMessage, CaptionCue, CommunicationInfo } from './communications.js';
 import type { ObjectiveData } from './objectives.js';
+import type { MatchStateData, EventAvailability } from './match-state.js';
+import type { ThrowInputSnapshot } from './throw-input.js';
 export type Player = { id: string; name: string; team: number };
 /** Recorded actions, independent of the player's physical keyboard layout/binds. */
 export type RecordedInput = {
@@ -32,6 +34,15 @@ export type ReplayCapabilities = {
   mouseInput: boolean;
   utilityThrows: boolean;
 };
+/** Actual cumulative controller counters at this frame, including earlier
+ * match history when the recording begins late. Missing fields stay unknown. */
+export type RecordedPlayerStats = {
+  kills?: number;
+  deaths?: number;
+  assists?: number;
+  headshotKills?: number;
+  damage?: number;
+};
 export type Position = {
   id: string;
   x: number;
@@ -57,6 +68,7 @@ export type Position = {
   spentThisRound?: number;
   inventory?: string[];
   input?: RecordedInput;
+  stats?: RecordedPlayerStats;
 };
 export type Frame = { tick: number; players: Position[] };
 export type GameEvent = {
@@ -95,6 +107,9 @@ export type Playback = {
   captions?: CaptionCue[];
   communications?: CommunicationInfo;
   objectives?: ObjectiveData;
+  matchState?: MatchStateData;
+  eventAvailability?: EventAvailability;
+  throwInputs?: ThrowInputSnapshot[];
   /** Global Source-coordinate bounds keep cameras and plots stable while time slices change. */
   worldBounds?: {
     minX: number;

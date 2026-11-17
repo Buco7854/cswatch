@@ -27,7 +27,11 @@
 .viewer-frame {
   --viewer-toolbar-height: 48px;
   --viewer-edge: 16px;
-  --viewer-roster-width: 312px;
+  --viewer-roster-width: 280px;
+  --viewer-radar-size: 150px;
+  --viewer-team-top: 230px;
+  --viewer-feed-base-top: calc(var(--viewer-toolbar-height) + 16px);
+  --viewer-feed-top: var(--viewer-feed-base-top);
   position: relative;
   width: 100%;
   height: 100%;
@@ -76,7 +80,8 @@
   gap: 16px;
   padding: 2px var(--viewer-edge);
   border: 0;
-  background: var(--viewer-plane);
+  background: transparent;
+  pointer-events: none;
 }
 /* Compact review drawers cover the tab. Inert navigation must also stop
    painting over their title and close button. Desktop drawers keep their bar. */
@@ -92,17 +97,38 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
+  background: var(--viewer-plane);
+  border-radius: 8px;
+  pointer-events: auto;
 }
 .viewer-identity {
-  flex: 1;
+  flex: 0 1 auto;
+  max-width: 54%;
+  padding-right: 12px;
 }
 .viewer-global-actions {
   flex: none;
 }
+.viewer-frame .viewer-match-score {
+  position: absolute;
+  z-index: 6;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 300px;
+  min-height: 58px;
+}
+.viewer-frame[data-score-visible='true'] .viewer-identity {
+  max-width: calc(50% - 182px);
+}
+.viewer-frame[data-score-visible='true'] {
+  --viewer-score-bottom: 78px;
+}
+.viewer-frame .viewer-objective-layer .objective-hud {
+  top: max(14px, var(--viewer-score-bottom, 0px));
+}
 .viewer-match {
-  display: flex;
-  align-items: center;
-  gap: 16px;
+  display: block;
   min-width: 0;
 }
 .viewer-match h1 {
@@ -113,9 +139,9 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-family: inherit;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 500;
-  line-height: 22px;
+  line-height: 18px;
   letter-spacing: 0;
   text-transform: capitalize;
 }
@@ -125,8 +151,8 @@
   gap: 0;
   min-width: 0;
   color: var(--muted);
-  font-size: 12px;
-  line-height: 18px;
+  font-size: 11px;
+  line-height: 14px;
   white-space: nowrap;
   overflow: hidden;
 }
@@ -202,22 +228,23 @@
   z-index: 4;
   inset: auto var(--viewer-edge) var(--viewer-edge);
   width: auto;
-  max-width: 1568px;
+  max-width: 1000px;
   margin-inline: auto;
-  padding: 10px 16px;
+  padding: 6px 12px;
   border: 0;
   border-radius: 10px;
   background: var(--viewer-plane);
   color: var(--text);
-  box-shadow: none;
+  box-shadow: none; /* taste-skill-ignore: removes inherited shadow. */
 }
-/* A 44px primary transport, independent 44px scrub target and 32px event
-   targets stay separate. Width, spacing and labels change together. */
+/* Two short rows: a 44px timeline with named event targets, then 44px
+   transport. Context/navigation options remain progressive rather than a third row. */
 .viewer-controlbar {
+  position: relative;
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  gap: 16px;
+  gap: 0;
   min-height: 44px;
   margin-top: 0;
 }
@@ -229,7 +256,33 @@
   gap: 8px;
   min-width: 0;
 }
+.viewer-transport {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  transform: translateX(-50%);
+  display: grid;
+  grid-template-columns: repeat(3, 44px);
+  gap: 6px;
+  width: 144px;
+  height: 44px;
+}
+.viewer-transport > .transport-step:first-child {
+  grid-column: 1;
+}
+.viewer-transport > .play-button {
+  grid-column: 2;
+  grid-row: 1;
+}
+.viewer-transport > .transport-step:nth-child(3) {
+  grid-column: 3;
+  grid-row: 1;
+}
+.viewer-round-controls {
+  display: none;
+}
 .viewer-panel-controls {
+  grid-column: 3;
   justify-content: flex-end;
 }
 .viewer-frame .play-button {
@@ -248,6 +301,9 @@
   outline-offset: 3px;
 }
 .viewer-frame .speed-select {
+  position: absolute;
+  top: 0;
+  right: calc(100% + 8px);
   width: 72px;
   min-height: 44px;
   padding: 10px;
@@ -266,8 +322,12 @@
 }
 .viewer-frame .viewer-panel-controls .labeled-viewer-action {
   gap: 8px;
-  width: auto;
-  padding-inline: 12px;
+  width: 44px;
+  padding: 10px;
+}
+.viewer-panel-controls .viewer-action-label,
+.viewer-panel-controls .rounds-toggle {
+  display: none;
 }
 .mobile-rounds-toggle {
   display: none;
@@ -336,14 +396,15 @@
   outline: 2px solid var(--signal);
   outline-offset: 2px;
 }
-.viewer-shell .crosshair {
-  z-index: 1;
-}
 .viewer-frame .position-radar {
   top: calc(var(--viewer-toolbar-height) + 16px);
   left: var(--viewer-edge);
-  width: 96px;
-  height: 96px;
+  width: var(--viewer-radar-size);
+  height: var(--viewer-radar-size);
+}
+.viewer-shell .viewer-frame svg.position-radar {
+  width: var(--viewer-radar-size);
+  height: var(--viewer-radar-size);
 }
 .viewer-frame .killfeed {
   top: calc(var(--viewer-toolbar-height) + 16px);
@@ -356,12 +417,21 @@
   right: calc(var(--viewer-roster-width) + 32px);
 }
 .viewer-frame .killfeed > div {
-  padding: 5px 10px;
+  padding: 2px 8px;
   border-radius: 4px;
   background: var(--viewer-plane);
   color: var(--text);
   font-size: 12px;
   line-height: 18px;
+}
+.viewer-frame:has(.viewer-review-hud[data-layout='split']) .killfeed {
+  right: var(--viewer-edge);
+  max-width: var(--viewer-roster-width);
+}
+.viewer-frame:has(.viewer-review-hud[data-layout='split']) .killfeed > div {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .viewer-frame .killfeed span {
   color: var(--muted);
@@ -388,14 +458,20 @@
 @media (max-width: 1200px) {
   .viewer-frame {
     --viewer-roster-width: 244px;
+    --viewer-radar-size: 120px;
+    --viewer-team-top: 200px;
   }
   .viewer-controlbar {
-    gap: 8px;
+    gap: 0;
   }
   .viewer-transport,
   .viewer-round-controls,
   .viewer-panel-controls {
     gap: 4px;
+  }
+  .viewer-transport {
+    grid-template-columns: repeat(3, 44px);
+    gap: 6px;
   }
   .viewer-frame .viewer-panel-controls .labeled-viewer-action {
     width: 44px;
@@ -408,6 +484,18 @@
   .viewer-frame .skip-dead-time {
     width: 44px;
     padding: 10px;
+  }
+}
+@media (min-width: 1101px) {
+  /* Symmetric side lanes keep Play on the viewport centre while the physical
+     instrument occupies the bottom-left lane at the same level as the deck. */
+  .viewer-frame:has(.review-inputs-panel) .viewer-dock {
+    max-width: min(1000px, calc(100% - 512px));
+  }
+}
+@media (min-width: 1101px) and (max-width: 1280px) {
+  .viewer-frame:has(.review-inputs-panel) .viewer-panel-controls > :not(.mobile-viewer-menu) {
+    display: none;
   }
 }
 @media (max-width: 960px) {
@@ -429,19 +517,44 @@
   .options-button > span {
     display: none;
   }
-  .viewer-controlbar {
-    grid-template-columns: 1fr auto;
-  }
   .viewer-round-controls,
   .viewer-controlbar .desktop-viewer-action,
   .desktop-moment-menu {
     display: none;
   }
 }
+@media (max-width: 1100px) {
+  .viewer-frame:has(.viewer-drawer) .viewer-match-score {
+    visibility: hidden;
+  }
+  .viewer-frame[data-score-visible='true'] {
+    --viewer-feed-base-top: calc(var(--viewer-toolbar-height) + 76px);
+    --viewer-score-bottom: calc(var(--viewer-toolbar-height) + 76px);
+  }
+  .viewer-frame .viewer-match-score {
+    top: calc(var(--viewer-toolbar-height) + 12px);
+    right: var(--viewer-edge);
+    left: auto;
+    transform: none;
+    width: 248px;
+    min-height: 52px;
+  }
+  .viewer-frame[data-score-visible='true'] .viewer-identity {
+    max-width: 54%;
+  }
+  .viewer-frame {
+    --viewer-feed-top: max(var(--viewer-feed-base-top), var(--review-objective-bottom, 0px));
+  }
+  .viewer-frame .viewer-objective-layer .objective-hud {
+    top: max(calc(var(--viewer-toolbar-height) + 12px), var(--viewer-score-bottom, 0px));
+  }
+}
 @media (max-width: 760px) {
   .viewer-frame {
     --viewer-edge: 8px;
     --viewer-roster-width: 180px;
+    --viewer-radar-size: 80px;
+    --viewer-feed-base-top: calc(var(--viewer-toolbar-height) + 12px);
   }
   .viewer-titlebar {
     gap: 4px;
@@ -467,6 +580,7 @@
     border-radius: 8px;
   }
   .viewer-controlbar .transport-step,
+  .viewer-panel-controls .labeled-viewer-action,
   .viewer-panel-controls .rounds-toggle {
     display: none;
   }
@@ -475,14 +589,36 @@
   }
   .viewer-frame .position-radar {
     top: calc(var(--viewer-toolbar-height) + 12px);
-    width: 64px;
-    height: 64px;
+  }
+  .viewer-frame .viewer-objective-layer .objective-hud {
+    left: var(--viewer-edge);
+    right: var(--viewer-edge);
+    width: auto;
+    max-width: none;
+    transform: none;
+  }
+  .viewer-frame:has(.position-radar) .viewer-objective-layer .objective-hud {
+    left: calc(var(--viewer-edge) + var(--viewer-radar-size) + 12px);
+  }
+  .viewer-frame:has(.position-radar),
+  .viewer-frame[data-score-visible='true']:has(.position-radar) {
+    --viewer-feed-base-top: calc(var(--viewer-toolbar-height) + var(--viewer-radar-size) + 24px);
+  }
+  .viewer-frame[data-score-visible='true']:not(:has(.position-radar)) {
+    --viewer-feed-base-top: calc(var(--viewer-toolbar-height) + 76px);
+  }
+  .viewer-frame .killfeed {
+    top: max(
+      calc(var(--viewer-toolbar-height) + var(--viewer-radar-size) + 24px),
+      var(--review-objective-bottom, 0px),
+      var(--viewer-score-bottom, 0px)
+    );
+    left: 8px;
+    right: 8px;
+    max-width: none;
   }
   .viewer-frame:has(.viewer-review-hud[data-economy='true']) .killfeed {
-    top: calc(var(--viewer-toolbar-height) + 86px);
-    left: 8px;
-    right: 196px;
-    max-width: none;
+    right: calc(var(--viewer-roster-width) + 16px);
   }
   .viewer-frame .killfeed > div {
     padding: 4px 6px;
@@ -491,33 +627,78 @@
     overflow-wrap: anywhere;
   }
 }
+@media (max-width: 360px) {
+  .viewer-frame .viewer-match-score {
+    width: 208px;
+  }
+}
 @media (max-height: 560px) {
+  .viewer-titlebar .camera-select {
+    width: 44px;
+    padding: 10px;
+    justify-content: center;
+  }
+  .viewer-titlebar .camera-select > span:not(.select-leading-icon) {
+    display: none;
+  }
+  .viewer-frame:has(.viewer-drawer) .viewer-match-score {
+    visibility: hidden;
+  }
   .viewer-frame {
     --viewer-roster-width: 180px;
     --viewer-edge: 8px;
+    --viewer-radar-size: 80px;
   }
   .viewer-frame .viewer-dock {
     padding-block: 4px;
-  }
-  .viewer-controlbar {
-    grid-template-columns: 1fr auto;
   }
   .viewer-round-controls,
   .viewer-controlbar .desktop-viewer-action,
   .desktop-moment-menu {
     display: none;
   }
-  .viewer-frame .position-radar {
-    width: 56px;
-    height: 56px;
-  }
   .viewer-frame.has-review-hud:has(.review-inputs-panel) .position-radar {
-    left: 208px;
+    left: var(--viewer-edge);
   }
   .viewer-frame:has(.review-inputs-panel) .communication-overlay {
     left: 208px;
     width: calc(100% - 224px);
     transform: none;
+  }
+}
+@media (max-height: 560px) and (min-width: 600px) {
+  .viewer-frame[data-score-visible='true'] {
+    --viewer-score-bottom: 64px;
+    --viewer-feed-base-top: 64px;
+  }
+  .viewer-frame .viewer-match-score {
+    top: 0;
+    right: auto;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  .viewer-frame[data-score-visible='true'] .viewer-identity {
+    max-width: calc(50% - 148px);
+  }
+  .viewer-frame .viewer-objective-layer .objective-hud,
+  .viewer-frame:has(.position-radar) .viewer-objective-layer .objective-hud {
+    left: 50%;
+    right: auto;
+    width: 240px;
+    max-width: calc(100% - 24px);
+    transform: translateX(-50%);
+  }
+  .viewer-frame:has(.objective-hud) .killfeed {
+    top: calc(var(--viewer-toolbar-height) + 16px);
+    left: calc(var(--viewer-edge) + var(--viewer-radar-size) + 12px);
+    right: auto;
+    max-width: max(44px, calc(50% - var(--viewer-edge) - var(--viewer-radar-size) - 144px));
+  }
+  .viewer-frame:has(.objective-hud) .killfeed > div {
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }
 
@@ -533,7 +714,7 @@
   border: 0;
   border-radius: 8px;
   z-index: 5;
-  box-shadow: 0 8px 30px #0004;
+  box-shadow: 0 8px 30px #0004; /* taste-skill-ignore: a true floating review panel. */
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -641,7 +822,7 @@
   padding: 0 0 19px;
   margin: 0 0 14px;
   border-top: 0;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 0;
   gap: 12px;
   align-items: stretch;
 }
@@ -669,7 +850,7 @@
   display: flex;
   gap: 20px;
   overflow: auto;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 0;
 }
 .viewer-drawer .tabs button {
   padding: 10px 0 14px;
@@ -765,40 +946,10 @@
     overflow-y: auto;
   }
 }
-/* A short landscape screen needs a different arrangement, not smaller text:
-   timeline above, transport / timecodes / review below, secondary jobs in More. */
-@media (min-width: 600px) and (max-height: 560px) {
-  .viewer-frame .viewer-dock {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    gap: 0 12px;
-  }
-  .replay-timeline,
-  .viewer-controlbar {
-    display: contents;
-  }
-  .replay-timeline-plot {
-    grid-row: 1;
-    grid-column: 1 / -1;
-  }
-  .timeline-context {
-    grid-row: 2;
-    grid-column: 2;
-    justify-content: center;
-  }
+/* Compact transport uses the same two-row geometry in landscape; a single
+   set of owned positions avoids the old third metadata row. */
+@media (max-height: 560px) {
   .timeline-context-label {
     display: none;
-  }
-  .viewer-transport {
-    grid-row: 2;
-    grid-column: 1;
-  }
-  .viewer-panel-controls {
-    grid-row: 2;
-    grid-column: 3;
-  }
-  .viewer-review-rails {
-    grid-row: 3;
-    grid-column: 1 / -1;
   }
 }

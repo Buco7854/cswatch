@@ -3,6 +3,7 @@
 .viewer-frame,
 .member-floating[data-viewer-ui],
 .options-dialog,
+.viewer-options-dialog,
 .communications-dialog,
 .timeline-options-dialog {
   --viewer-ground: #101112;
@@ -34,6 +35,7 @@
     .viewer-frame,
     .member-floating[data-viewer-ui],
     .options-dialog,
+    .viewer-options-dialog,
     .communications-dialog,
     .timeline-options-dialog
   ) {

@@ -1,0 +1,270 @@
+.scoreboard-dialog {
+  position: fixed;
+  inset: 0;
+  width: min(960px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  padding: 0;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 10px;
+  background: var(--viewer-plane);
+  color: var(--viewer-ink);
+  font-family: 'IBM Plex Sans', sans-serif;
+  overflow: hidden;
+}
+.scoreboard-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+.scoreboard-dialog::backdrop {
+  background: rgb(0 0 0 / 38%);
+}
+.scoreboard-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  padding: 20px 24px 16px;
+  flex: none;
+}
+.scoreboard-heading h2 {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 500;
+  line-height: 28px;
+}
+.scoreboard-heading p {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 6px 0 0;
+  color: var(--viewer-muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+.scoreboard-heading > .icon-button {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  margin: -5px -7px 0 0;
+}
+.scoreboard-content {
+  min-height: 0;
+  padding: 0 24px 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.scoreboard-team {
+  --score-side: var(--team-ct);
+  --score-wash: var(--team-ct-wash);
+  margin: 0;
+  padding: 0;
+}
+.scoreboard-team[data-team='2'] {
+  --score-side: var(--team-t);
+  --score-wash: var(--team-t-wash);
+}
+.scoreboard-team[data-team='unknown'] {
+  --score-side: var(--viewer-muted);
+  --score-wash: var(--viewer-raised);
+}
+.scoreboard-team + .scoreboard-team {
+  margin-top: 22px;
+}
+.scoreboard-team-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin: 0 0 4px;
+  color: var(--score-side);
+}
+.scoreboard-team-heading h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 15px;
+  line-height: 24px;
+  font-weight: 500;
+}
+.scoreboard-team-heading > strong {
+  font-size: 24px;
+  line-height: 30px;
+  font-weight: 500;
+}
+.scoreboard-table-viewport {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.scoreboard-table-viewport:focus-visible {
+  outline: 2px solid var(--score-side);
+  outline-offset: 2px;
+}
+.scoreboard-team table {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.scoreboard-team thead th {
+  height: 32px;
+  color: var(--viewer-muted);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 16px;
+}
+.scoreboard-team thead th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--viewer-plane);
+}
+.scoreboard-scroll-note {
+  display: none;
+  margin: 0 0 10px;
+  color: var(--viewer-muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+.scoreboard-team th,
+.scoreboard-team td {
+  padding: 0 10px;
+  text-align: right;
+  vertical-align: middle;
+}
+.scoreboard-team th:first-child {
+  width: 33%;
+  text-align: left;
+  padding-left: 0;
+}
+.scoreboard-team th:last-child,
+.scoreboard-team td:last-child {
+  width: 80px;
+  padding-right: 2px;
+}
+.scoreboard-team abbr {
+  text-decoration: none;
+}
+.scoreboard-team tbody td,
+.scoreboard-team tbody th {
+  border-top: 1px solid var(--viewer-line);
+}
+.scoreboard-team tbody th {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--viewer-plane);
+}
+.scoreboard-team tbody tr.is-selected td,
+.scoreboard-team tbody tr.is-selected th {
+  background: var(--score-wash);
+}
+.scoreboard-select-player {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--viewer-ink);
+  font: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+.scoreboard-select-player > span:not(.visually-hidden) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.scoreboard-select-player .review-event-glyph {
+  flex: none;
+  color: var(--viewer-muted);
+}
+.scoreboard-select-player:hover {
+  background: var(--viewer-raised);
+}
+.scoreboard-select-player:focus-visible {
+  outline: 2px solid var(--score-side);
+  outline-offset: -2px;
+}
+.scoreboard-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 12px 24px;
+  background: var(--viewer-ground);
+  flex: none;
+  color: var(--viewer-muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+.scoreboard-footer p {
+  margin: 0;
+}
+.scoreboard-footer > span {
+  flex: none;
+}
+@media (max-width: 640px) {
+  .scoreboard-dialog {
+    width: calc(100vw - 16px);
+    max-height: calc(100dvh - 16px);
+    border-radius: 8px;
+  }
+  .scoreboard-heading {
+    padding: 16px;
+  }
+  .scoreboard-content {
+    padding: 0 16px 16px;
+  }
+  .scoreboard-team table {
+    font-size: 13px;
+  }
+  .scoreboard-team th:first-child {
+    width: 140px;
+  }
+  .scoreboard-select-player {
+    font-size: 13px;
+  }
+  .scoreboard-footer {
+    padding: 12px 16px;
+  }
+  .scoreboard-footer > span {
+    display: none;
+  }
+}
+@media (max-height: 480px) {
+  .scoreboard-heading {
+    padding-block: 10px;
+  }
+  .scoreboard-heading h2 {
+    font-size: 18px;
+    line-height: 24px;
+  }
+  .scoreboard-heading p {
+    margin-top: 2px;
+  }
+  .scoreboard-footer {
+    padding-block: 8px;
+  }
+}
+/* A phone table is 560px minimum; dialog and body consume 48px. Below 608px
+   its statistics necessarily overflow. Wider layouts need no instruction. */
+@media (max-width: 607px) {
+  .scoreboard-scroll-note {
+    display: block;
+  }
+}

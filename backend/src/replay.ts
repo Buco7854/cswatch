@@ -4,6 +4,7 @@ import { gzipSync, gunzipSync } from 'node:zlib';
 import { z } from 'zod';
 import type { Playback, PlaybackManifest, PlaybackChunk, Grenade } from '../../shared/playback.js';
 import { opusDuration } from './voice-packets.js';
+import { isRecordedUtilityThrow } from './player-input.js';
 
 export const replayLimits = {
   chunkFrames: 480,
@@ -81,6 +82,57 @@ const input = z
     mouseDy: z.number().int().min(-2147483648).max(2147483647).optional(),
   })
   .strict();
+const matchClockSchema = z
+  .object({
+    kind: z.enum(['round', 'freeze', 'timeout', 'warmup']),
+    startTick: objectiveDeadline.optional(),
+    endTick: objectiveDeadline.optional(),
+    paused: z.boolean().optional(),
+    pausedAtTick: objectiveDeadline.optional(),
+  })
+  .strict();
+export const matchStateSampleSchema = z
+  .object({
+    tick,
+    ctScore: z.number().int().min(0).max(10000).optional(),
+    tScore: z.number().int().min(0).max(10000).optional(),
+    roundNumber: z.number().int().min(1).max(10000).optional(),
+    roundNumberSource: z.enum(['round-start', 'completed-counter']).optional(),
+    roundsPlayed: z.number().int().min(0).max(10000).optional(),
+    overtime: z.number().int().min(0).max(10000).optional(),
+    gamePhase: z.number().int().min(0).max(255).optional(),
+    phase: z
+      .enum([
+        'warmup',
+        'freeze',
+        'live',
+        'timeout',
+        'technical',
+        'paused',
+        'round-end',
+        'intermission',
+        'game-over',
+      ])
+      .optional(),
+    clock: matchClockSchema.optional(),
+  })
+  .strict();
+const throwInputBase = {
+  eventIndex: z.number().int().min(0).max(99999),
+  tick,
+  actorId: z.string().regex(/^\d{1,20}$/),
+};
+export const throwInputSnapshotSchema = z.discriminatedUnion('provenance', [
+  z.object({ ...throwInputBase, provenance: z.literal('unavailable') }).strict(),
+  z
+    .object({
+      ...throwInputBase,
+      provenance: z.enum(['event-usercmd', 'event-network', 'nearby-network']),
+      sampleTick: tick,
+      input,
+    })
+    .strict(),
+]);
 const position = z
   .object({
     id: z.string().max(40),
@@ -107,6 +159,16 @@ const position = z
     spentThisRound: z.number().int().min(0).max(1000000000).optional(),
     inventory: z.array(z.string().max(80)).max(64).optional(),
     input: input.optional(),
+    stats: z
+      .object({
+        kills: z.number().int().min(0).max(1000000000).optional(),
+        deaths: z.number().int().min(0).max(1000000000).optional(),
+        assists: z.number().int().min(0).max(1000000000).optional(),
+        headshotKills: z.number().int().min(0).max(1000000000).optional(),
+        damage: z.number().int().min(0).max(1000000000).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 const grenade = z
@@ -251,6 +313,15 @@ export const manifestSchema = z
       .object({ samples: z.array(objectiveSampleSchema).max(10000), complete: z.boolean() })
       .strict()
       .optional(),
+    matchState: z
+      .object({ complete: z.boolean(), samples: z.array(matchStateSampleSchema).max(10000) })
+      .strict()
+      .optional(),
+    eventAvailability: z
+      .object({ player_death: z.boolean(), player_hurt: z.boolean() })
+      .strict()
+      .optional(),
+    throwInputs: z.array(throwInputSnapshotSchema).max(10000).optional(),
     capabilities: z
       .object({
         economy: z.boolean(),
@@ -422,6 +493,47 @@ export function validateReplayArtifacts(folder: string): {
   )
     throw new Error('Invalid replay bounds');
   const actors = new Set(manifest.players.map((player) => player.id));
+  for (const [index, sample] of (manifest.matchState?.samples || []).entries()) {
+    const clock = sample.clock;
+    if (
+      sample.tick > manifest.lastTick ||
+      (index > 0 && sample.tick < manifest.matchState!.samples[index - 1].tick) ||
+      (clock?.startTick !== undefined &&
+        clock.endTick !== undefined &&
+        clock.startTick > clock.endTick) ||
+      (clock?.pausedAtTick !== undefined &&
+        (clock.paused !== true || clock.pausedAtTick > sample.tick)) ||
+      (sample.roundNumberSource !== undefined && sample.roundNumber === undefined) ||
+      (sample.roundNumberSource === 'completed-counter' &&
+        (sample.roundsPlayed === undefined ||
+          (sample.roundNumber !== sample.roundsPlayed &&
+            sample.roundNumber !== sample.roundsPlayed + 1)))
+    )
+      throw new Error('Invalid recorded match state time');
+  }
+  for (const [index, snapshot] of (manifest.throwInputs || []).entries()) {
+    const event = manifest.events[snapshot.eventIndex];
+    if (
+      !event ||
+      !isRecordedUtilityThrow(event) ||
+      event.tick !== snapshot.tick ||
+      snapshot.tick > manifest.lastTick ||
+      event.user_steamid !== snapshot.actorId ||
+      !actors.has(snapshot.actorId) ||
+      (index > 0 && snapshot.eventIndex <= manifest.throwInputs![index - 1].eventIndex)
+    )
+      throw new Error('Invalid throw input event identity or time');
+    if (snapshot.provenance !== 'unavailable') {
+      if (
+        snapshot.sampleTick > snapshot.tick ||
+        (snapshot.provenance !== 'nearby-network' && snapshot.sampleTick !== snapshot.tick) ||
+        (snapshot.provenance === 'nearby-network' &&
+          snapshot.tick - snapshot.sampleTick > manifest.tickRate) ||
+        snapshot.input.source !== (snapshot.provenance === 'event-usercmd' ? 'usercmd' : 'network')
+      )
+        throw new Error('Invalid throw input provenance or time');
+    }
+  }
   for (const [index, sample] of (manifest.objectives?.samples || []).entries()) {
     if (
       sample.tick > manifest.lastTick ||
