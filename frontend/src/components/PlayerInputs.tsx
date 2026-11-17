@@ -58,7 +58,9 @@ function MouseButton({
       aria-label={description}
       title={description}
     >
-      <span aria-hidden="true">{side === 'primary' ? 'LMB' : 'RMB'}</span>
+      <span className="input-mouse-button-label" aria-hidden="true">
+        {side === 'primary' ? 'LMB' : 'RMB'}
+      </span>
     </div>
   );
 }
@@ -154,6 +156,7 @@ export default function PlayerInputs({
       className={
         'player-inputs' + (compact ? ' is-compact' : '') + (mouseInput ? ' has-mouse-input' : '')
       }
+      data-layout={layout}
       aria-label={t('Selected player input actions')}
     >
       <div className="input-device-stage">

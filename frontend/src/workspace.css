@@ -649,16 +649,6 @@ small {
   padding: 5px 6px;
   max-width: 220px;
 }
-.options-button {
-  min-height: 30px !important;
-  padding: 5px 7px !important;
-  font-size: 12px !important;
-}
-.viewer-stage {
-  aspect-ratio: auto;
-  height: clamp(300px, 45vh, 500px);
-  background: #20241e;
-}
 .controls {
   padding: 12px 14px;
 }
@@ -681,10 +671,6 @@ small {
 }
 .transport .button {
   font-size: 12px;
-}
-.play-button {
-  background: var(--primary) !important;
-  color: var(--surface) !important;
 }
 .roster-panel {
   padding: 17px 14px;
@@ -1043,9 +1029,6 @@ summary {
   .viewer-grid {
     grid-template-columns: minmax(0, 1fr) 300px;
   }
-  .viewer-stage {
-    height: clamp(450px, 50vh, 680px);
-  }
   .roster-panel {
     padding: 22px;
   }
@@ -1165,9 +1148,6 @@ summary {
     flex-basis: auto;
     margin-left: auto;
   }
-  .viewer-stage {
-    height: 390px;
-  }
   .settings-section {
     gap: 30px;
   }
@@ -1234,9 +1214,6 @@ summary {
   .roster-foot {
     padding-top: 16px;
     margin-top: 0;
-  }
-  .viewer-stage {
-    height: clamp(300px, 43vh, 460px);
   }
   .event-list {
     grid-template-columns: 1fr;
@@ -1523,23 +1500,12 @@ summary {
   .viewer-toolbar > span {
     font-size: 11px;
   }
-  .options-button {
-    min-width: 32px !important;
-    padding: 5px !important;
-  }
-  .options-button > span {
-    display: none;
-  }
   .camera-label select {
     font-size: 11px !important;
     max-width: 150px !important;
   }
   .camera-label svg {
     display: none;
-  }
-  .viewer-stage {
-    height: 270px;
-    aspect-ratio: auto;
   }
   .controls {
     padding: 12px 10px;
@@ -1569,10 +1535,6 @@ summary {
     padding: 8px 5px;
     gap: 4px;
     min-height: 40px;
-  }
-  .play-button {
-    width: 38px;
-    height: 38px;
   }
   .roster-panel {
     padding: 18px 12px;

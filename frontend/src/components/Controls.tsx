@@ -39,13 +39,17 @@ export function SelectControl({
 }) {
   const trigger = useRef<HTMLButtonElement>(null);
   const [container, setContainer] = useState<HTMLElement | undefined>();
+  const [viewerUI, setViewerUI] = useState(false);
   return (
     <Select.Root
       value={value}
       onValueChange={onValueChange}
       disabled={disabled}
       onOpenChange={(open) => {
-        if (open) setContainer(floatingContainer(trigger.current));
+        if (open) {
+          setContainer(floatingContainer(trigger.current));
+          setViewerUI(Boolean(trigger.current?.closest('.viewer-frame')));
+        }
       }}
     >
       <Select.Trigger
@@ -64,6 +68,7 @@ export function SelectControl({
       <Select.Portal container={container}>
         <Select.Content
           className="member-floating select-content"
+          data-viewer-ui={viewerUI || undefined}
           position="popper"
           sideOffset={6}
           collisionPadding={12}
@@ -127,12 +132,16 @@ export function ActionMenu({
 }) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [container, setContainer] = useState<HTMLElement | undefined>();
+  const [viewerUI, setViewerUI] = useState(false);
   return (
     <DropdownMenu.Root
       modal={false}
       open={open}
       onOpenChange={(next) => {
-        if (next) setContainer(floatingContainer(triggerRef.current));
+        if (next) {
+          setContainer(floatingContainer(triggerRef.current));
+          setViewerUI(Boolean(triggerRef.current?.closest('.viewer-frame')));
+        }
         onOpenChange?.(next);
       }}
     >
@@ -142,6 +151,7 @@ export function ActionMenu({
       <DropdownMenu.Portal container={container}>
         <DropdownMenu.Content
           className={'member-floating action-menu ' + className}
+          data-viewer-ui={viewerUI || undefined}
           aria-label={label}
           aria-labelledby={undefined}
           align="end"

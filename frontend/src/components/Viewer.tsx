@@ -177,6 +177,15 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     });
     target?.focus({ preventScroll: true });
   }
+  function closeViewerOptions() {
+    setOptions(false);
+    // React removes the native dialog before its normal close algorithm can
+    // restore the opener. Wait for teardown and never steal another modal's focus.
+    requestAnimationFrame(() => {
+      if (!full.current?.isConnected || document.querySelector('dialog[open]')) return;
+      restoreViewerFocus(optionsTrigger.current);
+    });
+  }
   const [compactPanels, setCompactPanels] = useState(
     () => window.matchMedia('(max-width:540px),(max-height:560px)').matches,
   );
@@ -189,11 +198,15 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
   useEffect(() => {
     const dock = playbackDock.current;
     if (!dock) return;
-    const update = () =>
-      full.current?.style.setProperty(
+    const update = () => {
+      const frame = full.current;
+      if (!frame) return;
+      // Reserve the deck and its bottom inset, including an inset floating deck.
+      frame.style.setProperty(
         '--viewer-dock-height',
-        `${chrome.visible ? dock.getBoundingClientRect().height : 0}px`,
+        `${chrome.visible ? Math.max(0, frame.getBoundingClientRect().bottom - dock.getBoundingClientRect().top) : 0}px`,
       );
+    };
     update();
     if (typeof ResizeObserver !== 'undefined') {
       const observer = new ResizeObserver(update);
@@ -1163,16 +1176,17 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
             </div>
             <div className="viewer-panel-controls">
               <button
-                className="icon-button"
+                className="icon-button labeled-viewer-action"
                 aria-label={t('Players')}
                 title={t('Players')}
                 aria-expanded={panel === 'players'}
                 onClick={(e) => togglePanel('players', e.currentTarget)}
               >
                 <Users size={19} />
+                <span className="viewer-action-label">{t('Players')}</span>
               </button>
               <button
-                className="icon-button"
+                className="icon-button labeled-viewer-action"
                 aria-label={t('Key moments')}
                 title={t('Key moments')}
                 aria-expanded={panel === 'review' && tab === 'events'}
@@ -1183,6 +1197,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
                 }}
               >
                 <ListVideo size={19} />
+                <span className="viewer-action-label">{t('Key moments')}</span>
               </button>
               <button
                 className="icon-button desktop-viewer-action"
@@ -1339,7 +1354,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
         <ViewerOptions
           settings={settings}
           onChange={setSettings}
-          close={() => setOptions(false)}
+          close={closeViewerOptions}
           openCommunications={() => {
             communicationsTrigger.current = optionsTrigger.current;
             setOptions(false);

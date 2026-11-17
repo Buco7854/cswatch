@@ -28,7 +28,6 @@
   background: var(--raised);
 }
 .select-control:focus-visible,
-.moment-menu-trigger:focus-visible,
 .account-button:focus-visible {
   outline: 2px solid var(--signal);
   outline-offset: 3px;
@@ -216,97 +215,6 @@
 .workspace-signin-icon {
   display: none;
 }
-.viewer-shell .mobile-viewer-menu {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-.viewer-camera-tools .camera-select {
-  width: auto;
-  max-width: 260px;
-  min-height: 43px;
-  border-color: var(--border);
-}
-.viewer-transport .speed-select {
-  width: 65px;
-  min-height: 40px;
-  border: 0;
-  padding: 7px 5px;
-  background: transparent;
-}
-.viewer-round-controls .round-select {
-  width: 117px;
-  min-height: 36px;
-  padding: 7px 9px;
-  border-color: var(--border);
-}
-.viewer-shell .play-button:hover {
-  border-color: var(--muted);
-  filter: none;
-}
-.viewer-shell .play-button:focus-visible {
-  outline: 2px solid var(--signal);
-  outline-offset: 3px;
-}
-.replay-buffer {
-  position: absolute;
-  left: 50%;
-  top: 40%;
-  transform: translate(-50%, -50%);
-  max-width: calc(100% - 48px);
-  padding: 14px 18px;
-  border: 1px solid var(--control);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--text);
-  font-size: 14px;
-  line-height: 1.5;
-  text-align: center;
-  z-index: 2;
-}
-.replay-buffer .button {
-  margin: 10px auto 0;
-}
-.viewer-shell .viewer-drawer {
-  bottom: calc(var(--viewer-dock-height, 180px) + 32px);
-}
-.viewer-shell .map-notice {
-  top: auto;
-  bottom: calc(var(--viewer-dock-height, 180px) + 32px);
-  left: 50%;
-  transform: translateX(-50%);
-  max-width: calc(100% - 32px);
-  padding: 6px 10px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--surface);
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.5;
-}
-.viewer-frame:has(.viewer-analysis-hud:not([hidden])) .map-notice {
-  left: auto;
-  right: 16px;
-  transform: none;
-  max-width: calc(100% - 400px);
-}
-.viewer-frame:has(.communication-overlay > div) .map-notice {
-  visibility: hidden;
-}
-.moment-menu-trigger {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 36px;
-  padding: 6px;
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  font: inherit;
-  font-size: 12px;
-  white-space: nowrap;
-  cursor: pointer;
-}
 .member-dialog .select-control {
   width: 100%;
   margin-top: 8px;
@@ -394,201 +302,16 @@
   color: var(--muted);
   font-size: 13px;
 }
-@media (max-width: 760px) and (min-height: 561px) {
-  .viewer-frame:has(.viewer-analysis-hud:not([hidden])) .map-notice {
-    left: 100px;
-    right: 12px;
-    top: 100px;
-    bottom: auto;
-    max-width: none;
-  }
-  .viewer-frame:has(.viewer-analysis-hud:not([hidden])):has(.killfeed > div) .map-notice {
-    visibility: hidden;
-  }
-}
-@media (max-width: 599px) and (max-height: 560px) {
-  .viewer-frame:has(.viewer-analysis-hud:not([hidden])) .map-notice {
-    visibility: hidden;
-  }
-}
 @media (max-width: 760px) {
   .select-item,
   .action-menu-item {
     min-height: 44px;
     font-size: 14px;
   }
-  .viewer-camera-tools .camera-select {
-    max-width: 230px;
-    min-height: 40px;
-    font-size: 12px;
-    padding: 7px 9px;
-  }
-  .viewer-camera-tools .select-leading-icon {
-    display: none;
-  }
-  .viewer-transport .speed-select {
-    width: 56px;
-    padding: 6px 4px;
-    font-size: 12px;
-    gap: 3px;
-  }
-  .viewer-round-controls .round-select {
-    width: 113px;
-    min-height: 36px;
-    font-size: 12px;
-  }
-  .moment-menu-trigger {
-    min-height: 40px;
-    font-size: 11px;
-  }
 }
 /* On narrow screens the permanent jobs are play, speed, player selection and
    review. Secondary transport, notes, fullscreen and precise jumps share one
    menu, leaving every primary target a real 44px without widening the tab. */
-@media (max-width: 760px), (max-width: 1100px) and (max-height: 560px) {
-  .viewer-shell .viewer-controlbar .transport-step,
-  .viewer-shell .viewer-controlbar .desktop-viewer-action,
-  .viewer-shell .desktop-moment-menu {
-    display: none;
-  }
-  .viewer-shell .viewer-controlbar .icon-button,
-  .viewer-shell .viewer-controlbar .play-button,
-  .viewer-shell .viewer-controlbar .mobile-viewer-menu {
-    width: 44px;
-    height: 44px;
-    min-width: 44px;
-    min-height: 44px;
-    padding: 11px;
-    justify-content: center;
-  }
-  .viewer-shell .viewer-controlbar .mobile-viewer-menu {
-    display: inline-flex;
-  }
-  .viewer-shell .viewer-transport .speed-select {
-    min-height: 44px;
-    width: 56px;
-    padding: 7px 6px;
-    gap: 3px;
-    font-size: 13px;
-  }
-  .viewer-shell .viewer-round-controls .round-select {
-    min-height: 44px;
-    width: 108px;
-    font-size: 13px;
-  }
-  .viewer-shell .viewer-round-controls .skip-dead-time {
-    min-width: 44px;
-    min-height: 44px;
-    padding: 11px;
-  }
-  .viewer-shell .viewer-round-controls .skip-dead-time span {
-    display: none;
-  }
-  .viewer-shell .viewer-round-controls .mobile-rounds-toggle {
-    min-height: 44px;
-    padding: 9px;
-    margin-left: 0;
-    font-size: 13px;
-  }
-  .viewer-shell .viewer-transport,
-  .viewer-shell .viewer-panel-controls {
-    gap: 2px;
-  }
-  .viewer-shell .viewer-rounds-rail .round-strip button {
-    min-width: 44px;
-    min-height: 44px;
-    font-size: 12px;
-  }
-  .viewer-shell .viewer-global-actions .icon-button,
-  .viewer-shell .viewer-titlebar .viewer-back,
-  .viewer-shell .viewer-global-actions .account-button {
-    width: 44px;
-    min-width: 44px;
-    min-height: 44px;
-    height: 44px;
-    padding: 7px;
-  }
-  .viewer-shell .viewer-global-actions .account-button > svg {
-    display: none;
-  }
-  .viewer-shell .viewer-global-actions .viewer-signin {
-    min-height: 44px;
-    padding: 6px 9px;
-  }
-  .viewer-shell .viewer-camera-tools .camera-select,
-  .viewer-shell .viewer-camera-tools .options-button {
-    min-height: 44px !important;
-  }
-  .viewer-shell .viewer-camera-tools .options-button {
-    min-width: 44px;
-  }
-  .viewer-shell .viewer-dock .scrubber input {
-    min-height: 44px;
-  }
-  .viewer-shell .viewer-rounds-rail {
-    gap: 0;
-  }
-}
-@media (min-width: 600px) and (max-width: 1100px) and (max-height: 560px) {
-  .viewer-shell .viewer-controlbar {
-    display: flex;
-    gap: 8px;
-  }
-  .viewer-shell .viewer-round-controls {
-    border: 0;
-    padding: 0;
-    margin: 0;
-    gap: 4px;
-    justify-content: center;
-  }
-  .viewer-shell .viewer-round-controls .mobile-rounds-toggle {
-    display: none;
-  }
-  .viewer-shell .viewer-panel-controls .rounds-toggle {
-    display: inline-flex;
-    min-height: 44px;
-  }
-  .viewer-shell .viewer-titlebar {
-    height: 48px;
-    min-height: 48px;
-  }
-  .viewer-shell .viewer-dock {
-    max-height: none;
-  }
-}
-@media (max-height: 460px) and (min-width: 600px) {
-  .viewer-shell .viewer-drawer {
-    bottom: 8px;
-  }
-}
-@media (min-width: 761px) and (max-width: 1100px) and (min-height: 561px) {
-  .viewer-shell .viewer-controlbar .icon-button,
-  .viewer-shell .viewer-controlbar .play-button {
-    min-width: 44px;
-    min-height: 44px;
-    width: 44px;
-    height: 44px;
-  }
-  .viewer-shell .viewer-controlbar .select-control,
-  .viewer-shell .viewer-controlbar .button,
-  .viewer-shell .viewer-rounds-rail .round-strip button,
-  .viewer-shell .moment-menu-trigger,
-  .viewer-shell .viewer-camera-tools .select-control {
-    min-height: 44px;
-  }
-  .viewer-shell .viewer-rounds-rail .round-strip button {
-    min-width: 44px;
-  }
-  .viewer-shell .viewer-dock .scrubber input {
-    min-height: 44px;
-  }
-  .viewer-shell .viewer-titlebar .icon-button,
-  .viewer-shell .viewer-titlebar .select-control,
-  .viewer-shell .viewer-titlebar .account-button {
-    min-width: 44px;
-    min-height: 44px;
-  }
-}
 @media (max-width: 540px) {
   .app-shell .workspace-language {
     font-size: 12px;
@@ -626,34 +349,6 @@
     display: inline;
     white-space: nowrap;
   }
-  .viewer-global-actions .compact-account {
-    padding: 2px 0 2px 5px;
-    min-height: 36px;
-  }
-  .viewer-global-actions .compact-account > svg {
-    display: none;
-  }
-  .viewer-global-actions .compact-account .avatar {
-    width: 26px;
-    height: 26px;
-    font-size: 12px;
-  }
-  .viewer-camera-tools .camera-select {
-    max-width: 180px;
-    padding: 7px 8px;
-    gap: 5px;
-    font-size: 12px;
-  }
-  .viewer-transport .speed-select {
-    width: 48px;
-    min-height: 40px;
-    padding: 6px 2px;
-    font-size: 11px;
-  }
-  .viewer-round-controls .round-select {
-    width: 108px;
-    padding: 6px 7px;
-  }
   .account-tabs {
     gap: 24px;
   }
@@ -675,15 +370,5 @@
   }
   .workspace-signin .workspace-signin-icon {
     display: block;
-  }
-  .viewer-camera-tools .camera-select {
-    max-width: 146px;
-    font-size: 11px;
-  }
-  .viewer-transport .speed-select {
-    width: 44px;
-  }
-  .viewer-round-controls .round-select {
-    width: 103px;
   }
 }

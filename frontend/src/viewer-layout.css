@@ -1,0 +1,804 @@
+/* The replay is the workspace. These are its only shell/density rules;
+   component styles own their instruments, viewer-presentation owns the palette. */
+.viewer-shell {
+  width: 100%;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+.viewer-page {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.viewer-page > .processing,
+.viewer-page > .inline-state {
+  min-height: 100%;
+  padding: 40px 24px;
+}
+.viewer-page > .back-link {
+  position: absolute;
+  top: 24px;
+  left: 24px;
+  z-index: 1;
+}
+.viewer-frame {
+  --viewer-toolbar-height: 48px;
+  --viewer-edge: 16px;
+  --viewer-roster-width: 312px;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--viewer-ground);
+}
+.viewer-frame:fullscreen {
+  width: 100vw;
+  height: 100dvh;
+}
+.viewer-surface {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  overflow: hidden;
+  isolation: isolate;
+}
+.viewer-shell .viewer-stage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  aspect-ratio: auto;
+}
+.viewer-stage > .scene,
+.viewer-stage > .tactical-plot,
+.viewer-shell .scene-fallback {
+  width: 100%;
+  height: 100%;
+}
+.viewer-shell .scene-fallback {
+  background: var(--viewer-ground);
+  color: var(--muted);
+  font-size: 14px;
+}
+.viewer-titlebar {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--viewer-toolbar-height);
+  min-height: var(--viewer-toolbar-height);
+  gap: 16px;
+  padding: 2px var(--viewer-edge);
+  border: 0;
+  background: var(--viewer-plane);
+}
+/* Compact review drawers cover the tab. Inert navigation must also stop
+   painting over their title and close button. Desktop drawers keep their bar. */
+.viewer-frame:has(.viewer-drawer[aria-modal='true']) .viewer-titlebar,
+.viewer-frame:has(.viewer-drawer[aria-modal='true']) .viewer-dock {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+.viewer-identity,
+.viewer-global-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.viewer-identity {
+  flex: 1;
+}
+.viewer-global-actions {
+  flex: none;
+}
+.viewer-match {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+.viewer-match h1 {
+  min-width: 0;
+  max-width: 520px;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 22px;
+  letter-spacing: 0;
+  text-transform: capitalize;
+}
+.viewer-context {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.viewer-context > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.viewer-context > span + span::before {
+  content: '·';
+  margin-inline: 8px;
+  color: var(--faint);
+}
+.viewer-frame .icon-button,
+.viewer-frame .options-button,
+.viewer-frame .select-control,
+.viewer-frame .rounds-toggle,
+.viewer-frame .skip-dead-time {
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+}
+.viewer-frame .icon-button,
+.viewer-frame .play-button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 10px;
+}
+.viewer-frame .icon-button:hover,
+.viewer-frame .options-button:hover,
+.viewer-frame .rounds-toggle:hover,
+.viewer-frame .skip-dead-time:hover,
+.viewer-frame .icon-button[aria-expanded='true'] {
+  background: var(--raised);
+  color: var(--text);
+}
+.viewer-titlebar .options-button,
+.viewer-titlebar .camera-select {
+  flex: none;
+  width: auto;
+  min-width: 44px;
+  min-height: 44px;
+  height: 44px;
+  padding: 10px 12px;
+  gap: 10px;
+  white-space: nowrap;
+}
+.viewer-titlebar .account-button {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  width: 44px;
+  min-height: 44px;
+  height: 44px;
+  padding: 6px;
+}
+.viewer-titlebar .account-button > svg {
+  display: none;
+}
+.viewer-frame .viewer-dock {
+  position: absolute;
+  z-index: 4;
+  inset: auto var(--viewer-edge) var(--viewer-edge);
+  width: auto;
+  max-width: 1568px;
+  margin-inline: auto;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--viewer-plane);
+  color: var(--text);
+  box-shadow: none;
+}
+/* A 44px primary transport, independent 44px scrub target and 32px event
+   targets stay separate. Width, spacing and labels change together. */
+.viewer-controlbar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 16px;
+  min-height: 44px;
+  margin-top: 0;
+}
+.viewer-transport,
+.viewer-round-controls,
+.viewer-panel-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.viewer-panel-controls {
+  justify-content: flex-end;
+}
+.viewer-frame .play-button {
+  border: 0;
+  border-radius: 50%;
+  background: var(--viewer-ink);
+  color: var(--viewer-plane);
+  cursor: pointer;
+}
+.viewer-frame .play-button:hover {
+  filter: none;
+  background: var(--viewer-muted);
+}
+.viewer-frame .play-button:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 3px;
+}
+.viewer-frame .speed-select {
+  width: 72px;
+  min-height: 44px;
+  padding: 10px;
+}
+.viewer-frame .round-select {
+  width: 128px;
+  min-height: 44px;
+  padding: 10px 12px;
+}
+.viewer-frame .skip-dead-time,
+.viewer-frame .rounds-toggle {
+  flex: none;
+  min-height: 44px;
+  padding: 10px 12px;
+  white-space: nowrap;
+}
+.viewer-frame .viewer-panel-controls .labeled-viewer-action {
+  gap: 8px;
+  width: auto;
+  padding-inline: 12px;
+}
+.mobile-rounds-toggle {
+  display: none;
+}
+.viewer-review-rails {
+  min-width: 0;
+}
+.viewer-rounds-rail {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 8px;
+  min-width: 0;
+}
+.viewer-rounds-rail .round-strip {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  margin: 0;
+  padding: 0 2px;
+  scrollbar-width: thin;
+  min-width: 0;
+}
+.viewer-rounds-rail .round-strip button {
+  flex: none;
+  gap: 5px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+}
+.viewer-rounds-rail .round-strip button.active {
+  background: var(--raised);
+  color: var(--text);
+}
+.viewer-rounds-rail .round-strip button i {
+  width: 12px;
+  height: 2px;
+  background: var(--faint);
+}
+.viewer-rounds-rail .round-strip button.active i {
+  background: var(--signal);
+}
+.moment-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.moment-menu-trigger:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+.viewer-shell .crosshair {
+  z-index: 1;
+}
+.viewer-frame .position-radar {
+  top: calc(var(--viewer-toolbar-height) + 16px);
+  left: var(--viewer-edge);
+  width: 96px;
+  height: 96px;
+}
+.viewer-frame .killfeed {
+  top: calc(var(--viewer-toolbar-height) + 16px);
+  right: var(--viewer-edge);
+  max-width: 40%;
+  gap: 4px;
+  pointer-events: none;
+}
+.viewer-frame:has(.viewer-review-hud[data-economy='true']) .killfeed {
+  right: calc(var(--viewer-roster-width) + 32px);
+}
+.viewer-frame .killfeed > div {
+  padding: 5px 10px;
+  border-radius: 4px;
+  background: var(--viewer-plane);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 18px;
+}
+.viewer-frame .killfeed span {
+  color: var(--muted);
+}
+.replay-buffer {
+  position: absolute;
+  z-index: 2;
+  top: 40%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  max-width: calc(100% - 48px);
+  padding: 16px 20px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+  text-align: center;
+}
+.replay-buffer .button {
+  margin: 12px auto 0;
+}
+@media (max-width: 1200px) {
+  .viewer-frame {
+    --viewer-roster-width: 244px;
+  }
+  .viewer-controlbar {
+    gap: 8px;
+  }
+  .viewer-transport,
+  .viewer-round-controls,
+  .viewer-panel-controls {
+    gap: 4px;
+  }
+  .viewer-frame .viewer-panel-controls .labeled-viewer-action {
+    width: 44px;
+    padding: 10px;
+  }
+  .viewer-action-label,
+  .skip-dead-time > span {
+    display: none;
+  }
+  .viewer-frame .skip-dead-time {
+    width: 44px;
+    padding: 10px;
+  }
+}
+@media (max-width: 960px) {
+  .viewer-match {
+    display: block;
+  }
+  .viewer-match h1 {
+    font-size: 14px;
+    line-height: 18px;
+  }
+  .viewer-context {
+    font-size: 11px;
+    line-height: 14px;
+  }
+  .viewer-titlebar .options-button {
+    width: 44px;
+    padding: 10px;
+  }
+  .options-button > span {
+    display: none;
+  }
+  .viewer-controlbar {
+    grid-template-columns: 1fr auto;
+  }
+  .viewer-round-controls,
+  .viewer-controlbar .desktop-viewer-action,
+  .desktop-moment-menu {
+    display: none;
+  }
+}
+@media (max-width: 760px) {
+  .viewer-frame {
+    --viewer-edge: 8px;
+    --viewer-roster-width: 180px;
+  }
+  .viewer-titlebar {
+    gap: 4px;
+    padding-inline: 4px;
+  }
+  .viewer-identity,
+  .viewer-global-actions {
+    gap: 2px;
+  }
+  .viewer-titlebar .camera-select {
+    width: 44px;
+    padding: 10px;
+    justify-content: center;
+  }
+  .camera-select > span:not(.select-leading-icon) {
+    display: none;
+  }
+  .viewer-context .viewer-map-status {
+    display: none;
+  }
+  .viewer-frame .viewer-dock {
+    padding: 6px 8px;
+    border-radius: 8px;
+  }
+  .viewer-controlbar .transport-step,
+  .viewer-panel-controls .rounds-toggle {
+    display: none;
+  }
+  .viewer-frame .speed-select {
+    width: 64px;
+  }
+  .viewer-frame .position-radar {
+    top: calc(var(--viewer-toolbar-height) + 12px);
+    width: 64px;
+    height: 64px;
+  }
+  .viewer-frame:has(.viewer-review-hud[data-economy='true']) .killfeed {
+    top: calc(var(--viewer-toolbar-height) + 86px);
+    left: 8px;
+    right: 196px;
+    max-width: none;
+  }
+  .viewer-frame .killfeed > div {
+    padding: 4px 6px;
+    font-size: 11px;
+    line-height: 15px;
+    overflow-wrap: anywhere;
+  }
+}
+@media (max-height: 560px) {
+  .viewer-frame {
+    --viewer-roster-width: 180px;
+    --viewer-edge: 8px;
+  }
+  .viewer-frame .viewer-dock {
+    padding-block: 4px;
+  }
+  .viewer-controlbar {
+    grid-template-columns: 1fr auto;
+  }
+  .viewer-round-controls,
+  .viewer-controlbar .desktop-viewer-action,
+  .desktop-moment-menu {
+    display: none;
+  }
+  .viewer-frame .position-radar {
+    width: 56px;
+    height: 56px;
+  }
+  .viewer-frame.has-review-hud:has(.review-inputs-panel) .position-radar {
+    left: 208px;
+  }
+  .viewer-frame:has(.review-inputs-panel) .communication-overlay {
+    left: 208px;
+    width: calc(100% - 224px);
+    transform: none;
+  }
+}
+
+/* Progressive review drawers share this frame in every viewport. */
+.viewer-drawer {
+  position: absolute;
+  top: calc(var(--viewer-toolbar-height) + 16px);
+  right: var(--viewer-edge);
+  bottom: calc(var(--viewer-dock-height, 180px) + 16px);
+  width: 360px;
+  max-width: calc(100% - 32px);
+  background: var(--surface);
+  border: 0;
+  border-radius: 8px;
+  z-index: 5;
+  box-shadow: 0 8px 30px #0004;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.viewer-drawer-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  padding: 10px 13px 10px 18px;
+  border: 0;
+  flex-shrink: 0;
+}
+.viewer-drawer-heading h2 {
+  font-size: 16px;
+  font-weight: 500;
+}
+.viewer-drawer-content {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  flex: 1;
+  min-height: 0;
+  padding: 18px;
+}
+.viewer-drawer .roster-panel {
+  display: block;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+}
+.viewer-drawer .team-roster {
+  margin: 0 0 23px;
+}
+.viewer-drawer .team-roster h3 {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted);
+  margin-bottom: 8px;
+  min-height: 0;
+  align-items: center;
+}
+.viewer-drawer .team-dot {
+  margin: 0;
+}
+.viewer-drawer .player-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 52px;
+  padding: 8px;
+  border-radius: 5px;
+  gap: 10px;
+  margin: 0;
+  background: none;
+  color: var(--text);
+}
+.viewer-drawer .player-row:hover,
+.viewer-drawer .player-row.selected {
+  background: var(--raised);
+}
+.viewer-drawer .player-number {
+  font-size: 11px;
+  width: 15px;
+  flex-shrink: 0;
+}
+.viewer-drawer .player-identity {
+  flex: 1;
+  min-width: 0;
+}
+.viewer-drawer .player-identity strong {
+  font-size: 13px;
+  font-weight: 500;
+  max-width: 190px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.viewer-drawer .player-identity small {
+  font-size: 11px;
+  line-height: 1.5;
+  max-width: 190px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.viewer-drawer .health {
+  font-size: 12px;
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--text);
+}
+.viewer-drawer .health small {
+  font-size: 11px;
+}
+.viewer-drawer .roster-foot {
+  font-size: 12px;
+  line-height: 1.6;
+  border-color: var(--border);
+  padding-top: 14px;
+  margin: 0;
+}
+.viewer-drawer .note-form {
+  display: flex;
+  padding: 0 0 19px;
+  margin: 0 0 14px;
+  border-top: 0;
+  border-bottom: 1px solid var(--border);
+  gap: 12px;
+  align-items: stretch;
+}
+.viewer-drawer .note-form label {
+  flex-basis: 100%;
+  font-size: 13px;
+  gap: 8px;
+}
+.viewer-drawer .note-form .button {
+  font-size: 12px;
+  align-self: flex-start;
+}
+.viewer-drawer .button,
+.viewer-drawer .text-button {
+  min-height: 44px;
+}
+.viewer-drawer .note-form input {
+  min-height: 42px;
+  font-size: 13px;
+}
+.viewer-drawer .event-panel {
+  margin: 0;
+}
+.viewer-drawer .tabs {
+  display: flex;
+  gap: 20px;
+  overflow: auto;
+  border-bottom: 1px solid var(--border);
+}
+.viewer-drawer .tabs button {
+  padding: 10px 0 14px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.viewer-drawer .tabs button.active {
+  color: var(--text);
+}
+.viewer-drawer .tabs button.active:after {
+  background: var(--text);
+}
+.viewer-drawer .tabs button > span {
+  font-size: 11px;
+  color: var(--faint);
+}
+.viewer-drawer .event-list {
+  display: block;
+}
+.viewer-drawer .event-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  border-color: var(--border);
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 14px 0;
+  min-height: 44px;
+  text-align: left;
+  width: 100%;
+  background: none;
+  color: var(--text);
+}
+.viewer-drawer .event-row > span:nth-child(2) {
+  overflow-wrap: anywhere;
+  min-width: 0;
+  flex: 1;
+}
+.viewer-drawer .event-time {
+  width: 34px;
+  font-size: 11px;
+  flex-shrink: 0;
+  color: var(--faint);
+}
+.viewer-drawer .event-row svg {
+  margin: 3px 0 0;
+  flex-shrink: 0;
+}
+.viewer-drawer .event-row strong {
+  font-weight: 500;
+}
+.viewer-drawer .event-row:hover {
+  background: var(--raised);
+}
+.viewer-drawer .note-row {
+  min-width: 0;
+  gap: 6px;
+}
+.viewer-drawer .note-row .icon-button {
+  min-width: 44px;
+  min-height: 44px;
+  width: 44px;
+  padding: 6px;
+}
+.viewer-drawer .panel-empty {
+  font-size: 13px;
+  line-height: 1.7;
+  padding: 20px 0;
+}
+.viewer-drawer .event-list > p {
+  font-size: 12px;
+  line-height: 1.6;
+  margin-top: 15px;
+}
+@media (max-width: 540px), (max-height: 560px) {
+  .viewer-drawer {
+    inset: 8px;
+    z-index: 8;
+    width: auto;
+    max-width: none;
+    border-radius: 8px;
+  }
+  .viewer-drawer-heading {
+    padding: 10px 12px 10px 20px;
+  }
+  .viewer-drawer-content {
+    padding: 16px 20px;
+  }
+}
+@media (max-width: 599px) and (max-height: 560px) {
+  .viewer-frame .viewer-dock {
+    max-height: calc(100% - 16px);
+    overflow-y: auto;
+  }
+}
+/* A short landscape screen needs a different arrangement, not smaller text:
+   timeline above, transport / timecodes / review below, secondary jobs in More. */
+@media (min-width: 600px) and (max-height: 560px) {
+  .viewer-frame .viewer-dock {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 0 12px;
+  }
+  .replay-timeline,
+  .viewer-controlbar {
+    display: contents;
+  }
+  .replay-timeline-plot {
+    grid-row: 1;
+    grid-column: 1 / -1;
+  }
+  .timeline-context {
+    grid-row: 2;
+    grid-column: 2;
+    justify-content: center;
+  }
+  .timeline-context-label {
+    display: none;
+  }
+  .viewer-transport {
+    grid-row: 2;
+    grid-column: 1;
+  }
+  .viewer-panel-controls {
+    grid-row: 2;
+    grid-column: 3;
+  }
+  .viewer-review-rails {
+    grid-row: 3;
+    grid-column: 1 / -1;
+  }
+}

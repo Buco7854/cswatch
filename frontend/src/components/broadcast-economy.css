@@ -1,6 +1,7 @@
 /* One edge stack, two recorded sides. The shared viewer presentation owns every
    palette value so the picture, controls and lineup surfaces agree per theme. */
 .broadcast-economy {
+  position: relative;
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -17,13 +18,55 @@
   flex-direction: column;
   gap: 6px;
   min-height: 0;
-  max-height: 100%;
+  max-height: min(100%, var(--lineup-viewport-height, 100%));
   flex: 1;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
+  scrollbar-gutter: stable;
+  scrollbar-color: var(--broadcast-faint) var(--broadcast-plane);
   touch-action: pan-y;
   pointer-events: auto;
+}
+.broadcast-lineup-stack::-webkit-scrollbar {
+  width: 6px;
+}
+.broadcast-lineup-stack::-webkit-scrollbar-track {
+  background: var(--broadcast-plane);
+}
+.broadcast-lineup-stack::-webkit-scrollbar-thumb {
+  min-height: 32px;
+  border-radius: 3px;
+  background: var(--broadcast-faint);
+}
+.broadcast-economy[data-scroll-cue] .broadcast-lineup-stack {
+  padding-right: 8px;
+  scrollbar-width: none;
+}
+.broadcast-economy[data-scroll-cue] .broadcast-lineup-stack::-webkit-scrollbar {
+  display: none;
+}
+.broadcast-scroll-cue {
+  display: none;
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 3px;
+  height: var(--lineup-scroll-height);
+  border-radius: 3px;
+  background: var(--broadcast-raised);
+  pointer-events: none;
+}
+.broadcast-economy[data-scrollable='true'] .broadcast-scroll-cue {
+  display: block;
+}
+.broadcast-scroll-cue > span {
+  display: block;
+  width: 100%;
+  height: var(--lineup-scroll-thumb);
+  border-radius: inherit;
+  background: var(--broadcast-faint);
+  transform: translateY(var(--lineup-scroll-offset));
 }
 .broadcast-bank {
   --team-ink: var(--team-ct);
@@ -33,15 +76,8 @@
   min-width: 0;
   background: var(--broadcast-plane);
   color: var(--broadcast-text);
-}
-.broadcast-bank::before {
-  position: absolute;
-  inset: 0 auto 0 0;
-  z-index: 1;
-  width: 3px;
-  background: var(--team-ink);
-  pointer-events: none;
-  content: '';
+  border-radius: 6px;
+  overflow: hidden;
 }
 .broadcast-bank[data-team='2'] {
   --team-ink: var(--team-t);
@@ -55,15 +91,15 @@
 .broadcast-player {
   min-width: 0;
 }
-/* One 24px name/weapon/HP line +14px kit line +6px padding =44px.
-   Ten touch-sized player rows plus the 6px side separation occupy446px. */
+/* Tablet baseline: 26px identity + 14px equipment + 6px padding = 46px.
+   Desktop gets a 28px identity row; phone keeps a 24px row and 44px target. */
 .broadcast-player-select {
   position: relative;
   display: flex;
   flex-direction: column;
   width: 100%;
-  min-height: 44px;
-  padding: 3px 9px;
+  min-height: 46px;
+  padding: 3px 10px;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -88,8 +124,8 @@
 }
 .broadcast-player-heading {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 84px 32px;
-  grid-template-rows: 24px;
+  grid-template-columns: minmax(0, 1fr) 82px 34px;
+  grid-template-rows: 26px;
   align-items: center;
   column-gap: 6px;
   width: 100%;
@@ -103,9 +139,9 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--broadcast-text);
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: 18px;
-  font-weight: 700;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
   line-height: 20px;
 }
 .broadcast-player-name > svg {
@@ -142,6 +178,11 @@
   align-items: center;
   min-width: 0;
 }
+.broadcast-weapon-identity .broadcast-unavailable {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* Shared safe game-icon primitives are also used in the objective/timeline. */
 .equipment-glyph {
   width: 15px;
@@ -169,17 +210,19 @@
 }
 .broadcast-ammo {
   flex-shrink: 0;
+  min-width: 14px;
   color: var(--broadcast-muted);
-  font-size: 11px;
+  font-size: 12px;
+  text-align: right;
   font-variant-numeric: tabular-nums;
 }
 .broadcast-player-equipment {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   width: 100%;
   box-sizing: border-box;
-  padding-right: 38px;
+  padding-right: 0;
   min-width: 0;
   min-height: 14px;
   color: var(--broadcast-muted);
@@ -187,7 +230,7 @@
 .broadcast-cash {
   flex: none;
   color: var(--broadcast-muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 14px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -197,7 +240,7 @@
   align-items: center;
   flex: 1;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 5px;
   min-width: 0;
 }
 .broadcast-utility-item,
@@ -208,23 +251,23 @@
 }
 .broadcast-utility-item .equipment-glyph,
 .broadcast-no-utility .equipment-glyph {
-  width: 12px;
+  width: 14px;
   height: 14px;
 }
 .broadcast-utility-item b {
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1;
   font-weight: 500;
 }
 .broadcast-no-utility {
   flex: 1;
   color: var(--broadcast-faint);
-  font-size: 11px;
+  font-size: 12px;
 }
 .broadcast-protection {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   margin-left: auto;
   color: var(--broadcast-faint);
   flex-shrink: 0;
@@ -234,22 +277,25 @@
   align-items: center;
 }
 .broadcast-protection .equipment-glyph {
-  width: 12px;
+  width: 14px;
   height: 14px;
 }
 .broadcast-armor {
   gap: 2px;
-  font-size: 11px;
+  font-size: 12px;
 }
 .broadcast-bomb {
   color: var(--team-ink);
 }
 .broadcast-health-track {
   position: absolute;
-  bottom: 10px;
-  right: 9px;
-  width: 32px;
+  bottom: 0;
+  left: 10px;
+  right: 10px;
   height: 2px;
+  background: var(--team-wash);
+}
+.broadcast-player[data-health='unknown'] .broadcast-health-track {
   background: var(--broadcast-raised);
 }
 .broadcast-health-track > span {
@@ -266,7 +312,7 @@
 }
 .broadcast-player.is-out .broadcast-active-weapon,
 .broadcast-player.is-out .broadcast-player-equipment {
-  opacity: 0.55;
+  color: var(--broadcast-faint);
 }
 .broadcast-unavailable {
   min-width: 0;
@@ -390,13 +436,43 @@
   font-size: 12px;
   line-height: 1.5;
 }
-@media (max-width: 760px), (max-height: 560px) {
+@media (min-width: 1101px) and (min-height: 650px) {
+  .broadcast-player-select {
+    min-height: 48px;
+    padding-inline: 12px;
+  }
+  .broadcast-player-heading {
+    grid-template-columns: minmax(0, 1fr) 96px 40px;
+    grid-template-rows: 28px;
+    column-gap: 8px;
+  }
+  .broadcast-health-value {
+    font-size: 26px;
+  }
+  .broadcast-active-weapon {
+    gap: 6px;
+  }
+  .broadcast-player-select .equipment-glyph.is-weapon {
+    width: 72px;
+    height: 18px;
+  }
+  .broadcast-health-track {
+    left: 12px;
+    right: 12px;
+  }
+}
+@media (max-width: 760px), (max-height: 649px) {
+  .broadcast-player-select {
+    min-height: 44px;
+    padding: 3px 9px;
+  }
   .broadcast-player-heading {
     grid-template-columns: minmax(0, 1fr) 55px 28px;
+    grid-template-rows: 24px;
     column-gap: 4px;
   }
   .broadcast-player-name {
-    font-size: 16px;
+    font-size: 13px;
     line-height: 18px;
   }
   .broadcast-health-value {
@@ -411,9 +487,28 @@
   }
   .broadcast-player-equipment {
     gap: 4px;
-    padding-right: 34px;
+  }
+  .broadcast-ammo,
+  .broadcast-cash,
+  .broadcast-utility-item b,
+  .broadcast-no-utility,
+  .broadcast-armor {
+    font-size: 11px;
+  }
+  .broadcast-ammo {
+    min-width: 12px;
+  }
+  .broadcast-utility,
+  .broadcast-protection {
+    gap: 4px;
+  }
+  .broadcast-utility-item .equipment-glyph,
+  .broadcast-no-utility .equipment-glyph,
+  .broadcast-protection .equipment-glyph {
+    width: 12px;
   }
   .broadcast-health-track {
-    width: 28px;
+    left: 9px;
+    right: 9px;
   }
 }

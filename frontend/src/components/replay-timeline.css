@@ -14,7 +14,7 @@
   flex: none;
   min-width: 38px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 .timeline-duration {
   text-align: right;
@@ -26,7 +26,7 @@
   white-space: nowrap;
   text-overflow: ellipsis;
   color: var(--faint);
-  font-size: 11px;
+  font-size: 12px;
   text-align: center;
 }
 .replay-timeline-plot {
@@ -76,7 +76,7 @@
   opacity: 0.55;
 }
 .timeline-event-stems .timeline-stem-kill {
-  stroke: var(--signal);
+  stroke: var(--faint);
 }
 .timeline-event-stems .timeline-stem-death {
   stroke: var(--negative, #d76a74);
@@ -115,7 +115,7 @@
   background: var(--raised);
 }
 .timeline-event-marker.event-kill {
-  color: var(--signal);
+  color: var(--text);
 }
 .timeline-event-marker.event-death {
   color: var(--negative, #d76a74);
