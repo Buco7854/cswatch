@@ -7,6 +7,9 @@ import type {
   MapCatalog,
   MapIdentity,
   MapResolution,
+  OfficialMapInventory,
+  LatestOfficialSelection,
+  OfficialMapSource,
 } from '../../shared/map-acquisition.js';
 import { mapIdentitySchema, officialMapName } from './map-identity.js';
 import { bytesFrom, fileVersion, regularFile, withDirectory } from './map-asset-files.js';
@@ -27,6 +30,98 @@ export const officialMapSourceSchema = z
     mapSha256: z.string().regex(/^[a-f0-9]{64}$/),
   })
   .strict();
+export const officialMapInventoryLimits = {
+  bytes: 128 * 1024,
+  maps: 256,
+  maxAgeSeconds: 24 * 60 * 60,
+} as const;
+const officialMapInventoryItemSchema = z
+  .object({
+    map: officialMapName,
+    sha1: z.string().regex(/^[a-f0-9]{40}$/),
+    bytes: z
+      .number()
+      .int()
+      .min(1)
+      .max(2 * 1024 ** 3),
+  })
+  .strict();
+export const officialMapInventorySchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    appId: z.literal(730),
+    depotId: z.literal(2347770),
+    manifest: decimal64,
+    updatedAt: z.number().int().min(0).max(8640000000000),
+    maps: z.array(officialMapInventoryItemSchema).min(1).max(officialMapInventoryLimits.maps),
+  })
+  .strict()
+  .refine((value) => new Set(value.maps.map((item) => item.map)).size === value.maps.length);
+export const latestOfficialSelectionSchema = officialMapInventoryItemSchema
+  .extend({
+    appId: z.literal(730),
+    depotId: z.literal(2347770),
+    manifest: decimal64,
+  })
+  .strict();
+export function latestMapRequestId(value: LatestOfficialSelection): string {
+  const item = latestOfficialSelectionSchema.parse(value);
+  return createHash('sha256')
+    .update(
+      JSON.stringify({
+        kind: 'latest-official',
+        map: item.map,
+        appId: item.appId,
+        depotId: item.depotId,
+        manifest: item.manifest,
+        sha1: item.sha1,
+        bytes: item.bytes,
+      }),
+    )
+    .digest('hex');
+}
+export function latestMapPackId(map: string, value: OfficialMapSource): string {
+  officialMapName.parse(map);
+  const source = officialMapSourceSchema.parse(value);
+  return createHash('sha256')
+    .update(
+      JSON.stringify({
+        kind: 'latest-official-content',
+        map,
+        appId: source.appId,
+        depotId: source.depotId,
+        manifest: source.manifest,
+        mapSha256: source.mapSha256,
+      }),
+    )
+    .digest('hex');
+}
+export function latestOfficialSelection(
+  inventory: OfficialMapInventory,
+  map: string,
+): LatestOfficialSelection | undefined {
+  const checked = officialMapInventorySchema.parse(inventory);
+  const item = checked.maps.find((item) => item.map === map);
+  if (!item) return;
+  return { ...item, appId: 730, depotId: 2347770, manifest: checked.manifest };
+}
+export const latestMapPackMarkerSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    kind: z.literal('latest-official'),
+    packId: z.string().regex(/^[a-f0-9]{64}$/),
+    requestId: z.string().regex(/^[a-f0-9]{64}$/),
+    selection: latestOfficialSelectionSchema,
+    source: officialMapSourceSchema,
+    preparedAt: z.number().int().min(0).max(8640000000000),
+  })
+  .strict()
+  .refine(
+    (value) =>
+      value.requestId === latestMapRequestId(value.selection) &&
+      value.packId === latestMapPackId(value.selection.map, value.source) &&
+      value.source.manifest === value.selection.manifest,
+  );
 export const approvedMapEntrySchema = z
   .object({
     identity: approvedIdentitySchema,
@@ -106,4 +201,73 @@ export function resolveMap(
   if (unique.size !== 1) return { status: 'ambiguous' };
   const approval = unique.values().next().value!;
   return { status: 'approved', approval, packId: mapPackId(approval) };
+}
+
+const identityFields = [
+  'map',
+  'buildNum',
+  'patchVersion',
+  'demoVersionGuid',
+  'addonPresence',
+] as const;
+
+/** Operator diagnostics only. A matched unsigned header tuple selects an
+ * approval; it cannot establish the map bytes originally used by the server.
+ * Keep this projection free of replay actors, server addresses and local paths. */
+export function diagnoseMapIdentity(value: unknown, catalog?: unknown, expectedMap?: string) {
+  const parsed = mapIdentitySchema.safeParse(value);
+  const identity = parsed.success ? parsed.data : undefined;
+  const checked = catalog === undefined ? undefined : mapCatalogSchema.safeParse(catalog);
+  const missingFields = identityFields.filter((field) => identity?.[field] === undefined);
+  const issues: string[] = [];
+  if (value === undefined || value === null) issues.push('identity_missing');
+  else if (!identity) issues.push('identity_invalid');
+  const mapMismatch =
+    expectedMap !== undefined && identity !== undefined && identity.map !== expectedMap;
+  if (mapMismatch) issues.push('replay_map_mismatch');
+  if (identity?.conflicted) issues.push('recorded_fields_conflict');
+  if (identity?.addonPresence === 'present') issues.push('addon_content');
+  if (missingFields.length) issues.push('identity_incomplete');
+  if (checked && !checked.success) issues.push('catalog_invalid');
+  const complete =
+    identity &&
+    !identity.conflicted &&
+    !mapMismatch &&
+    approvedIdentitySchema.safeParse(identity).success;
+  const resolution =
+    complete && !checked
+      ? { status: 'not_evaluated' as const }
+      : resolveMap(mapMismatch ? undefined : identity, checked?.success ? checked.data : undefined);
+  if (resolution.status === 'unmapped') issues.push('no_approved_source');
+  if (resolution.status === 'ambiguous') issues.push('multiple_approved_sources');
+  const candidates = new Map<string, ApprovedMapEntry>();
+  if (complete && checked?.success)
+    for (const entry of checked.data.entries)
+      if (identityFields.every((field) => entry.identity[field] === identity[field]))
+        candidates.set(canonicalMapApproval(entry), entry);
+  const project = (entry: ApprovedMapEntry) => ({
+    packId: mapPackId(entry),
+    source: entry.source,
+    ...(entry.assetVersion === undefined ? {} : { assetVersion: entry.assetVersion }),
+  });
+  return {
+    schemaVersion: 1 as const,
+    recordedIdentity: identity ?? null,
+    missingFields,
+    issues,
+    resolution: resolution.status,
+    catalog: {
+      status: !checked ? 'not_provided' : checked.success ? 'valid' : 'invalid',
+      entries: checked?.success ? checked.data.entries.length : 0,
+      distinctMatchingApprovals: candidates.size,
+    },
+    candidates: [...candidates.values()].map(project),
+    selected: resolution.status === 'approved' ? project(resolution.approval) : null,
+    evidence: {
+      recording: 'unsigned-header-metadata',
+      selection: resolution.status === 'approved' ? 'operator-approval' : 'none',
+      originalMapContent: 'not-verified',
+      sourceAvailability: 'not-checked',
+    },
+  };
 }

@@ -22,12 +22,16 @@ export default function LandingBackdrop({ enabled }: { enabled: boolean }) {
   useEffect(() => {
     if (!enabled) {
       setPreview(null);
+      setReadyImage('');
       return;
     }
     const controller = new AbortController();
     void api<unknown>('/api/map-preview', { signal: controller.signal })
       .then((value) => {
-        if (!controller.signal.aborted) setPreview(localPreview(value));
+        if (!controller.signal.aborted) {
+          setReadyImage('');
+          setPreview(localPreview(value));
+        }
       })
       .catch(() => {});
     return () => controller.abort();

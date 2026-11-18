@@ -1,101 +1,56 @@
-/* A single upload instrument, with one shared edge through title, file and policy. */
+/* One 480px upload instrument on the shared 1200px canvas. Optional map artwork
+   is page atmosphere, without a separate media panel or caption. */
 .public-site {
+  --ground: #111315;
+  --surface: #1b1e20;
+  --raised: #25292b;
+  --text: #f3f4f1;
+  --muted: #b7bdb9;
+  --faint: #a3aba6;
+  --border: #363e3b;
+  --control: #5a6860;
+  --public-pad: clamp(20px, 4vw, 64px);
+  --landing-image-opacity: 0.28;
+  min-height: 100svh;
   position: relative;
   isolation: isolate;
-  overflow: clip;
-  min-height: 100svh;
   display: flex;
   flex-direction: column;
   background: var(--ground);
   color: var(--text);
-  --public-pad: clamp(20px, 5vw, 64px);
 }
-/* The actual map fills the surrounding space; a neutral photographic scrim
-   protects the centered 680px upload column and fades into the page ground.
-   Foreground controls remain opaque, with no blur or additional card shell. */
-.landing-backdrop {
-  position: absolute;
-  inset: 0 0 auto;
-  width: 100%;
-  height: min(100svh, 1040px);
-  overflow: hidden;
-  pointer-events: none;
-  user-select: none;
-  z-index: 0;
-  opacity: 0;
+[data-theme='light'] .public-site {
+  --ground: #f2f3ef;
+  --surface: #ffffff;
+  --raised: #ecefea;
+  --text: #202622;
+  --muted: #59665d;
+  --faint: #5d6b61;
+  --border: #ced8d0;
+  --control: #97ad9e;
+  --landing-image-opacity: 0.55;
 }
-.landing-backdrop[data-ready='true'] {
-  opacity: 1;
-}
-.landing-backdrop-image {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: 50% 36%;
-  filter: saturate(0.72) brightness(0.84);
-}
-.landing-backdrop::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--ground) 50%, transparent) 0%,
-      color-mix(in srgb, var(--ground) 24%, transparent) 24%,
-      color-mix(in srgb, var(--ground) 72%, transparent) 62%,
-      var(--ground) 96%
-    ),
-    linear-gradient(
-      90deg,
-      color-mix(in srgb, var(--ground) 18%, transparent) 0%,
-      color-mix(in srgb, var(--ground) 62%, transparent) 27%,
-      color-mix(in srgb, var(--ground) 82%, transparent) 50%,
-      color-mix(in srgb, var(--ground) 62%, transparent) 73%,
-      color-mix(in srgb, var(--ground) 18%, transparent) 100%
-    );
-}
-[data-theme='light'] .landing-backdrop-image {
-  filter: saturate(0.7) brightness(1.05);
-}
-[data-theme='light'] .landing-backdrop::after {
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--ground) 54%, transparent) 0%,
-      color-mix(in srgb, var(--ground) 38%, transparent) 26%,
-      color-mix(in srgb, var(--ground) 78%, transparent) 65%,
-      var(--ground) 96%
-    ),
-    linear-gradient(
-      90deg,
-      color-mix(in srgb, var(--ground) 20%, transparent) 0%,
-      color-mix(in srgb, var(--ground) 68%, transparent) 27%,
-      color-mix(in srgb, var(--ground) 90%, transparent) 50%,
-      color-mix(in srgb, var(--ground) 68%, transparent) 73%,
-      color-mix(in srgb, var(--ground) 20%, transparent) 100%
-    );
+.public-header,
+.public-footer,
+.public-site > main {
+  width: min(1200px, calc(100% - var(--public-pad) * 2));
+  margin-inline: auto;
 }
 .public-header,
 .public-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  width: min(1240px, 100%);
-  margin-inline: auto;
-  padding-inline: var(--public-pad);
   gap: 24px;
-  position: relative;
-  z-index: 1;
 }
 .public-header {
-  min-height: 88px;
+  min-height: 84px;
   padding-block: 20px;
 }
 .public-utilities {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
 }
 .public-utilities .button,
@@ -106,45 +61,70 @@
 .public-utilities .language-control {
   background: transparent;
   border: 0;
-  padding-inline: 10px;
+  padding-inline: 8px;
 }
 .public-utilities .language-code {
   display: none;
 }
 .public-utilities .public-signin {
   border: 0;
-  background: var(--raised);
+  background: transparent;
   gap: 8px;
-  padding: 10px 14px;
+  padding: 10px 0 10px 8px;
 }
 .public-site > main {
-  position: relative;
-  z-index: 1;
   flex: 1;
   display: flex;
   align-items: center;
-  width: 100%;
-  padding: 48px var(--public-pad) 64px;
+  padding-block: 28px;
 }
 .landing-upload {
-  width: min(680px, 100%);
-  margin-inline: auto;
+  width: 100%;
+  padding-block: 48px;
+}
+.landing-backdrop {
+  position: fixed;
+  z-index: -1;
+  inset: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  user-select: none;
+  mask-image: linear-gradient(
+    90deg,
+    transparent 45%,
+    #000 85%
+  ); /* taste-skill-ignore: requested real-image fade */
+  transition: opacity 700ms ease;
+}
+.landing-backdrop[data-ready='true'] {
+  opacity: var(--landing-image-opacity);
+}
+.landing-backdrop-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 65% 50%;
+}
+.landing-workspace {
+  width: min(480px, 100%);
+  min-width: 0;
 }
 .landing-copy {
-  margin-bottom: 28px;
+  margin-bottom: 24px;
 }
 .landing-copy h1 {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: clamp(38px, 3.2vw, 44px);
+  font-size: 32px;
   font-weight: 600;
-  line-height: 1.08;
+  line-height: 1.1;
   letter-spacing: -0.015em;
-  margin: 0 0 12px;
+  margin: 0 0 10px;
 }
 .landing-copy > p {
   margin: 0;
   font-size: 15px;
-  line-height: 1.6;
+  line-height: 1.55;
   color: var(--muted);
 }
 .landing-import .upload-panel {
@@ -155,13 +135,13 @@
 .landing-import .upload-source-choice {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 16px;
   margin: 0 0 12px;
 }
 .landing-import .upload-source-choice > span {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 14px;
 }
 .landing-import .upload-source-choice .select-control {
   min-height: 44px;
@@ -170,27 +150,26 @@
   border: 0;
   background: transparent;
   padding: 10px 0 10px 12px;
-  font-size: 13px;
+  font-size: 14px;
 }
 .landing-import .dropzone {
-  min-height: 244px;
+  min-height: 156px;
   margin: 0;
-  padding: 28px 20px;
+  padding: 24px 20px;
   width: 100%;
   border: 0;
-  border-radius: 12px;
-  background: var(--surface);
+  border-radius: 4px;
+  background: var(--raised);
 }
 .landing-import .dropzone:hover,
 .landing-import .dropzone.dragging {
-  background: color-mix(in srgb, var(--surface) 94%, var(--text));
+  background: color-mix(in srgb, var(--raised) 94%, var(--text));
 }
 .landing-import .dropzone > svg {
-  margin-bottom: 16px;
-  color: var(--muted);
+  display: none;
 }
 .landing-import .dropzone strong {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 500;
 }
 .landing-import .dropzone > .upload-file-action {
@@ -199,18 +178,18 @@
   justify-content: center;
   gap: 8px;
   min-height: 44px;
-  margin-top: 16px;
+  margin-top: 0;
   padding: 10px 16px;
-  border-radius: 6px;
+  border-radius: 4px;
   background: var(--text);
   color: var(--ground);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
 }
 .landing-import .dropzone small {
-  margin-top: 16px;
+  margin-top: 12px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
 }
 .landing-import .dropzone progress {
@@ -218,10 +197,10 @@
   accent-color: var(--text);
 }
 .landing-import .demo-import-guide {
-  margin-bottom: 0;
-  padding: 24px;
-  border-radius: 12px;
-  background: var(--surface);
+  margin: 0;
+  padding: 20px;
+  border-radius: 4px;
+  background: var(--raised);
 }
 .landing-import .demo-import-guide h3 {
   margin: 0 0 8px;
@@ -231,22 +210,22 @@
 .landing-import .demo-import-guide p {
   margin: 8px 0 0;
   color: var(--muted);
-  font-size: 13px;
-  line-height: 1.65;
+  font-size: 14px;
+  line-height: 1.6;
 }
 .landing-import .demo-import-guide ol {
   display: grid;
   gap: 20px;
   margin: 24px 0;
   padding-left: 20px;
-  font-size: 13px;
+  font-size: 14px;
 }
 .landing-import .demo-import-guide li > .button {
   margin-top: 12px;
 }
 .landing-import .demo-import-guide details {
   margin-block: 24px;
-  font-size: 13px;
+  font-size: 14px;
 }
 .landing-import .demo-import-guide summary {
   padding-block: 8px;
@@ -256,7 +235,7 @@
 }
 .landing-import .demo-import-guide .button {
   min-height: 44px;
-  border-radius: 6px;
+  border-radius: 4px;
   clip-path: none;
 }
 .landing-import .demo-import-guide .button.primary {
@@ -272,42 +251,23 @@
 }
 .landing-privacy > svg {
   flex: none;
-  margin-top: 3px;
+  margin-top: 2px;
 }
 .landing-privacy > p {
   margin: 0;
-  font-size: 12px;
-  line-height: 1.7;
-}
-.landing-account {
-  margin-top: 28px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
-}
-.landing-account .text-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 44px;
-  padding: 8px 0;
   font-size: 13px;
-  color: var(--muted);
-  text-align: left;
-}
-.landing-account .text-button:hover {
-  color: var(--text);
+  line-height: 1.65;
 }
 .landing-import .upload-signin {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   gap: 20px;
-  min-height: 268px;
-  padding: 32px;
-  border-radius: 12px;
-  background: var(--surface);
-  text-align: center;
+  min-height: 240px;
+  padding: 24px;
+  border-radius: 4px;
+  background: var(--raised);
 }
 .landing-import .upload-signin > svg {
   color: var(--muted);
@@ -319,11 +279,20 @@
   font-size: 14px;
   line-height: 1.6;
 }
+.landing-import .upload-signin .button.primary {
+  background: var(--text);
+  color: var(--ground);
+  border: 0;
+  border-radius: 4px;
+}
 .public-footer {
-  padding-block: 20px;
+  padding-block: 16px;
   color: var(--faint);
   font-size: 12px;
   line-height: 1.5;
+}
+.public-footer > span {
+  max-width: 380px;
 }
 .public-footer > a {
   display: inline-flex;
@@ -333,16 +302,25 @@
   color: var(--text);
   white-space: nowrap;
 }
-@media (max-width: 600px) {
+@media (max-width: 900px) {
+  .landing-workspace {
+    margin-inline: auto;
+  }
   .landing-backdrop {
-    height: min(88svh, 760px);
+    mask-image: linear-gradient(
+      180deg,
+      #000,
+      transparent 34%
+    ); /* taste-skill-ignore: requested real-image fade */
   }
-  .landing-backdrop-image {
-    object-position: 62% 24%;
+  .landing-backdrop[data-ready='true'] {
+    opacity: var(--landing-image-opacity);
   }
+}
+@media (max-width: 600px) {
   .public-header {
-    min-height: 76px;
-    padding-block: 16px;
+    min-height: 72px;
+    padding-block: 14px;
     gap: 12px;
   }
   .public-header .brand {
@@ -374,32 +352,36 @@
     display: none;
   }
   .public-site > main {
-    padding-top: 32px;
-    padding-bottom: 40px;
+    padding-block: 16px;
+    align-items: flex-start;
+  }
+  .landing-upload {
+    padding-block: 32px;
   }
   .landing-copy {
-    margin-bottom: 20px;
+    margin-bottom: 16px;
   }
   .landing-copy h1 {
-    font-size: 38px;
+    font-size: 24px;
   }
   .landing-copy > p {
     font-size: 14px;
   }
   .landing-import .dropzone {
-    min-height: 244px;
-    padding-inline: 16px;
+    min-height: 156px;
+    padding-inline: 12px;
   }
   .landing-import .demo-import-guide {
     padding: 20px 16px;
   }
-  .landing-account {
-    margin-top: 24px;
+  .landing-privacy > p {
+    font-size: 13px;
   }
   .public-footer {
     align-items: flex-start;
-    gap: 20px;
-    font-size: 11px;
+    gap: 16px;
+    font-size: 12px;
+    padding-block: 12px;
   }
   .public-footer > span {
     max-width: 220px;

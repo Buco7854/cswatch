@@ -301,6 +301,7 @@ export async function parse(folder: string, maxExpanded: number) {
     tickRate,
     frames.at(-1)!.tick,
     new Set(players.map((player) => player.id)),
+    events,
   );
   warnings.push(...media.warnings);
   const data: Playback = {
@@ -320,6 +321,8 @@ export async function parse(folder: string, maxExpanded: number) {
     voice: media.voice,
     chat: media.chat,
     communications: media.communications,
+    gameplaySounds: media.gameplaySounds,
+    sounds: media.sounds,
     objectives: media.objectives,
     matchState: media.matchState,
     crosshairs: media.crosshairs,

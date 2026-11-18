@@ -231,7 +231,7 @@ static int hex_id(const char *name) {
     for(int i=0;i<64;i++) if(!((name[i]>='0' && name[i]<='9') || (name[i]>='a' && name[i]<='f'))) return 0;
     return 1;
 }
-static void publish(const char *source,const char *target) {
+static void publish(const char *source,const char *target,int sound_bank) {
     char from[PATH_MAX],to[PATH_MAX];
     if(!source || !target || strlen(source) >= sizeof(from) || strlen(target) >= sizeof(to)) {
         errno = EINVAL;fail("invalid publication paths");
@@ -240,11 +240,20 @@ static void publish(const char *source,const char *target) {
     char *from_name = strrchr(from,'/'),*to_name = strrchr(to,'/');
     if(!from_name || !to_name || from_name==from || to_name==to) { errno=EINVAL;fail("absolute same-parent publication required"); }
     *from_name++='\0';*to_name++='\0';
-    if(strcmp(from,to) || !hex_id(to_name) || strlen(from_name)!=82 ||
-        strncmp(from_name,".preparing-",11) || strncmp(from_name+11,to_name,64) || from_name[75]!='-') {
-        errno=EINVAL;fail("approved same-parent pack names required");
+    int suffix_start;
+    if(sound_bank) {
+        if(strcmp(from,to) || strcmp(to_name,"sounds") || strlen(from_name)!=14 || strncmp(from_name,".sounds-",8)) {
+            errno=EINVAL;fail("approved same-parent sound bank names required");
+        }
+        suffix_start=8;
+    } else {
+        if(strcmp(from,to) || !hex_id(to_name) || strlen(from_name)!=82 ||
+            strncmp(from_name,".preparing-",11) || strncmp(from_name+11,to_name,64) || from_name[75]!='-') {
+            errno=EINVAL;fail("approved same-parent pack names required");
+        }
+        suffix_start=76;
     }
-    for(int i=76;i<82;i++) if(!((from_name[i]>='a' && from_name[i]<='z') ||
+    for(int i=suffix_start;i<suffix_start+6;i++) if(!((from_name[i]>='a' && from_name[i]<='z') ||
         (from_name[i]>='A' && from_name[i]<='Z') || (from_name[i]>='0' && from_name[i]<='9'))) {
         errno=EINVAL;fail("invalid private staging suffix");
     }
@@ -265,7 +274,8 @@ static void publish(const char *source,const char *target) {
 }
 int main(int argc,char **argv) {
     standard_io();
-    if(argc == 4 && !strcmp(argv[1],"--publish")) { publish(argv[2],argv[3]);return 0; }
+    if(argc == 4 && !strcmp(argv[1],"--publish")) { publish(argv[2],argv[3],0);return 0; }
+    if(argc == 4 && !strcmp(argv[1],"--publish-sounds")) { publish(argv[2],argv[3],1);return 0; }
     if(argc == 2 && !strcmp(argv[1],"--check")) {
         const int abi=landlock_abi();restrict_writes(NULL,0);restrict_conversion();
         printf("Linux x86-64 conversion confinement ready, Landlock ABI %d\n",abi);return 0;

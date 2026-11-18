@@ -9,30 +9,57 @@ import type {
   MapJobRequest,
   MapJobResult,
   ApprovedMapEntry,
+  LatestOfficialSelection,
+  OfficialMapInventory,
 } from '../../shared/map-acquisition.js';
-import { approvedMapEntrySchema, mapPackId } from './map-catalog.js';
+import {
+  approvedMapEntrySchema,
+  mapPackId,
+  latestOfficialSelectionSchema,
+  latestMapRequestId,
+  officialMapSourceSchema,
+  officialMapInventorySchema,
+  officialMapInventoryLimits,
+  latestMapPackId,
+} from './map-catalog.js';
 import { bytesFrom, fileVersion, regularFile, withDirectory } from './map-asset-files.js';
 export const mapJobLimits = { bytes: 8192, jobs: 32, retained: 512, scanned: 1024 } as const;
 export const mapJobTemporaryName = /^\.[a-f0-9]{64}-[a-f0-9]{24}\.tmp$/;
 export const packIdSchema = z.string().regex(/^[a-f0-9]{64}$/);
-export const mapJobRequestSchema = z
-  .object({
-    schemaVersion: z.literal(1),
-    packId: packIdSchema,
-    generation: z
-      .string()
-      .regex(/^[a-f0-9]{32}$/)
-      .optional(),
-    approval: approvedMapEntrySchema,
-  })
-  .strict()
-  .refine((value) => value.packId === mapPackId(value.approval));
+const mapJobIdentity = {
+  schemaVersion: z.literal(1),
+  packId: packIdSchema,
+  generation: z
+    .string()
+    .regex(/^[a-f0-9]{32}$/)
+    .optional(),
+};
+export const mapJobRequestSchema = z.union([
+  z
+    .object({
+      ...mapJobIdentity,
+      approval: approvedMapEntrySchema,
+    })
+    .strict()
+    .refine((value) => value.packId === mapPackId(value.approval)),
+  z
+    .object({
+      ...mapJobIdentity,
+      kind: z.literal('latest-official'),
+      selection: latestOfficialSelectionSchema,
+    })
+    .strict()
+    .refine((value) => value.packId === latestMapRequestId(value.selection)),
+]);
 export const mapJobResultSchema = z
   .object({
     schemaVersion: z.literal(1),
     packId: packIdSchema,
     status: z.enum(['processing', 'ready', 'failed']),
     updatedAt: z.number().int().min(0).max(8640000000000),
+    assetPackId: packIdSchema.optional(),
+    source: officialMapSourceSchema.optional(),
+    sourceCheckedAt: z.number().int().min(0).max(8640000000000).optional(),
     code: z
       .enum([
         'source_unavailable',
@@ -47,7 +74,27 @@ export const mapJobResultSchema = z
   .strict()
   .refine((value) =>
     value.status === 'failed' ? value.code !== undefined : value.code === undefined,
+  )
+  .refine((value) => {
+    const supplied = [value.assetPackId, value.source, value.sourceCheckedAt].filter(
+      (v) => v !== undefined,
+    ).length;
+    return supplied === 0 || (supplied === 3 && value.sourceCheckedAt! <= value.updatedAt + 300);
+  });
+
+export function latestMapResultMatches(request: MapJobRequest, result: MapJobResult): boolean {
+  return (
+    request.kind === 'latest-official' &&
+    result.packId === request.packId &&
+    Boolean(
+      result.source &&
+      result.assetPackId &&
+      result.sourceCheckedAt !== undefined &&
+      result.source.manifest === request.selection.manifest &&
+      result.assetPackId === latestMapPackId(request.selection.map, result.source),
+    )
   );
+}
 export const mapWorkerStatusSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -79,7 +126,7 @@ export async function readMapJob<T>(
   });
 }
 export const readMapRequest = (root: string, packId: string) =>
-  readMapJob(root, 'requests', packId, mapJobRequestSchema);
+  readMapJob<MapJobRequest>(root, 'requests', packId, mapJobRequestSchema);
 export const readMapResult = (root: string, packId: string) =>
   readMapJob(root, 'results', packId, mapJobResultSchema);
 
@@ -128,6 +175,100 @@ export async function prepareMapJobs(root: string) {
     await directory.close();
   }
 }
+
+/** Fresh official inventory is generated only by the asset supervisor. Readers
+ * never query Steam, follow a file link or accept caller-selected source paths. */
+export async function readOfficialMapInventory(
+  root: string,
+  at = Math.floor(Date.now() / 1000),
+  { allowStale = false }: { allowStale?: boolean } = {},
+): Promise<OfficialMapInventory | undefined> {
+  let directory: FileHandle | undefined, file: FileHandle | undefined;
+  try {
+    if (!Number.isSafeInteger(at) || at < 0) return;
+    directory = await openQueueRoot(root, false);
+    file = await regularFile(
+      directory,
+      'official-inventory.json',
+      2,
+      officialMapInventoryLimits.bytes,
+    );
+    if (!file) return;
+    const info = await file.stat();
+    if (info.mode & 0o022 || info.uid !== process.getuid?.()) return;
+    const version = await fileVersion(file),
+      data = await bytesFrom(file, info.size, officialMapInventoryLimits.bytes);
+    if (version !== (await fileVersion(file))) return;
+    const inventory = officialMapInventorySchema.parse(JSON.parse(data.toString('utf8')));
+    if (
+      inventory.updatedAt > at + 300 ||
+      (!allowStale && inventory.updatedAt < at - officialMapInventoryLimits.maxAgeSeconds)
+    )
+      return;
+    return inventory;
+  } catch {
+    return;
+  } finally {
+    await file?.close();
+    await directory?.close();
+  }
+}
+
+export async function writeOfficialMapInventory(root: string, value: OfficialMapInventory) {
+  const inventory = officialMapInventorySchema.parse(value),
+    data = Buffer.from(JSON.stringify(inventory));
+  if (data.length > officialMapInventoryLimits.bytes)
+    throw Error('Official map inventory byte limit');
+  await prepareMapJobs(root);
+  const directory = await openQueueRoot(root, false);
+  let file: FileHandle | undefined, temporary: string | undefined;
+  try {
+    const info = await directory.stat();
+    if (info.mode & 0o022 || info.uid !== process.getuid?.())
+      throw Error('Official map inventory ownership');
+    const targetVersion = async () => {
+      let target: FileHandle | undefined;
+      try {
+        target = await regularFile(
+          directory,
+          'official-inventory.json',
+          2,
+          officialMapInventoryLimits.bytes,
+        );
+        if (!target) throw Error('Unsafe existing official inventory');
+        const state = await target.stat();
+        if (state.mode & 0o022 || state.uid !== process.getuid?.())
+          throw Error('Unsafe official inventory owner');
+        return await fileVersion(target);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+        throw error;
+      } finally {
+        await target?.close();
+      }
+    };
+    const previous = await targetVersion();
+    temporary = `/proc/self/fd/${directory.fd}/.official-inventory-${randomBytes(12).toString('hex')}.tmp`;
+    file = await open(
+      temporary,
+      constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW,
+      0o640,
+    );
+    await file.writeFile(data);
+    await file.sync();
+    await file.close();
+    file = undefined;
+    if (previous !== (await targetVersion()))
+      throw Error('Official inventory changed during publication');
+    await rename(temporary, `/proc/self/fd/${directory.fd}/official-inventory.json`);
+    temporary = undefined;
+    await directory.sync();
+  } finally {
+    await file?.close();
+    if (temporary) await unlink(temporary).catch(() => undefined);
+    await directory.close();
+  }
+}
 /** Single-web startup only, before HTTP admission. The worker must merely
  * ignore these files: it can observe a live web writer's temporary request. */
 export async function cleanupMapRequestTemps(root: string): Promise<number> {
@@ -148,7 +289,7 @@ export async function cleanupMapRequestTemps(root: string): Promise<number> {
       if (!file) continue;
       try {
         const info = await file.stat();
-        if ((process.getuid && info.uid !== process.getuid()) || info.mode & 0o022) continue;
+        if ((process.getuid && info.uid !== process.getuid?.()) || info.mode & 0o022) continue;
         await unlink(`/proc/self/fd/${directory.fd}/${entry.name}`);
         removed++;
       } finally {
@@ -268,38 +409,47 @@ async function queueHasRoom(root: string, newRequest: boolean) {
   });
 }
 let enqueueQueue: Promise<unknown> = Promise.resolve();
-export function enqueueMapRequest(
+function enqueueMapJob(
   root: string,
-  approval: ApprovedMapEntry,
+  value: MapJobRequest,
 ): Promise<'queued' | 'existing' | 'full'> {
+  const request = mapJobRequestSchema.parse(value);
   const operation = enqueueQueue.then(async () => {
-    const packId = mapPackId(approval);
+    const packId = request.packId;
     await prepareMapJobs(root);
     if (await readMapRequest(root, packId)) return 'existing' as const;
     if (!(await queueHasRoom(root, true))) return 'full' as const;
     await atomicMapJobWrite(root, 'requests', packId, {
-      schemaVersion: 1,
-      packId,
+      ...request,
       generation: randomBytes(16).toString('hex'),
-      approval,
     });
     return 'queued' as const;
   });
   enqueueQueue = operation.catch(() => undefined);
   return operation;
 }
+export function enqueueMapRequest(root: string, approval: ApprovedMapEntry) {
+  return enqueueMapJob(root, { schemaVersion: 1, packId: mapPackId(approval), approval });
+}
+export function enqueueLatestMapRequest(root: string, selection: LatestOfficialSelection) {
+  return enqueueMapJob(root, {
+    schemaVersion: 1,
+    packId: latestMapRequestId(selection),
+    kind: 'latest-official',
+    selection,
+  });
+}
 /** Failed results are terminal for the worker. Only an explicitly authorized
  * HTTP request can remove an eligible terminal result after the cooldown.
  * Serializing with enqueues also preserves the global pending-job reservation. */
-export function retryMapRequest(
+function retryMapJob(
   root: string,
-  approval: ApprovedMapEntry,
-  at = Math.floor(Date.now() / 1000),
+  packId: string,
+  at: number,
   { removeResult = unlink }: { removeResult?: (path: string) => Promise<void> } = {},
 ): Promise<'queued' | 'ineligible' | 'full'> {
   const operation = enqueueQueue.then(async () => {
-    const packId = mapPackId(approval),
-      request = await readMapRequest(root, packId),
+    const request = await readMapRequest(root, packId),
       result = await readMapResult(root, packId);
     if (!request || !result || !canRetryMapResult(result, at)) return 'ineligible' as const;
     if (!(await queueHasRoom(root, false))) return 'full' as const;
@@ -320,7 +470,20 @@ export function retryMapRequest(
         ...request,
         generation: randomBytes(16).toString('hex'),
       });
-      await removeResult(`/proc/self/fd/${directory.fd}/${packId}.json`);
+      if (request.kind === 'latest-official' && latestMapResultMatches(request, current)) {
+        // Publication may have completed just before a failed final status
+        // write or shutdown. Keep the verified content identity so the worker
+        // can recover that immutable pack instead of downloading it again.
+        await atomicMapJobWrite(root, 'results', packId, {
+          schemaVersion: 1,
+          packId,
+          status: 'processing',
+          updatedAt: at,
+          assetPackId: current.assetPackId,
+          source: current.source,
+          sourceCheckedAt: current.sourceCheckedAt,
+        });
+      } else await removeResult(`/proc/self/fd/${directory.fd}/${packId}.json`);
       await directory.sync();
       return true;
     });
@@ -328,6 +491,22 @@ export function retryMapRequest(
   });
   enqueueQueue = operation.catch(() => undefined);
   return operation;
+}
+export function retryMapRequest(
+  root: string,
+  approval: ApprovedMapEntry,
+  at = Math.floor(Date.now() / 1000),
+  options?: { removeResult?: (path: string) => Promise<void> },
+) {
+  return retryMapJob(root, mapPackId(approval), at, options);
+}
+export function retryLatestMapRequest(
+  root: string,
+  selection: LatestOfficialSelection,
+  at = Math.floor(Date.now() / 1000),
+  options?: { removeResult?: (path: string) => Promise<void> },
+) {
+  return retryMapJob(root, latestMapRequestId(selection), at, options);
 }
 export async function mapWorkerAvailable(root: string, at = Math.floor(Date.now() / 1000)) {
   return (

@@ -1,5 +1,7 @@
 /** Low-level media parsing runs only in the disposable, networkless parser child. */
 import { DemoReader, EntityMode } from 'cs2parser';
+import type { GameEvent } from '../../shared/playback.js';
+import { observeGameplaySounds } from './gameplay-sounds.js';
 import type { VoicePacket, ChatMessage, CommunicationInfo } from '../../shared/communications.js';
 import { voiceFrames } from './voice-packets.js';
 import { observeObjectives } from './objectives.js';
@@ -13,10 +15,12 @@ export async function readCommunications(
   tickRate: number,
   lastTick: number,
   actors: ReadonlySet<string>,
+  events: GameEvent[] = [],
 ) {
   const voice: VoicePacket[] = [],
     chat: ChatMessage[] = [];
   const reader = new DemoReader();
+  const finishSounds = observeGameplaySounds(reader, lastTick, actors);
   const finishMapIdentity = observeMapIdentity(reader);
   const finishObjectives = observeObjectives(reader, tickRate, lastTick);
   const finishMatchState = observeMatchState(reader, tickRate, lastTick);
@@ -125,6 +129,7 @@ export async function readCommunications(
   if (!objectives.complete) warnings.push('Some bomb objective state could not be read.');
   if (!matchState.complete) warnings.push('Some recorded match state could not be read.');
   return {
+    ...finishSounds(!failed, events),
     voice,
     chat,
     mapIdentity: finishMapIdentity(),

@@ -1,0 +1,22 @@
+.viewer-options-dialog .viewer-sound-settings {
+  margin: 0 0 20px;
+  padding: 0;
+  border: 0;
+}
+.viewer-sound-settings > summary {
+  min-height: 44px;
+  padding-block: 12px;
+  color: var(--viewer-ink);
+}
+.viewer-options-dialog .viewer-sound-categories {
+  min-width: 0;
+  margin: 24px 0;
+  padding: 0;
+  border: 0;
+}
+.viewer-sound-categories legend {
+  margin-bottom: 10px;
+  color: var(--viewer-ink);
+  font-size: 13px;
+  font-weight: 600;
+}

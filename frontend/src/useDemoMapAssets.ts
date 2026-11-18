@@ -5,6 +5,7 @@ import {
   readMapJSON,
   validateDemoMapAssets,
   retryableMapFailures,
+  mapAcquisitionKey,
   type DemoMapState,
 } from './demo-map-assets';
 
@@ -25,10 +26,10 @@ export function useDemoMapAssets(
     let active = true,
       timeout: ReturnType<typeof setTimeout> | undefined,
       request: AbortController | undefined;
-    let attempted = false,
-      poll = 0,
+    const attempted = new Set<string>(),
+      uncertain = new Set<string>();
+    let poll = 0,
       cooldownChecks = 0,
-      uncertain = false,
       retryBusy = false;
     let latest: DemoMapState = pendingDemoMap;
     const started = Date.now();
@@ -103,40 +104,58 @@ export function useDemoMapAssets(
         timeout = setTimeout(() => void check(), 60000);
       }
     }
+    function accept(state: DemoMapState) {
+      const key = mapAcquisitionKey(state.acquisition);
+      const next =
+        key && uncertain.has(key) && state.acquisition?.canAcquire
+          ? { ...state, requestUnconfirmed: true }
+          : state;
+      publish(next);
+      return next;
+    }
+    function needsAcquisition(state: DemoMapState) {
+      const key = mapAcquisitionKey(state.acquisition);
+      return Boolean(
+        state.acquisition?.canAcquire &&
+        state.acquisition.acquisition === 'unavailable' &&
+        key &&
+        !attempted.has(key),
+      );
+    }
     async function requestAcquisition(state: DemoMapState) {
-      attempted = true;
+      const key = mapAcquisitionKey(state.acquisition);
+      if (!key) return;
+      attempted.add(key);
       retryBusy = true;
       publish({ ...state, requesting: true, requestUnconfirmed: false });
       try {
         const result = await acquire();
         if (!live()) return;
         const next = validateDemoMapAssets(result, map!);
-        uncertain = false;
+        uncertain.delete(key);
         retryBusy = false;
-        publish(next);
-        observe(next);
+        const accepted = accept(next);
+        // Selection can change while the server handles a POST. Observe it
+        // through a bounded GET before authorizing one request for its new key.
+        // Never recursively enqueue from a mutation response.
+        if (needsAcquisition(accepted)) schedule(accepted);
+        else observe(accepted);
       } catch {
         // A lost POST may already be accepted. Observe, never replay it.
-        uncertain = true;
+        uncertain.add(key);
         if (live()) schedule(state);
       }
     }
     async function check() {
       try {
-        let state = validateDemoMapAssets(
+        const discovered = validateDemoMapAssets(
           await fetchJSON(`/api/demos/${encodeURIComponent(id!)}/map-assets`),
           map!,
         );
         if (!live()) return;
         retryBusy = false;
-        if (uncertain && state.acquisition?.canAcquire)
-          state = { ...state, requestUnconfirmed: true };
-        publish(state);
-        if (
-          state.acquisition?.canAcquire &&
-          state.acquisition.acquisition === 'unavailable' &&
-          !attempted
-        ) {
+        const state = accept(discovered);
+        if (needsAcquisition(state)) {
           await requestAcquisition(state);
           return;
         }

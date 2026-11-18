@@ -24,6 +24,7 @@ import { authRoutes } from './auth.js';
 import { providerRoutes } from './providers.js';
 import { captionArtifactName } from './captions.js';
 import { requeueTranscription } from './transcription-worker.js';
+import { gameplaySoundAssetRoutes } from './gameplay-sound-assets.js';
 import { equipmentAssetRoutes } from './equipment-assets.js';
 import { equipmentModelAssetRoutes } from './equipment-model-assets.js';
 import { mapAssetRoutes } from './map-assets.js';
@@ -170,7 +171,7 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
       return reply.code(413).send({ detail: 'Request exceeds the configured upload limit.' });
     const status = e.statusCode && e.statusCode >= 400 && e.statusCode < 600 ? e.statusCode : 500;
     if (status >= 500) r.log.error({ err: { name: e.name, code: e.code } }, 'Request failed');
-    if (status === 429) reply.header('Retry-After', '900');
+    if (status === 429 && !reply.hasHeader('retry-after')) reply.header('Retry-After', '900');
     return reply.code(status).send({
       detail:
         e instanceof HttpError
@@ -185,6 +186,7 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
   await guestRoutes(app, db, c);
   await providerRoutes(app, db, c);
   await equipmentAssetRoutes(app, db.root, c.mapAssetsDir);
+  await gameplaySoundAssetRoutes(app, db.root, c.mapAssetsDir);
   await equipmentModelAssetRoutes(app, db.root, c.mapAssetsDir);
   const manualMapLocation = {
     root: c.mapAssetsDir,

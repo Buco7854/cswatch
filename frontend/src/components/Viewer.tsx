@@ -1,3 +1,6 @@
+import { PlaybackClock } from '../playback-clock';
+import { useViewerAudio, type ListenerPose } from '../viewer-audio';
+import { useGameplayAudio } from '../useGameplayAudio';
 import { captureFocusReturn, focusMovedSince, type FocusReturnContext } from '../focus-return';
 import i18n, { t, setLanguage } from '../i18n';
 import {
@@ -97,6 +100,16 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
   const { id } = useParams();
   const location = useLocation();
   const { user, config, notify, signIn } = useApp();
+  const audioIdentity = `${id || ''}:${user?.id || ''}`;
+  const audio = useViewerAudio(audioIdentity);
+  const audioCameraReady = useRef(false);
+  const cameraAudio = useCallback(
+    (pose: ListenerPose | null) => {
+      audioCameraReady.current = Boolean(pose);
+      if (pose) audio.setListener(pose);
+    },
+    [audio],
+  );
   const confirm = useConfirm();
   const [cameraNotice, setCameraNotice] = useState(false);
   const cameraNoticeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -131,10 +144,22 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     [label, setLabel] = useState(''),
     [showNote, setShowNote] = useState(false),
     [busy, setBusy] = useState(false);
-  const { data, demo, setDemo, error, chunkError, buffering, first, last, retryChunk } = useReplay(
+  const {
+    data,
+    demo,
+    setDemo,
+    error,
+    chunkError,
+    buffering,
+    first,
+    last,
+    retryChunk,
+    availableUntil,
+  } = useReplay(
     id,
     tick,
     (replay, initialTick) => {
+      playbackClock.current.reset(initialTick, performance.now());
       setTick(initialTick);
       setSelected((previous) =>
         replay.players.some((player) => player.id === previous)
@@ -212,6 +237,24 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     [data, first, last, selected],
   );
   const { settings, setSettings } = useViewerPreferences();
+  useEffect(() => {
+    audio.setMaster(settings.audioVolume, settings.audioMuted);
+  }, [audio, settings.audioVolume, settings.audioMuted]);
+  const gameAudio = useGameplayAudio({
+    identity: audioIdentity,
+    audio,
+    data,
+    tick,
+    playing: playing && !buffering,
+    speed,
+    selected,
+    mode,
+    settings,
+    cameraReady: audioCameraReady,
+  });
+  const enableAudio = useCallback(() => {
+    if ((settings.gameSounds || settings.voice) && !settings.audioMuted) void audio.unlock();
+  }, [audio, settings.gameSounds, settings.voice, settings.audioMuted]);
   const [options, setOptions] = useState(false),
     [manage, setManage] = useState(false);
   const [communicationsOpen, setCommunicationsOpen] = useState(false);
@@ -473,7 +516,11 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     document.addEventListener('keydown', escape);
     return () => document.removeEventListener('keydown', escape);
   }, [panel, compactPanels]);
-  const timeRef = useRef<number | null>(null);
+  const playbackClock = useRef(new PlaybackClock());
+  const currentTick = useRef(tick);
+  currentTick.current = tick;
+  const playbackState = useRef({ data, availableUntil, autoSkip: settings.autoSkip });
+  playbackState.current = { data, availableUntil, autoSkip: settings.autoSkip };
   useEffect(() => {
     const scope = { active: true };
     mutationScope.current = scope;
@@ -509,36 +556,45 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
   const rate = data?.tickRate ?? 64;
   const seek = useCallback(
     (value: number) => {
-      setTick(Math.max(first, Math.min(last, value)));
+      audio.flush();
+      const next = Math.max(first, Math.min(last, value));
+      playbackClock.current.reset(next, performance.now());
+      setTick(next);
     },
-    [first, last],
+    [first, last, audio],
   );
   useEffect(() => {
-    if (!playing || !data || buffering) {
-      timeRef.current = null;
-      return;
-    }
+    playbackClock.current.reset(currentTick.current, performance.now());
+    if (!playing || !data || buffering) return;
     let frame = 0;
     const animate = (now: number) => {
-      const dt = timeRef.current === null ? 0 : Math.min((now - timeRef.current) / 1000, 0.1);
-      timeRef.current = now;
-      setTick((t) => {
-        const proposed = t + dt * rate * speed;
-        const next = settings.autoSkip ? skipDeadTime(data, proposed, 'all', last) : proposed;
-        if (next >= last) {
-          setPlaying(false);
-          return last;
-        }
-        return next;
-      });
+      if (document.hidden) return;
+      const state = playbackState.current;
+      const ceiling = Math.min(last, state.availableUntil(playbackClock.current.tick));
+      const advanced = playbackClock.current.at(now, rate * speed, ceiling);
+      const requested =
+        state.autoSkip && state.data ? skipDeadTime(state.data, advanced, 'all', last) : advanced;
+      const next = Math.min(requested, ceiling, last);
+      if (next !== advanced) playbackClock.current.reset(next, now);
+      setTick(next);
+      if (next >= last) {
+        setPlaying(false);
+        return;
+      }
       frame = requestAnimationFrame(animate);
     };
-    frame = requestAnimationFrame(animate);
+    const visibility = () => {
+      cancelAnimationFrame(frame);
+      playbackClock.current.reset(currentTick.current, performance.now());
+      if (!document.hidden) frame = requestAnimationFrame(animate);
+    };
+    if (!document.hidden) frame = requestAnimationFrame(animate);
+    document.addEventListener('visibilitychange', visibility);
     return () => {
       cancelAnimationFrame(frame);
-      timeRef.current = null;
+      document.removeEventListener('visibilitychange', visibility);
     };
-  }, [playing, data, buffering, rate, speed, last, settings.autoSkip]);
+  }, [playing, Boolean(data), buffering, rate, speed, last, id, user?.id]);
   useEffect(() => {
     function keys(e: KeyboardEvent) {
       const target = e.target as HTMLElement;
@@ -603,15 +659,17 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       if (target.closest('input,select,textarea,button,a,dialog,[data-keyboard-managed]')) return;
       if (e.code === 'Space') {
         e.preventDefault();
+        if (playing) audio.flush();
+        if (!playing) enableAudio();
         setPlaying((p) => !p);
       }
       if (e.code === 'ArrowRight') {
         e.preventDefault();
-        setTick((t) => Math.min(last, t + rate * 5));
+        seek(currentTick.current + rate * 5);
       }
       if (e.code === 'ArrowLeft') {
         e.preventDefault();
-        setTick((t) => Math.max(first, t - rate * 5));
+        seek(currentTick.current - rate * 5);
       }
       if (e.code === 'KeyF') void toggleFull();
     }
@@ -627,6 +685,9 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     panel,
     scoreboardOpen,
     settings.reviewFeed,
+    playing,
+    enableAudio,
+    audio,
   ]);
   useEffect(() => {
     const release = (event: KeyboardEvent) => {
@@ -858,6 +919,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     seek(value);
   }
   function replayCombat(prompt: CombatMoment, perspective: 'attacker' | 'victim') {
+    enableAudio();
     const playerId = perspective === 'attacker' ? prompt.attackerId : prompt.victimId;
     if (!playerId) return;
     setSelected(playerId);
@@ -869,6 +931,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     requestAnimationFrame(() => playTrigger.current?.focus({ preventScroll: true }));
   }
   function replayThrow(prompt: ThrowPrompt) {
+    enableAudio();
     setSelected(prompt.throwerId);
     setGrenadeFocus(undefined);
     if (mode !== '2d') setMode('pov');
@@ -878,6 +941,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     requestAnimationFrame(() => playTrigger.current?.focus({ preventScroll: true }));
   }
   function viewGrenadeLanding(prompt: LandingPrompt) {
+    enableAudio();
     seek(Math.max(first, Math.floor(prompt.impactTick - rate / 4)));
     setGrenadeFocus({
       id: `${prompt.id}:${++focusSequence.current}`,
@@ -1074,17 +1138,34 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
                   {t(mapStatusText)}
                 </span>
               )}
-              {!data.sample && mapAssets.acquisition?.verification === 'version-unverified' && (
-                <span
-                  className="viewer-map-verification"
-                  title={t(
-                    'This operator-installed pack has not been matched to the recorded map version.',
-                  )}
-                >
-                  <span className="map-verification-full">{t('Map version unverified')}</span>
-                  <span className="map-verification-short">{t('Unverified')}</span>
-                </span>
-              )}
+              {!data.sample &&
+                (mapAssets.acquisition?.verification === 'version-unverified' ||
+                  mapAssets.acquisition?.verification === 'latest-official') && (
+                  <span
+                    className="viewer-map-verification"
+                    data-map-verification={mapAssets.acquisition.verification}
+                    title={t(
+                      mapAssets.acquisition.verification === 'latest-official'
+                        ? 'This is the latest official map, not a verified historical match. Its layout may differ from this recording.'
+                        : 'This operator-installed pack has not been matched to the recorded map version.',
+                    )}
+                  >
+                    <span className="map-verification-full">
+                      {t(
+                        mapAssets.acquisition.verification === 'latest-official'
+                          ? 'Latest official map'
+                          : 'Map version unverified',
+                      )}
+                    </span>
+                    <span className="map-verification-short">
+                      {t(
+                        mapAssets.acquisition.verification === 'latest-official'
+                          ? 'Latest map'
+                          : 'Unverified',
+                      )}
+                    </span>
+                  </span>
+                )}
               {data.deadTimes?.some((period) => tick >= period.start && tick < period.end) && (
                 <span>
                   {t(
@@ -1232,6 +1313,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
               assetScope={user?.id || 'public'}
               onMapStatus={setMapRender}
               focus={grenadeFocus}
+              onAudioListener={cameraAudio}
             />
           </Suspense>
           {buffering && (
@@ -1497,6 +1579,8 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
                 ref={playTrigger}
                 aria-label={playing ? t('Pause') : t('Play')}
                 onClick={() => {
+                  if (playing) audio.flush();
+                  if (!playing) enableAudio();
                   if (tick >= last) seek(first);
                   setPlaying(!playing);
                 }}
@@ -1514,7 +1598,10 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
                 label={t('Playback speed')}
                 className="speed-select"
                 value={String(speed)}
-                onValueChange={(value) => setSpeed(Number(value))}
+                onValueChange={(value) => {
+                  audio.flush();
+                  setSpeed(Number(value));
+                }}
                 options={[0.25, 0.5, 1, 2, 4].map((value) => ({
                   value: String(value),
                   label: value + '×',
@@ -1777,6 +1864,9 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
           playerCrosshairCode={playerCrosshairCode}
           equipment={mapRender?.map === data.map ? mapRender.equipment : undefined}
           mapAcquisition={mapAssets.acquisition}
+          recordedMapIdentity={data.mapIdentity}
+          audio={audio}
+          gameAudio={gameAudio}
           onChange={setSettings}
           close={closeViewerOptions}
           openCommunications={() => {
@@ -1787,12 +1877,13 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
         />
       )}
       <Communications
+        audio={audio}
         id={id || ''}
         owned={Boolean(demo?.owned)}
         data={data}
         tick={tick}
         first={first}
-        playing={playing}
+        playing={playing && !buffering}
         speed={speed}
         selected={selected}
         settings={settings}

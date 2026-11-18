@@ -24,10 +24,11 @@ export const loadScopedGLTF: ScopedGLTFJob = (
   const blobURLs = new Set<string>(),
     bitmaps = new Set<ImageBitmap>();
   let cancelled = false,
-    finished = false;
+    finished = false,
+    parsing = false;
   const aborted = () => new Error('Model loading cancelled');
   manager.setURLModifier((value) => {
-    if (cancelled) {
+    if (cancelled && (!parsing || !value.startsWith('blob:'))) {
       if (value.startsWith('blob:')) URL.revokeObjectURL(value);
       throw aborted();
     }
@@ -43,6 +44,10 @@ export const loadScopedGLTF: ScopedGLTFJob = (
   const cancel = () => {
     cancelled = true;
     file.abort();
+    // Embedded parsing is bounded and local. Aborting/revoking an in-flight blob fetch
+    // makes Three report a false texture failure when a held item simply disappears.
+    // Let it settle; the retired cache generation disposes every late GLTF resource.
+    if (parsing && !finished) return;
     manager.abort();
     revoke();
     for (const bitmap of bitmaps) bitmap.close();
@@ -51,6 +56,7 @@ export const loadScopedGLTF: ScopedGLTFJob = (
   const failed = (error: unknown) => {
     if (finished) return;
     finished = true;
+    parsing = false;
     cancel();
     callbacks.failed(error);
   };
@@ -76,7 +82,7 @@ export const loadScopedGLTF: ScopedGLTFJob = (
             load(
               url,
               (bitmap) => {
-                if (cancelled) {
+                if (cancelled && !parsing) {
                   bitmap.close();
                   onError?.(aborted());
                   return;
@@ -106,12 +112,14 @@ export const loadScopedGLTF: ScopedGLTFJob = (
       try {
         if (!(data instanceof ArrayBuffer) || data.byteLength > maxBytes)
           throw new Error('Model exceeds its transfer limit');
+        parsing = true;
         parser.parse(
           data as ArrayBuffer,
           LoaderUtils.extractUrlBase(url),
           (value) => {
             if (finished) return;
             finished = true;
+            parsing = false;
             revoke();
             bitmaps.clear();
             callbacks.loaded(value);

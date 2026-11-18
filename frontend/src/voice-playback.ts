@@ -1,46 +1,41 @@
 import type { VoicePacket } from '../../shared/communications';
 import type { OpusDecoder } from 'opus-decoder';
+import { ViewerAudio } from './viewer-audio';
 
 /** Local, bounded decoded audio. No microphone, external audio URL or remote service. */
 export class VoicePlayback {
-  private context: AudioContext | null = null;
   private gain: GainNode | null = null;
   private decoders = new Map<string, Promise<OpusDecoder<any>>>();
-  private sources = new Set<AudioBufferSourceNode>();
+  private sources = new Map<AudioBufferSourceNode, () => void>();
   private scheduled = new Map<string, number>();
   private generation = 0;
   private tail: Promise<void> = Promise.resolve();
   private previous: { tick: number; now: number; speed: number; scope: string } | null = null;
   private closed = false;
-  constructor(private report: (error: string) => void) {}
+  private release: () => void;
+  constructor(
+    private report: (error: string) => void,
+    private audio: ViewerAudio,
+  ) {
+    this.release = audio.onFlush(() => this.stop());
+  }
 
   async unlock() {
     if (this.closed) return;
-    if (typeof AudioContext === 'undefined') {
-      this.report('Voice playback is unavailable in this browser.');
-      return;
-    }
-    try {
-      if (!this.context) {
-        this.context = new AudioContext();
-        this.gain = this.context.createGain();
-        this.gain.connect(this.context.destination);
-      }
-      await this.context.resume();
-      if (this.context.state !== 'running') throw new Error();
-      this.report('');
-    } catch {
-      this.report('Press Enable audio to allow voice playback in this browser.');
-    }
+    const running = await this.audio.unlock();
+    if (this.closed) return;
+    this.report(
+      running
+        ? ''
+        : this.audio.snapshot() === 'unavailable'
+          ? 'Voice playback is unavailable in this browser.'
+          : 'Press Enable audio to allow voice playback in this browser.',
+    );
   }
 
   private reset() {
     this.generation++;
-    for (const source of this.sources) {
-      try {
-        source.stop();
-      } catch {}
-    }
+    for (const stop of [...this.sources.values()]) stop();
     this.sources.clear();
     this.scheduled.clear();
     for (const decoder of this.decoders.values())
@@ -62,8 +57,10 @@ export class VoicePlayback {
     volume: number,
     speakers: string[],
   ) {
-    const context = this.context;
-    if (!context || context.state !== 'running' || this.closed || !this.gain) return;
+    const context = this.audio.context;
+    if (!context || context.state !== 'running' || this.closed) return;
+    if (!this.gain) this.gain = this.audio.channel();
+    if (!this.gain) return;
     const scope = speakers.join(',');
     const now = performance.now();
     const previous = this.previous;
@@ -136,15 +133,17 @@ export class VoicePlayback {
           source.buffer = buffer;
           source.playbackRate.value = speed;
           source.connect(this.gain!);
-          this.sources.add(source);
-          source.onended = () => {
+          const stop = this.audio.track(source, () => {
             this.sources.delete(source);
+          });
+          if (!stop) {
             source.disconnect();
-          };
+            return;
+          }
+          this.sources.set(source, stop);
           const offset = Math.max(0, (context.currentTime - start) * speed);
           if (offset >= buffer.duration) {
-            this.sources.delete(source);
-            source.disconnect();
+            stop();
             return;
           }
           source.start(Math.max(context.currentTime, start), offset);
@@ -158,9 +157,9 @@ export class VoicePlayback {
 
   close() {
     this.closed = true;
+    this.release();
     this.stop();
-    void this.context?.close();
-    this.context = null;
+    this.audio.releaseChannel(this.gain);
     this.gain = null;
   }
 }

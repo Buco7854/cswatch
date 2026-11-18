@@ -63,7 +63,7 @@ test('the single public page uploads a private guest demo into the whole-tab vie
     route.fulfill({ json: { ...sample, sample: false, map: 'de_guest_fixture' } }),
   );
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Review your match.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Open your demo.' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'GitHub', exact: true })).toHaveAttribute(
     'href',
     'https://github.com/Buco7854/cswatch',
@@ -74,7 +74,7 @@ test('the single public page uploads a private guest demo into the whole-tab vie
     page.locator('a[href^="/features"],a[href="/explore"],a[href="/watch/sample"]'),
   ).toHaveCount(0);
   const picker = page.waitForEvent('filechooser');
-  await page.getByRole('button', { name: /Drop your demo here/ }).click();
+  await page.getByRole('button', { name: /Choose demo file/ }).click();
   await (await picker).setFiles(file);
   await expect(page).toHaveURL(/\/watch\/guest-fixture$/);
   await expect(page.getByRole('heading', { name: 'guest_fixture', exact: true })).toBeVisible();
@@ -172,9 +172,9 @@ test('French covers public pages, viewer, auth errors and saved language choice'
   await page.getByRole('combobox', { name: 'Language', exact: true }).click();
   await page.getByRole('option', { name: 'Français', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('lang', 'fr');
-  await expect(page.getByRole('heading', { name: 'Analysez votre match.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ouvrez votre démo.' })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'Analysez votre match.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ouvrez votre démo.' })).toBeVisible();
   await expect(page.locator('a[href^="/features"],a[href="/explore"]')).toHaveCount(0);
   // The internal practice fixture still exercises French viewer states without
   // presenting an example demo as the anonymous upload feature.
@@ -471,15 +471,13 @@ test('guest upload policy keeps the public entry simple and uses one accessible 
     await route.fulfill({ json: { ...config, guest_uploads_enabled: false } });
   });
   await page.goto('/');
-  await expect(
-    page.getByRole('heading', { name: 'Review your match.', exact: true }),
-  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Open your demo.', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Sign in to upload', exact: true })).toBeVisible();
   await expect(page.locator('input[type="file"],select')).toHaveCount(0);
   await page.getByRole('combobox', { name: 'Language', exact: true }).click();
   await page.getByRole('option', { name: 'Français', exact: true }).click();
   await expect(
-    page.getByRole('heading', { name: 'Analysez votre match.', exact: true }),
+    page.getByRole('heading', { name: 'Ouvrez votre démo.', exact: true }),
   ).toBeVisible();
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('lang', 'fr');
@@ -495,7 +493,7 @@ test('guest upload policy keeps the public entry simple and uses one accessible 
       const headline = await page
         .locator('#landing-title')
         .evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
-      expect(headline).toBeLessThanOrEqual(60);
+      expect(headline).toBeLessThanOrEqual(36);
       const signin = await page
         .getByRole('button', { name: 'Se connecter', exact: true })
         .boundingBox();

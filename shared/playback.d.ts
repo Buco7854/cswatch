@@ -5,6 +5,7 @@ import type { MatchStateData, EventAvailability } from './match-state.js';
 import type { ThrowInputSnapshot } from './throw-input.js';
 import type { CrosshairData } from './crosshairs.js';
 import type { ItemSample, ItemStateInfo } from './item-state.js';
+import type { GameplaySoundCue, GameplaySoundInfo } from './gameplay-sounds.js';
 import type { MapIdentity } from './map-acquisition.js';
 export type Player = { id: string; name: string; team: number };
 /** Recorded actions, independent of the player's physical keyboard layout/binds. */
@@ -107,9 +108,11 @@ export type Playback = {
   warnings?: string[];
   capabilities?: ReplayCapabilities;
   voice?: VoicePacket[];
+  sounds?: GameplaySoundCue[];
   chat?: ChatMessage[];
   captions?: CaptionCue[];
   communications?: CommunicationInfo;
+  gameplaySounds?: GameplaySoundInfo;
   objectives?: ObjectiveData;
   matchState?: MatchStateData;
   eventAvailability?: EventAvailability;
@@ -140,7 +143,7 @@ export type ReplayChunkInfo = {
 };
 export type PlaybackManifest = Omit<
   Playback,
-  'version' | 'frames' | 'grenades' | 'voice' | 'itemSamples'
+  'version' | 'frames' | 'grenades' | 'voice' | 'sounds' | 'itemSamples'
 > & {
   version: 2;
   firstTick: number;
@@ -153,6 +156,7 @@ export type PlaybackChunk = {
   frames: Frame[];
   grenades: Grenade[];
   voice?: VoicePacket[];
+  sounds?: GameplaySoundCue[];
   /** First live state before this slice plus changes. Tombstones close entity lifetimes. */
   itemSamples?: ItemSample[];
 };

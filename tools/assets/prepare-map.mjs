@@ -12,6 +12,7 @@ import { fileHash } from './toolchain-security.mjs';
 import { writeMapTier } from './map-tier-output.mjs';
 import { steamAssetLimits } from './steam-assets-plan.mjs';
 import { MeshoptDecoder } from './meshopt-glb.mjs';
+import { batchMapMeshes } from './batch-map-meshes.mjs';
 const { values: v } = parseArgs({
   options: {
     s2v: { type: 'string' },
@@ -77,6 +78,9 @@ for (const tier of ['desktop', 'mobile']) {
     await document.transform(
       simplify({ simplifier: MeshoptSimplifier, ratio: 0.65, error: 0.005 }),
     );
+  // Narrow-view software measurements did not establish a mobile frame-time benefit.
+  // Keep its existing culling granularity; explicit offline experiments remain separate.
+  const batching = tier === 'desktop' ? await batchMapMeshes(document, { cellSize: 64 }) : null;
   const packed = await writeMapTier({
     document,
     io,
@@ -92,7 +96,7 @@ for (const tier of ['desktop', 'mobile']) {
         : 'Source geometry optimized',
   });
   console.log(
-    `${tier}: ${(packed.manifest.bytes / 1024 ** 2).toFixed(1)} MB, ${(packed.manifest.textureBudget.decodedRGBABytes / 1024 ** 2).toFixed(1)} MiB decoded RGBA`,
+    `${tier}: ${(packed.manifest.bytes / 1024 ** 2).toFixed(1)} MB, ${(packed.manifest.textureBudget.decodedRGBABytes / 1024 ** 2).toFixed(1)} MiB decoded RGBA${batching ? `, static primitives ${batching.initialPrimitives} -> ${batching.finalPrimitives}` : ', mobile culling granularity preserved'}`,
   );
 }
 console.log(

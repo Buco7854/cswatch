@@ -11,12 +11,20 @@ import { loadConfig } from '../src/config.js';
 import { Store, now } from '../src/db.js';
 import { COOKIE, digest } from '../src/security.js';
 import { initializeFixture } from './fixtures/initialized.js';
-import { mapPackId } from '../src/map-catalog.js';
+import {
+  mapPackId,
+  latestMapRequestId,
+  latestMapPackId,
+  latestOfficialSelection,
+} from '../src/map-catalog.js';
 import {
   prepareMapJobs,
   writeMapWorkerStatus,
   writeMapJobResult,
   enqueueMapRequest,
+  enqueueLatestMapRequest,
+  readMapRequest,
+  writeOfficialMapInventory,
 } from '../src/map-jobs.js';
 process.env.LOG_LEVEL = 'silent';
 const approval: ApprovedMapEntry = {
@@ -67,10 +75,9 @@ function glb() {
   header.writeUInt32LE(0x4e4f534a, 16);
   return Buffer.concat([header, json]);
 }
-function install(root: string, map = 'de_mirage') {
+function install(root: string, map = 'de_mirage', assetVersion = 'Synthetic-version') {
   const image = png(),
-    model = glb(),
-    assetVersion = 'Synthetic-version';
+    model = glb();
   for (const tier of ['desktop', 'mobile']) {
     const path = join(root, map, tier);
     mkdirSync(path, { recursive: true });
@@ -198,6 +205,291 @@ async function fixture(enabled = true, privateInstance = false) {
     },
   };
 }
+
+function latestInventory(at = now(), manifest = '18014398509481985') {
+  return {
+    schemaVersion: 1 as const,
+    appId: 730 as const,
+    depotId: 2347770 as const,
+    manifest,
+    updatedAt: at,
+    maps: [{ map: 'de_mirage', sha1: 'c'.repeat(40), bytes: 12345 }],
+  };
+}
+async function latestReadyFixture(f: Awaited<ReturnType<typeof fixture>>) {
+  const inventory = latestInventory();
+  await writeOfficialMapInventory(f.jobs, inventory);
+  writeFileSync(f.catalog, JSON.stringify({ schemaVersion: 1, entries: [] }));
+  const selection = latestOfficialSelection(inventory, 'de_mirage')!,
+    requestId = latestMapRequestId(selection);
+  const source = {
+    appId: 730 as const,
+    depotId: 2347770 as const,
+    manifest: selection.manifest,
+    mapSha256: 'd'.repeat(64),
+  };
+  const assetPackId = latestMapPackId(selection.map, source),
+    target = join(f.maps, 'packs', assetPackId);
+  await enqueueLatestMapRequest(f.jobs, selection);
+  const original = install(
+    join(target, 'maps'),
+    'de_mirage',
+    `steam-2347770-${selection.manifest}`,
+  );
+  writeFileSync(
+    join(target, 'pack.json'),
+    JSON.stringify({
+      schemaVersion: 1,
+      kind: 'latest-official',
+      packId: assetPackId,
+      requestId,
+      selection,
+      source,
+      preparedAt: now(),
+    }),
+  );
+  await writeMapJobResult(f.jobs, {
+    schemaVersion: 1,
+    packId: requestId,
+    status: 'ready',
+    updatedAt: now(),
+    assetPackId,
+    source,
+    sourceCheckedAt: now(),
+  });
+  return { inventory, selection, source, requestId, assetPackId, target, original };
+}
+
+test('fresh official inventory enables disclosed latest fallback without manual source approval or GET-side acquisition', async () => {
+  const f = await fixture();
+  try {
+    writeFileSync(f.catalog, JSON.stringify({ schemaVersion: 1, entries: [] }));
+    f.db.run('UPDATE demos SET metadata=? WHERE id=?', JSON.stringify({}), 'private-demo');
+    const inventory = latestInventory();
+    await writeOfficialMapInventory(f.jobs, inventory);
+    await writeMapWorkerStatus(f.jobs, { schemaVersion: 1, status: 'idle', updatedAt: now() });
+    const selection = latestOfficialSelection(inventory, 'de_mirage')!,
+      id = latestMapRequestId(selection);
+    const described = (await f.request()).json();
+    assert.equal(described.resolution.status, 'latest');
+    assert.deepEqual(described.resolution.selection, selection);
+    assert.equal(described.resolution.source, null);
+    assert.equal(described.verification, 'unavailable');
+    assert.equal(described.canAcquire, true);
+    assert.equal(existsSync(join(f.jobs, 'requests', id + '.json')), false);
+    assert.equal((await f.request(undefined, 'other', 'POST', {})).statusCode, 404);
+    assert.equal((await f.request(undefined, 'member', 'POST', { manifest: '2' })).statusCode, 400);
+    const queued = await f.request(undefined, 'member', 'POST', {});
+    assert.equal(queued.statusCode, 202);
+    assert.equal(queued.json().acquisition, 'queued');
+    assert.equal(queued.json().packId, null);
+    const request = await readMapRequest(f.jobs, id);
+    assert.equal(request?.kind, 'latest-official');
+    assert.equal(request?.approval, undefined);
+  } finally {
+    await f.close();
+  }
+});
+
+test('exact approval stays preferred; explicit addons, conflicts and unlisted names never become latest official', async () => {
+  const f = await fixture();
+  try {
+    await writeOfficialMapInventory(f.jobs, latestInventory());
+    assert.equal((await f.request()).json().resolution.status, 'approved');
+    writeFileSync(f.catalog, JSON.stringify({ schemaVersion: 1, entries: [] }));
+    for (const identity of [
+      { ...approval.identity, addonPresence: 'present' },
+      { ...approval.identity, conflicted: true },
+      { ...approval.identity, map: 'de_dust2' },
+    ]) {
+      f.db.run(
+        'UPDATE demos SET metadata=? WHERE id=?',
+        JSON.stringify({ mapIdentity: identity }),
+        'private-demo',
+      );
+      const value = (await f.request()).json();
+      assert.notEqual(value.resolution.status, 'latest');
+      assert.equal(value.canAcquire, false);
+    }
+    f.db.run(
+      'UPDATE demos SET map=?,metadata=? WHERE id=?',
+      'de_unlisted_user_input',
+      JSON.stringify({}),
+      'private-demo',
+    );
+    assert.notEqual((await f.request()).json().resolution.status, 'latest');
+  } finally {
+    await f.close();
+  }
+});
+
+test('latest ready descriptors and immutable URLs require worker marker/request/source proof rather than queue IDs', async () => {
+  const f = await fixture();
+  try {
+    const p = await latestReadyFixture(f),
+      value = (await f.request()).json();
+    assert.equal(value.acquisition, 'ready');
+    assert.equal(value.verification, 'latest-official');
+    assert.equal(value.packId, p.assetPackId);
+    assert.deepEqual(value.resolution.source, p.source);
+    assert.match(value.assets.model, new RegExp('/api/map-packs/' + p.assetPackId + '/models/'));
+    assert.equal((await f.request(value.assets.model)).statusCode, 200);
+    assert.equal((await f.request(value.assets.overview.image)).statusCode, 200);
+    assert.equal(
+      (await f.request('/api/map-packs/' + p.requestId + '/models/de_mirage/desktop/scene.glb'))
+        .statusCode,
+      404,
+    );
+    rmSync(join(p.target, 'pack.json'));
+    assert.equal((await f.request()).json().acquisition, 'failed');
+    assert.equal((await f.request(value.assets.model)).statusCode, 404);
+  } finally {
+    await f.close();
+  }
+});
+
+test('refreshed inventory does not relabel or break existing immutable latest snapshot URLs', async () => {
+  const f = await fixture();
+  try {
+    const p = await latestReadyFixture(f),
+      before = (await f.request()).json();
+    await writeOfficialMapInventory(f.jobs, latestInventory(now(), '18014398509481986'));
+    const next = (await f.request()).json();
+    assert.equal(next.resolution.status, 'latest');
+    assert.notEqual(next.resolution.selection.manifest, p.source.manifest);
+    assert.equal(next.acquisition, 'unavailable');
+    assert.equal(next.resolution.source, null);
+    assert.equal((await f.request(before.assets.model)).statusCode, 200);
+    const staleAt = now() - 86401;
+    await writeOfficialMapInventory(f.jobs, { ...p.inventory, updatedAt: staleAt });
+    const cached = (await f.request()).json();
+    assert.equal(cached.acquisition, 'ready');
+    assert.equal(cached.resolution.inventoryUpdatedAt, staleAt);
+    assert.equal(cached.canAcquire, false);
+    assert.equal((await f.request(before.assets.model)).statusCode, 200);
+    await writeOfficialMapInventory(f.jobs, {
+      ...p.inventory,
+      maps: [{ ...p.inventory.maps[0], map: 'de_other_official' }],
+    });
+    assert.equal((await f.request(before.assets.model)).statusCode, 404);
+  } finally {
+    await f.close();
+  }
+});
+
+test('stale inventory cannot authorize a fresh source job and disabled policy preserves manual unverified packs', async () => {
+  const f = await fixture();
+  try {
+    writeFileSync(f.catalog, JSON.stringify({ schemaVersion: 1, entries: [] }));
+    await writeOfficialMapInventory(f.jobs, latestInventory(now() - 86401));
+    await writeMapWorkerStatus(f.jobs, { schemaVersion: 1, status: 'idle', updatedAt: now() });
+    assert.notEqual((await f.request()).json().resolution.status, 'latest');
+    assert.equal((await f.request(undefined, 'member', 'POST', {})).json().canAcquire, false);
+  } finally {
+    await f.close();
+  }
+  const disabled = await fixture(false);
+  try {
+    writeFileSync(disabled.catalog, JSON.stringify({ schemaVersion: 1, entries: [] }));
+    await writeOfficialMapInventory(disabled.jobs, latestInventory());
+    install(disabled.maps);
+    const value = (await disabled.request()).json();
+    assert.equal(value.acquisition, 'disabled');
+    assert.equal(value.verification, 'version-unverified');
+    assert.equal(value.canAcquire, false);
+    assert.equal(value.assets.model, '/map-assets/de_mirage/desktop/scene.glb');
+  } finally {
+    await disabled.close();
+  }
+});
+
+test('unavailable historical source may select fresh latest while ready exact and source-evidence failures remain preferred or terminal', async () => {
+  const f = await fixture();
+  try {
+    await writeOfficialMapInventory(f.jobs, latestInventory());
+    await writeMapWorkerStatus(f.jobs, { schemaVersion: 1, status: 'idle', updatedAt: now() });
+    await enqueueMapRequest(f.jobs, approval);
+    const id = mapPackId(approval);
+    for (const code of ['source_mismatch', 'approval_removed'] as const) {
+      await writeMapJobResult(f.jobs, {
+        schemaVersion: 1,
+        packId: id,
+        status: 'failed',
+        code,
+        updatedAt: now(),
+      });
+      const value = (await f.request()).json();
+      assert.equal(value.resolution.status, 'approved');
+      assert.equal(value.acquisition, 'failed');
+      assert.equal(value.canAcquire, false);
+    }
+    await writeMapJobResult(f.jobs, {
+      schemaVersion: 1,
+      packId: id,
+      status: 'failed',
+      code: 'source_unavailable',
+      updatedAt: now(),
+    });
+    const latest = (await f.request()).json();
+    assert.equal(latest.resolution.status, 'latest');
+    assert.equal(latest.canAcquire, true);
+    assert.equal((await f.request(undefined, 'member', 'POST', {})).statusCode, 202);
+    await writeOfficialMapInventory(f.jobs, latestInventory(now() - 86401));
+    assert.equal((await f.request()).json().resolution.status, 'approved');
+    install(join(f.maps, 'packs', id, 'maps'));
+    await writeMapJobResult(f.jobs, {
+      schemaVersion: 1,
+      packId: id,
+      status: 'ready',
+      updatedAt: now(),
+    });
+    await writeOfficialMapInventory(f.jobs, latestInventory());
+    const exact = (await f.request()).json();
+    assert.equal(exact.resolution.status, 'approved');
+    assert.equal(exact.acquisition, 'ready');
+    assert.equal(exact.verification, 'operator-approved');
+  } finally {
+    await f.close();
+  }
+});
+
+test('unavailable historical source retains an already-ready latest snapshot with stale inventory but cannot acquire another one', async () => {
+  const f = await fixture();
+  try {
+    const p = await latestReadyFixture(f);
+    writeFileSync(f.catalog, JSON.stringify({ schemaVersion: 1, entries: [approval] }));
+    const exactId = mapPackId(approval);
+    await enqueueMapRequest(f.jobs, approval);
+    await writeMapJobResult(f.jobs, {
+      schemaVersion: 1,
+      packId: exactId,
+      status: 'failed',
+      code: 'source_unavailable',
+      updatedAt: now(),
+    });
+    const staleAt = now() - 86401;
+    await writeOfficialMapInventory(f.jobs, { ...p.inventory, updatedAt: staleAt });
+    const cached = (await f.request()).json();
+    assert.equal(cached.resolution.status, 'latest');
+    assert.equal(cached.resolution.inventoryUpdatedAt, staleAt);
+    assert.equal(cached.acquisition, 'ready');
+    assert.equal(cached.verification, 'latest-official');
+    assert.equal(cached.packId, p.assetPackId);
+    assert.equal(cached.canAcquire, false);
+    assert.equal((await f.request(cached.assets.model)).statusCode, 200);
+    rmSync(join(f.jobs, 'results', p.requestId + '.json'));
+    const missing = (await f.request()).json();
+    assert.equal(missing.resolution.status, 'approved');
+    assert.equal(missing.acquisition, 'failed');
+    assert.equal(missing.canAcquire, false);
+    assert.equal(
+      (await f.request(undefined, 'member', 'POST', {})).json().resolution.status,
+      'approved',
+    );
+  } finally {
+    await f.close();
+  }
+});
 
 test('scoped map discovery preserves demo ACL and explicit sharing while only owners may request preparation', async () => {
   const f = await fixture();

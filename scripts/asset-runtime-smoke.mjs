@@ -50,9 +50,17 @@ const root = resolve(process.env.CSWATCH_ASSET_SMOKE_ROOT || process.cwd()),
   requireAssets = createRequire(join(root, 'tools/assets/package.json')),
   { Document, NodeIO } = requireAssets('@gltf-transform/core'),
   sharp = requireAssets('sharp');
-const { mapPackId, readMapCatalog } = await moduleAt('map-catalog.js');
-const { enqueueMapRequest, prepareMapJobs, readMapResult, mapWorkerAvailable } =
-  await moduleAt('map-jobs.js');
+const { mapPackId, readMapCatalog, latestOfficialSelection, latestMapRequestId, latestMapPackId } =
+  await moduleAt('map-catalog.js');
+const {
+  enqueueMapRequest,
+  prepareMapJobs,
+  readMapResult,
+  mapWorkerAvailable,
+  writeOfficialMapInventory,
+  enqueueLatestMapRequest,
+  writeMapJobResult,
+} = await moduleAt('map-jobs.js');
 const { mapWorkerOptions, lockMapWorker, processOneMapRequest } = await import(
   pathToFileURL(join(root, 'tools/assets/map-worker.mjs')).href
 );
@@ -305,6 +313,52 @@ try {
     }),
     false,
   );
+  const latestEntry = {
+    ...good,
+    identity: { ...good.identity, map: 'de_ci_latest' },
+    assetVersion: `steam-2347770-${good.source.manifest}`,
+  };
+  const inventory = {
+    schemaVersion: 1,
+    appId: 730,
+    depotId: 2347770,
+    manifest: good.source.manifest,
+    updatedAt: Math.floor(Date.now() / 1000),
+    maps: [{ map: latestEntry.identity.map, sha1: 'a'.repeat(40), bytes: 100 }],
+  };
+  await writeOfficialMapInventory(options.jobs, inventory);
+  const selection = latestOfficialSelection(inventory, latestEntry.identity.map),
+    requestId = latestMapRequestId(selection),
+    contentId = latestMapPackId(selection.map, good.source);
+  assert.equal(await enqueueLatestMapRequest(options.jobs, selection), 'queued');
+  assert.equal(
+    await processOneMapRequest(options, {
+      prepare: async (input) => {
+        assert.deepEqual(input.expectedMapFiles, {
+          [selection.map]: { sha1: selection.sha1, bytes: selection.bytes },
+        });
+        await input.onSourceVerified({ ...selection, mapSha256: good.source.mapSha256 });
+        assert.equal((await readMapResult(options.jobs, requestId)).assetPackId, contentId);
+        await prepareOriginal(input.output, latestEntry);
+      },
+    }),
+    true,
+  );
+  const latestResult = await readMapResult(options.jobs, requestId);
+  assert.equal(latestResult.status, 'ready');
+  assert.equal(latestResult.assetPackId, contentId);
+  assert.notEqual(requestId, contentId);
+  const latestTarget = join(options.assets, 'packs', contentId);
+  assert.equal(JSON.parse(await readFile(join(latestTarget, 'pack.json'))).requestId, requestId);
+  await validatePreparedMap(join(latestTarget, 'maps'), selection.map, latestEntry.assetVersion);
+  await writeMapJobResult(options.jobs, { ...latestResult, status: 'processing' });
+  assert.equal(
+    await processOneMapRequest(options, {
+      prepare: () => assert.fail('Published latest content recovers without conversion.'),
+    }),
+    true,
+  );
+  assert.equal((await readMapResult(options.jobs, requestId)).status, 'ready');
   const broken = approvals[1],
     brokenId = mapPackId(broken);
   assert.equal(await enqueueMapRequest(options.jobs, broken), 'queued');
@@ -324,14 +378,64 @@ try {
   assert.equal(failure.status, 'failed');
   assert.equal(failure.code, 'preparation_failed');
   assert.equal(existsSync(join(options.assets, 'packs', brokenId)), false);
-  assert.deepEqual(await readdir(join(options.assets, 'packs')), [packId]);
+  assert.deepEqual(
+    (await readdir(join(options.assets, 'packs'))).sort(),
+    [packId, contentId].sort(),
+  );
   assert.equal(await mapWorkerAvailable(options.jobs), true);
+  const { prepareGameplaySoundBank } = await import(
+    pathToFileURL(join(root, 'tools/assets/prepare-gameplay-sounds.mjs')).href
+  );
+  const soundInput = await mkdtemp(join(options.cache, 'original-sound-'));
+  const originalPcm = Buffer.alloc(1644);
+  originalPcm.write('RIFF');
+  originalPcm.writeUInt32LE(1636, 4);
+  originalPcm.write('WAVEfmt ', 8);
+  originalPcm.writeUInt32LE(16, 16);
+  originalPcm.writeUInt16LE(1, 20);
+  originalPcm.writeUInt16LE(1, 22);
+  originalPcm.writeUInt32LE(8000, 24);
+  originalPcm.writeUInt32LE(16000, 28);
+  originalPcm.writeUInt16LE(2, 32);
+  originalPcm.writeUInt16LE(16, 34);
+  originalPcm.write('data', 36);
+  originalPcm.writeUInt32LE(1600, 40);
+  await writeFile(join(soundInput, 'ak47-fire.wav'), originalPcm, { flag: 'wx', mode: 0o600 });
+  const sounds = await prepareGameplaySoundBank({
+    input: soundInput,
+    output: options.assets,
+    networkDeny: boundary,
+    items: ['ak47-fire'],
+    source: {
+      appId: 730,
+      depotId: 2347770,
+      manifest: '1',
+      description: 'Original silent PCM fixture, not game content',
+    },
+  });
+  assert.equal(sounds.report.prepared[0].sha256, hash(originalPcm));
+  assert.deepEqual(await readFile(join(options.assets, 'sounds/ak47-fire/sound.wav')), originalPcm);
+  await assert.rejects(
+    () =>
+      prepareGameplaySoundBank({
+        input: soundInput,
+        output: options.assets,
+        networkDeny: boundary,
+        items: ['ak47-fire'],
+        source: { appId: 730, depotId: 2347770, manifest: '1' },
+      }),
+    /exists/,
+  );
+  await rm(soundInput, { recursive: true, force: true });
   console.log(
     JSON.stringify({
       ok: true,
       containerBoundary: inContainer,
       kernelConfinement: true,
       workerPublication: true,
+      latestContentPublication: true,
+      latestCrashRecovery: true,
+      originalPcmSoundPublication: true,
       corruptOutputRejected: true,
       originalRuntimeFiles: validated.length,
       officialDownloads: 0,

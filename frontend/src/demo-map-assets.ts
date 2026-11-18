@@ -1,17 +1,36 @@
-import type { DemoMapAssets } from '../../shared/map-acquisition';
+import type {
+  DemoMapAssets,
+  LatestOfficialSelection,
+  OfficialMapSource,
+} from '../../shared/map-acquisition';
 import { emptyMapAssets, validateMapAssets, type MapAssetState } from './map-assets';
 
 type Resolution = DemoMapAssets['resolution']['status'];
 export type DemoMapSummary = Pick<
   DemoMapAssets,
   'acquisition' | 'canAcquire' | 'verification' | 'packId' | 'code'
-> & { resolution: Resolution };
+> & {
+  resolution: Resolution;
+  latest?: {
+    selection: LatestOfficialSelection;
+    inventoryUpdatedAt: number;
+    source: OfficialMapSource | null;
+  };
+};
 export type DemoMapState = MapAssetState & {
   acquisition?: DemoMapSummary;
   pollingEnded?: boolean;
   requestUnconfirmed?: boolean;
   requesting?: boolean;
 };
+/** Queue intent, deliberately distinct from a latest job's eventual content pack. */
+export function mapAcquisitionKey(info: DemoMapSummary | undefined): string | undefined {
+  if (info?.resolution === 'approved' && info.packId) return `approved:${info.packId}`;
+  if (info?.resolution === 'latest' && info.latest) {
+    const { map, manifest, sha1, bytes } = info.latest.selection;
+    return `latest:${JSON.stringify([map, manifest, sha1, bytes])}`;
+  }
+}
 const object = (value: unknown): Record<string, unknown> => {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new Error('Invalid map discovery');
@@ -24,6 +43,7 @@ const statuses = new Set([
   'ambiguous',
   'catalog_invalid',
   'approved',
+  'latest',
 ]);
 const acquisitionStatuses = new Set([
   'disabled',
@@ -48,7 +68,57 @@ const codes = new Set([
   'worker_interrupted',
   'queue_full',
 ]);
-/** The browser consumes only readiness and fixed URLs, never an approval tuple. */
+const digest = (value: unknown, length: 40 | 64) =>
+  typeof value === 'string' && new RegExp(`^[a-f0-9]{${length}}$`).test(value);
+const manifest = (value: unknown): value is string =>
+  typeof value === 'string' &&
+  /^[1-9][0-9]{0,19}$/.test(value) &&
+  BigInt(value) <= 18446744073709551615n;
+const exactKeys = (value: Record<string, unknown>, keys: string[]) =>
+  Object.keys(value).length === keys.length && keys.every((key) => key in value);
+function latestSelection(value: unknown, map: string): LatestOfficialSelection {
+  const item = object(value);
+  if (
+    !exactKeys(item, ['map', 'appId', 'depotId', 'manifest', 'sha1', 'bytes']) ||
+    item.map !== map ||
+    !/^[a-z][a-z0-9_]{1,79}$/.test(map) ||
+    item.appId !== 730 ||
+    item.depotId !== 2347770 ||
+    !manifest(item.manifest) ||
+    !digest(item.sha1, 40) ||
+    !Number.isSafeInteger(item.bytes) ||
+    Number(item.bytes) < 1 ||
+    Number(item.bytes) > 2 * 1024 ** 3
+  )
+    throw new Error('Invalid latest map selection');
+  return {
+    map,
+    appId: 730,
+    depotId: 2347770,
+    manifest: item.manifest,
+    sha1: item.sha1 as string,
+    bytes: item.bytes as number,
+  };
+}
+function officialSource(value: unknown, selected: LatestOfficialSelection): OfficialMapSource {
+  const item = object(value);
+  if (
+    !exactKeys(item, ['appId', 'depotId', 'manifest', 'mapSha256']) ||
+    item.appId !== 730 ||
+    item.depotId !== 2347770 ||
+    item.manifest !== selected.manifest ||
+    !digest(item.mapSha256, 64)
+  )
+    throw new Error('Invalid latest map source');
+  return {
+    appId: 730,
+    depotId: 2347770,
+    manifest: selected.manifest,
+    mapSha256: item.mapSha256 as string,
+  };
+}
+/** The browser binds assets to fixed content-pack URLs. A latest selection is
+ * official depot evidence, never proof of the recording's historical geometry. */
 export function validateDemoMapAssets(value: unknown, map: string): DemoMapState {
   const input = object(value),
     resolution = object(input.resolution);
@@ -56,19 +126,41 @@ export function validateDemoMapAssets(value: unknown, map: string): DemoMapState
     !statuses.has(String(resolution.status)) ||
     !acquisitionStatuses.has(String(input.acquisition)) ||
     typeof input.canAcquire !== 'boolean' ||
-    !['operator-approved', 'version-unverified', 'unavailable'].includes(
+    !['operator-approved', 'latest-official', 'version-unverified', 'unavailable'].includes(
       String(input.verification),
     ) ||
     (input.code !== undefined && !codes.has(String(input.code)))
   )
     throw new Error('Invalid map discovery');
-  const approved = resolution.status === 'approved';
+  const approved = resolution.status === 'approved',
+    latest = resolution.status === 'latest';
   if (
     approved &&
     (typeof resolution.packId !== 'string' || !/^[a-f0-9]{64}$/.test(resolution.packId))
   )
     throw new Error('Invalid approved map identity');
-  if (input.packId !== null && (!approved || input.packId !== resolution.packId))
+  let latestInfo: DemoMapSummary['latest'];
+  if (latest) {
+    const selection = latestSelection(resolution.selection, map);
+    if (
+      !Number.isSafeInteger(resolution.inventoryUpdatedAt) ||
+      Number(resolution.inventoryUpdatedAt) < 0 ||
+      Number(resolution.inventoryUpdatedAt) > 8640000000000
+    )
+      throw new Error('Invalid latest map inventory');
+    latestInfo = {
+      selection,
+      inventoryUpdatedAt: resolution.inventoryUpdatedAt as number,
+      source: resolution.source === null ? null : officialSource(resolution.source, selection),
+    };
+  }
+  if (
+    input.packId !== null &&
+    (!digest(input.packId, 64) ||
+      (!approved && !latest) ||
+      (approved && input.packId !== resolution.packId) ||
+      (latest && !latestInfo?.source))
+  )
     throw new Error('Invalid map pack identity');
   const assets = validateMapAssets(
     input.assets,
@@ -76,10 +168,10 @@ export function validateDemoMapAssets(value: unknown, map: string): DemoMapState
     typeof input.packId === 'string' ? input.packId : undefined,
   );
   const hasAssets = Boolean(assets.model || assets.mobile || assets.overview || assets.environment);
-  if (input.verification === 'operator-approved') {
+  if (input.verification === 'operator-approved' || input.verification === 'latest-official') {
     if (
       input.acquisition !== 'ready' ||
-      !approved ||
+      (input.verification === 'operator-approved' ? !approved : !latestInfo?.source) ||
       !input.packId ||
       !assets.model ||
       !assets.mobile ||
@@ -88,23 +180,34 @@ export function validateDemoMapAssets(value: unknown, map: string): DemoMapState
     )
       throw new Error('Incomplete prepared map');
   } else if (input.verification === 'version-unverified') {
-    if (input.packId !== null || input.acquisition !== 'disabled')
+    if (
+      input.packId !== null ||
+      input.acquisition !== 'disabled' ||
+      (!assets.model && !assets.mobile && !assets.overview)
+    )
       throw new Error('Invalid manual map');
   } else if (hasAssets) throw new Error('Unverified prepared map');
-  if (input.acquisition === 'ready' && input.verification !== 'operator-approved')
+  if (
+    input.acquisition === 'ready' &&
+    !['operator-approved', 'latest-official'].includes(String(input.verification))
+  )
     throw new Error('Invalid ready map');
   if (
     input.canAcquire &&
-    (!approved ||
+    ((!approved && !latest) ||
       (input.acquisition !== 'unavailable' &&
         !(input.acquisition === 'failed' && retryableMapFailures.has(String(input.code)))) ||
       hasAssets ||
-      input.packId !== resolution.packId)
+      (approved ? input.packId !== resolution.packId : input.packId !== null))
   )
     throw new Error('Invalid acquisition eligibility');
   if (
     ['queued', 'processing', 'failed'].includes(String(input.acquisition)) &&
-    (!approved || input.packId !== resolution.packId || hasAssets)
+    ((!approved && !latest) ||
+      (approved
+        ? input.packId !== resolution.packId
+        : input.acquisition !== 'failed' && input.packId !== null) ||
+      hasAssets)
   )
     throw new Error('Invalid map job');
   return {
@@ -121,6 +224,7 @@ export function validateDemoMapAssets(value: unknown, map: string): DemoMapState
       canAcquire: input.canAcquire,
       verification: input.verification as DemoMapAssets['verification'],
       packId: input.packId as string | null,
+      ...(latestInfo ? { latest: latestInfo } : {}),
       ...(input.code ? { code: input.code as DemoMapAssets['code'] } : {}),
     },
   };
@@ -176,28 +280,35 @@ export function mapAcquisitionMessage(
       description:
         'The preparation request could not be confirmed. Reopen the viewer to check its status.',
     };
-  if (state.requesting || (info.canAcquire && info.acquisition === 'unavailable'))
-    return {
-      title: 'Requesting map preparation',
-      description: 'Requesting the operator-approved map from the preparation worker.',
-    };
-  if (state.pollingEnded)
+  if (state.pollingEnded && !state.requesting)
     return {
       title: 'Map preparation is still pending',
       description:
         'Reopen the viewer to check the preparation status. Leaving the viewer does not stop preparation.',
     };
+  if (state.requesting || (info.canAcquire && info.acquisition === 'unavailable'))
+    return {
+      title: 'Requesting map preparation',
+      description:
+        info.resolution === 'latest'
+          ? 'Requesting the latest official map from the preparation worker.'
+          : 'Requesting the operator-approved map from the preparation worker.',
+    };
   if (info.acquisition === 'queued')
     return {
       title: 'Map preparation queued',
       description:
-        'The approved map is waiting for the preparation worker. You can leave this viewer and return later.',
+        info.resolution === 'latest'
+          ? 'The latest official map is waiting for the preparation worker. Its layout may differ from this recording.'
+          : 'The approved map is waiting for the preparation worker. You can leave this viewer and return later.',
     };
   if (info.acquisition === 'processing')
     return {
       title: 'Preparing map assets',
       description:
-        'The worker is downloading and converting the approved map. You can leave this viewer and return later.',
+        info.resolution === 'latest'
+          ? 'The worker is preparing the latest official map. Its layout may differ from this recording.'
+          : 'The worker is downloading and converting the approved map. You can leave this viewer and return later.',
     };
   if (info.code === 'queue_full')
     return {
@@ -209,9 +320,13 @@ export function mapAcquisitionMessage(
       title: 'Map preparation failed',
       description:
         info.code === 'source_mismatch'
-          ? 'The source files do not match the approved map version. No different version will be substituted.'
+          ? info.resolution === 'latest'
+            ? 'The downloaded files do not match the selected official map source. No substitute source will be used.'
+            : 'The source files do not match the approved map version. No different version will be substituted.'
           : info.code === 'source_unavailable'
-            ? 'The approved Steam source is unavailable. The administrator needs to check its source configuration.'
+            ? info.resolution === 'latest'
+              ? 'The selected official Steam source is unavailable. The administrator needs to check the preparation worker.'
+              : 'The approved Steam source is unavailable. The administrator needs to check its source configuration.'
             : info.code === 'storage_limit'
               ? 'Map preparation stopped at the configured storage limit. The administrator needs to free space.'
               : info.code === 'approval_removed'
@@ -232,6 +347,8 @@ export function mapAcquisitionMessage(
       description: 'No preparation worker is currently available for this approved map.',
     };
   const descriptions: Record<Exclude<Resolution, 'approved'>, string> = {
+    latest:
+      'The latest official map is known, but preparation is unavailable for this viewer. The demo owner or administrator can check its status.',
     unknown:
       'This recording does not contain enough map identity evidence to choose an approved version.',
     unmapped: 'No operator-approved map version matches this recording.',
