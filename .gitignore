@@ -6,6 +6,10 @@ node_modules/
 frontend/dist/
 .env
 var/
+# User recordings and companion keys stay local.
+*.dem
+*.dem.zst
+*.dem.info
 *.db*
 .taste-skill/inspect/
 test-results/

@@ -1,11 +1,19 @@
 import { t } from '../i18n';
-import { Component, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Component,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import type { ReactNode } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { OrbitControls, useGLTF } from '@react-three/drei';
+import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import type { Playback, Position } from '../types';
-import { api } from '../api';
 import TacticalPlot from './TacticalPlot';
 import {
   buildUtilityZones,
@@ -23,7 +31,49 @@ export type SceneFocus = {
 };
 import { frameAt, playbackBounds, defaultSettings, type ViewerSettings } from '../playback';
 import { Line } from '@react-three/drei';
-import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { freeCameraAction, typingOrDialog } from '../free-camera';
+import { thirdPersonFollow } from '../follow-camera';
+import type { AssetStatus, MapAssetState } from '../map-assets';
+import { assertMapBaseColorTextures, prepareMapModel } from '../map-model';
+import { renderSkyBehindMap, skyCameraFor, updateSkyCamera } from '../sky-render';
+import { useMapGLTF, useMapModelScope } from '../map-loader';
+import type { ModelScope } from '../model-cache';
+import { useEquipmentAssets, type EquipmentRenderState } from '../equipment-assets';
+import { equipmentIconKey } from '../equipment-icons';
+import { projectileEquipment } from '../projectile-equipment';
+import { useAgentAssets } from '../agent-assets';
+import { useModelLeases } from '../equipment-loader';
+import RenderAgent, {
+  GenericAgentBody,
+  AgentModels,
+  type AgentInstanceStatus,
+} from './RenderAgent';
+import { indexItems, itemsAt, hasRecordedProjectiles, type PresentItem } from '../item-state';
+import {
+  EquipmentModels,
+  EquipmentModelInstance,
+  HeldEquipment,
+  PovEquipment,
+  RecordedEquipment,
+  ProjectileFallback,
+  type EquipmentInstanceStatus,
+} from './RenderEquipment';
+import { installSourceBlackMaterials, type SourceFogResources } from '../source-black-material';
+type SourceFogReference = { current: SourceFogResources };
+import type { MapEnvironment } from '../../../shared/map-assets';
+import { daylightFallback, mapEnvironmentKey, useMapEnvironment } from '../map-environment';
+export type MapRenderState = {
+  map: string;
+  model: AssetStatus;
+  renderer: '3d' | '2d';
+  environment: AssetStatus;
+  environmentVersion: string | null;
+  landscape: AssetStatus;
+  equipment?: EquipmentRenderState;
+};
+type MapResources = MapAssetState & {
+  reportOverview: (image: string, version: string, status: 'ready' | 'error') => void;
+};
 
 const UNIT = 0.0254;
 const vector = (p: Position) => new THREE.Vector3(p.x * UNIT, p.z * UNIT, -p.y * UNIT);
@@ -127,18 +177,118 @@ function Courtyard() {
     </group>
   );
 }
-function Model({ url }: { url: string }) {
-  const { scene } = useGLTF(url);
-  const copy = useMemo(() => scene.clone(), [scene]);
-  useEffect(() => {
-    copy.traverse((o) => {
-      if (o instanceof THREE.Mesh) {
-        o.castShadow = true;
-        o.receiveShadow = true;
+function Model({
+  url,
+  loaded,
+  fogResources,
+  scope,
+}: {
+  url: string;
+  fogResources: SourceFogReference;
+  scope: ModelScope;
+  loaded: (
+    url: string,
+    status: 'ready' | 'error',
+    sky?: THREE.Scene | null,
+    landscape?: AssetStatus,
+  ) => void;
+}) {
+  // Prepared map URLs are fixed. Operator pack installs require reloading open
+  // tabs to clear this positive loader cache, as documented in tools/assets.
+  const gltf = useMapGLTF(url);
+  useLayoutEffect(() => scope.acquire(), [scope]);
+  const prepared = useMemo(() => {
+    const result = prepareMapModel(gltf.scene);
+    assertMapBaseColorTextures({ scene: result.main, parser: gltf.parser });
+    let landscape: AssetStatus = result.sky ? 'ready' : 'missing';
+    if (result.sky) {
+      try {
+        assertMapBaseColorTextures({ scene: result.sky, parser: gltf.parser });
+      } catch {
+        result.sky = null;
+        landscape = 'error';
       }
-    });
-  }, [copy]);
-  return <primitive object={copy} rotation={[0, Math.PI / 2, 0]} />;
+    }
+    const compatibility = installSourceBlackMaterials(
+      [result.main, ...(result.sky ? [result.sky] : [])],
+      () => fogResources.current,
+    );
+    return { ...result, landscape, compatibility };
+  }, [gltf, fogResources]);
+  useEffect(() => () => prepared.compatibility.dispose(), [prepared]);
+  useLayoutEffect(() => {
+    if (scope.isCurrent()) loaded(url, 'ready', prepared.sky, prepared.landscape);
+  }, [url, loaded, prepared, scope]);
+  return <primitive object={prepared.main} />;
+}
+function SkyPass({ sky }: { sky: THREE.Scene }) {
+  const camera = useMemo(() => skyCameraFor(sky), [sky]);
+  useFrame(({ gl, scene, camera: main }) => {
+    const backgroundCamera =
+      main instanceof THREE.PerspectiveCamera ? updateSkyCamera(main, camera) : main;
+    renderSkyBehindMap(gl, scene, sky, main, backgroundCamera);
+  }, 1);
+  return null;
+}
+function EnvironmentBackground({
+  environment,
+  sample,
+  report,
+  resources,
+}: {
+  environment: MapEnvironment | null;
+  sample: boolean;
+  report: (identity: string | null, status: AssetStatus) => void;
+  resources: SourceFogReference;
+}) {
+  const { scene, invalidate } = useThree();
+  const state = useMapEnvironment(sample ? null : environment);
+  useLayoutEffect(() => {
+    resources.current = { fog: environment?.fog || null, cube: state.texture };
+    invalidate();
+    return () => {
+      resources.current = { fog: null, cube: null };
+    };
+  }, [resources, environment?.fog, state.texture, invalidate]);
+  useLayoutEffect(() => {
+    const previous = scene.background,
+      intensity = scene.backgroundIntensity;
+    scene.background = state.texture || new THREE.Color(sample ? '#aeb6b0' : daylightFallback);
+    scene.backgroundIntensity = state.texture ? environment!.sky.brightness : 1;
+    invalidate();
+    return () => {
+      scene.background = previous;
+      scene.backgroundIntensity = intensity;
+    };
+  }, [scene, state.texture, sample, environment?.sky.brightness, invalidate]);
+  useLayoutEffect(() => {
+    report(state.identity, state.status);
+    return () => report(state.identity, 'pending');
+  }, [state.identity, state.status, report]);
+  return null;
+}
+class MapModelBoundary extends Component<
+  {
+    url: string;
+    scope: ModelScope;
+    report: (url: string, status: 'ready' | 'error') => void;
+    children: ReactNode;
+  },
+  { error: boolean }
+> {
+  state = { error: false };
+  static getDerivedStateFromError() {
+    return { error: true };
+  }
+  componentDidCatch() {
+    // Clear the rejected loader entry immediately. R3F canvas teardown is
+    // deferred, and a new viewer must not inherit that rejected promise.
+    if (this.props.scope.isCurrent()) this.props.report(this.props.url, 'error');
+    this.props.scope.invalidate();
+  }
+  render() {
+    return this.state.error ? null : this.props.children;
+  }
 }
 function Agent({
   position,
@@ -146,6 +296,7 @@ function Agent({
   alpha,
   selected,
   xray,
+  showMarkers,
   model,
   tick,
   rate,
@@ -155,6 +306,7 @@ function Agent({
   alpha: number;
   selected: boolean;
   xray: boolean;
+  showMarkers: boolean;
   model: string | null;
   tick: number;
   rate: number;
@@ -186,42 +338,26 @@ function Agent({
         </mesh>
       )}
       {model ? (
-        <Suspense fallback={null}>
-          <AnimatedAgent
-            url={model}
-            tick={tick}
-            rate={rate}
-            moving={!!next && Math.hypot(next.x - position.x, next.y - position.y) > 1}
-            crouched={(position.duck ?? 0) > 0.5}
-          />
-        </Suspense>
+        <RenderAgent
+          url={model}
+          id={position.id}
+          tick={tick}
+          rate={rate}
+          moving={!!next && Math.hypot(next.x - position.x, next.y - position.y) > 1}
+          crouched={(position.duck ?? 0) > 0.5}
+          fallback={<GenericAgentBody team={position.team} id={position.id} />}
+        />
       ) : (
-        <group>
-          <mesh position={[0, 0.91, 0]} castShadow>
-            <capsuleGeometry args={[0.23, 0.65, 4, 8]} />
-            <meshStandardMaterial color={position.team === 3 ? '#43535a' : '#81705c'} />
-          </mesh>
-          <mesh position={[0, 1.6, 0]} castShadow>
-            <sphereGeometry args={[0.18, 12, 12]} />
-            <meshStandardMaterial color="#b1a28a" />
-          </mesh>
-          {[-0.14, 0.14].map((x) => (
-            <mesh key={x} position={[x, 0.32, 0]} castShadow>
-              <capsuleGeometry args={[0.095, 0.45, 4, 8]} />
-              <meshStandardMaterial color="#434645" />
-            </mesh>
-          ))}
-          <mesh position={[0.3, 1.15, 0]} rotation={[0, 0, Math.PI / 2]}>
-            <boxGeometry args={[0.1, 0.9, 0.1]} />
-            <meshStandardMaterial color="#272b2a" />
-          </mesh>
-        </group>
+        <GenericAgentBody team={position.team} id={position.id} />
       )}
-      <mesh position={[0, 2, 0]}>
-        <sphereGeometry args={[selected ? 0.15 : 0.09, 8, 8]} />
-        <meshBasicMaterial color={selected ? '#ffffff' : color} />
-      </mesh>
-      {selected && (
+      <HeldEquipment position={position} />
+      {showMarkers && (
+        <mesh position={[0, 2, 0]}>
+          <sphereGeometry args={[selected ? 0.15 : 0.09, 8, 8]} />
+          <meshBasicMaterial color={selected ? '#ffffff' : color} />
+        </mesh>
+      )}
+      {showMarkers && selected && (
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.04, 0]}>
           <ringGeometry args={[0.5, 0.58, 32]} />
           <meshBasicMaterial color="#ffffff" />
@@ -230,81 +366,145 @@ function Agent({
     </group>
   );
 }
-function AnimatedAgent({
-  url,
-  tick,
-  rate,
-  moving,
-  crouched,
-}: {
-  url: string;
-  tick: number;
-  rate: number;
-  moving: boolean;
-  crouched: boolean;
-}) {
-  const gltf = useGLTF(url);
-  const instance = useMemo(() => clone(gltf.scene), [gltf.scene]);
-  const mixer = useMemo(() => new THREE.AnimationMixer(instance), [instance]);
-  const animation = useMemo(() => {
-    const clips = gltf.animations;
-    return (
-      clips.find((a) =>
-        (crouched ? /crouch/i : moving ? /run|walk|move/i : /idle/i).test(a.name),
-      ) ?? clips[0]
-    );
-  }, [gltf.animations, moving, crouched]);
-  useEffect(() => {
-    mixer.stopAllAction();
-    if (animation) mixer.clipAction(animation).play();
-    return () => {
-      mixer.stopAllAction();
-    };
-  }, [mixer, animation]);
-  useEffect(
-    () => () => {
-      mixer.uncacheRoot(instance);
-    },
-    [mixer, instance],
-  );
-  useFrame(() => {
-    mixer.setTime(tick / rate);
-  });
-  return <primitive object={instance} rotation={[0, Math.PI / 2, 0]} />;
-}
 function World({
   data,
   tick,
   mode,
   selected,
   model,
+  modelReady,
+  reportModel,
+  modelScope,
+  sky,
+  environment,
+  reportEnvironment,
   preview,
   settings,
   agents,
   focus,
   utilityState,
+  items,
 }: {
   data: Playback;
   tick: number;
   mode: string;
   selected: string;
   model: string | null;
+  modelReady: boolean;
+  reportModel: (
+    url: string,
+    status: 'ready' | 'error',
+    sky?: THREE.Scene | null,
+    landscape?: AssetStatus,
+  ) => void;
+  sky: THREE.Scene | null;
+  modelScope: ModelScope | null;
+  environment: MapEnvironment | null;
+  reportEnvironment: (identity: string | null, status: AssetStatus) => void;
   preview: boolean;
   settings: ViewerSettings;
   agents: { ct: string | null; t: string | null };
   focus?: SceneFocus;
   utilityState: UtilityPresentation;
+  items: PresentItem[];
 }) {
-  const { camera } = useThree();
+  const { camera, gl, invalidate } = useThree();
+  const fogResources = useRef<SourceFogResources>({ fog: null, cube: null });
+  const movement = useRef(new Set<string>());
+  const fastMovement = useRef(false);
   useEffect(() => {
     if (camera instanceof THREE.PerspectiveCamera) {
       camera.fov = settings.cameraFov;
       camera.updateProjectionMatrix();
+      invalidate();
     }
-  }, [camera, settings.cameraFov]);
+  }, [camera, settings.cameraFov, invalidate]);
+  useLayoutEffect(
+    () => invalidate(),
+    [
+      invalidate,
+      data,
+      tick,
+      mode,
+      selected,
+      model,
+      modelReady,
+      settings,
+      focus,
+      utilityState,
+      sky,
+      items,
+    ],
+  );
   const orbit = useRef<React.ComponentRef<typeof OrbitControls>>(null);
+  useEffect(() => {
+    if (mode !== 'orbit' || preview) return;
+    const root = gl.domElement.closest('.viewer-frame');
+    if (!root) return;
+    const heldKeys = new Map<string, string>();
+    const down = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.ctrlKey ||
+        event.altKey ||
+        event.metaKey ||
+        typingOrDialog(event.target) ||
+        document.querySelector(
+          'dialog[open]:not(.review-feed-inline),[aria-modal="true"],[role="menu"],[role="listbox"]',
+        )
+      )
+        return;
+      if (
+        event.target instanceof Node &&
+        event.target !== document.body &&
+        !root.contains(event.target)
+      )
+        return;
+      const action = freeCameraAction(event);
+      if (!action) {
+        if (movement.current.size && fastMovement.current !== event.shiftKey) {
+          fastMovement.current = event.shiftKey;
+          invalidate();
+        }
+        return;
+      }
+      fastMovement.current = event.shiftKey;
+      event.preventDefault();
+      heldKeys.set(event.code || event.key.toLowerCase(), action);
+      movement.current.add(action);
+      invalidate();
+    };
+    const up = (event: KeyboardEvent) => {
+      const wasFast = fastMovement.current;
+      fastMovement.current = event.shiftKey;
+      const key = event.code || event.key.toLowerCase();
+      const action = heldKeys.get(key);
+      heldKeys.delete(key);
+      if (action && ![...heldKeys.values()].includes(action)) movement.current.delete(action);
+      if (action || (movement.current.size && wasFast !== fastMovement.current)) invalidate();
+    };
+    const clear = () => {
+      const moving = heldKeys.size || movement.current.size || fastMovement.current;
+      heldKeys.clear();
+      movement.current.clear();
+      fastMovement.current = false;
+      if (moving) invalidate();
+    };
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    window.addEventListener('blur', clear);
+    document.addEventListener('focusin', clear);
+    return () => {
+      clear();
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+      window.removeEventListener('blur', clear);
+      document.removeEventListener('focusin', clear);
+    };
+  }, [mode, preview, gl, invalidate]);
   const freeView = useRef<{ position: THREE.Vector3; target: THREE.Vector3 } | null>(null);
   const { frame, next, alpha } = frameAt(data, tick);
+  const viewedPlayer = frame.players.find((player) => player.id === selected) || frame.players[0];
   const bounds = useMemo(() => {
     if (data.sample) return { center: new THREE.Vector3(0, 0, 0), extent: 52 };
     const b = playbackBounds(data);
@@ -347,6 +547,7 @@ function World({
       orbit.current?.target.copy(target);
       orbit.current?.update();
     }
+    invalidate();
     return () => {
       if (mode === 'orbit')
         freeView.current = {
@@ -354,16 +555,50 @@ function World({
           target: orbit.current?.target.clone() || bounds.center.clone(),
         };
     };
-  }, [mode, bounds, camera, focus?.id]);
-  useFrame(() => {
-    if (mode === 'orbit') return;
-    const p = frame.players.find((p) => p.id === selected) ?? frame.players[0];
+  }, [mode, bounds, camera, focus?.id, invalidate]);
+  useFrame((_, delta) => {
+    if (mode === 'orbit') {
+      if (
+        !movement.current.size ||
+        document.querySelector(
+          'dialog[open]:not(.review-feed-inline),[aria-modal="true"],[role="menu"],[role="listbox"]',
+        )
+      )
+        return;
+      const forward = camera.getWorldDirection(new THREE.Vector3());
+      const right = forward.clone().cross(camera.up).normalize();
+      const shift = new THREE.Vector3();
+      for (const action of movement.current) {
+        if (action === 'forward') shift.add(forward);
+        if (action === 'back') shift.sub(forward);
+        if (action === 'left') shift.sub(right);
+        if (action === 'right') shift.add(right);
+        if (action === 'up') shift.y += 1;
+        if (action === 'down') shift.y -= 1;
+      }
+      if (shift.lengthSq())
+        shift.normalize().multiplyScalar(Math.min(delta, 0.05) * (fastMovement.current ? 24 : 8));
+      camera.position.add(shift);
+      orbit.current?.target.add(shift);
+      orbit.current?.update();
+      if (movement.current.size) invalidate();
+      return;
+    }
+    const p =
+      frame.players.find((p) => p.id === selected) ??
+      (mode === 'follow' ? undefined : frame.players[0]);
     if (!p) return;
     const n = next.players.find((n) => n.id === p.id);
     const pos = vector(p).lerp(n ? vector(n) : vector(p), alpha);
     if (mode === 'tactical') {
       camera.position.copy(bounds.center).add(new THREE.Vector3(0, bounds.extent * 1.15, 0.01));
       camera.lookAt(bounds.center);
+    } else if (mode === 'follow') {
+      const follow = thirdPersonFollow(p, n, alpha);
+      if (follow) {
+        camera.position.set(...follow.position);
+        camera.lookAt(...follow.target);
+      }
     } else {
       const yaw = THREE.MathUtils.degToRad(p.yaw),
         pitch = THREE.MathUtils.degToRad(p.pitch);
@@ -383,12 +618,18 @@ function World({
   });
   return (
     <>
-      <color attach="background" args={[data.sample ? '#aeb6b0' : '#171a19']} />
-      <ambientLight intensity={data.sample ? 0.9 : 1.5} />
-      <hemisphereLight args={['#e1ecf0', '#7c694b', 2]} />
+      <EnvironmentBackground
+        environment={environment}
+        sample={Boolean(data.sample)}
+        report={reportEnvironment}
+        resources={fogResources}
+      />
+      {sky && <SkyPass sky={sky} />}
+      <ambientLight intensity={data.sample ? 0.9 : 0.35} />
+      <hemisphereLight args={['#e1ecf0', '#7c694b', data.sample ? 2 : 0.6]} />
       <directionalLight
         position={[-25, 40, 12]}
-        intensity={3.5}
+        intensity={data.sample ? 3.5 : 1.8}
         castShadow
         shadow-mapSize={[2048, 2048]}
         shadow-camera-left={-45}
@@ -399,28 +640,40 @@ function World({
       />
       {data.sample ? (
         <Courtyard />
-      ) : model ? (
-        <Suspense fallback={null}>
-          <Model url={model} />
-        </Suspense>
       ) : (
-        <group>
-          <mesh
-            rotation={[-Math.PI / 2, 0, 0]}
-            position={[bounds.center.x, bounds.center.y - 0.5, bounds.center.z]}
-            receiveShadow
-          >
-            <planeGeometry args={[bounds.extent * 1.5, bounds.extent * 1.5]} />
-            <meshStandardMaterial color="#333b37" />
-          </mesh>
-          <gridHelper
-            args={[bounds.extent * 1.5, 30, '#626e63', '#424d44']}
-            position={[bounds.center.x, bounds.center.y - 0.48, bounds.center.z]}
-          />
-        </group>
+        <>
+          {!modelReady && (
+            <group>
+              <mesh
+                rotation={[-Math.PI / 2, 0, 0]}
+                position={[bounds.center.x, bounds.center.y - 0.5, bounds.center.z]}
+                receiveShadow
+              >
+                <planeGeometry args={[bounds.extent * 1.5, bounds.extent * 1.5]} />
+                <meshStandardMaterial color="#333b37" />
+              </mesh>
+              <gridHelper
+                args={[bounds.extent * 1.5, 30, '#626e63', '#424d44']}
+                position={[bounds.center.x, bounds.center.y - 0.48, bounds.center.z]}
+              />
+            </group>
+          )}
+          {model && modelScope && (
+            <MapModelBoundary key={model} url={model} scope={modelScope} report={reportModel}>
+              <Suspense fallback={null}>
+                <Model
+                  url={model}
+                  scope={modelScope}
+                  loaded={reportModel}
+                  fogResources={fogResources}
+                />
+              </Suspense>
+            </MapModelBoundary>
+          )}
+        </>
       )}
       {frame.players
-        .filter((p) => !(mode === 'pov' && p.id === selected))
+        .filter((p) => !(mode === 'pov' && p.id === viewedPlayer?.id))
         .map((p) => (
           <Agent
             key={p.id}
@@ -429,11 +682,20 @@ function World({
             alpha={alpha}
             selected={p.id === selected && !preview}
             xray={settings.xray && !preview}
+            showMarkers={!(mode === 'follow' && p.id === selected)}
             model={!preview ? (p.team === 3 ? agents.ct : agents.t) : null}
             tick={tick}
             rate={data.tickRate}
           />
         ))}
+      {!preview && mode === 'pov' && viewedPlayer && (
+        <PovEquipment
+          position={viewedPlayer}
+          next={next.players.find((player) => player.id === viewedPlayer.id)}
+          alpha={alpha}
+        />
+      )}
+      {!preview && <RecordedEquipment items={items} />}
       {!preview && (
         <UtilityLayer
           data={data}
@@ -529,12 +791,17 @@ function UtilityLayer({
               lineWidth={1.5}
             />
           )}
-          <mesh
-            position={[grenade.point.x * UNIT, grenade.point.z * UNIT, -grenade.point.y * UNIT]}
-          >
-            <sphereGeometry args={[0.13, 8, 8]} />
-            <meshBasicMaterial color="#e4b575" />
-          </mesh>
+          {!hasRecordedProjectiles(data) && (
+            <group
+              position={[grenade.point.x * UNIT, grenade.point.z * UNIT, -grenade.point.y * UNIT]}
+            >
+              <EquipmentModelInstance
+                equipment={projectileEquipment(grenade.kind) || ''}
+                instance={'legacy-projectile:' + grenade.id}
+                fallback={<ProjectileFallback />}
+              />
+            </group>
+          )}
         </group>
       ))}
       {trail.length > 1 && (
@@ -555,6 +822,10 @@ class SceneBoundary extends Component<
     return this.state.error ? this.props.fallback : this.props.children;
   }
 }
+function RendererFallback({ children, report }: { children: ReactNode; report: () => void }) {
+  useLayoutEffect(report, [report]);
+  return children;
+}
 export default function Scene({
   data,
   tick = 400,
@@ -562,7 +833,9 @@ export default function Scene({
   selected = '0',
   preview = false,
   settings = defaultSettings,
-  onMapAvailability,
+  mapAssets,
+  assetScope = 'public',
+  onMapStatus,
   focus,
 }: {
   data: Playback;
@@ -571,9 +844,92 @@ export default function Scene({
   selected?: string;
   preview?: boolean;
   settings?: ViewerSettings;
-  onMapAvailability?: (available: boolean) => void;
+  mapAssets: MapResources;
+  assetScope?: string;
+  onMapStatus?: (state: MapRenderState) => void;
   focus?: SceneFocus;
 }) {
+  const equipmentIdentity = useMemo(() => ({}), [data.map, assetScope]);
+  const equipmentAssets = useEquipmentAssets(`${assetScope}:${data.map}`, !preview && !data.sample);
+  const agentAssets = useAgentAssets(`${assetScope}:${data.map}`, !preview && !data.sample);
+  const agents = agentAssets.assets;
+  useModelLeases(
+    [agents.ct, agents.t].filter((url): url is string => !!url),
+    equipmentIdentity,
+  );
+  const [agentStatuses, setAgentStatuses] = useState<{
+    identity: object;
+    items: Record<string, AgentInstanceStatus>;
+  }>({ identity: equipmentIdentity, items: {} });
+  const currentAgentIdentity = useRef(equipmentIdentity);
+  currentAgentIdentity.current = equipmentIdentity;
+  const reportAgent = useMemo(
+    () => (id: string, status: AgentInstanceStatus | null) => {
+      if (currentAgentIdentity.current !== equipmentIdentity) return;
+      setAgentStatuses((previous) => {
+        const items = previous.identity === equipmentIdentity ? previous.items : {};
+        if (items[id] === status || (status === null && !Object.hasOwn(items, id))) return previous;
+        const next = { ...items };
+        if (status === null) delete next[id];
+        else next[id] = status;
+        return { identity: equipmentIdentity, items: next };
+      });
+    },
+    [equipmentIdentity],
+  );
+  const agentContext = useMemo(
+    () => ({ identity: equipmentIdentity, report: reportAgent }),
+    [equipmentIdentity, reportAgent],
+  );
+  const agentCounts = Object.values(
+    agentStatuses.identity === equipmentIdentity ? agentStatuses.items : {},
+  );
+  const currentPlayers = frameAt(data, tick).frame.players;
+  const viewedAgentId =
+    currentPlayers.find((player) => player.id === selected)?.id || currentPlayers[0]?.id;
+  const visibleAgentCount = currentPlayers.filter(
+    (player) => player.alive && !(mode === 'pov' && player.id === viewedAgentId),
+  ).length;
+  const currentEquipmentIdentity = useRef(equipmentIdentity);
+  currentEquipmentIdentity.current = equipmentIdentity;
+  const [equipmentStatuses, setEquipmentStatuses] = useState<{
+    identity: object;
+    items: Record<string, EquipmentInstanceStatus>;
+  }>({ identity: equipmentIdentity, items: {} });
+  const reportEquipment = useMemo(
+    () => (instance: string, status: EquipmentInstanceStatus | null) => {
+      if (currentEquipmentIdentity.current !== equipmentIdentity) return;
+      setEquipmentStatuses((previous) => {
+        const items = previous.identity === equipmentIdentity ? previous.items : {};
+        if (items[instance] === status || (status === null && !Object.hasOwn(items, instance)))
+          return previous;
+        const next = { ...items };
+        if (status === null) delete next[instance];
+        else next[instance] = status;
+        return { identity: equipmentIdentity, items: next };
+      });
+    },
+    [equipmentIdentity],
+  );
+  const equipmentContext = useMemo(
+    () => ({
+      identity: equipmentIdentity,
+      catalog: equipmentAssets.catalog,
+      report: reportEquipment,
+    }),
+    [equipmentIdentity, equipmentAssets.catalog, reportEquipment],
+  );
+  const itemIndex = useMemo(() => indexItems(data.itemSamples), [data.itemSamples]);
+  const liveItems = useMemo(
+    () =>
+      itemsAt(itemIndex, tick).filter(
+        (item) => item.kind !== 'projectile' || hasRecordedProjectiles(data),
+      ),
+    [itemIndex, tick, data.itemState],
+  );
+  const equipmentCounts = Object.values(
+    equipmentStatuses.identity === equipmentIdentity ? equipmentStatuses.items : {},
+  );
   const [autoLow, setAutoLow] = useState(
     () =>
       window.matchMedia('(max-width:780px),(pointer:coarse)').matches ||
@@ -601,58 +957,215 @@ export default function Scene({
     }),
     [data.grenades, data.tickRate, tick, zones, preview, settings.utilities],
   );
-  const [model, setModel] = useState<string | null>(null);
-  const [agents, setAgents] = useState<{ ct: string | null; t: string | null }>({
-    ct: null,
-    t: null,
-  });
-  useEffect(() => {
-    onMapAvailability?.(Boolean(data.sample || model));
-  }, [model, data.sample, onMapAvailability]);
-  useEffect(() => {
-    const controller = new AbortController();
-    setAgents({ ct: null, t: null });
-    if (!data.sample)
-      api<{ ct: string | null; t: string | null }>('/api/assets/agents')
-        .then((agents) => {
-          if (!controller.signal.aborted) setAgents(agents);
-        })
-        .catch(() => {});
-    return () => controller.abort();
-  }, [data.sample]);
-  useEffect(() => {
-    const controller = new AbortController();
-    setModel(null);
-    if (!data.sample)
-      api<{ model: string | null; mobile?: string | null }>(
-        '/api/maps/' + encodeURIComponent(data.map),
-        { signal: controller.signal },
-      )
-        .then((r) => {
-          if (!controller.signal.aborted) setModel(low ? r.mobile || r.model : r.model);
-        })
-        .catch(() => {});
-    return () => controller.abort();
-  }, [data.map, data.sample, low]);
-  if (mode === '2d')
-    return (
-      <TacticalPlot
-        data={data}
-        tick={tick}
-        selected={selected}
-        settings={settings}
-        focus={
-          focus && tick >= (focus.fromTick ?? -Infinity) && tick <= (focus.untilTick ?? Infinity)
-            ? focus.target
-            : undefined
-        }
-      />
-    );
+  const expectedEquipment =
+    !preview && !data.sample
+      ? [
+          ...frameAt(data, tick)
+            .frame.players.filter((player) => player.alive && player.weapon)
+            .map((player) => player.weapon),
+          ...liveItems.map((item) => item.equipment),
+          ...(!hasRecordedProjectiles(data)
+            ? utilityState.projectiles.map(
+                (projectile) => projectileEquipment(projectile.kind) || 'unknown-projectile',
+              )
+            : []),
+        ]
+      : [];
+  const unavailableEquipment = expectedEquipment.filter((equipment) => {
+    const id = equipmentIconKey(equipment);
+    return !id || !equipmentAssets.catalog.items[id];
+  }).length;
+  const model = low
+    ? mapAssets.assets.mobile || mapAssets.assets.model
+    : mapAssets.assets.model || mapAssets.assets.mobile;
+  const [modelLoad, setModelLoad] = useState<{
+    url: string;
+    status: 'ready' | 'error';
+    sky: THREE.Scene | null;
+    landscape: AssetStatus;
+  }>();
+  const currentModel = useRef(model);
+  currentModel.current = model;
+  const reportModel = useCallback(
+    (
+      url: string,
+      status: 'ready' | 'error',
+      sky: THREE.Scene | null = null,
+      landscape: AssetStatus = 'missing',
+    ) => {
+      if (currentModel.current === url)
+        setModelLoad((previous) =>
+          previous?.url === url &&
+          previous.status === status &&
+          previous.sky === sky &&
+          previous.landscape === landscape
+            ? previous
+            : { url, status, sky, landscape },
+        );
+    },
+    [],
+  );
+  const modelStatus: AssetStatus =
+    mapAssets.status === 'pending'
+      ? 'pending'
+      : mapAssets.status === 'error'
+        ? 'error'
+        : model
+          ? modelLoad?.url === model
+            ? modelLoad.status
+            : 'pending'
+          : 'missing';
+  const [rendererFailure, setRendererFailure] = useState<string>();
+  const rendererAttempt = useMemo(
+    () => ({ map: data.map, failed: false }),
+    [data.map, mode === '2d'],
+  );
+  const currentRendererAttempt = useRef(rendererAttempt);
+  currentRendererAttempt.current = rendererAttempt;
+  const modelScope = useMapModelScope(data.sample ? null : model, rendererAttempt);
+  const environment = mapAssets.assets.environment || null,
+    environmentIdentity = mapEnvironmentKey(environment);
+  const [environmentLoad, setEnvironmentLoad] = useState<{
+    identity: string | null;
+    status: AssetStatus;
+  }>();
+  const currentEnvironment = useRef(environmentIdentity);
+  currentEnvironment.current = environmentIdentity;
+  const reportEnvironment = useCallback((identity: string | null, status: AssetStatus) => {
+    if (currentEnvironment.current === identity)
+      setEnvironmentLoad((previous) =>
+        previous?.identity === identity && previous.status === status
+          ? previous
+          : { identity, status },
+      );
+  }, []);
+  const environmentStatus: AssetStatus = environment
+    ? environmentLoad?.identity === environmentIdentity
+      ? environmentLoad.status
+      : 'pending'
+    : 'missing';
+  const landscapeStatus: AssetStatus = modelLoad?.url === model ? modelLoad.landscape : 'missing';
+  const reportRendererFallback = useCallback(() => {
+    if (currentRendererAttempt.current !== rendererAttempt) return;
+    rendererAttempt.failed = true;
+    setRendererFailure(rendererAttempt.map);
+  }, [rendererAttempt]);
+  const reportRendererCreated = useCallback(() => {
+    if (currentRendererAttempt.current !== rendererAttempt || rendererAttempt.failed) return;
+    setRendererFailure((previous) => (previous === rendererAttempt.map ? undefined : previous));
+  }, [rendererAttempt]);
+  const equipmentReady = equipmentCounts.filter((status) => status === 'ready').length;
+  const equipmentFailed =
+    equipmentAssets.status === 'error'
+      ? expectedEquipment.length
+      : equipmentCounts.filter((status) => status === 'error').length;
+  const equipmentUnavailable =
+    equipmentAssets.status === 'pending' || equipmentAssets.status === 'error'
+      ? 0
+      : unavailableEquipment;
+  const equipmentActive = mode !== '2d' && rendererFailure !== data.map;
+  const equipmentPending =
+    equipmentAssets.status === 'pending'
+      ? expectedEquipment.length
+      : equipmentActive
+        ? Math.max(
+            0,
+            expectedEquipment.length - equipmentReady - equipmentFailed - equipmentUnavailable,
+          )
+        : 0;
+  const equipmentReport = useMemo<EquipmentRenderState>(
+    () => ({
+      status: equipmentAssets.status,
+      active: equipmentActive,
+      expected: expectedEquipment.length,
+      ready: equipmentReady,
+      pending: equipmentPending,
+      unavailable: equipmentUnavailable,
+      failed: equipmentFailed,
+    }),
+    [
+      equipmentAssets.status,
+      equipmentActive,
+      expectedEquipment.length,
+      equipmentReady,
+      equipmentPending,
+      equipmentUnavailable,
+      equipmentFailed,
+    ],
+  );
+  useLayoutEffect(
+    () =>
+      onMapStatus?.({
+        map: data.map,
+        model: data.sample ? 'ready' : modelStatus,
+        renderer: mode === '2d' || rendererFailure === data.map ? '2d' : '3d',
+        environment: environmentStatus,
+        environmentVersion: environment?.assetVersion || null,
+        landscape: landscapeStatus,
+        equipment: equipmentReport,
+      }),
+    [
+      data.map,
+      data.sample,
+      modelStatus,
+      mode,
+      rendererFailure,
+      environmentStatus,
+      landscapeStatus,
+      environment?.assetVersion,
+      onMapStatus,
+      equipmentReport,
+    ],
+  );
+  const plot = (
+    <TacticalPlot
+      data={data}
+      tick={tick}
+      selected={selected}
+      settings={settings}
+      overview={mapAssets.assets.overview}
+      overviewStatus={mapAssets.overviewStatus}
+      onOverviewState={mapAssets.reportOverview}
+      focus={
+        focus && tick >= (focus.fromTick ?? -Infinity) && tick <= (focus.untilTick ?? Infinity)
+          ? focus.target
+          : undefined
+      }
+    />
+  );
+  if (mode === '2d') return plot;
   return (
     <div
       className="scene"
       data-quality={low ? 'low' : 'high'}
+      data-agent-model-state={agentAssets.status}
+      data-agent-ready-count={agentCounts.filter((status) => status === 'ready').length}
+      data-agent-fallback-count={Math.max(
+        0,
+        visibleAgentCount - agentCounts.filter((status) => status === 'ready').length,
+      )}
+      data-agent-error-count={agentCounts.filter((status) => status === 'error').length}
+      data-equipment-model-state={equipmentAssets.status}
+      data-equipment-expected-count={expectedEquipment.length}
+      data-equipment-unavailable-count={unavailableEquipment}
+      data-equipment-ready-count={equipmentCounts.filter((status) => status === 'ready').length}
+      data-equipment-error-count={equipmentCounts.filter((status) => status === 'error').length}
+      data-equipment-ready-instances={Object.entries(
+        equipmentStatuses.identity === equipmentIdentity ? equipmentStatuses.items : {},
+      )
+        .filter(([, status]) => status === 'ready')
+        .map(([id]) => id)
+        .sort()
+        .join(',')}
+      data-recorded-world-item-count={liveItems.length}
+      data-recorded-item-rotation-count={
+        liveItems.filter((item) => item.pitch !== undefined).length
+      }
       data-camera-mode={mode}
+      data-map-model-state={data.sample ? 'ready' : modelStatus}
+      data-environment-state={environmentStatus}
+      data-environment-version={environment?.assetVersion}
+      data-landscape-state={landscapeStatus}
       data-focus-x={focus?.target.x}
       data-focus-y={focus?.target.y}
       data-focus-z={focus?.target.z}
@@ -662,63 +1175,55 @@ export default function Scene({
       aria-label={
         data.sample
           ? t('An original 3D training courtyard with ten players')
-          : `3D player positions on ${data.map}`
+          : t(
+              modelStatus === 'ready'
+                ? '3D map {{map}} with recorded player positions'
+                : 'Recorded player positions on {{map}}. Map geometry unavailable.',
+              { map: data.map },
+            )
       }
     >
       <SceneBoundary
         key={data.map}
-        fallback={
-          <TacticalPlot
-            data={data}
-            tick={tick}
-            selected={selected}
-            settings={settings}
-            focus={
-              focus &&
-              tick >= (focus.fromTick ?? -Infinity) &&
-              tick <= (focus.untilTick ?? Infinity)
-                ? focus.target
-                : undefined
-            }
-          />
-        }
+        fallback={<RendererFallback report={reportRendererFallback}>{plot}</RendererFallback>}
       >
         <Canvas
+          frameloop={preview ? 'always' : 'demand'}
+          onCreated={reportRendererCreated}
           shadows={!low}
           dpr={low ? 1 : [1, 1.75]}
           camera={{ position: [32, 36, 34], fov: settings.cameraFov, near: 0.05, far: 3000 }}
           gl={{ antialias: true, powerPreference: 'high-performance' }}
-          fallback={
-            <TacticalPlot
-              data={data}
-              tick={tick}
-              selected={selected}
-              settings={settings}
-              focus={
-                focus &&
-                tick >= (focus.fromTick ?? -Infinity) &&
-                tick <= (focus.untilTick ?? Infinity)
-                  ? focus.target
-                  : undefined
-              }
-            />
-          }
+          fallback={<span>{t('3D rendering is unavailable.')}</span>}
         >
-          <World
-            data={data}
-            tick={tick}
-            mode={mode}
-            selected={selected}
-            model={model}
-            preview={preview}
-            settings={settings}
-            agents={agents}
-            focus={focus}
-            utilityState={utilityState}
-          />
+          <EquipmentModels.Provider value={equipmentContext}>
+            <AgentModels.Provider value={agentContext}>
+              <World
+                data={data}
+                tick={tick}
+                mode={mode}
+                selected={selected}
+                model={model}
+                modelReady={modelStatus === 'ready'}
+                reportModel={reportModel}
+                modelScope={modelScope}
+                sky={
+                  modelLoad?.url === model && modelLoad.status === 'ready' ? modelLoad.sky : null
+                }
+                environment={environment}
+                reportEnvironment={reportEnvironment}
+                preview={preview}
+                settings={settings}
+                agents={agents}
+                focus={focus}
+                utilityState={utilityState}
+                items={liveItems}
+              />
+            </AgentModels.Provider>
+          </EquipmentModels.Provider>
         </Canvas>
       </SceneBoundary>
-      {!onMapAvailability && !data.sample && !model && (
+      {!onMapStatus && !data.sample && modelStatus !== 'ready' && (
         <div className="map-notice">{t('Position view · map model not installed')}</div>
       )}
     </div>

@@ -1,10 +1,11 @@
 import { t } from '../i18n';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { X, Trash2 } from 'lucide-react';
 import type { Demo } from '../types';
 import { api } from '../api';
 import { useApp } from '../context';
+import { useConfirm } from './Confirmation';
 export default function ManageDemo({
   demo,
   onChange,
@@ -20,10 +21,24 @@ export default function ManageDemo({
   const [name, setName] = useState(demo.name),
     [busy, setBusy] = useState(false),
     [error, setError] = useState('');
+  const confirm = useConfirm();
+  const headingId = useId();
+  const operation = useRef({ active: true });
   useEffect(() => {
-    dialog.current?.showModal();
-  }, []);
+    const scope = { active: true };
+    operation.current = scope;
+    setName(demo.name);
+    setBusy(false);
+    setError('');
+    const element = dialog.current;
+    element?.showModal();
+    return () => {
+      scope.active = false;
+      element?.close();
+    };
+  }, [demo.id]);
   async function rename() {
+    const scope = operation.current;
     setBusy(true);
     setError('');
     try {
@@ -31,41 +46,53 @@ export default function ManageDemo({
         method: 'PATCH',
         body: JSON.stringify({ name: name.trim() }),
       });
+      if (!scope.active) return;
       onChange({ ...demo, name: name.trim() });
       notify(t('Demo renamed.'));
       close();
     } catch (e) {
-      setError((e as Error).message);
+      if (scope.active) setError((e as Error).message);
     } finally {
-      setBusy(false);
+      if (scope.active) setBusy(false);
     }
   }
   async function remove() {
+    const scope = operation.current;
     if (
-      !window.confirm(
-        t(
+      !(await confirm({
+        title: t('Delete demo'),
+        description: t(
           'Delete “{{v0}}”? This permanently removes its demo file, playback data, and all notes.',
           { v0: demo.name },
         ),
-      )
+        confirmLabel: t('Delete permanently'),
+        tone: 'danger',
+      })) ||
+      !scope.active
     )
       return;
     setBusy(true);
     setError('');
     try {
       await api('/api/demos/' + demo.id, { method: 'DELETE' });
+      if (!scope.active) return;
       notify(t('Demo deleted.'));
       nav('/library');
     } catch (e) {
-      setError((e as Error).message);
+      if (scope.active) setError((e as Error).message);
     } finally {
-      setBusy(false);
+      if (scope.active) setBusy(false);
     }
   }
   return (
-    <dialog ref={dialog} className="options-dialog member-dialog" onCancel={close}>
+    <dialog
+      ref={dialog}
+      className="options-dialog member-dialog"
+      aria-labelledby={headingId}
+      onCancel={close}
+    >
       <div className="panel-heading">
-        <h2>{t('Manage demo')}</h2>
+        <h2 id={headingId}>{t('Manage demo')}</h2>
         <button className="icon-button" aria-label={t('Close demo management')} onClick={close}>
           <X size={20} />
         </button>

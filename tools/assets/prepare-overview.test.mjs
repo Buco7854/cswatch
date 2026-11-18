@@ -1,0 +1,238 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  chmod,
+  link,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createHash } from 'node:crypto';
+import sharp from 'sharp';
+import { parseValveOverview, prepareOverview } from './prepare-overview.mjs';
+
+const overview = Buffer.from(`
+// Original synthetic calibration fixture, not a copied game overview.
+"de_fixture" {
+ "material" "overviews/de_fixture"
+ "pos_x" "-2500" "pos_y" "3000" "scale" "5" "rotate" "0" "zoom" "1.2"
+ "CTSpawn_x" "0.2" "CTSpawn_y" "0.3" "TSpawn_x" "0.8" "TSpawn_y" "0.7"
+ "bombA_x" "0.3" "bombA_y" "0.2" "bombB_x" "0.8" "bombB_y" "0.5"
+ "inset_left" "0" "inset_top" "0" "inset_right" "0" "inset_bottom" "0"
+}`);
+const image = (width = 32, height = width) =>
+  sharp({ create: { width, height, channels: 4, background: '#283e49' } })
+    .png()
+    .toBuffer();
+async function fixture() {
+  const root = await mkdtemp(join(tmpdir(), 'cswatch-overview-tool-')),
+    input = join(root, 'input'),
+    output = join(root, 'output');
+  await mkdir(input);
+  await writeFile(join(input, 'map.png'), await image());
+  await writeFile(join(input, 'map.txt'), overview);
+  const options = {
+    image: join(input, 'map.png'),
+    overview: join(input, 'map.txt'),
+    output,
+    map: 'de_fixture',
+    version: 'test-build',
+    source: 'Original synthetic test geometry',
+  };
+  return { root, input, output, options };
+}
+
+test('Valve overview scalar calibration accepts ordinary loading fields and rejects unsupported metadata', () => {
+  assert.deepEqual(parseValveOverview(overview, 'de_fixture'), {
+    origin: { x: -2500, y: 3000 },
+    scale: 5,
+  });
+  assert.deepEqual(
+    parseValveOverview(Buffer.from('de_fixture { pos_x -2500 pos_y 3000 scale 5 }'), 'de_fixture'),
+    { origin: { x: -2500, y: 3000 }, scale: 5 },
+  );
+  for (const text of [
+    'de_other { pos_x 0 pos_y 0 scale 5 }',
+    'de_fixture { pos_x 0 pos_y 0 }',
+    'de_fixture { pos_x 0 pos_y 0 scale 5 POS_X 3 }',
+    'de_fixture { pos_x 0 pos_y 0 scale 5 rotate 2 }',
+    'de_fixture { pos_x 0 pos_y 0 scale 5 rotate -1 }',
+    'de_fixture { pos_x 0 pos_y 0 scale 5 rotate 0.5 }',
+    'de_fixture { pos_x 0 pos_y 0 scale 5 rotate Infinity }',
+    'de_fixture { pos_x 0 pos_y 0 scale 5 verticalsections { lower { AltitudeMin -100 } } }',
+    'de_fixture { pos_x 0 pos_y 0 scale 5 unknown 1 }',
+    '#include "elsewhere.txt"',
+    'de_fixture { pos_x 0 pos_y 0 scale 0 }',
+    'de_fixture { pos_x 10000001 pos_y 0 scale 5 }',
+    'de_fixture { pos_x 0 pos_y 0 scale 0.0001 }',
+    'de_fixture { pos_x 0 pos_y 0 scale Infinity }',
+    'de_fixture { pos_x "0" pos_y "0" scale "5" } extra',
+  ])
+    assert.throws(() => parseValveOverview(Buffer.from(text), 'de_fixture'));
+  assert.throws(() => parseValveOverview(Buffer.alloc(16385), 'de_fixture'));
+});
+
+test('Valve display rotate 0 and 1 preserve the same north-up calibration and asymmetric raster', async () => {
+  const s = await fixture();
+  try {
+    const expected = { origin: { x: -2500, y: 3000 }, scale: 5 };
+    const pixels = Buffer.from([255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 0, 255]);
+    const png = await sharp(pixels, { raw: { width: 2, height: 2, channels: 4 } })
+      .png()
+      .toBuffer();
+    await writeFile(s.options.image, png);
+    for (const flag of [0, 1]) {
+      const text = Buffer.from(overview.toString().replace('"rotate" "0"', `"rotate" "${flag}"`));
+      assert.deepEqual(parseValveOverview(text, 'de_fixture'), expected);
+      await writeFile(s.options.overview, text);
+      const result = await prepareOverview({
+        ...s.options,
+        output: join(s.root, `rotate-${flag}`),
+      });
+      const metadata = JSON.parse(await readFile(join(result.output, 'overview.json')));
+      const provenance = JSON.parse(await readFile(join(result.output, 'provenance.json')));
+      assert.deepEqual(metadata.origin, expected.origin);
+      assert.equal(metadata.scale, expected.scale);
+      assert.equal(metadata.referenceSize, 1024);
+      assert.equal(provenance.sourceDisplayRotate, flag);
+      assert.deepEqual(await sharp(join(result.output, 'overview.png')).raw().toBuffer(), pixels);
+      // Independent Source anchors remain in their authored top-left/bottom-right
+      // quadrants. Rotating either the raster or its calibration breaks this pair.
+      for (const [point, normalized] of [
+        [
+          { x: -1220, y: 1720 },
+          { u: 0.25, v: 0.25 },
+        ],
+        [
+          { x: 1340, y: -840 },
+          { u: 0.75, v: 0.75 },
+        ],
+      ]) {
+        assert.equal((point.x - metadata.origin.x) / (metadata.scale * 1024), normalized.u);
+        assert.equal((metadata.origin.y - point.y) / (metadata.scale * 1024), normalized.v);
+      }
+    }
+  } finally {
+    await rm(s.root, { recursive: true, force: true });
+  }
+});
+
+test('overview preparation normalizes a local PNG, hash-binds calibration and publishes readable output without overwrite', async () => {
+  const previous = process.umask(0o077),
+    s = await fixture();
+  try {
+    const result = await prepareOverview(s.options);
+    assert.equal(result.output, join(s.output, 'overviews', 'de_fixture'));
+    assert.deepEqual((await readdir(result.output)).sort(), [
+      'overview.json',
+      'overview.png',
+      'provenance.json',
+    ]);
+    const png = await readFile(join(result.output, 'overview.png')),
+      data = JSON.parse(await readFile(join(result.output, 'overview.json'))),
+      provenance = JSON.parse(await readFile(join(result.output, 'provenance.json')));
+    assert.deepEqual(data, {
+      schemaVersion: 1,
+      map: 'de_fixture',
+      origin: { x: -2500, y: 3000 },
+      scale: 5,
+      referenceSize: 1024,
+      assetVersion: 'test-build',
+      imageSha256: createHash('sha256').update(png).digest('hex'),
+    });
+    assert.equal((await sharp(png).metadata()).format, 'png');
+    assert.equal(provenance.imageSha256, data.imageSha256);
+    assert.equal(provenance.sourceOverview, 'map.txt');
+    assert.match(provenance.sourceOverviewSha256, /^[a-f0-9]{64}$/);
+    for (const directory of [s.output, join(s.output, 'overviews'), result.output])
+      assert.equal((await lstat(directory)).mode & 0o777, 0o755);
+    for (const filename of ['overview.png', 'overview.json', 'provenance.json'])
+      assert.equal((await lstat(join(result.output, filename))).mode & 0o777, 0o644);
+    assert.equal(
+      (await lstat(s.input)).mode & 0o777,
+      0o700,
+      'Existing private input directories are not chmodded.',
+    );
+    await assert.rejects(prepareOverview(s.options), /already exists/);
+    assert.deepEqual(await readFile(join(result.output, 'overview.png')), png);
+    assert.equal(
+      (await readdir(join(s.output, 'overviews'))).some((name) => name.startsWith('.overview-')),
+      false,
+    );
+  } finally {
+    process.umask(previous);
+    await rm(s.root, { recursive: true, force: true });
+  }
+});
+
+test('explicit calibrated artwork is supported while private operator ancestors retain their mode', async () => {
+  const s = await fixture();
+  try {
+    await mkdir(s.output, { mode: 0o700 });
+    await chmod(s.output, 0o700);
+    const result = await prepareOverview({
+      ...s.options,
+      overview: undefined,
+      origin: { x: -2000, y: 4000 },
+      scale: 4.5,
+    });
+    const metadata = JSON.parse(await readFile(join(result.output, 'overview.json')));
+    assert.deepEqual(metadata.origin, { x: -2000, y: 4000 });
+    assert.equal(metadata.scale, 4.5);
+    assert.equal((await lstat(s.output)).mode & 0o777, 0o700);
+    assert.equal((await lstat(join(s.output, 'overviews'))).mode & 0o777, 0o755);
+  } finally {
+    await rm(s.root, { recursive: true, force: true });
+  }
+});
+
+test('overview preparation refuses linked input, invalid raster bounds and conflicting or missing calibration', async () => {
+  const s = await fixture();
+  try {
+    await assert.rejects(
+      prepareOverview({ ...s.options, origin: { x: 0, y: 0 }, scale: 5 }),
+      /not both/,
+    );
+    await assert.rejects(prepareOverview({ ...s.options, overview: undefined }), /calibration/);
+    await assert.rejects(prepareOverview({ ...s.options, map: '../outside' }));
+    await assert.rejects(prepareOverview({ ...s.options, version: '' }));
+    await symlink(s.options.image, join(s.input, 'linked.png'));
+    await assert.rejects(
+      prepareOverview({ ...s.options, image: join(s.input, 'linked.png') }),
+      /without links/,
+    );
+    await link(s.options.image, join(s.input, 'hardlink.png'));
+    await assert.rejects(
+      prepareOverview({ ...s.options, image: join(s.input, 'hardlink.png') }),
+      /without links/,
+    );
+    await rm(join(s.input, 'hardlink.png'));
+    await symlink(s.input, join(s.root, 'linked-directory'), 'dir');
+    await assert.rejects(
+      prepareOverview({ ...s.options, image: join(s.root, 'linked-directory', 'map.png') }),
+      /without links/,
+    );
+    for (const bytes of [
+      Buffer.from('<svg/>'),
+      Buffer.alloc(8 * 1024 ** 2 + 1),
+      await image(32, 16),
+      await image(2049),
+    ]) {
+      await writeFile(join(s.input, 'bad.png'), bytes);
+      await assert.rejects(prepareOverview({ ...s.options, image: join(s.input, 'bad.png') }));
+    }
+    await assert.rejects(
+      prepareOverview({ ...s.options, image: 'https://example.invalid/radar.png' }),
+    );
+    await assert.rejects(lstat(join(s.output, 'overviews', 'de_fixture')));
+  } finally {
+    await rm(s.root, { recursive: true, force: true });
+  }
+});

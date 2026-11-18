@@ -4,10 +4,11 @@ Report a vulnerability privately to the repository maintainer using GitHub priva
 
 ## Implemented controls
 
-- Argon2id password hashing; 12–128-character passwords; no default/admin bootstrap password.
+- Argon2id password hashing. Passwords require 12–128 characters. No default password. First-admin enrollment requires a 256-bit operator code stored in a mode-0600 regular file, with only its hash in SQLite, exact Origin, rate limits and atomic one-use completion. Optional environment credentials only create the first administrator and never reset an existing account.
+- Uninitialized instances gate account/provider/upload APIs. Guest uploads have an independent environment/admin policy, expiring hashed HttpOnly capability cookies, separate CSRF and IP limits, atomic count/storage limits and worker expiry cleanup. Guest principals cannot authenticate, acquire identities or appear as member accounts. Login never implicitly merges ownership.
 - Random, server-side sessions with SHA-256 token digests in SQLite. HttpOnly, SameSite=Lax, Secure `__Host-` cookies in production for sessions and Steam state, preventing sibling-subdomain Domain cookie injection. Rotation on login and password changes; revocation on reset/logout. Private database/directory permissions.
 - Exact Host/Origin validation. CSRF tokens on authenticated unsafe requests. No permissive CORS. Restrictive CSP, clickjacking protection, MIME sniffing prevention, no-referrer policy, and HSTS on HTTPS.
-- Per-user ownership checks; private-by-default demos; user-private notes; explicit public sharing; private-instance middleware covers playback and map assets.
+- Per-user and temporary capability ownership checks; private-by-default demos; user-private notes; explicit public sharing; private-instance middleware covers playback and map assets.
 - Atomic quota reservation, random storage paths, format signatures, bounded streaming uploads, capped decompression/output, bounded native parser processes, and retention.
 - Persistent rate limits for authentication, registration, uploads, notes, and provider requests. Proxy IPs are trusted only when configured explicitly.
 - Fixed-origin Steam assertion verification, state-cookie binding, one-use state, signed identity checks, nonce age check, and no nickname-based ownership/merging.
@@ -17,6 +18,8 @@ Report a vulnerability privately to the repository maintainer using GitHub priva
 - Isolated offline CPU transcription with read-only dedicated models, bounded Opus/utterance/output processing, lease-based publication and private caption access. Optional failure does not change primary demo readiness; retry requires ownership, Origin/CSRF and rate limits.
 - Read-only equipment artwork endpoints use a fixed registry, private-instance access checks, descriptor-anchored filesystem reads and bounded PNG structure/CRC validation. The general map route excludes the equipment directory; no public SVG upload or conversion endpoint exists.
 - Weekly CI image rebuild, dependency update PRs, production npm audit, and security boundary tests.
+
+Parser failure metadata is bounded and classified before logging or presentation. Structured worker diagnostics retain the demo reference, stage, safe code and available exit/signal or whitelisted confinement reason. Raw native messages, arbitrary paths and environment values are excluded. This helps operators diagnose failures without treating native output as trusted text.
 
 ## Boundaries and remaining risks
 
@@ -33,6 +36,10 @@ There is no MFA, email verification/reset, arbitrary admin account management, s
 Opus packets and speech outputs are untrusted. Parent schema/byte/time/identity validation bounds published artifacts; browser audio scheduling and decoder state are bounded. Bundled WASM requires CSP `wasm-unsafe-eval`; ordinary JavaScript `unsafe-eval` remains disabled. Chat/captions render as plain React text. Subtitles are model estimates, not verified statements. Runtime speech inference has no network and never sends recordings to a service. Install only trusted, dedicated operator-controlled model directories; never grant a general directory containing secrets or application data as a model root.
 
 The worker is intentionally network-isolated; S2V conversion is operator-only. Do not expose conversion tools or install arbitrary user-supplied maps through a public endpoint. Only install assets you trust. External model URLs are excluded by both policy and CSP.
+
+Overview/environment metadata and PNGs use fixed same-origin paths, bounded descriptor-anchored reads, hash binding and instance access checks. Six-face environment packs must match both prepared model-tier manifests; equal square dimensions, individual/aggregate image bounds and a bounded serialized cache prevent concurrent unbounded allocation. The dedicated model routes cannot bypass those overview/environment checks. CSP permits browser-local blob fetches for embedded glTF textures while keeping network connections restricted to the same origin. The optional selective Steam installer is an operator process, uses fixed source/depot selections and pinned tools, and has no access through public upload endpoints. Same-size asset rewrites can reuse filesystem timestamps. Raster caches therefore require fresh bounded content digests before reuse; stat identity alone never establishes content identity. Its periodic free-space guard and byte limits complement host disk quotas rather than replacing them.
+
+Prepared map and CT/T model delivery uses fixed allowed paths and descriptor-anchored no-follow opens, rejects symlinked children, hardlinks and non-regular files, and bounds GLB sizes. Fresh content digests stream in 64 KiB blocks. Client disconnects cancel digest work and close descriptors before or after streaming ownership transfers. A generic static server must never expose the map directory.
 
 Equipment SVG conversion is also operator-only. Its source checks reject external resources, encoded references, CSS escapes, scripts, conflicting presentation declarations and symlinked files/ancestors before producing bounded PNGs; this is not a sandbox for arbitrary hostile artwork. Install trusted exports in the dedicated equipment directory. Proprietary game artwork is not committed or bundled, and the browser accepts only known same-origin raster paths from the equipment manifest.
 

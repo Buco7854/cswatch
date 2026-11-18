@@ -1,13 +1,13 @@
 import { t } from '../i18n';
 import { useEffect, useRef, useState } from 'react';
-import { UploadCloud, ArrowUpRight, Check } from 'lucide-react';
+import { UploadCloud, ArrowUpRight, Check, FileUp } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { uploadFile } from '../api';
+import { api, uploadFile } from '../api';
 import { useApp } from '../context';
 import { SelectControl } from './Controls';
 import ImportGuide, { type GuidedSource } from './ImportGuide';
 
-export default function Upload() {
+export default function Upload({ compact = false }: { compact?: boolean }) {
   const { config, user, signIn } = useApp();
   const nav = useNavigate();
   const input = useRef<HTMLInputElement>(null);
@@ -27,12 +27,12 @@ export default function Upload() {
   }, []);
   function chooseFile() {
     if (!busy) {
-      if (user) input.current?.click();
+      if (user || config.guest_uploads_enabled) input.current?.click();
       else signIn();
     }
   }
   async function upload(file?: File) {
-    if (!user) {
+    if (!user && !config.guest_uploads_enabled) {
       signIn();
       return;
     }
@@ -57,15 +57,25 @@ export default function Upload() {
     const controller = new AbortController();
     pending.current = controller;
     try {
+      const session = !user
+        ? await api<{ csrf: string; expires_at: number }>('/api/guest/session', {
+            method: 'POST',
+            signal: controller.signal,
+          })
+        : undefined;
+      if (controller.signal.aborted || !mounted.current) return;
+      if (!user && (!session || typeof session.csrf !== 'string' || !session.csrf))
+        throw new Error(t('Could not start a private upload. Try again.'));
       const result = await uploadFile(
         file,
         (value) => {
           if (mounted.current && !controller.signal.aborted) setProgress(value);
         },
         controller.signal,
+        session?.csrf,
       );
       if (controller.signal.aborted || !mounted.current) return;
-      nav('/watch/' + result.id, { state: { from: '/library' } });
+      nav('/watch/' + result.id, { state: { from: user ? '/library' : '/' } });
     } catch (e) {
       if (mounted.current && !controller.signal.aborted) setError((e as Error).message);
     } finally {
@@ -77,14 +87,22 @@ export default function Upload() {
     }
   }
   return (
-    <section className="upload-panel" aria-labelledby="upload-title">
-      <div className="panel-heading">
-        <h2 id="upload-title">{t('Bring your own match')}</h2>
-        <UploadCloud size={19} />
-      </div>
-      <p>{t('Premier, Competitive, FACEIT or pro matches. Start with a CS2 demo file.')}</p>
+    <section
+      className={'upload-panel' + (compact ? ' compact-upload' : '')}
+      aria-labelledby={compact ? undefined : 'upload-title'}
+      aria-label={compact ? t('Choose a CS2 demo') : undefined}
+    >
+      {!compact && (
+        <>
+          <div className="panel-heading">
+            <h2 id="upload-title">{t('Bring your own match')}</h2>
+            <UploadCloud size={19} />
+          </div>
+          <p>{t('Premier, Competitive, FACEIT or pro matches. Start with a CS2 demo file.')}</p>
+        </>
+      )}
       <div className="upload-source-choice">
-        <span id="upload-source-label">{t('Where is your demo?')}</span>
+        <span id="upload-source-label">{t(compact ? 'Source' : 'Where is your demo?')}</span>
         <SelectControl
           label={t('Demo import source')}
           value={source}
@@ -93,8 +111,8 @@ export default function Upload() {
             setError('');
           }}
           options={[
-            { value: 'file', label: t('I already have a demo file') },
-            { value: 'steam', label: t('Premier / Competitive / Wingman') },
+            { value: 'file', label: t(compact ? 'Demo file' : 'I already have a demo file') },
+            { value: 'steam', label: t(compact ? 'Steam' : 'Premier / Competitive / Wingman') },
             { value: 'faceit', label: 'FACEIT' },
             { value: 'hltv', label: 'HLTV' },
           ]}
@@ -118,7 +136,13 @@ export default function Upload() {
               void upload(e.dataTransfer.files[0]);
             }}
           >
-            {busy ? <Check size={27} /> : <UploadCloud size={27} strokeWidth={1.3} />}
+            {busy ? (
+              <Check size={compact ? 32 : 27} />
+            ) : compact ? (
+              <FileUp size={32} strokeWidth={1.4} aria-hidden="true" />
+            ) : (
+              <UploadCloud size={27} strokeWidth={1.3} />
+            )}
             <strong>
               {busy
                 ? progress === 100
@@ -126,21 +150,30 @@ export default function Upload() {
                   : t('Uploading {{v0}}%', { v0: progress })
                 : t('Drop your demo here')}
             </strong>
-            <span>{busy ? t('Keep this window open.') : t('or choose a file')}</span>
+            <span className={compact && !busy ? 'upload-file-action' : undefined}>
+              {busy
+                ? t('Keep this window open.')
+                : compact
+                  ? t('Choose demo file')
+                  : t('or choose a file')}
+              {compact && !busy && <ArrowUpRight size={15} aria-hidden="true" />}
+            </span>
             <small>
               {t('.dem or .dem.zst · up to')} {config.max_upload_mb} {t('MB')}
             </small>
             {busy && <progress max={100} value={progress} aria-label={t('Upload progress')} />}
           </button>
-          <button
-            type="button"
-            className="text-button upload-find-match"
-            onClick={() => setSource('steam')}
-            disabled={busy}
-          >
-            {t('Find my Premier or Competitive demo')}
-            <ArrowUpRight size={14} />
-          </button>
+          {!compact && (
+            <button
+              type="button"
+              className="text-button upload-find-match"
+              onClick={() => setSource('steam')}
+              disabled={busy}
+            >
+              {t('Find my Premier or Competitive demo')}
+              <ArrowUpRight size={14} />
+            </button>
+          )}
         </>
       ) : (
         <>
@@ -171,12 +204,18 @@ export default function Upload() {
           {t(error)}
         </p>
       )}
-      <div className="upload-note">
-        <span className="status-dot" />
-        {t(
-          busy ? 'Closing this dialog cancels the upload.' : 'Private by default. Yours to share.',
-        )}
-      </div>
+      {!compact && (
+        <div className="upload-note">
+          <span className="status-dot" />
+          {t(
+            busy
+              ? 'Closing this dialog cancels the upload.'
+              : user
+                ? 'Private by default. Yours to share.'
+                : 'Private guest upload. Available only in this browser.',
+          )}
+        </div>
+      )}
     </section>
   );
 }

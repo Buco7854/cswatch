@@ -1,9 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import { constants, readFileSync } from 'node:fs';
 import { open, type FileHandle } from 'node:fs/promises';
-import { crc32 } from 'node:zlib';
 import { HttpError } from './security.js';
 import { z } from 'zod';
+import { validPng } from './png.js';
+import { createHash } from 'node:crypto';
+import { fileDigest, fileVersion } from './asset-content.js';
 
 /** Fixed, version-controlled registry shared with the operator CLI and frontend.
  * Builds copy it next to this module; development reads the same source registry. */
@@ -41,63 +43,9 @@ export const equipmentIconLimits = {
   pixels: 2 * 1024 ** 2,
   cache: 16 * 1024 ** 2,
 } as const;
-const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
-
 /** Bounded raster structure, not an SVG/content-type assertion or a full image decoder. */
 export function validEquipmentPng(data: Buffer): boolean {
-  if (
-    data.length < 57 ||
-    data.length > equipmentIconLimits.bytes ||
-    !data.subarray(0, 8).equals(signature)
-  )
-    return false;
-  let offset = 8,
-    chunks = 0,
-    idat = false;
-  while (offset + 12 <= data.length && ++chunks <= 1024) {
-    const size = data.readUInt32BE(offset),
-      end = offset + 12 + size;
-    if (end > data.length) return false;
-    const kind = data.toString('latin1', offset + 4, offset + 8);
-    if (
-      !/^[A-Za-z]{4}$/.test(kind) ||
-      crc32(data.subarray(offset + 4, end - 4)) !== data.readUInt32BE(end - 4)
-    )
-      return false;
-    if (chunks === 1) {
-      if (kind !== 'IHDR' || size !== 13) return false;
-      const width = data.readUInt32BE(offset + 8),
-        height = data.readUInt32BE(offset + 12);
-      if (
-        !width ||
-        !height ||
-        width > equipmentIconLimits.dimension ||
-        height > equipmentIconLimits.dimension ||
-        width * height > equipmentIconLimits.pixels
-      )
-        return false;
-      const depth = data[offset + 16],
-        color = data[offset + 17];
-      if (
-        !(
-          { 0: [1, 2, 4, 8, 16], 2: [8, 16], 3: [1, 2, 4, 8], 4: [8, 16], 6: [8, 16] } as Record<
-            number,
-            number[]
-          >
-        )[color]?.includes(depth) ||
-        data[offset + 18] !== 0 ||
-        data[offset + 19] !== 0 ||
-        data[offset + 20] > 1
-      )
-        return false;
-    } else if (kind === 'IHDR' || ['acTL', 'fcTL', 'fdAT'].includes(kind)) return false;
-    else if (!['PLTE', 'IDAT', 'IEND'].includes(kind) && kind[0] === kind[0].toUpperCase())
-      return false;
-    if (kind === 'IDAT' && size) idat = true;
-    if (kind === 'IEND') return size === 0 && idat && end === data.length;
-    offset = end;
-  }
-  return false;
+  return validPng(data, equipmentIconLimits);
 }
 
 /** Linux directory descriptors anchor every child open even if an operator replaces a path.
@@ -123,7 +71,7 @@ async function withDirectory<T>(
 }
 
 export async function equipmentAssetRoutes(app: FastifyInstance, dataRoot: string) {
-  const cache = new Map<string, { version: string; data: Buffer }>();
+  const cache = new Map<string, { version: string; digest: string; data: Buffer }>();
   let cachedBytes = 0;
   const discard = (key: string) => {
     const item = cache.get(key);
@@ -147,9 +95,14 @@ export async function equipmentAssetRoutes(app: FastifyInstance, dataRoot: strin
         discard(key);
         return;
       }
-      const version = `${stat.dev}:${stat.ino}:${stat.ctimeMs}:${stat.mtimeMs}:${stat.size}`;
+      const version = await fileVersion(handle);
       const previous = cache.get(key);
-      if (previous?.version === version) return previous.data;
+      if (
+        previous?.version === version &&
+        (await fileDigest(handle, equipmentIconLimits.bytes)) === previous.digest &&
+        version === (await fileVersion(handle))
+      )
+        return previous.data;
       discard(key);
       const data = Buffer.alloc(stat.size);
       let bytes = 0;
@@ -159,10 +112,10 @@ export async function equipmentAssetRoutes(app: FastifyInstance, dataRoot: strin
         bytes += part.bytesRead;
       }
       // A growing/in-place replaced file cannot change the bytes already bounded and validated.
-      if (!validEquipmentPng(data)) return;
+      if (!validEquipmentPng(data) || version !== (await fileVersion(handle))) return;
       // Another request may have populated this key while the descriptor read was awaited.
       discard(key);
-      cache.set(key, { version, data });
+      cache.set(key, { version, digest: createHash('sha256').update(data).digest('hex'), data });
       cachedBytes += data.length;
       while (cachedBytes > equipmentIconLimits.cache) discard(cache.keys().next().value!);
       return data;

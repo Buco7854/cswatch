@@ -36,3 +36,17 @@ export async function selectOptionsForControl(page: Page, title: string) {
         : 'Visuals';
   await selectOptionsCategory(page, category);
 }
+
+/** Display opt-ins live in Settings, with Close returning to the same trigger. */
+export async function enableViewerOverlay(page: Page, title: string) {
+  const language = await page.evaluate(() => localStorage.getItem('cswatch.language'));
+  const message = (key: string) => (language === 'fr' ? french[key] || key : key);
+  await page.getByRole('button', { name: message('Options'), exact: true }).click();
+  await selectOptionsCategory(page, 'Visuals');
+  await page
+    .getByRole('switch', {
+      name: new RegExp('^' + message(title).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+    })
+    .check();
+  await page.getByRole('button', { name: message('Close viewer options'), exact: true }).click();
+}

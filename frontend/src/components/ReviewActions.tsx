@@ -15,13 +15,20 @@ export type ReviewAction = {
 export default function ReviewActions({
   actions,
   heading,
+  recap,
 }: {
   actions: ReviewAction[];
   heading?: ReactNode;
+  recap?: ReactNode;
 }) {
   if (!actions.length) return null;
   return (
-    <div className="viewer-context-actions" role="group" aria-label={t('Moment shortcuts')}>
+    <div
+      className={'viewer-context-actions' + (recap ? ' is-combat' : '')}
+      role="group"
+      aria-label={t('Moment shortcuts')}
+    >
+      {recap}
       {heading && <div className="review-moment-heading">{heading}</div>}
       <div className="review-moment-buttons">
         {actions.map((action) => (

@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import type { Playback } from '../../shared/playback';
-import { selectOptionsCategory } from './fixtures/viewer-options';
+import { selectOptionsCategory, enableViewerOverlay } from './fixtures/viewer-options';
 
 type Language = 'en' | 'fr';
 type Theme = 'light' | 'dark';
@@ -151,22 +151,24 @@ async function openFixture(
     ({ language, theme }) => {
       localStorage.setItem('theme', theme);
       localStorage.setItem('cswatch.language', language);
-      localStorage.setItem(
-        'viewer-settings',
-        JSON.stringify({
-          quality: 'low',
-          inputs: true,
-          mouseInput: true,
-          inputLayout: 'zqsd',
-          inputDetails: false,
-          economy: true,
-          teamLayout: 'split',
-          radar: true,
-          killfeed: true,
-          subtitles: true,
-          voiceScope: 'all',
-          autoHideControls: false,
-        }),
+      ['viewer-settings', 'viewer-settings-mobile'].forEach((key) =>
+        localStorage.setItem(
+          key,
+          JSON.stringify({
+            quality: 'low',
+            inputs: true,
+            mouseInput: true,
+            inputLayout: 'zqsd',
+            inputDetails: false,
+            economy: true,
+            teamLayout: 'split',
+            radar: true,
+            killfeed: true,
+            subtitles: true,
+            voiceScope: 'all',
+            autoHideControls: false,
+          }),
+        ),
       );
     },
     { language, theme },
@@ -753,17 +755,8 @@ for (const language of ['en', 'fr'] as const)
             { message: 'Recorded killfeed must remain visible outside the objective ribbon' },
           )
           .toBe(false);
-        const more = page.getByRole('button', {
-          name: message(language, 'More controls'),
-          exact: true,
-        });
-        await more.click();
-        await page
-          .getByRole('menuitem', {
-            name: message(language, 'Kills and utility review'),
-            exact: true,
-          })
-          .click();
+        const more = page.getByRole('button', { name: message(language, 'Options'), exact: true });
+        await enableViewerOverlay(page, 'Kills and utility review');
         const feed = page.locator('.review-feed');
         await feed.getByRole('tab', { name: new RegExp('^' + message(language, 'Kills')) }).click();
         const modal = size.width <= 540 || size.height <= 560;
@@ -836,6 +829,46 @@ for (const language of ['en', 'fr'] as const)
         await expect(page.locator('.objective-hud')).toBeVisible();
       }
     });
+
+test('a fully crowded viewport hides only the passive feed and restores it when space returns', async ({
+  page,
+}) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE), 'Synthetic public replay UI fixture.');
+  await page.setViewportSize({ width: 320, height: 740 });
+  await openFixture(page, 'en', 'dark');
+  const frame = page.locator('.viewer-frame'),
+    feed = page.locator('.killfeed');
+  const markers = page.locator('.timeline-event-marker');
+  const eventCount = await markers.count();
+  expect(eventCount).toBeGreaterThan(0);
+  await expect(feed).toBeVisible();
+  await expect(frame).toHaveAttribute('data-killfeed-placed', 'true');
+  await page.setViewportSize({ width: 320, height: 240 });
+  await expect(frame).toHaveAttribute('data-killfeed-crowded', 'true');
+  await expect(frame).not.toHaveAttribute('data-killfeed-placed', 'true');
+  await expect(feed).toHaveCSS('visibility', 'hidden');
+  expect(
+    await frame.evaluate((element) =>
+      ['left', 'top', 'width'].map((property) =>
+        element.style.getPropertyValue('--review-killfeed-' + property),
+      ),
+    ),
+  ).toEqual(['', '', '']);
+  expect((await feed.boundingBox())!.height).toBeGreaterThan(0);
+  await expect(markers).toHaveCount(eventCount);
+  expect(
+    await page.evaluate(
+      () => JSON.parse(localStorage.getItem('viewer-settings-mobile') || '{}').killfeed,
+    ),
+  ).toBe(true);
+  await page.setViewportSize({ width: 320, height: 740 });
+  await expect(feed).toBeVisible();
+  await expect(frame).not.toHaveAttribute('data-killfeed-crowded', 'true');
+  await expect(frame).toHaveAttribute('data-killfeed-placed', 'true');
+  await expect.poll(() => layoutIssues(page)).toEqual([]);
+  await expect.poll(() => rosterEdgeIssues(page)).toEqual([]);
+  await expect(markers).toHaveCount(eventCount);
+});
 
 // Event-driven prompts must never change the geometry of the player list. The
 // fixture keeps equipment and caption dimensions constant across these seeks.

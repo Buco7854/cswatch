@@ -20,9 +20,9 @@ import { Decompress } from 'fzstd';
 import { parseHeader, parseTicks, parseEvent, parseGrenades } from '@laihoe/demoparser2';
 import type { Playback, GameEvent, Grenade } from '../../shared/playback.js';
 import { validateMagic } from './demo-format.js';
-import { collectFrameState } from './frame-state.js';
+import { collectColumnFrameState } from './frame-state.js';
 import { writeReplay } from './replay.js';
-import { readPlayerRows } from './parser-fields.js';
+import { playerColumns, readPlayerColumns } from './parser-fields.js';
 import { replayCapabilities } from './player-input.js';
 import { readCommunications } from './communications.js';
 import {
@@ -32,9 +32,100 @@ import {
   removeEventInputExtras,
 } from './throw-input.js';
 import type { EventAvailability } from '../../shared/match-state.js';
+import { classifyParserFailure } from './parser-failure.js';
+import { recordedRoundWinner } from './rounds.js';
 const finite = (v: unknown, fallback = 0) =>
   typeof v === 'number' && Number.isFinite(v) ? v : fallback;
 const round = (v: unknown) => Math.round(finite(v) * 100) / 100;
+const maximumTick = 64 * 60 * 180;
+
+/** Scope the native index away before querying detailed state. Its implicit
+ * name/Steam ID columns cover every player at 64 Hz, even for one wanted prop. */
+function readSampledTicks(source: string) {
+  const columns = playerColumns(
+    parseTicks(source, ['game_time'], undefined, undefined, true),
+    maximumTick * 64,
+  );
+  const ticks = new Set<number>();
+  for (const value of columns.tick) {
+    if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) continue;
+    if (value > maximumTick) throw new Error('Demo has no ticks or exceeds 3 hours');
+    if (value % 4 === 0) ticks.add(value);
+  }
+  const sampled = [...ticks].sort((a, b) => a - b);
+  if (!sampled.length) throw new Error('Demo has no ticks or exceeds 3 hours');
+  if (sampled.length > 180000) throw new Error('Frame limit');
+  return sampled;
+}
+
+/** Return projected frames only, so raw native columns cannot survive through
+ * the subsequent event/media passes in the outer async parser's live locals. */
+function readFrames(source: string, sampled: number[]) {
+  const base = [
+    'X',
+    'Y',
+    'Z',
+    'yaw',
+    'pitch',
+    'health',
+    'team_num',
+    'is_alive',
+    'active_weapon_name',
+    'is_freeze_period',
+    'is_ct_timeout',
+    'is_terrorist_timeout',
+    'is_technical_timeout',
+  ];
+  const columns = readPlayerColumns(
+    (fields) => parseTicks(source, fields, sampled, undefined, true),
+    base,
+    [
+      [
+        'armor_value',
+        'balance',
+        'active_weapon_ammo',
+        'duck_amount',
+        'flash_duration',
+        'has_helmet',
+        'has_defuser',
+        'is_scoped',
+        'is_defusing',
+        'current_equip_value',
+        'start_balance',
+        'cash_spent_this_round',
+        'inventory',
+      ],
+      [
+        'buttons',
+        'FORWARD',
+        'BACK',
+        'LEFT',
+        'RIGHT',
+        'JUMP',
+        'DUCK',
+        'WALK',
+        'FIRE',
+        'RIGHTCLICK',
+        'RELOAD',
+        'USE',
+      ],
+      [
+        'usercmd_buttonstate_1',
+        'usercmd_buttonstate_2',
+        'usercmd_buttonstate_3',
+        'usercmd_buttons_held',
+        'usercmd_buttons_pressed',
+        'usercmd_buttons_released',
+        'usercmd_mouse_dx',
+        'usercmd_mouse_dy',
+      ],
+      ['kills_total', 'deaths_total', 'assists_total', 'headshot_kills_total', 'damage_total'],
+    ],
+    sampled.length * 64,
+  );
+  return collectColumnFrameState(columns);
+}
+
 export async function parse(folder: string, maxExpanded: number) {
   let source = join(
     folder,
@@ -84,72 +175,8 @@ export async function parse(folder: string, maxExpanded: number) {
   validateMagic(source, '.dem');
   const header = parseHeader(source),
     tickRate = 64;
-  // Index is only one property. Native parsing stays outside the API event loop.
-  const index = parseTicks(source, ['game_time']) as Record<string, any>[];
-  const ticks = [...new Set(index.map((r) => r.tick as number))].sort((a, b) => a - b);
-  if (!ticks.length || ticks.at(-1)! > 64 * 60 * 180)
-    throw new Error('Demo has no ticks or exceeds 3 hours');
-  const sampled = ticks.filter((t) => t % 4 === 0);
-  if (sampled.length > 180000) throw new Error('Frame limit');
-  const base = [
-    'X',
-    'Y',
-    'Z',
-    'yaw',
-    'pitch',
-    'health',
-    'team_num',
-    'is_alive',
-    'active_weapon_name',
-    'is_freeze_period',
-    'is_ct_timeout',
-    'is_terrorist_timeout',
-    'is_technical_timeout',
-  ];
+  const { frames, players, deadTimes } = readFrames(source, readSampledTicks(source));
   const warnings: string[] = [];
-  const rows = readPlayerRows((fields) => parseTicks(source, fields, sampled), base, [
-    [
-      'armor_value',
-      'balance',
-      'active_weapon_ammo',
-      'duck_amount',
-      'flash_duration',
-      'has_helmet',
-      'has_defuser',
-      'is_scoped',
-      'is_defusing',
-      'current_equip_value',
-      'start_balance',
-      'cash_spent_this_round',
-      'inventory',
-    ],
-    [
-      'buttons',
-      'FORWARD',
-      'BACK',
-      'LEFT',
-      'RIGHT',
-      'JUMP',
-      'DUCK',
-      'WALK',
-      'FIRE',
-      'RIGHTCLICK',
-      'RELOAD',
-      'USE',
-    ],
-    [
-      'usercmd_buttonstate_1',
-      'usercmd_buttonstate_2',
-      'usercmd_buttonstate_3',
-      'usercmd_buttons_held',
-      'usercmd_buttons_pressed',
-      'usercmd_buttons_released',
-      'usercmd_mouse_dx',
-      'usercmd_mouse_dy',
-    ],
-    ['kills_total', 'deaths_total', 'assists_total', 'headshot_kills_total', 'damage_total'],
-  ]);
-  const { frames, players, deadTimes } = collectFrameState(rows);
   const events: GameEvent[] = [];
   const eventAvailability: EventAvailability = { player_death: false, player_hurt: false };
   for (const kind of [
@@ -216,7 +243,7 @@ export async function parse(folder: string, maxExpanded: number) {
       tick: e.tick,
       liveTick: live?.tick,
       endTick: end?.tick,
-      winner: end?.winner,
+      winner: recordedRoundWinner(end?.winner),
     };
   });
   if (!rounds.length)
@@ -269,7 +296,12 @@ export async function parse(folder: string, maxExpanded: number) {
   } catch {
     warnings.push('Grenade trajectories are unavailable.');
   }
-  const media = await readCommunications(source, tickRate, frames.at(-1)!.tick);
+  const media = await readCommunications(
+    source,
+    tickRate,
+    frames.at(-1)!.tick,
+    new Set(players.map((player) => player.id)),
+  );
   warnings.push(...media.warnings);
   const data: Playback = {
     version: 1,
@@ -289,6 +321,9 @@ export async function parse(folder: string, maxExpanded: number) {
     communications: media.communications,
     objectives: media.objectives,
     matchState: media.matchState,
+    crosshairs: media.crosshairs,
+    itemSamples: media.itemSamples,
+    itemState: media.itemState,
     eventAvailability,
     throwInputs: throwInputs.snapshots,
   };
@@ -309,6 +344,6 @@ export async function parse(folder: string, maxExpanded: number) {
 }
 if (process.argv[1] === fileURLToPath(import.meta.url) && process.argv[2])
   parse(process.argv[2], Number(process.argv[3]) * 1024 ** 2).catch((e) => {
-    writeFileSync(join(process.argv[2], 'failure.txt'), String(e?.name || 'ParserError'));
+    writeFileSync(join(process.argv[2], 'failure.txt'), JSON.stringify(classifyParserFailure(e)));
     process.exit(1);
   });

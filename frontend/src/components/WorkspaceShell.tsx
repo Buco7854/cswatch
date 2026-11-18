@@ -3,7 +3,6 @@ import { Link, NavLink, useLocation } from 'react-router-dom';
 import {
   ArrowUpRight,
   ChevronRight,
-  Crosshair,
   Globe2,
   LockKeyhole,
   Menu,
@@ -13,11 +12,11 @@ import {
   X,
   UserRound,
 } from 'lucide-react';
-import i18n, { setLanguage, t, type Language } from '../i18n';
+import { t } from '../i18n';
 import { useApp } from '../context';
 import Brand from './Brand';
 import AccountMenu from './AccountMenu';
-import { SelectControl } from './Controls';
+import LanguageControl from './LanguageControl';
 
 export default function WorkspaceShell({
   title,
@@ -50,10 +49,6 @@ export default function WorkspaceShell({
         <PanelsTopLeft size={18} />
         {t('Demo library')}
       </NavLink>
-      <NavLink to="/explore">
-        <Globe2 size={18} />
-        {t(config.public_access ? 'Explore demos' : 'Shared demos')}
-      </NavLink>
     </>
   );
   const instance = (
@@ -69,19 +64,20 @@ export default function WorkspaceShell({
     <div className="app-shell">
       <aside className="site-sidebar">
         <Brand to="/library" />
-        <div className="workspace-label">
-          <Crosshair size={15} />
-          {t('Counter-Strike review')}
-        </div>
         <nav className="sidebar-nav" aria-label={t('Main navigation')}>
           {navigation}
         </nav>
         <div className="sidebar-bottom">
           {instance}
-          <Link className="public-site-link" to="/">
-            {t('About cswatch')}
+          <a
+            className="public-site-link"
+            href="https://github.com/Buco7854/cswatch"
+            target="_blank"
+            rel="noreferrer"
+          >
+            GitHub
             <ArrowUpRight size={13} />
-          </Link>
+          </a>
           <span className="sidebar-version">
             cswatch <span>v0.1</span>
           </span>
@@ -107,24 +103,7 @@ export default function WorkspaceShell({
             </span>
           </div>
           <div className="nav-actions">
-            <SelectControl
-              className="workspace-language"
-              label={t('Language')}
-              value={i18n.language}
-              onValueChange={(language) => setLanguage(language as Language)}
-              options={[
-                { value: 'en', label: 'English' },
-                { value: 'fr', label: 'Français' },
-              ]}
-              displayValue={
-                <>
-                  <span className="language-name">
-                    {i18n.language === 'fr' ? 'Français' : 'English'}
-                  </span>
-                  <span className="language-code">{i18n.language === 'fr' ? 'FR' : 'EN'}</span>
-                </>
-              }
-            />
+            <LanguageControl className="workspace-language" />
             <button
               className="icon-button theme-toggle"
               aria-label={t(theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme')}
@@ -194,10 +173,10 @@ export default function WorkspaceShell({
         )}
         <div className="mobile-navigation-footer">
           {instance}
-          <Link to="/">
-            {t('About cswatch')}
+          <a href="https://github.com/Buco7854/cswatch" target="_blank" rel="noreferrer">
+            GitHub
             <ArrowUpRight size={14} />
-          </Link>
+          </a>
         </div>
       </dialog>
     </div>

@@ -1,0 +1,99 @@
+import type { MapCubeFog } from '../../shared/map-assets';
+
+const number = (value: unknown, min: number, max: number) =>
+  typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max;
+const power = (value: unknown) => number(value, 0, 16) && value !== 0;
+const keys = (value: object, allowed: string[]) =>
+  Object.keys(value).every((key) => allowed.includes(key));
+export function validateMapCubeFog(value: unknown): MapCubeFog {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw new Error('Invalid map cube fog');
+  const fog = value as MapCubeFog;
+  if (
+    !keys(fog, [
+      'blend',
+      'start',
+      'end',
+      'exponent',
+      'height',
+      'maxOpacity',
+      'lodBias',
+      'brightness',
+      'rotation',
+    ]) ||
+    fog.blend !== 'multiply' ||
+    !number(fog.start, 0, 254000) ||
+    !number(fog.end, 0, 254000) ||
+    !(fog.end > fog.start) ||
+    !power(fog.exponent) ||
+    !number(fog.maxOpacity, 0, 1) ||
+    !number(fog.lodBias, 0, 16) ||
+    !number(fog.brightness, 0, 16) ||
+    !Array.isArray(fog.rotation) ||
+    fog.rotation.length !== 9 ||
+    fog.rotation.some((value) => !number(value, -1, 1))
+  )
+    throw new Error('Invalid map cube fog');
+  if (
+    fog.height !== null &&
+    (!fog.height ||
+      typeof fog.height !== 'object' ||
+      Array.isArray(fog.height) ||
+      !keys(fog.height, ['start', 'end', 'exponent']) ||
+      !number(fog.height.start, -254000, 254000) ||
+      !number(fog.height.end, -254000, 254000) ||
+      fog.height.start === fog.height.end ||
+      !power(fog.height.exponent))
+  )
+    throw new Error('Invalid cube fog height');
+  const matrix = fog.rotation,
+    tolerance = 1e-4;
+  for (let col = 0; col < 3; col++)
+    for (let other = col; other < 3; other++) {
+      const dot =
+        matrix[col * 3] * matrix[other * 3] +
+        matrix[col * 3 + 1] * matrix[other * 3 + 1] +
+        matrix[col * 3 + 2] * matrix[other * 3 + 2];
+      if (Math.abs(dot - (col === other ? 1 : 0)) > tolerance)
+        throw new Error('Invalid cube fog rotation');
+      const rowDot =
+        matrix[col] * matrix[other] +
+        matrix[col + 3] * matrix[other + 3] +
+        matrix[col + 6] * matrix[other + 6];
+      if (Math.abs(rowDot - (col === other ? 1 : 0)) > tolerance)
+        throw new Error('Invalid cube fog rotation');
+    }
+  const determinant =
+    matrix[0] * (matrix[4] * matrix[8] - matrix[7] * matrix[5]) -
+    matrix[3] * (matrix[1] * matrix[8] - matrix[7] * matrix[2]) +
+    matrix[6] * (matrix[1] * matrix[5] - matrix[4] * matrix[2]);
+  if (Math.abs(determinant - 1) > tolerance) throw new Error('Invalid cube fog rotation');
+  return { ...fog, height: fog.height ? { ...fog.height } : null, rotation: [...matrix] };
+}
+type Point = { x: number; y: number; z: number };
+const clamp = (value: number) => Math.max(0, Math.min(1, value));
+export function cubeFogAmount(fog: MapCubeFog, world: Point, camera: Point): number {
+  const distance = Math.hypot(world.x - camera.x, world.y - camera.y, world.z - camera.z),
+    range = clamp(
+      Math.pow(Math.max((distance - fog.start) / (fog.end - fog.start), 0), fog.exponent),
+    ),
+    height = fog.height
+      ? clamp(
+          Math.pow(
+            Math.max((fog.height.end - world.y) / (fog.height.end - fog.height.start), 0),
+            fog.height.exponent,
+          ),
+        )
+      : 1;
+  return range * height * fog.maxOpacity;
+}
+/** Prepared Three cube slots use the standard loaded-cube X flip after authored rotation. */
+export function cubeFogDirection(fog: MapCubeFog, ray: Point): Point {
+  const m = fog.rotation,
+    length = Math.hypot(ray.x, ray.y, ray.z) || 1;
+  return {
+    x: -(m[0] * ray.x + m[3] * ray.y + m[6] * ray.z) / length,
+    y: (m[1] * ray.x + m[4] * ray.y + m[7] * ray.z) / length,
+    z: (m[2] * ray.x + m[5] * ray.y + m[8] * ray.z) / length,
+  };
+}

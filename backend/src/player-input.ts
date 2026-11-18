@@ -95,8 +95,10 @@ export function recordedInput(
   return input;
 }
 
-export function hasNetworkAliasEvidence(rows: Record<string, unknown>[]) {
-  return rows.some((row) => Object.values(aliases).some((field) => row[field] === true));
+export function hasNetworkAliasEvidence(rows: Iterable<Record<string, unknown>>) {
+  for (const row of rows)
+    if (Object.values(aliases).some((field) => row[field] === true)) return true;
+  return false;
 }
 const utilities = new Set([
   'smokegrenade',

@@ -4,9 +4,17 @@
 **/node_modules
 **/dist
 var
+**/*.dem
+**/*.dem.zst
+**/*.dem.info
 .taste-skill
 .design
 **/__pycache__
 **/.pytest_cache
 **/test-results
 **/playwright-report
+
+# Native crash dumps may contain private replay data.
+**/core
+**/core.*
+**/*.db*

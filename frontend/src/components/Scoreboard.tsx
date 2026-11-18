@@ -17,7 +17,7 @@ import './scoreboard.css';
 const number = (value: number | undefined) =>
   value !== undefined && Number.isFinite(value) && value >= 0 && value <= 1e9
     ? value.toLocaleString(locale(), { maximumFractionDigits: 0 })
-    : '—';
+    : '-';
 function Stat({ value, suffix = '' }: { value: number | undefined; suffix?: string }) {
   return (
     <span title={value === undefined ? t('Not recorded') : undefined}>
@@ -122,7 +122,7 @@ function TeamTable({
                   <Stat value={stats.damage} />
                 </td>
                 <td data-stat="money">
-                  {number(state?.money) === '—' ? (
+                  {number(state?.money) === '-' ? (
                     <Stat value={undefined} />
                   ) : (
                     '$' + number(state?.money)
@@ -183,7 +183,7 @@ export default function Scoreboard({
               <span>{t('Round {{round}}', { round: match.roundNumber })}</span>
             )}
             {match.phase && <span>{t(MATCH_PHASE_LABELS[match.phase])}</span>}
-            <span className="num">{matchClock(match.remaining) ?? '—'}</span>
+            <span className="num">{matchClock(match.remaining) ?? '-'}</span>
           </p>
         </div>
         <button

@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { MessageSquareText, X } from 'lucide-react';
 import type { ViewerSettings } from '../playback';
+import type { EquipmentRenderState } from '../equipment-assets';
 import {
   CROSSHAIR_LIMITS,
   defaultCrosshairStyle,
@@ -17,6 +18,8 @@ import {
   type CrosshairStyle,
 } from '../crosshair';
 import Crosshair from './Crosshair';
+import RecordedCrosshair from './RecordedCrosshair';
+import { recordedCrosshair } from '../recorded-crosshair';
 import { SelectControl } from './Controls';
 import './viewer-options.css';
 
@@ -81,11 +84,15 @@ export default function ViewerOptions({
   onChange,
   close,
   openCommunications,
+  playerCrosshairCode,
+  equipment,
 }: {
   settings: ViewerSettings;
   onChange: (s: ViewerSettings) => void;
   close: () => void;
   openCommunications: () => void;
+  playerCrosshairCode?: string;
+  equipment?: EquipmentRenderState;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const tabButtons = useRef<Partial<Record<Category, HTMLButtonElement>>>({});
@@ -364,129 +371,166 @@ export default function ViewerOptions({
             'crosshair',
             <>
               <section className="viewer-option-section">
-                <h3>{t('Custom crosshair')}</h3>
+                <h3>{t('Crosshair')}</h3>
                 {toggle(
                   'crosshair',
                   t('Crosshair'),
                   t('Show a centered crosshair in player perspective.'),
                 )}
+                <label className="viewer-option-select">
+                  <span>{t('Crosshair source')}</span>
+                  <SelectControl
+                    label={t('Crosshair source')}
+                    value={settings.crosshairSource}
+                    onValueChange={(value) =>
+                      onChange({ ...settings, crosshairSource: value as 'custom' | 'player' })
+                    }
+                    options={[
+                      { value: 'custom', label: t('Your crosshair') },
+                      { value: 'player', label: t('Current player') },
+                    ]}
+                  />
+                </label>
                 <div className="viewer-crosshair-preview">
-                  <Crosshair value={style} preview label={t('Custom crosshair preview')} />
+                  {settings.crosshairSource === 'player' ? (
+                    <RecordedCrosshair code={playerCrosshairCode} preview />
+                  ) : (
+                    <Crosshair value={style} preview label={t('Custom crosshair preview')} />
+                  )}
                   <div>
-                    <strong>{t('Your review crosshair')}</strong>
-                    <p>
+                    <strong>
                       {t(
-                        'This custom style is saved on this device. The player’s recorded crosshair is unavailable.',
+                        settings.crosshairSource === 'player'
+                          ? 'Current player'
+                          : 'Your review crosshair',
                       )}
+                    </strong>
+                    <p>
+                      {settings.crosshairSource === 'player'
+                        ? t(
+                            recordedCrosshair(playerCrosshairCode)
+                              ? 'Static shape from recorded settings. Weapon spread, recoil and scope animation are not simulated.'
+                              : 'No supported crosshair was recorded for this player at this moment.',
+                          )
+                        : t('This custom crosshair is saved on this device.')}
                     </p>
                   </div>
                 </div>
-                <div className="viewer-crosshair-color">
-                  <label htmlFor="viewer-crosshair-hex">{t('Crosshair color')}</label>
-                  <div>
-                    <input
-                      type="color"
-                      aria-label={t('Crosshair color picker')}
-                      value={style.color}
-                      onChange={(event) => updateCrosshair('color', event.target.value)}
-                    />
-                    <input
-                      id="viewer-crosshair-hex"
-                      type="text"
-                      value={colorDraft}
-                      maxLength={7}
-                      autoComplete="off"
-                      spellCheck={false}
-                      aria-label={t('Crosshair hex color')}
-                      aria-invalid={!/^#[0-9a-f]{6}$/i.test(colorDraft)}
-                      onChange={(event) => {
-                        const next = event.target.value;
-                        setColorDraft(next);
-                        if (/^#[0-9a-f]{6}$/i.test(next))
-                          updateCrosshair('color', next.toLowerCase());
-                      }}
-                      onBlur={() => setColorDraft(style.color)}
-                    />
+                <div
+                  className="viewer-custom-crosshair-controls"
+                  hidden={settings.crosshairSource !== 'custom'}
+                >
+                  <div className="viewer-crosshair-color">
+                    <label htmlFor="viewer-crosshair-hex">{t('Crosshair color')}</label>
+                    <div>
+                      <input
+                        type="color"
+                        aria-label={t('Crosshair color picker')}
+                        value={style.color}
+                        onChange={(event) => updateCrosshair('color', event.target.value)}
+                      />
+                      <input
+                        id="viewer-crosshair-hex"
+                        type="text"
+                        value={colorDraft}
+                        maxLength={7}
+                        autoComplete="off"
+                        spellCheck={false}
+                        aria-label={t('Crosshair hex color')}
+                        aria-invalid={!/^#[0-9a-f]{6}$/i.test(colorDraft)}
+                        onChange={(event) => {
+                          const next = event.target.value;
+                          setColorDraft(next);
+                          if (/^#[0-9a-f]{6}$/i.test(next))
+                            updateCrosshair('color', next.toLowerCase());
+                        }}
+                        onBlur={() => setColorDraft(style.color)}
+                      />
+                    </div>
                   </div>
-                </div>
-                <RangeSetting
-                  label={t('Crosshair length')}
-                  value={style.length}
-                  {...CROSSHAIR_LIMITS.length}
-                  display={style.length + ' px'}
-                  onChange={(value) => updateCrosshair('length', value)}
-                />
-                <RangeSetting
-                  label={t('Crosshair thickness')}
-                  value={style.thickness}
-                  {...CROSSHAIR_LIMITS.thickness}
-                  display={style.thickness + ' px'}
-                  onChange={(value) => updateCrosshair('thickness', value)}
-                />
-                <RangeSetting
-                  label={t('Crosshair gap')}
-                  value={style.gap}
-                  {...CROSSHAIR_LIMITS.gap}
-                  display={style.gap + ' px'}
-                  onChange={(value) => updateCrosshair('gap', value)}
-                />
-                <RangeSetting
-                  label={t('Crosshair opacity')}
-                  value={style.opacity}
-                  {...CROSSHAIR_LIMITS.opacity}
-                  display={Math.round(style.opacity * 100) + '%'}
-                  onChange={(value) => updateCrosshair('opacity', value)}
-                />
-                {crosshairToggle('outline', t('Crosshair outline'))}
-                {style.outline && (
                   <RangeSetting
-                    label={t('Outline thickness')}
-                    value={style.outlineWidth}
-                    {...CROSSHAIR_LIMITS.outlineWidth}
-                    display={style.outlineWidth + ' px'}
-                    onChange={(value) => updateCrosshair('outlineWidth', value)}
+                    label={t('Crosshair length')}
+                    value={style.length}
+                    {...CROSSHAIR_LIMITS.length}
+                    display={style.length + ' px'}
+                    onChange={(value) => updateCrosshair('length', value)}
                   />
-                )}
-                {crosshairToggle('centerDot', t('Center dot'))}
-                {crosshairToggle('tStyle', t('T-style crosshair'))}
-                <div className="viewer-crosshair-actions">
-                  <button className="button" onClick={() => void copyPreset()}>
-                    {t('Copy custom preset')}
-                  </button>
-                  <button
-                    className="button"
-                    onClick={() =>
-                      onChange({ ...settings, crosshairStyle: { ...defaultCrosshairStyle } })
-                    }
-                  >
-                    {t('Reset crosshair')}
-                  </button>
-                </div>
-                <p className="viewer-option-note">
-                  {t('A cswatch JSON preset, not a CS2 share code.')}
-                </p>
-                {presetStatus === 'copied' && (
-                  <p className="viewer-option-note" role="status">
-                    {t('Custom preset copied.')}
-                  </p>
-                )}
-                {presetStatus === 'manual' && (
-                  <label className="viewer-crosshair-copy-fallback">
-                    <span>{t('Copy this cswatch preset')}</span>
-                    <textarea
-                      value={presetText}
-                      readOnly
-                      rows={4}
-                      onFocus={(event) => event.currentTarget.select()}
+                  <RangeSetting
+                    label={t('Crosshair thickness')}
+                    value={style.thickness}
+                    {...CROSSHAIR_LIMITS.thickness}
+                    display={style.thickness + ' px'}
+                    onChange={(value) => updateCrosshair('thickness', value)}
+                  />
+                  <RangeSetting
+                    label={t('Crosshair gap')}
+                    value={style.gap}
+                    {...CROSSHAIR_LIMITS.gap}
+                    display={style.gap + ' px'}
+                    onChange={(value) => updateCrosshair('gap', value)}
+                  />
+                  <RangeSetting
+                    label={t('Crosshair opacity')}
+                    value={style.opacity}
+                    {...CROSSHAIR_LIMITS.opacity}
+                    display={Math.round(style.opacity * 100) + '%'}
+                    onChange={(value) => updateCrosshair('opacity', value)}
+                  />
+                  {crosshairToggle('outline', t('Crosshair outline'))}
+                  {style.outline && (
+                    <RangeSetting
+                      label={t('Outline thickness')}
+                      value={style.outlineWidth}
+                      {...CROSSHAIR_LIMITS.outlineWidth}
+                      display={style.outlineWidth + ' px'}
+                      onChange={(value) => updateCrosshair('outlineWidth', value)}
                     />
-                  </label>
-                )}
+                  )}
+                  {crosshairToggle('centerDot', t('Center dot'))}
+                  {crosshairToggle('tStyle', t('T-style crosshair'))}
+                  <div className="viewer-crosshair-actions">
+                    <button className="button" onClick={() => void copyPreset()}>
+                      {t('Copy custom preset')}
+                    </button>
+                    <button
+                      className="button"
+                      onClick={() =>
+                        onChange({ ...settings, crosshairStyle: { ...defaultCrosshairStyle } })
+                      }
+                    >
+                      {t('Reset crosshair')}
+                    </button>
+                  </div>
+                  <p className="viewer-option-note">
+                    {t('A cswatch JSON preset, not a CS2 share code.')}
+                  </p>
+                  {presetStatus === 'copied' && (
+                    <p className="viewer-option-note" role="status">
+                      {t('Custom preset copied.')}
+                    </p>
+                  )}
+                  {presetStatus === 'manual' && (
+                    <label className="viewer-crosshair-copy-fallback">
+                      <span>{t('Copy this cswatch preset')}</span>
+                      <textarea
+                        value={presetText}
+                        readOnly
+                        rows={4}
+                        onFocus={(event) => event.currentTarget.select()}
+                      />
+                    </label>
+                  )}
+                </div>
               </section>
             </>,
           )}
           {panel(
             'playback',
             <section className="viewer-option-section">
+              <h3>{t('Communications')}</h3>
+              {toggle('voice', t('Recorded voice'))}
+              {toggle('subtitles', t('Communication subtitles'))}
+              {toggle('chat', t('Text chat'))}
               <h3>{t('Review navigation')}</h3>
               {toggle(
                 'grenadeLanding',
@@ -568,6 +612,51 @@ export default function ViewerOptions({
                   'Utility zones approximate event positions and durations. They do not reproduce Source 2’s volumetric smoke simulation.',
                 )}
               </p>
+              {equipment && (
+                <div
+                  className="viewer-equipment-report"
+                  role="group"
+                  aria-label={t('Equipment model status')}
+                >
+                  <h4>{t('Equipment models')}</h4>
+                  <dl className="viewer-equipment-status">
+                    <div>
+                      <dt>{t('Ready models')}</dt>
+                      <dd>{equipment.ready}</dd>
+                    </div>
+                    <div>
+                      <dt>{t('Loading models')}</dt>
+                      <dd>{equipment.pending}</dd>
+                    </div>
+                    <div>
+                      <dt>{t('Unavailable models')}</dt>
+                      <dd>{equipment.unavailable}</dd>
+                    </div>
+                    <div>
+                      <dt>{t('Failed models')}</dt>
+                      <dd>{equipment.failed}</dd>
+                    </div>
+                  </dl>
+                  {equipment.status === 'error' && (
+                    <p className="viewer-option-note">
+                      {t('Equipment models could not be checked. Reopen the viewer to retry.')}
+                    </p>
+                  )}
+                  {equipment.status === 'missing' && (
+                    <p className="viewer-option-note">
+                      {t('No equipment model pack is installed.')}
+                    </p>
+                  )}
+                  {!equipment.active && (
+                    <p className="viewer-option-note">{t('Equipment models load in a 3D view.')}</p>
+                  )}
+                  <p className="viewer-option-note">
+                    {t(
+                      'Equipment uses static spectator attachments, without native arms or recoil animations.',
+                    )}
+                  </p>
+                </div>
+              )}
             </section>,
           )}
         </div>

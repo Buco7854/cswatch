@@ -1,0 +1,41 @@
+/** Original synthetic authored fog for cross-boundary contract tests. */
+export const authoredFog = () => ({
+  blend: 'multiply',
+  start: 10,
+  end: 200,
+  exponent: 1.6,
+  height: { start: 12, end: -5, exponent: 1 },
+  maxOpacity: 0.8,
+  lodBias: 0.8,
+  brightness: 1.2,
+  rotation: [0, 0, -1, 0, 1, 0, 1, 0, 0],
+});
+export function invalidFogCases(fog = authoredFog()) {
+  return [
+    null,
+    [],
+    { ...fog, blend: 'additive' },
+    { ...fog, start: -1 },
+    { ...fog, start: fog.end },
+    { ...fog, end: 254001 },
+    { ...fog, exponent: 0 },
+    { ...fog, exponent: 16.01 },
+    { ...fog, end: null },
+    { ...fog, maxOpacity: 1.01 },
+    { ...fog, lodBias: -1 },
+    { ...fog, lodBias: 17 },
+    { ...fog, brightness: 17 },
+    { ...fog, height: { ...fog.height, end: fog.height.start } },
+    { ...fog, height: { ...fog.height, start: -254001 } },
+    { ...fog, height: { ...fog.height, exponent: 0 } },
+    { ...fog, height: { ...fog.height, exponent: 17 } },
+    { ...fog, height: { ...fog.height, image: 'https://outside.invalid/fog.png' } },
+    { ...fog, rotation: [1, 0, 0, 0, 1, 0, 0, 0] },
+    { ...fog, rotation: [1, 0, 0, 0, 1, 0, 0, 0, 2] },
+    { ...fog, rotation: [1, 0, 0, 0, 1, 0, 0, 0, 0.999] },
+    { ...fog, rotation: [1, 0, 0, 0.01, 1, 0, 0, 0, 1] },
+    { ...fog, rotation: [-1, 0, 0, 0, 1, 0, 0, 0, 1] },
+    { ...fog, rotation: [1, 0, 0, 0, 1, 0, 0, 0, null] },
+    { ...fog, image: 'https://outside.invalid/fog.png' },
+  ];
+}

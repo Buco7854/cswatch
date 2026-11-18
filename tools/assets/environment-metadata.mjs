@@ -1,0 +1,322 @@
+/** Bounded S2V entity/material metadata, separate from game acquisition and rendering. */
+import { sourceRotate } from './environment-space.mjs';
+import { validPreparedFog } from './prepared-environment-fog.mjs';
+
+const keys = new Set([
+  'classname',
+  'origin',
+  'angles',
+  'scales',
+  'scale',
+  'worldgroupid',
+  'targetmapname',
+  'skyname',
+  'brightnessscale',
+  'tint_color',
+  'startdisabled',
+  'enabled',
+  'parentname',
+  'targetname',
+]);
+const limits = { bytes: 16 * 1024 ** 2, lumps: 64, entities: 20000 };
+
+function decoded(value) {
+  const text = value.replace(/^resource_name:/, '').trim();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+function entities(input) {
+  const texts = Array.isArray(input) ? input : [input];
+  if (
+    !texts.length ||
+    texts.length > limits.lumps ||
+    texts.some((text) => typeof text !== 'string')
+  )
+    throw new Error('Environment metadata requires bounded S2V entity dump text.');
+  if (
+    texts.reduce((sum, text) => sum + Buffer.byteLength(text), 0) > limits.bytes ||
+    texts.some((text) => text.includes('\0'))
+  )
+    throw new Error('Environment entity metadata exceeds its text limit.');
+  const result = [];
+  for (const text of texts) {
+    if (!/^====\d+====\r?$/m.test(text)) throw new Error('Expected an S2V .vents entity dump.');
+    for (const block of text.split(/^====\d+====\r?$/m).slice(1)) {
+      if (result.length >= limits.entities) throw new Error('Too many environment entities.');
+      const entity = Object.create(null);
+      for (const line of block.split(/\r?\n/)) {
+        const property = /^([a-zA-Z0-9_.]+)\s+(.+)$/.exec(line);
+        if (!property || (!keys.has(property[1]) && !/^cubemap(?:fog|heightfog)/.test(property[1])))
+          continue;
+        if (Object.hasOwn(entity, property[1]))
+          throw new Error('Duplicate environment entity property.');
+        entity[property[1]] = decoded(property[2]);
+      }
+      result.push(entity);
+    }
+  }
+  return result;
+}
+
+function vector(value, fallback, color = false) {
+  const result =
+    typeof value === 'string' ? value.trim().split(/\s+/).map(Number) : (value ?? fallback);
+  if (
+    !Array.isArray(result) ||
+    result.length < 3 ||
+    result.length > (color ? 4 : 3) ||
+    result.some((v) => typeof v !== 'number' || !Number.isFinite(v) || Math.abs(v) > 1e7) ||
+    (color && result.some((v) => v < 0 || v > 255))
+  )
+    throw new Error('Invalid authored environment vector.');
+  return result.slice(0, 3);
+}
+function number(value, fallback, min, max) {
+  const result = value === undefined ? fallback : Number(value);
+  if (!Number.isFinite(result) || result < min || result > max)
+    throw new Error('Invalid authored environment scalar.');
+  return result;
+}
+function resource(value, extension) {
+  if (
+    typeof value !== 'string' ||
+    value.length > 512 ||
+    !new RegExp(`^[a-zA-Z0-9_/-]+\\.${extension}$`).test(value) ||
+    value.split('/').some((part) => !part || part === '.' || part === '..')
+  )
+    throw new Error('Invalid authored environment resource path.');
+  return value;
+}
+function active(entity) {
+  return (
+    ![true, 'true', '1', 1].includes(entity.startdisabled) &&
+    ![false, 'false', '0', 0].includes(entity.enabled)
+  );
+}
+function unique(values, label) {
+  if (!values.length) return null;
+  if (values.some((value) => JSON.stringify(value) !== JSON.stringify(values[0])))
+    throw new Error(`Ambiguous ${label} requires an explicit supported world selection.`);
+  return values[0];
+}
+function unparented(entity) {
+  if (entity.parentname)
+    throw new Error('Parented environment entities require an explicit supported transform.');
+  return entity;
+}
+function skyEnvironment(all) {
+  return unique(
+    all
+      .filter((entity) => entity.classname === 'env_sky' && active(entity) && entity.skyname)
+      .map(unparented)
+      .map((entity) => ({
+        skyMaterial: resource(entity.skyname, 'vmat'),
+        brightnessScale: number(entity.brightnessscale, 1, 0, 16) || 1,
+        tint: vector(entity.tint_color, [255, 255, 255], true),
+        angles: vector(entity.angles, [0, 0, 0]),
+      })),
+    'enabled sky environments',
+  );
+}
+function fog(all) {
+  return all
+    .filter((entity) => entity.classname === 'env_cubemap_fog' && active(entity))
+    .map((entity) => ({
+      ...Object.fromEntries(Object.entries(entity).filter(([key]) => /^cubemap/.test(key))),
+      angles: vector(entity.angles, [0, 0, 0]),
+      parented: Boolean(entity.parentname),
+    }));
+}
+function skySources(all) {
+  return all
+    .filter((entity) => entity.classname === 'env_sky' && entity.skyname)
+    .map((entity) => ({
+      targetName: typeof entity.targetname === 'string' ? entity.targetname : null,
+      skyMaterial: resource(entity.skyname, 'vmat'),
+      brightnessScale: number(entity.brightnessscale, 1, 0, 16) || 1,
+      angles: vector(entity.angles, [0, 0, 0]),
+      parented: Boolean(entity.parentname),
+    }));
+}
+
+export function inspectMapEnvironment(input) {
+  const all = entities(input);
+  const reference = unique(
+    all
+      .filter((entity) => entity.classname === 'skybox_reference' && active(entity))
+      .map(unparented)
+      .map((entity) => ({
+        skyMap: resource(entity.targetmapname, 'vmap'),
+        worldGroup: typeof entity.worldgroupid === 'string' ? entity.worldgroupid : null,
+        origin: vector(entity.origin, [0, 0, 0]),
+        angles: vector(entity.angles, [0, 0, 0]),
+        scales: vector(entity.scales, [1, 1, 1]),
+      })),
+    '3D sky references',
+  );
+  return {
+    ...(skyEnvironment(all) ?? {
+      skyMaterial: null,
+      brightnessScale: 1,
+      tint: [255, 255, 255],
+      angles: [0, 0, 0],
+    }),
+    skyMap: reference?.skyMap ?? null,
+    reference,
+    fog: fog(all),
+    skySources: skySources(all),
+  };
+}
+
+export function inspectSkyCamera(input) {
+  const all = entities(input);
+  const camera = unique(
+    all
+      .filter((entity) => entity.classname === 'sky_camera' && active(entity))
+      .map(unparented)
+      .map((entity) => ({
+        origin: vector(entity.origin, [0, 0, 0]),
+        scale: Math.max(1, number(entity.scale, 1, -1024, 1024)),
+      })),
+    'sky cameras',
+  );
+  if (!camera) throw new Error('The selected sky world has no recorded sky_camera.');
+  if (!Number.isInteger(camera.scale))
+    throw new Error('The sky camera scale must be an authored integer.');
+  return {
+    ...camera,
+    skyEnvironment: skyEnvironment(all),
+    fog: fog(all),
+    skySources: skySources(all),
+  };
+}
+
+/** Direction matrix for sampling an already-rotated visible cube as a different
+ * authored sky. Three's loaded-CubeTexture X flip is intentionally not included. */
+export function cubemapFogRotation(preparedAngles, fogAngles, referenceAngles = [0, 0, 0]) {
+  return [
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1],
+  ].flatMap(([x, y, z]) => {
+    const local = sourceRotate([x, -z, y], fogAngles, true);
+    const prepared = sourceRotate(sourceRotate(local, preparedAngles), referenceAngles);
+    return [prepared[0], prepared[2], -prepared[1]].map((value) =>
+      Math.max(-1, Math.min(1, value)),
+    );
+  });
+}
+
+/** CS2's inspected black_unlit pixel shader multiplies its distance and height
+ * fog terms. SceneCubemapFog supplies these exact authored ranges and exposure.
+ * Unsupported/missing evidence omits fog while leaving genuine sky assets usable. */
+export function prepareCubemapFog({ main, camera, material, effective }) {
+  try {
+    if (main.fog.length !== 1)
+      throw new Error('A unique enabled authored cubemap fog is unavailable.');
+    const entity = main.fog[0];
+    if (entity.parented) throw new Error('Parented cubemap fog is unsupported.');
+    if (effective.tint.some((value) => value !== 255))
+      throw new Error('The prepared sky has baked tint that native cubemap fog does not use.');
+    const source = number(entity.cubemapfogsource, undefined, 1, 2);
+    let skyMaterial, angles, brightnessScale;
+    if (source === 1) {
+      const name = entity.cubemapfogskyentity;
+      if (typeof name !== 'string' || !name || name.length > 512)
+        throw new Error('Cubemap fog has no bounded named sky source.');
+      const matches = main.skySources.filter((sky) => sky.targetName === name);
+      if (matches.length !== 1 || matches[0].parented)
+        throw new Error('The authored fog sky source is missing, ambiguous or parented.');
+      ({ skyMaterial, angles, brightnessScale } = matches[0]);
+    } else if (source === 2) {
+      skyMaterial = resource(entity.cubemapfogskymaterial, 'vmat');
+      angles = entity.angles;
+      brightnessScale = 1;
+    } else throw new Error('Unsupported cubemap fog source.');
+    if (skyMaterial !== effective.skyMaterial)
+      throw new Error('The authored fog needs a different sky material than the prepared cube.');
+    const start = number(entity.cubemapfogstartdistance, undefined, 0, 1e7) * 0.0254;
+    const end = number(entity.cubemapfogenddistance, undefined, 0, 1e7) * 0.0254;
+    if (end <= start) throw new Error('Cubemap fog requires a positive authored distance range.');
+    const exponent = number(entity.cubemapfogfalloffexponent, undefined, Number.MIN_VALUE, 16);
+    const lodBias = number(entity.cubemapfoglodbiase, undefined, 0, 16);
+    // The explicit Source default is one for opacity. Height is enabled by the
+    // presence of its exponent unless cubemapheightfog explicitly overrides it.
+    const maxOpacity = number(entity.cubemapfogmaxopacity, 1, 0, 1);
+    const flag = entity.cubemapheightfog;
+    if (flag !== undefined && ![true, false, 'true', 'false', 0, 1, '0', '1'].includes(flag))
+      throw new Error('Invalid authored height fog flag.');
+    const heightEnabled =
+      flag === undefined
+        ? Object.hasOwn(entity, 'cubemapfogheightexponent')
+        : [true, 'true', 1, '1'].includes(flag);
+    let height = null;
+    if (heightEnabled) {
+      const heightStart = number(entity.cubemapfogheightstart, undefined, -1e7, 1e7);
+      const heightEnd =
+        entity.cubemapfogheightend === undefined
+          ? heightStart + number(entity.cubemapfogheightwidth, undefined, -1e7, 1e7)
+          : number(entity.cubemapfogheightend, undefined, -1e7, 1e7);
+      if (Math.abs(heightEnd) > 1e7)
+        throw new Error('Authored cubemap fog height exceeds its bound.');
+      if (heightEnd !== heightStart)
+        height = {
+          start: heightStart * 0.0254,
+          end: heightEnd * 0.0254,
+          exponent: number(entity.cubemapfogheightexponent, undefined, Number.MIN_VALUE, 16),
+        };
+    }
+    const brightness = brightnessScale * 2 ** (material.exposureBias + material.renderExposureBias);
+    if (!Number.isFinite(brightness) || brightness < 0 || brightness > 16)
+      throw new Error('Authored cubemap fog exposure exceeds its bound.');
+    const rotation = cubemapFogRotation(
+      effective.angles,
+      angles,
+      camera.skyEnvironment ? main.reference.angles : [0, 0, 0],
+    );
+    const descriptor = {
+      blend: 'multiply',
+      start,
+      end,
+      exponent,
+      height,
+      maxOpacity,
+      lodBias,
+      brightness,
+      rotation,
+    };
+    if (!validPreparedFog(descriptor))
+      throw new Error('Authored cubemap fog exceeds the bounded publication contract.');
+    return { fog: descriptor, reason: null, source: { skyMaterial, angles, brightnessScale } };
+  } catch (error) {
+    return { fog: null, reason: error.message };
+  }
+}
+
+export function inspectSkyMaterial(text) {
+  if (typeof text !== 'string' || Buffer.byteLength(text) > 1024 * 1024 || text.includes('\0'))
+    throw new Error('Expected a bounded S2V material DATA dump.');
+  const matches = [
+    ...text.matchAll(/m_name\s*=\s*"g_tSkyTexture"\s+m_pValue\s*=\s*resource:"([^"]+)"/g),
+  ];
+  if (matches.length !== 1)
+    throw new Error('Sky material DATA must name exactly one g_tSkyTexture.');
+  const scalar = (name) => {
+    const values = [
+      ...text.matchAll(
+        new RegExp(`m_name\\s*=\\s*"${name}"\\s+m_flValue\\s*=\\s*([+-]?[0-9.eE]+)`, 'g'),
+      ),
+    ];
+    if (values.length > 1) throw new Error('Duplicate sky material exposure.');
+    return number(values[0]?.[1], 0, -16, 16);
+  };
+  return {
+    texture: resource(matches[0][1], 'vtex'),
+    exposureBias: scalar('g_flBrightnessExposureBias'),
+    renderExposureBias: scalar('g_flRenderOnlyExposureBias'),
+  };
+}

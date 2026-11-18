@@ -22,6 +22,8 @@ void i18next.use(initReactI18next).init({
   initAsync: false,
 });
 export function t(key: string, values?: Record<string, unknown>): string {
+  const failure = /^\[([a-z_]+)\] (.+)$/.exec(key);
+  if (failure) return `[${failure[1]}] ${String(i18next.t(failure[2], values ?? {}))}`;
   return String(i18next.t(key, values ?? {}));
 }
 export function locale() {
@@ -35,9 +37,9 @@ export function setLanguage(language: Language) {
 }
 i18next.on('languageChanged', (language) => {
   document.documentElement.lang = language;
-  document.title = t('cswatch — Counter-Strike demo viewer');
+  document.title = t('cswatch - Counter-Strike demo viewer');
 });
 document.documentElement.lang = i18next.language;
 export default i18next;
 
-document.title = t('cswatch — Counter-Strike demo viewer');
+document.title = t('cswatch - Counter-Strike demo viewer');

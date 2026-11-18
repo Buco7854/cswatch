@@ -607,7 +607,7 @@
   .camera-select > span:not(.select-leading-icon) {
     display: none;
   }
-  .viewer-context .viewer-map-status {
+  .viewer-context .viewer-map-status[data-status='ready'] {
     display: none;
   }
   .viewer-frame .viewer-dock {
@@ -618,6 +618,13 @@
   .viewer-panel-controls .labeled-viewer-action,
   .viewer-panel-controls .rounds-toggle {
     display: none;
+  }
+  .viewer-transport {
+    grid-template-columns: 44px;
+    width: 44px;
+  }
+  .viewer-transport > .play-button {
+    grid-column: 1;
   }
   .viewer-frame .speed-select {
     width: 64px;
@@ -989,4 +996,45 @@
   .timeline-context-label {
     display: none;
   }
+}
+/* Timeline scope is playback navigation, available directly at every size. */
+.viewer-timeline-navigation {
+  grid-column: 1;
+  justify-self: start;
+  min-width: 0;
+}
+.viewer-frame .timeline-scope-control {
+  width: 140px;
+  min-height: 44px;
+  padding: 8px;
+  font-size: 12px;
+  justify-content: center;
+  gap: 6px;
+}
+.viewer-frame .timeline-context-label {
+  display: none;
+}
+@media (max-width: 1360px) {
+  .viewer-frame .timeline-scope-control {
+    width: 44px;
+    min-width: 44px;
+  }
+  .viewer-frame .timeline-scope-control > span:not(.select-leading-icon) {
+    display: none;
+  }
+}
+@media (max-width: 360px) {
+  .viewer-frame .speed-select {
+    width: 64px;
+  }
+}
+.viewer-frame[data-killfeed-placed='true'] .viewer-stage .killfeed {
+  top: var(--review-killfeed-top);
+  left: var(--review-killfeed-left);
+  right: auto;
+  width: var(--review-killfeed-width);
+  max-width: none;
+}
+.viewer-frame[data-killfeed-crowded='true'] .viewer-stage .killfeed {
+  visibility: hidden;
 }

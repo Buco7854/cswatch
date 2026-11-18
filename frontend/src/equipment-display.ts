@@ -1,5 +1,5 @@
 import { equipmentLabel } from './equipment-labels';
-import { equipmentKey } from './equipment-key';
+import { equipmentKey, canonicalEquipmentKey } from './equipment-key';
 export { equipmentKey } from './equipment-key';
 
 export type EquipmentKind =
@@ -140,7 +140,7 @@ const kinds: Record<string, EquipmentKind> = {
   defusekit: 'defuser',
 };
 export function equipmentKind(value: string): EquipmentKind {
-  const key = equipmentKey(value);
+  const key = canonicalEquipmentKey(value);
   return key.startsWith('knife') || key === 'bayonet' ? 'knife' : kinds[key] || 'unknown';
 }
 export function equipmentName(value: string) {

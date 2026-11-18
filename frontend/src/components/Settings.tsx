@@ -8,6 +8,7 @@ import Connections from './Connections';
 const names: Record<string, string> = {
   public_access: 'Public access',
   registrations_enabled: 'New registrations',
+  guest_uploads_enabled: 'Guest demo uploads',
   steam_enabled: 'Steam sign-in',
   faceit_enabled: 'FACEIT integration',
   transcription_enabled: 'Local speech transcription',

@@ -8,7 +8,13 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   if (options.body && !(options.body instanceof FormData))
     headers.set('Content-Type', 'application/json');
   if (options.method && options.method !== 'GET') headers.set('X-CSRF-Token', csrf);
-  const response = await fetch(path, { ...options, headers, credentials: 'same-origin' });
+  let response: Response;
+  try {
+    response = await fetch(path, { ...options, headers, credentials: 'same-origin' });
+  } catch (error) {
+    if (options.signal?.aborted) throw error;
+    throw new Error(t('Connection lost. Try again.'));
+  }
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
     throw new Error(
@@ -23,6 +29,7 @@ export function uploadFile(
   file: File,
   progress: (n: number) => void,
   signal?: AbortSignal,
+  csrfToken = csrf,
 ): Promise<{ id: string }> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
@@ -42,7 +49,7 @@ export function uploadFile(
       else reject(result);
     }
     xhr.open('POST', '/api/demos');
-    xhr.setRequestHeader('X-CSRF-Token', csrf);
+    xhr.setRequestHeader('X-CSRF-Token', csrfToken);
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) progress(Math.round((e.loaded / e.total) * 100));
     };

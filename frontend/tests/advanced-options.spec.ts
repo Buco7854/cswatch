@@ -19,15 +19,23 @@ async function openPractice(
     ({ language, theme }) => {
       localStorage.setItem('cswatch.language', language);
       localStorage.setItem('theme', theme);
-      if (!localStorage.getItem('viewer-settings'))
-        localStorage.setItem(
-          'viewer-settings',
-          JSON.stringify({
-            quality: 'low',
-            autoHideControls: false,
-            radar: false,
-            killfeed: false,
-          }),
+      if (
+        !localStorage.getItem(
+          window.matchMedia('(max-width:760px),(pointer:coarse) and (max-height:560px)').matches
+            ? 'viewer-settings-mobile'
+            : 'viewer-settings',
+        )
+      )
+        ['viewer-settings', 'viewer-settings-mobile'].forEach((key) =>
+          localStorage.setItem(
+            key,
+            JSON.stringify({
+              quality: 'low',
+              autoHideControls: false,
+              radar: false,
+              killfeed: false,
+            }),
+          ),
         );
     },
     { language, theme },
@@ -48,7 +56,15 @@ const chooseCamera = async (page: Page, language: Language, option: string) => {
   await page.getByRole('option', { name: message(language, option), exact: true }).click();
 };
 const saved = (page: Page) =>
-  page.evaluate(() => JSON.parse(localStorage.getItem('viewer-settings') || '{}'));
+  page.evaluate(() =>
+    JSON.parse(
+      localStorage.getItem(
+        window.matchMedia('(max-width:760px),(pointer:coarse) and (max-height:560px)').matches
+          ? 'viewer-settings-mobile'
+          : 'viewer-settings',
+      ) || '{}',
+    ),
+  );
 async function renderedCrosshair(locator: Locator) {
   return locator.evaluate((svg) => ({
     viewBox: svg.getAttribute('viewBox'),
@@ -81,11 +97,11 @@ test('custom crosshair edits use the same live POV geometry, persist, copy safel
   const preview = page.getByRole('img', { name: 'Custom crosshair preview', exact: true });
   const hex = page.getByRole('textbox', { name: 'Crosshair hex color', exact: true });
   await expect(
-    page.getByText(
-      'This custom style is saved on this device. The player’s recorded crosshair is unavailable.',
-      { exact: true },
-    ),
+    page.getByText('This custom crosshair is saved on this device.', { exact: true }),
   ).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Crosshair source', exact: true })).toHaveText(
+    'Your crosshair',
+  );
   await hex.fill('#f45e8a');
   for (const [name, value] of [
     ['Crosshair length', '10.5'],

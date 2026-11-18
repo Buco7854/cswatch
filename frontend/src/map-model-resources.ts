@@ -1,0 +1,111 @@
+import {
+  Mesh,
+  Texture,
+  type BufferAttribute,
+  type BufferGeometry,
+  type InterleavedBufferAttribute,
+  type Material,
+} from 'three';
+import type { GLTF } from 'three-stdlib';
+import type { ModelResource } from './model-cache';
+
+/** Conservative retained CPU estimate: binary buffers, copied image views, geometry and decoded images. */
+export function mapModelResources(gltf: GLTF): ModelResource[] {
+  const resources = new Map<object, ModelResource>();
+  const add = (resource: ModelResource) => {
+    const old = resources.get(resource.key);
+    if (!old || old.bytes < resource.bytes) resources.set(resource.key, resource);
+  };
+  const attribute = (attribute: BufferAttribute | InterleavedBufferAttribute) => {
+    const array = 'data' in attribute ? attribute.data.array : attribute.array;
+    add({ key: array.buffer, bytes: array.buffer.byteLength });
+  };
+  const image = (value: unknown) => {
+    if (!value || typeof value !== 'object') return;
+    if (Array.isArray(value)) {
+      for (const part of value) image(part);
+      return;
+    }
+    const candidate = value as { width?: number; height?: number; data?: ArrayBufferView };
+    if (candidate.data?.buffer)
+      add({ key: candidate.data.buffer, bytes: candidate.data.buffer.byteLength });
+    const bytes =
+      !candidate.data?.buffer &&
+      typeof candidate.width === 'number' &&
+      typeof candidate.height === 'number' &&
+      Number.isFinite(candidate.width * candidate.height)
+        ? Math.max(0, candidate.width * candidate.height * 4)
+        : 0;
+    add({
+      key: value,
+      bytes,
+      dispose: () => {
+        if (typeof ImageBitmap !== 'undefined' && value instanceof ImageBitmap) value.close();
+      },
+    });
+  };
+  const material = (material: Material) => {
+    add({ key: material, bytes: 0, dispose: () => material.dispose() });
+    for (const value of Object.values(material)) {
+      if (!(value instanceof Texture)) continue;
+      add({ key: value, bytes: 0, dispose: () => value.dispose() });
+      image(value.source.data);
+      for (const mip of value.mipmaps || []) {
+        const data = (mip as { data?: ArrayBufferView }).data;
+        if (data?.buffer) add({ key: data.buffer, bytes: data.buffer.byteLength });
+      }
+    }
+  };
+  for (const scene of gltf.scenes)
+    scene.traverse((object) => {
+      if (!(object instanceof Mesh)) return;
+      const geometry = object.geometry as BufferGeometry;
+      add({ key: geometry, bytes: 0, dispose: () => geometry.dispose() });
+      for (const value of Object.values(geometry.attributes)) attribute(value);
+      if (geometry.index) attribute(geometry.index);
+      for (const values of Object.values(geometry.morphAttributes))
+        for (const value of values || []) attribute(value);
+      for (const item of Array.isArray(object.material) ? object.material : [object.material])
+        material(item);
+      if ('instanceMatrix' in object) {
+        const instance = object as Mesh & {
+          instanceMatrix: BufferAttribute;
+          instanceColor?: BufferAttribute;
+          dispose?: () => void;
+        };
+        attribute(instance.instanceMatrix);
+        if (instance.instanceColor) attribute(instance.instanceColor);
+        add({ key: instance, bytes: 0, dispose: () => instance.dispose?.() });
+      }
+      if ('skeleton' in object) {
+        const skeleton = object.skeleton as { dispose: () => void };
+        add({ key: skeleton, bytes: 0, dispose: () => skeleton.dispose() });
+      }
+    });
+  for (const clip of gltf.animations || [])
+    for (const track of clip.tracks) {
+      for (const array of [track.times, track.values])
+        add({ key: array.buffer, bytes: array.buffer.byteLength });
+    }
+  const json = gltf.parser.json as {
+    buffers?: { byteLength: number }[];
+    images?: { bufferView?: number }[];
+    bufferViews?: { byteLength: number }[];
+  };
+  const imageViews = new Set(
+      json.images
+        ?.map((image) => image.bufferView)
+        .filter((index): index is number => typeof index === 'number'),
+    ),
+    binaryBytes = (json.buffers || []).reduce(
+      (sum, buffer) => sum + (Number.isFinite(buffer.byteLength) ? buffer.byteLength : 0),
+      0,
+    ),
+    imageCopies = [...imageViews].reduce(
+      (sum, index) => sum + (json.bufferViews?.[index]?.byteLength || 0),
+      0,
+    ),
+    metadataBytes = JSON.stringify(json).length * 4;
+  add({ key: gltf.parser, bytes: binaryBytes + imageCopies + metadataBytes });
+  return [...resources.values()];
+}

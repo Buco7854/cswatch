@@ -69,12 +69,6 @@ body {
 .brand > span {
   font-style: italic;
 }
-.brand:hover > svg {
-  transform: translateX(-2px);
-}
-.brand > svg {
-  transition: transform 0.15s;
-}
 .brand-symbol {
   color: var(--signal) !important;
 }

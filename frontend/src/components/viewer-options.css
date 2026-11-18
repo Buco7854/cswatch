@@ -467,3 +467,40 @@
     padding-block: 8px;
   }
 }
+.viewer-custom-crosshair-controls {
+  display: grid;
+  gap: 16px;
+}
+.viewer-custom-crosshair-controls[hidden] {
+  display: none;
+}
+
+.viewer-equipment-report {
+  margin-top: 8px;
+}
+.viewer-equipment-report h4 {
+  margin: 0 0 14px;
+  color: var(--viewer-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+.viewer-equipment-status {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0 0 14px;
+}
+.viewer-equipment-status dt {
+  min-height: 2.9em;
+  color: var(--viewer-muted);
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.viewer-equipment-status dd {
+  margin: 5px 0 0;
+  color: var(--viewer-ink);
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}

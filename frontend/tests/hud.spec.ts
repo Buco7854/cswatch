@@ -97,16 +97,18 @@ test('broadcast HUD shows recorded loadouts and inputs without inventing missing
   test.skip(Boolean(process.env.E2E_PRIVATE));
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.addInitScript(() =>
-    localStorage.setItem(
-      'viewer-settings',
-      JSON.stringify({
-        inputs: true,
-        mouseInput: true,
-        economy: true,
-        teamLayout: 'right',
-        inputLayout: 'zqsd',
-        quality: 'low',
-      }),
+    ['viewer-settings', 'viewer-settings-mobile'].forEach((key) =>
+      localStorage.setItem(
+        key,
+        JSON.stringify({
+          inputs: true,
+          mouseInput: true,
+          economy: true,
+          teamLayout: 'right',
+          inputLayout: 'zqsd',
+          quality: 'low',
+        }),
+      ),
     ),
   );
   await page.route('**/api/demos/hud-fixture', (route) =>
@@ -157,7 +159,7 @@ test('broadcast HUD shows recorded loadouts and inputs without inventing missing
   await expect(row(0).locator('.broadcast-ammo')).toContainText('0');
   await expect(row(0).locator('.broadcast-armor')).toContainText('0');
   await expect(row(0).getByRole('img', { name: 'Flashbang ×2', exact: true })).toBeVisible();
-  await expect(row(1).locator('.broadcast-cash')).toHaveText('—');
+  await expect(row(1).locator('.broadcast-cash')).toHaveText('-');
   await expect(
     row(1).getByLabel('Inventory is unavailable at this moment.', { exact: true }),
   ).toBeVisible();
@@ -227,7 +229,7 @@ test('broadcast HUD shows recorded loadouts and inputs without inventing missing
       .locator('div')
       .filter({ has: page.getByText('Money', { exact: true }) })
       .locator('dd'),
-  ).toHaveText('—');
+  ).toHaveText('-');
   await page.getByRole('button', { name: 'Close panel', exact: true }).click();
   await row(2).getByRole('button', { name: 'Select player sable', exact: true }).click();
   await expect(hud.locator('.input-forward')).toHaveAttribute('data-state', 'unknown');
@@ -275,7 +277,13 @@ test('broadcast HUD shows recorded loadouts and inputs without inventing missing
   await expect(hud.locator('.broadcast-player')).toHaveCount(10);
   expect(
     await page.evaluate(() => {
-      const value = JSON.parse(localStorage.getItem('viewer-settings') || '{}');
+      const value = JSON.parse(
+        localStorage.getItem(
+          window.matchMedia('(max-width:760px),(pointer:coarse) and (max-height:560px)').matches
+            ? 'viewer-settings-mobile'
+            : 'viewer-settings',
+        ) || '{}',
+      );
       return value.inputs === false && value.economy === true && value.inputLayout === 'zqsd';
     }),
   ).toBe(true);

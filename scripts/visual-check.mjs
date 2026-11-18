@@ -23,11 +23,7 @@ for (const lang of ['en', 'fr'])
     page.on('pageerror', (e) => errors.push(e.message));
     for (const [kind, path] of [
       ['landing', '/'],
-      ['viewer-feature', '/features/viewer'],
-      ['imports', '/features/imports'],
-      ['hosting', '/self-host'],
       ['viewer', '/watch/sample'],
-      ['explore', '/explore'],
     ])
       for (const width of [1440, 768, 390, 320]) {
         await page.setViewportSize({

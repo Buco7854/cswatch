@@ -180,15 +180,17 @@ async function fixture(
     ({ language, theme }) => {
       localStorage.setItem('cswatch.language', language);
       localStorage.setItem('theme', theme);
-      localStorage.setItem(
-        'viewer-settings',
-        JSON.stringify({
-          quality: 'low',
-          autoHideControls: false,
-          radar: false,
-          killfeed: false,
-          matchScore: true,
-        }),
+      ['viewer-settings', 'viewer-settings-mobile'].forEach((key) =>
+        localStorage.setItem(
+          key,
+          JSON.stringify({
+            quality: 'low',
+            autoHideControls: false,
+            radar: false,
+            killfeed: false,
+            matchScore: true,
+          }),
+        ),
       );
     },
     { language, theme },
@@ -327,7 +329,7 @@ test('ordinary score clocks stay centered independently of asymmetric digit widt
   }
 });
 
-test('recorded side scores, clock and native match totals follow exact seeks and scene-only Tab remains accessible', async ({
+test('recorded side scores, clock and native match totals follow exact seeks and held Tab remains accessible', async ({
   page,
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE), 'Explicit synthetic UI fixture.');
@@ -347,7 +349,7 @@ test('recorded side scores, clock and native match totals follow exact seeks and
   await expect(row(page, c).locator('[data-stat="kills"]')).toHaveText('0');
   await expect(row(page, c).locator('[data-stat="damage"]')).toHaveText('0');
   await expect(row(page, a).locator('[data-stat="money"]')).toHaveText('$0');
-  await expect(row(page, b).locator('[data-stat="money"]')).toHaveText('—');
+  await expect(row(page, b).locator('[data-stat="money"]')).toHaveText('-');
   await closeScore(page);
   await expect(page.getByRole('button', { name: 'Open scoreboard', exact: true })).toBeFocused();
   const seek = page.getByRole('slider', { name: 'Playback position', exact: true });
@@ -386,9 +388,16 @@ test('recorded side scores, clock and native match totals follow exact seeks and
   await page.keyboard.up('Tab');
   await expect(dialog).toHaveCount(0);
   await expect(page.locator('.viewer-stage')).toBeFocused();
-  await page.getByRole('button', { name: 'Options', exact: true }).focus();
-  await page.keyboard.press('Tab');
+  const options = page.getByRole('button', { name: 'Options', exact: true });
+  await options.focus();
+  await page.keyboard.down('Tab');
+  await expect(dialog).toBeVisible();
+  await page.keyboard.up('Tab');
   await expect(dialog).toHaveCount(0);
+  await expect(options).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(dialog).toHaveCount(0);
+  await expect(options).not.toBeFocused();
 
   await page.locator('.viewer-stage').focus();
   await page.keyboard.press('h');
@@ -413,12 +422,12 @@ test('legacy missing score metadata and unsupported event coverage stay unknown 
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE), 'Explicit synthetic UI fixture.');
   await fixture(page, 'en', 'light', { legacy: true });
-  await expect(page.locator('[data-score="ct"]')).toHaveText('—');
-  await expect(page.locator('.match-score-clock > strong')).toHaveText('—');
+  await expect(page.locator('[data-score="ct"]')).toHaveText('-');
+  await expect(page.locator('.match-score-clock > strong')).toHaveText('-');
   await page.getByRole('slider', { name: 'Playback position', exact: true }).fill('320');
   await openScore(page);
   for (const stat of ['kills', 'deaths', 'assists', 'headshots', 'damage'])
-    await expect(row(page, a).locator(`[data-stat="${stat}"]`)).toHaveText('—');
+    await expect(row(page, a).locator(`[data-stat="${stat}"]`)).toHaveText('-');
   await expect(row(page, a).locator('[data-stat="money"]')).toHaveText('$0');
 });
 
@@ -429,12 +438,12 @@ test('complete recorded-segment events do not fabricate match totals and incompl
   await fixture(page, 'en', 'dark', { eventOnly: true, incomplete: true });
   await expect(page.locator('[data-score="ct"]')).toHaveText('7');
   await page.getByRole('slider', { name: 'Playback position', exact: true }).fill('320');
-  await expect(page.locator('[data-score="ct"]')).toHaveText('—');
-  await expect(page.locator('.match-score-clock > strong')).toHaveText('—');
+  await expect(page.locator('[data-score="ct"]')).toHaveText('-');
+  await expect(page.locator('.match-score-clock > strong')).toHaveText('-');
   await openScore(page);
   await expect(row(page, a)).toHaveAttribute('data-stats-source', 'unavailable');
   for (const stat of ['kills', 'deaths', 'assists', 'headshots', 'damage'])
-    await expect(row(page, a).locator(`[data-stat="${stat}"]`)).toHaveText('—');
+    await expect(row(page, a).locator(`[data-stat="${stat}"]`)).toHaveText('-');
   await expect(row(page, a).locator('[data-stat="money"]')).toHaveText('$0');
   await expect(
     page.getByText('Match totals use recorded player counters. A dash means unavailable data.', {

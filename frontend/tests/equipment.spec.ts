@@ -25,9 +25,8 @@ const syntheticPng = Buffer.concat([
 async function enableEquipment(page: Page) {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.addInitScript(() =>
-    localStorage.setItem(
-      'viewer-settings',
-      JSON.stringify({ economy: true, inputs: false, quality: 'low' }),
+    ['viewer-settings', 'viewer-settings-mobile'].forEach((key) =>
+      localStorage.setItem(key, JSON.stringify({ economy: true, inputs: false, quality: 'low' })),
     ),
   );
   await page.route('**/api/assets/equipment/*.png', (route) =>
@@ -67,6 +66,13 @@ test('many glyphs share one equipment manifest and ignore external artwork URLs'
   await expect(
     hud.locator('.broadcast-bank[data-team="2"] svg.equipment-glyph.is-weapon'),
   ).toHaveCount(5);
+  await page.locator('.timeline-slider').fill('620');
+  const feed = page.locator('.killfeed-entry');
+  await expect(feed).toBeVisible();
+  await expect(feed.getByRole('img', { name: 'AK-47 · Headshot', exact: true })).toBeVisible();
+  await expect(feed.locator('svg.equipment-glyph.is-weapon')).toHaveCount(1);
+  await expect(feed.locator('[data-event-type="headshot"]')).toHaveCount(1);
+  await expect(feed).toHaveText('marlowatlas');
   expect(manifests).toBe(1);
   expect(externalRequests).toBe(0);
 });
@@ -84,9 +90,18 @@ test('equipment lookup retries a denied manifest on the next viewer mount', asyn
   await page.goto('/watch/sample');
   await expect.poll(() => manifests).toBe(1);
   await expect(page.locator('.broadcast-bank .equipment-game-icon')).toHaveCount(0);
-  await page.getByRole('link', { name: 'Back to library', exact: true }).click();
+  await page.getByRole('link', { name: 'Back to home', exact: true }).click();
   await expect(page).toHaveURL('/');
-  await page.getByRole('link', { name: 'Try the viewer', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Review your match.', exact: true }),
+  ).toBeVisible();
+  await expect(page.locator('.viewer-frame')).toHaveCount(0);
+  // The practice fixture is internal. Remount it in the same app lifetime so
+  // this still tests retrying the shared manifest cache after a denied read.
+  await page.evaluate(() => {
+    history.pushState({ key: 'equipment-retry-fixture' }, '', '/watch/sample');
+    dispatchEvent(new PopStateEvent('popstate'));
+  });
   await expect(
     page.locator('.broadcast-bank[data-team="3"] .equipment-game-icon.is-weapon'),
   ).toHaveCount(5);

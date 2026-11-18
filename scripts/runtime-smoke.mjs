@@ -30,6 +30,8 @@ const config = loadConfig({
   APP_URL: origin,
   COOKIE_SECURE: 'false',
   DATA_DIR: root,
+  ADMIN_USERNAME: 'runtime_instance_admin',
+  ADMIN_PASSWORD: 'Disposable-instance-password-392!',
   FRONTEND_DIR: resolve(existsSync('frontend/dist') ? 'frontend/dist' : 'frontend'),
   MAX_UPLOAD_MB: '64',
   PARSER_TIMEOUT_SECONDS: '120',
@@ -61,18 +63,20 @@ try {
   const cookie = registration.cookies.map(({ name, value }) => `${name}=${value}`).join('; ');
   const authenticated = { ...headers, cookie, 'x-csrf-token': registration.json().user.csrf };
   const boundary = 'cswatch-runtime-boundary';
-  const upload = await app.inject({
-    method: 'POST',
-    url: '/api/demos',
-    headers: { ...authenticated, 'content-type': `multipart/form-data; boundary=${boundary}` },
-    payload: Buffer.concat([
-      Buffer.from(
-        `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="runtime.dem"\r\nContent-Type: application/octet-stream\r\n\r\n`,
-      ),
-      readFileSync(fixture),
-      Buffer.from(`\r\n--${boundary}--\r\n`),
-    ]),
-  });
+  const uploadFixture = (uploadHeaders) =>
+    app.inject({
+      method: 'POST',
+      url: '/api/demos',
+      headers: { ...uploadHeaders, 'content-type': `multipart/form-data; boundary=${boundary}` },
+      payload: Buffer.concat([
+        Buffer.from(
+          `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="runtime.dem"\r\nContent-Type: application/octet-stream\r\n\r\n`,
+        ),
+        readFileSync(fixture),
+        Buffer.from(`\r\n--${boundary}--\r\n`),
+      ]),
+    });
+  const upload = await uploadFixture(authenticated);
   assert.equal(upload.statusCode, 202, upload.body);
   const id = upload.json().id;
   assert.equal(await processOne(db, config), true);
@@ -146,6 +150,31 @@ try {
   assert.equal(slice.statusCode, 200);
   const chunk = JSON.parse(gunzipSync(slice.rawPayload).toString());
   assert.ok(chunk.frames.length <= 561);
+  assert.equal(typeof manifest.itemState?.complete, 'boolean');
+  assert.ok(Array.isArray(chunk.itemSamples));
+  assert.ok(chunk.itemSamples.some((sample) => sample.present && sample.kind === 'dropped'));
+  assert.ok(chunk.itemSamples.every((sample) => /^item:\d{1,5}:\d{1,6}:\d{1,7}$/.test(sample.id)));
+  assert.equal(manifest.crosshairs?.complete, true);
+  assert.ok(manifest.crosshairs.samples.length > 0 && manifest.crosshairs.samples.length <= 10000);
+  assert.ok(
+    manifest.crosshairs.samples.some(
+      (sample) => typeof sample.code === 'string' && sample.code.startsWith('CSGO-'),
+    ),
+    'Recorded player crosshair changes survive the required parser sandbox and manifest validation.',
+  );
+  for (const [index, sample] of manifest.crosshairs.samples.entries()) {
+    assert.ok(
+      actors.has(sample.actor),
+      'Crosshair evidence belongs to a declared immutable player.',
+    );
+    assert.ok(sample.tick >= 0 && sample.tick <= manifest.lastTick);
+    if (index > 0) assert.ok(sample.tick >= manifest.crosshairs.samples[index - 1].tick);
+  }
+  assert.ok(
+    chunk.frames.every((frame) =>
+      frame.players.every((player) => !Object.hasOwn(player, 'crosshairCode')),
+    ),
+  );
   assert.ok(
     chunk.frames.some((frame) =>
       frame.players.some(
@@ -183,6 +212,54 @@ try {
   const sharedManifest = JSON.parse(gunzipSync(sharedPlayback.rawPayload).toString());
   assert.deepEqual(sharedManifest.matchState, manifest.matchState);
   assert.deepEqual(sharedManifest.throwInputs, manifest.throwInputs);
+  const guest = await app.inject({ method: 'POST', url: '/api/guest/session', headers });
+  assert.equal(guest.statusCode, 201, guest.body);
+  const guestHeaders = {
+    ...headers,
+    cookie: guest.cookies.map(({ name, value }) => `${name}=${value}`).join('; '),
+    'x-csrf-token': guest.json().csrf,
+  };
+  const guestUpload = await uploadFixture(guestHeaders);
+  assert.equal(guestUpload.statusCode, 202, guestUpload.body);
+  const guestId = guestUpload.json().id;
+  assert.equal(await processOne(db, config), true);
+  const guestPlaybackPath = `/api/demos/${guestId}/playback`;
+  const guestReplay = await app.inject({
+    method: 'GET',
+    url: guestPlaybackPath,
+    headers: guestHeaders,
+  });
+  assert.equal(guestReplay.statusCode, 200, guestReplay.body);
+  assert.equal(
+    (await app.inject({ method: 'GET', url: guestPlaybackPath, headers })).statusCode,
+    404,
+  );
+  assert.equal(
+    (await app.inject({ method: 'GET', url: guestPlaybackPath, headers: authenticated }))
+      .statusCode,
+    404,
+    'A member account cannot read a different anonymous upload.',
+  );
+  assert.equal(
+    (
+      await app.inject({
+        method: 'GET',
+        url: `/api/demos/${guestId}/playback/chunks/0`,
+        headers: guestHeaders,
+      })
+    ).statusCode,
+    200,
+  );
+  const removed = await app.inject({
+    method: 'DELETE',
+    url: `/api/demos/${guestId}`,
+    headers: guestHeaders,
+  });
+  assert.equal(removed.statusCode, 200, removed.body);
+  assert.equal(
+    (await app.inject({ method: 'GET', url: guestPlaybackPath, headers: guestHeaders })).statusCode,
+    404,
+  );
   let transcription = 'not_requested';
   const model = process.env.CSWATCH_SMOKE_ASR_MODEL || '/models';
   const voiceSource = process.env.CSWATCH_SMOKE_VOICE_FIXTURE || '/voice-fixture';
@@ -253,6 +330,8 @@ try {
       matchStateSamples: manifest.matchState.samples.length,
       throwInputs: manifest.throwInputs.length,
       recordedPlayerCounters: true,
+      recordedCrosshairs: true,
+      privateGuestUpload: true,
       sandbox: 'required',
       upload: true,
       ownership: true,

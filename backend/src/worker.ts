@@ -15,6 +15,8 @@ import { Store, now } from './db.js';
 import { loadConfig, type Config } from './config.js';
 import { runParserJob } from './parser-job.js';
 import { validateReplayArtifacts } from './replay.js';
+import { parserFailureMessages, processingFailure } from './parser-failure.js';
+import { cleanupExpiredGuests } from './guest.js';
 import {
   initialTranscriptionStatus,
   maintainTranscriptions,
@@ -35,6 +37,7 @@ export async function processOne(db: Store, c: Config) {
     complete = false,
     chunksPromoted = false,
     manifestPromoted = false;
+  let stage = 'input';
   try {
     mkdirSync(jobs, { recursive: true, mode: 0o700 });
     job = mkdtempSync(join(jobs, `${row.id}-`));
@@ -51,11 +54,13 @@ export async function processOne(db: Store, c: Config) {
       throw new Error('Invalid input size');
     copyFileSync(join(folder, inputs[0]), join(job, inputs[0]), constants.COPYFILE_EXCL);
     chmodSync(join(job, inputs[0]), 0o600);
+    stage = 'sandbox';
     await runParserJob(
       job,
       c,
       () => db.one('SELECT status FROM demos WHERE id=?', row.id)?.status !== 'processing',
     );
+    stage = 'validation';
     const output = validateReplayArtifacts(job);
     const m = output.manifest;
     if (m.sample) throw new Error('Uploaded demos cannot publish synthetic sample data');
@@ -71,6 +76,7 @@ export async function processOne(db: Store, c: Config) {
       communications: m.communications,
       capabilities: m.capabilities,
     };
+    stage = 'publication';
     pending = mkdtempSync(join(folder, '.prepared-'));
     mkdirSync(join(pending, 'chunks'), { mode: 0o700 });
     for (const file of output.files) {
@@ -86,7 +92,11 @@ export async function processOne(db: Store, c: Config) {
       )!;
       const global = db.one('SELECT coalesce(sum(size),0) AS bytes FROM demos')!;
       if (
-        user.bytes + output.bytes > c.userStorageMb * 1024 ** 2 ||
+        user.bytes + output.bytes >
+          (db.one('SELECT owner_id FROM guest_sessions WHERE owner_id=?', row.owner_id)
+            ? c.guestStorageMb
+            : c.userStorageMb) *
+            1024 ** 2 ||
         global.bytes + output.bytes > c.globalStorageMb * 1024 ** 2
       )
         throw new Error('Prepared output exceeds storage quota');
@@ -107,13 +117,22 @@ export async function processOne(db: Store, c: Config) {
     });
     complete = true;
     console.info('Parsed demo', row.id);
-  } catch {
+  } catch (error) {
+    const failure = processingFailure(error, stage);
     db.run(
       "UPDATE demos SET status='failed',error=? WHERE id=? AND status='processing'",
-      'Demo could not be parsed within the processing limits. It may be incomplete, unsupported, or too large.',
+      `[${failure.code}] ${parserFailureMessages[failure.code]}`,
       row.id,
     );
-    console.warn('Failed demo', row.id);
+    console.error(
+      JSON.stringify({
+        level: 'error',
+        event: 'demo_processing_failed',
+        demoId: row.id,
+        stage,
+        ...failure,
+      }),
+    );
   } finally {
     if (!complete) {
       if (chunksPromoted) rmSync(join(folder, 'chunks'), { recursive: true, force: true });
@@ -125,6 +144,7 @@ export async function processOne(db: Store, c: Config) {
   return true;
 }
 export function housekeeping(db: Store, c: Config) {
+  cleanupExpiredGuests(db);
   maintainTranscriptions(db, c);
   // Mark interrupted work failed, rather than retrying a malicious crash input forever.
   db.run(

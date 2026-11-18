@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api } from './api';
 import { sample } from './sample';
 import { ReplayCache, chunkIndex, validateManifest } from './replay-cache';
+import { validateItemSamples, validateItemState } from './item-state';
 import type { Demo, Playback } from './types';
 import type { PlaybackChunk, PlaybackManifest } from '../../shared/playback';
 
@@ -84,6 +85,10 @@ export function useReplay(
         } else {
           if (replay.version !== 1 || !replay.frames?.length)
             throw new Error('Replay metadata is invalid.');
+          validateItemState(replay.itemState);
+          replay.itemSamples = validateItemSamples(replay.itemSamples, replay.frames.at(-1)!.tick);
+          if (Boolean(replay.itemState) !== (replay.itemSamples !== undefined))
+            throw new Error('Replay item metadata is invalid.');
           setData(replay);
           setBounds({ first: replay.frames[0].tick, last: replay.frames.at(-1)!.tick });
           setLoadedFor(identity);

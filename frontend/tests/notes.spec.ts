@@ -7,7 +7,9 @@ test('a late private note response cannot reopen review after leaving and revisi
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE));
   await page.addInitScript(() =>
-    localStorage.setItem('viewer-settings', JSON.stringify({ quality: 'low' })),
+    ['viewer-settings', 'viewer-settings-mobile'].forEach((key) =>
+      localStorage.setItem(key, JSON.stringify({ quality: 'low' })),
+    ),
   );
   await page.route('**/api/auth/me', (route) =>
     route.fulfill({

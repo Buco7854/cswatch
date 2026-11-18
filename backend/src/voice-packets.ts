@@ -87,26 +87,33 @@ export function voiceFrames(audio: {
   if ((audio.format ?? 0) === 0) return steamOpusFrames(bytes);
   if (audio.format !== 2) throw new Error('Unsupported recorded voice codec');
   const rate = audio.sample_rate || 48000;
-  const offsets = audio.packet_offsets || [];
+  const offsets = audio.packet_offsets ?? [];
+  const count = audio.num_packets;
+  if (!Array.isArray(offsets) || offsets.length > 128)
+    throw new Error('Invalid Opus packet offsets');
+  if (count !== undefined && (!Number.isSafeInteger(count) || count < 1 || count > 128))
+    throw new Error('Invalid Opus packet count');
   if (!offsets.length) {
-    if ((audio.num_packets ?? 1) > 1) throw new Error('Missing Opus packet boundaries');
+    if ((count ?? 1) > 1) throw new Error('Missing Opus packet boundaries');
     return [frame(bytes, rate)];
   }
+  // Source 2 records cumulative packet ends in a reusable capacity table.
+  // Only the declared prefix contains boundaries. Unused slots may contain
+  // unrelated values and must never become slices or enter published output.
+  if (count === undefined || count > offsets.length) throw new Error('Opus packet count mismatch');
+  const ends = offsets.slice(0, count);
   if (
-    offsets.length > 128 ||
-    offsets.some(
+    ends.at(-1) !== bytes.length ||
+    ends.some(
       (offset, i) =>
-        !Number.isInteger(offset) ||
-        offset < 0 ||
-        offset >= bytes.length ||
-        (i > 0 && offset <= offsets[i - 1]),
+        !Number.isSafeInteger(offset) ||
+        offset <= 0 ||
+        offset > bytes.length ||
+        (i > 0 && offset <= ends[i - 1]),
     )
   )
     throw new Error('Invalid Opus packet offsets');
-  const starts = offsets[0] === 0 ? offsets : [0, ...offsets];
-  if (audio.num_packets && audio.num_packets !== starts.length)
-    throw new Error('Opus packet count mismatch');
-  return starts.map((offset, i) =>
-    frame(bytes.subarray(offset, starts[i + 1] ?? bytes.length), rate),
+  return ends.map((end, index) =>
+    frame(bytes.subarray(index === 0 ? 0 : ends[index - 1], end), rate),
   );
 }

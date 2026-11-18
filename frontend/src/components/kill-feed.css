@@ -1,0 +1,26 @@
+.viewer-frame .killfeed .killfeed-entry {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.viewer-frame .killfeed .killfeed-entry :is(strong, .killfeed-player) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 0;
+}
+.viewer-frame .killfeed .killfeed-weapon {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 4px;
+  margin: 0;
+  color: var(--text);
+}
+.viewer-frame .killfeed .killfeed-weapon :is(span, svg) {
+  margin: 0;
+}
+.viewer-frame .killfeed .killfeed-weapon .equipment-glyph {
+  width: 32px;
+  height: 14px;
+}

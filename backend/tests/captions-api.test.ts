@@ -1,3 +1,4 @@
+import { initializeFixture } from './fixtures/initialized.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
@@ -11,8 +12,9 @@ import { digest, COOKIE } from '../src/security.js';
 
 test('captions and retries enforce demo access, owner mutation, Origin/CSRF, status and safe artifact paths', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'cswatch-caption-api-'));
-  const db = new Store(dir),
-    origin = 'http://localhost:8000';
+  const db = new Store(dir);
+  initializeFixture(db);
+  const origin = 'http://localhost:8000';
   const config = loadConfig({
     APP_URL: origin,
     COOKIE_SECURE: 'false',

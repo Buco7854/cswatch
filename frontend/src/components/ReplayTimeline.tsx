@@ -66,6 +66,7 @@ export default function ReplayTimeline({
   last,
   round,
   selected,
+  scope,
   onSeek,
   onReview,
   optionsOpen,
@@ -77,12 +78,12 @@ export default function ReplayTimeline({
   last: number;
   round: ReviewRound;
   selected: string;
+  scope: 'match' | 'round';
   onSeek: (tick: number) => void;
   onReview: (trigger: HTMLButtonElement) => void;
   optionsOpen: boolean;
   onCloseOptions: () => void;
 }) {
-  const [scope, setScope] = useState('match');
   const [players, setPlayers] = useState<'player' | 'all'>('player');
   const [utilities, setUtilities] = useState(false);
   const [width, setWidth] = useState(1000);
@@ -263,18 +264,6 @@ export default function ReplayTimeline({
           <TimelineOptionsDialog close={onCloseOptions}>
             <div className="timeline-options-fields">
               <label className="timeline-options-field">
-                <span>{t('Timeline range')}</span>
-                <SelectControl
-                  label={t('Timeline range')}
-                  value={scope}
-                  onValueChange={setScope}
-                  options={[
-                    { value: 'match', label: t('All match') },
-                    { value: 'round', label: t('Current round'), disabled: !data.rounds.length },
-                  ]}
-                />
-              </label>
-              <label className="timeline-options-field">
                 <span>{t('Event players')}</span>
                 <SelectControl
                   label={t('Event players')}
@@ -319,7 +308,7 @@ export default function ReplayTimeline({
         )}
       <p className="visually-hidden">
         {players === 'player'
-          ? t('Selected player: {{player}}', { player: player?.name || '—' })
+          ? t('Selected player: {{player}}', { player: player?.name || '-' })
           : t('All players')}
         . {t('Bomb objectives remain visible for every player.')}
       </p>

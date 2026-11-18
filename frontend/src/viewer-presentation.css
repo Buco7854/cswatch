@@ -102,6 +102,12 @@
 .viewer-game-hud {
   z-index: 3;
 }
+.viewer-frame .tactical-plot {
+  background: var(--viewer-ground);
+}
+.viewer-frame .position-radar {
+  opacity: 1;
+}
 .viewer-objective-layer {
   z-index: 4;
 }
@@ -120,5 +126,36 @@
   .viewer-frame [data-viewer-chrome],
   .viewer-frame[data-chrome-visible='false'] [data-viewer-chrome] {
     transition: none;
+  }
+}
+.viewer-camera-tools[data-camera-changed='true'] .camera-select {
+  animation: viewer-camera-cue 700ms ease-out;
+}
+@keyframes viewer-camera-cue {
+  0%,
+  65% {
+    background: var(--viewer-raised);
+    box-shadow: inset 0 0 0 2px var(--viewer-muted);
+  }
+  100% {
+    background: transparent;
+    box-shadow: inset 0 0 0 0 transparent;
+  }
+}
+.player-picker {
+  display: grid;
+  gap: 20px;
+}
+.player-picker-bank h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+.player-picker .broadcast-player-select {
+  min-height: 76px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .viewer-camera-tools[data-camera-changed='true'] .camera-select {
+    animation: none;
+    background: var(--viewer-raised);
   }
 }

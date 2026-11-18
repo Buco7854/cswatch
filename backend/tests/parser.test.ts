@@ -44,6 +44,45 @@ for (const compressed of [false, true])
               .grenades,
         );
         const data = { ...manifest, frames, grenades };
+        const itemSamples = manifest.chunks.flatMap(
+          (_part, index) =>
+            JSON.parse(gunzipSync(readFileSync(join(dir, 'chunks', `${index}.json.gz`))).toString())
+              .itemSamples || [],
+        );
+        assert.equal(typeof data.itemState?.complete, 'boolean');
+        assert.equal(data.itemState?.coverage?.projectile, true);
+        assert.equal(data.itemState?.coverage?.planted, true);
+        assert.ok(
+          itemSamples.some(
+            (entry: any) => entry.present && entry.kind === 'dropped' && entry.equipment === 'ak47',
+          ),
+        );
+        assert.ok(
+          itemSamples.some(
+            (entry: any) =>
+              entry.present && entry.kind === 'planted' && entry.equipment === 'plantedc4',
+          ),
+        );
+        for (const equipment of ['flashbang', 'hegrenade', 'smokegrenade', 'molotov', 'incgrenade'])
+          assert.ok(
+            itemSamples.some(
+              (entry: any) =>
+                entry.present && entry.kind === 'projectile' && entry.equipment === equipment,
+            ),
+          );
+        assert.ok(
+          itemSamples.some((entry: any) => !entry.present),
+          'real removals/ownership changes close world visibility',
+        );
+        assert.ok(
+          itemSamples
+            .filter((entry: any) => entry.present)
+            .every((entry: any) =>
+              [entry.x, entry.y, entry.z, entry.pitch, entry.yaw, entry.roll].every(
+                (value) => typeof value === 'number' && Number.isFinite(value),
+              ),
+            ),
+        );
         assert.equal(data.map, 'de_mirage');
         assert.equal(data.players.length, 10);
         assert.ok(data.frames.length > 1000);
@@ -90,6 +129,19 @@ for (const compressed of [false, true])
           'missing early damage counters stay unknown',
         );
         assert.deepEqual(data.eventAvailability, { player_death: true, player_hurt: true });
+        assert.equal(data.crosshairs?.complete, true);
+        assert.ok(data.crosshairs.samples.length >= 10 && data.crosshairs.samples.length <= 10000);
+        assert.equal(
+          new Set(
+            data.crosshairs.samples.filter((sample) => sample.code).map((sample) => sample.actor),
+          ).size,
+          10,
+        );
+        assert.ok(
+          data.crosshairs.samples.every((sample) =>
+            data.players.some((player) => player.id === sample.actor),
+          ),
+        );
         assert.equal(data.matchState?.complete, true);
         assert.equal(
           data.matchState.samples.find((state) => state.phase === 'live')?.roundNumber,

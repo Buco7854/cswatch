@@ -1,3 +1,4 @@
+import { initializeFixture } from './fixtures/initialized.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chmodSync, mkdtempSync, rmSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
@@ -19,6 +20,7 @@ async function setup(overrides: Record<string, string> = {}) {
       ...overrides,
     });
   const db = new Store(dir);
+  initializeFixture(db);
   const app = await createApp(config, db);
   await app.ready();
   async function register(username = 'reviewer') {
@@ -47,6 +49,30 @@ async function setup(overrides: Record<string, string> = {}) {
     },
   };
 }
+test('CSP permits local embedded model textures while restricting network and executable content', async () => {
+  const s = await setup();
+  try {
+    const response = await s.app.inject({
+      method: 'GET',
+      url: '/api/health',
+      headers: { host: 'localhost:8000' },
+    });
+    assert.equal(response.statusCode, 200);
+    const directives = new Map(
+      String(response.headers['content-security-policy'])
+        .split(';')
+        .map((part) => part.trim().split(/\s+/))
+        .filter((parts) => parts[0])
+        .map(([key, ...values]) => [key, values]),
+    );
+    assert.deepEqual(directives.get('connect-src'), ["'self'", 'blob:']);
+    assert.deepEqual(directives.get('script-src'), ["'self'", "'wasm-unsafe-eval'"]);
+    assert.deepEqual(directives.get('object-src'), ["'none'"]);
+    assert.deepEqual(directives.get('base-uri'), ["'none'"]);
+  } finally {
+    await s.close();
+  }
+});
 test('registration hashes passwords, sessions rotate, logout requires CSRF', async () => {
   const s = await setup();
   try {
@@ -172,8 +198,9 @@ test('HTTPS sessions and Steam state use host-only cookie prefixes, including ro
     STEAM_ENABLED: 'true',
     DATA_DIR: dir,
   });
-  const db = new Store(dir),
-    app = await createApp(config, db);
+  const db = new Store(dir);
+  initializeFixture(db);
+  const app = await createApp(config, db);
   const fetchBefore = globalThis.fetch;
   const headers = { host: 'cswatch.test', origin: 'https://cswatch.test' };
   const assertCookie = (header: string, name: string) => {
@@ -450,7 +477,7 @@ test('Steam callback fails before network without matching one-use state', async
       headers: { host: 'localhost:8000', cookie: 'steam_state=forged' },
     });
     assert.equal(r.statusCode, 400);
-    assert.equal(s.db.one('SELECT count(*) AS n FROM users')!.n, 0);
+    assert.equal(s.db.one('SELECT count(*) AS n FROM users WHERE is_admin=0')!.n, 0);
   } finally {
     await s.close();
   }

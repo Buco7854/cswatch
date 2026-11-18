@@ -9,6 +9,14 @@ copyFileSync(
   resolve(root, '../shared/equipment-icons.json'),
   resolve(root, 'dist/equipment-icons.json'),
 );
+copyFileSync(
+  resolve(root, '../shared/recorded-equipment.json'),
+  resolve(root, 'dist/recorded-equipment.json'),
+);
+copyFileSync(
+  resolve(root, '../shared/equipment-models.json'),
+  resolve(root, 'dist/equipment-models.json'),
+);
 if (process.platform !== 'linux') {
   console.warn('Parser sandbox requires Linux. Use Docker for untrusted demos.');
   process.exit(0);

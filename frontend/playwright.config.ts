@@ -32,6 +32,8 @@ export default defineConfig({
           PORT: new URL(baseURL).port,
           COOKIE_SECURE: 'false',
           DATA_DIR: dataDir,
+          ADMIN_USERNAME: process.env.E2E_SETUP ? '' : 'e2e_instance_admin',
+          ADMIN_PASSWORD: process.env.E2E_SETUP ? '' : 'synthetic-instance-password-2026',
           LOG_LEVEL: 'warn',
           PUBLIC_ACCESS: process.env.E2E_PRIVATE ? 'false' : 'true',
           REGISTRATIONS_ENABLED: process.env.E2E_REGISTRATIONS || 'true',
