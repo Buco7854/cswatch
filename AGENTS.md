@@ -71,6 +71,8 @@ Start with `docs/HANDOFF.md` for current state and `docs/product/WORK.md` for th
 
 ## Change process
 
+Deferred dialog focus restoration must retain its closing context and yield when the user has already chosen a newer visible focus target. Preserve body, removed-element and inert fallbacks. Use controlled frame ordering to verify races rather than enlarging test deadlines.
+
 Use focused modules and pure domain helpers. Avoid large route handlers and duplicate client/server schemas; extract as scope grows. Format with Prettier. Test security boundaries and data contracts, not implementation details. Run meaningful tests once after relevant changes. Update STATUS and VERIFICATION when capabilities/checks change. Don't remove a failing assertion to make tests green. Fix the cause or document an actual upstream limitation.
 
 For UI work, use the design skill's app-screen workflow and inspect rendered production screenshots at desktop/tablet/mobile in both themes. Keep controls keyboard-accessible, touch-sized, named, and grouped into progressive options; honor reduced motion. Handle missing map/model, missing provider credentials, processing failure, no events, no WebGL, and private-instance sign-in states. The prior dark and light admin-template designs were rejected. Follow the current product/brand direction in docs/product; public pages and member workspace need distinct compositions with shared brand tokens.

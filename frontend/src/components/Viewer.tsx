@@ -1,3 +1,4 @@
+import { captureFocusReturn, focusMovedSince, type FocusReturnContext } from '../focus-return';
 import i18n, { t, setLanguage } from '../i18n';
 import {
   lazy,
@@ -322,7 +323,8 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       buffering,
     ready: Boolean(data),
   });
-  function restoreViewerFocus(preferred: HTMLElement | null) {
+  function restoreViewerFocus(preferred: HTMLElement | null, context?: FocusReturnContext) {
+    if (context && focusMovedSince(context)) return;
     const target = [preferred, optionsTrigger.current, panelClose.current].find((element) => {
       if (!element?.isConnected || element.closest('[inert]') || element.matches(':disabled'))
         return false;
@@ -334,6 +336,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     target?.focus({ preventScroll: true });
   }
   function closeViewerOptions() {
+    const focusReturn = captureFocusReturn();
     setOptions(false);
     // React removes the native dialog before its normal close algorithm can
     // restore the opener. Wait for teardown and never steal another modal's focus.
@@ -343,7 +346,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
         document.querySelector('dialog[open]:not(.review-feed-inline)')
       )
         return;
-      restoreViewerFocus(optionsTrigger.current);
+      restoreViewerFocus(optionsTrigger.current, focusReturn);
     });
   }
   function openScoreboard(trigger: HTMLElement | null, held = false) {
@@ -353,6 +356,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     chrome.show();
   }
   function closeScoreboard() {
+    const focusReturn = captureFocusReturn();
     const held = scoreboardHeld.current;
     scoreboardHeld.current = false;
     setScoreboardOpen(false);
@@ -363,13 +367,14 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       )
         return;
       if (held && scoreboardTrigger.current === stage.current)
-        stage.current?.focus({ preventScroll: true });
-      else restoreViewerFocus(scoreboardTrigger.current);
+        restoreViewerFocus(stage.current, focusReturn);
+      else restoreViewerFocus(scoreboardTrigger.current, focusReturn);
     });
   }
   function closeReviewFeed() {
+    const focusReturn = captureFocusReturn();
     setSettings((value) => ({ ...value, reviewFeed: false }));
-    requestAnimationFrame(() => restoreViewerFocus(optionsTrigger.current));
+    requestAnimationFrame(() => restoreViewerFocus(optionsTrigger.current, focusReturn));
   }
   const [compactPanels, setCompactPanels] = useState(
     () => window.matchMedia('(max-width:540px),(max-height:560px)').matches,
