@@ -4,9 +4,9 @@ Updated 2026-11-18. Use Node 24, a Linux kernel supporting required Landlock/sec
 
 The [verified runtime release `3d8c2ee`](https://github.com/Buco7854/cswatch/actions/runs/44226669557) passed both local and CI integration checks. Hardened application and asset-worker containers passed CI, and both images published. Anonymous manifest requests returned HTTP 200 for both tags. Docker remained unavailable locally. Newer documentation-only signoff changes do not alter that verified runtime.
 
-## Active latest-map, audio, pacing and public-entry revision
+## Verified latest-map, audio, pacing and public-entry revision
 
-Local final verification is complete for the active source. Earlier release totals below are historical and do not validate changed source. The new commit's hardened-container workflow and image publication remain required before release signoff.
+Local and CI verification is complete for runtime `b01a0d53d630d1df667872b65f7681ceeaf92ac0`, [workflow 44290141910](https://github.com/Buco7854/cswatch/actions/runs/44290141910). Verify job `134752937206` and publish job `134757743831` succeeded. CI confirms 333 backend/220 asset passes without skips, 145 public browser passes with two intentional skips, private registrations closed/open each one pass with 146 policy skips, and four setup passes with one environment skip. Earlier totals below remain historical. Both hardened container checks passed, including actual private uploads/ownership/offline speech and latest-map recovery/original PCM atomic publication. Docker remained unavailable locally.
 
 | Final local check                          | Result                                                                                                                                                                 | Evidence                                                                                                |
 | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
@@ -181,3 +181,12 @@ Cache-only raw-cache reclamation removed 323,903,488 bytes of unused page-aligne
 The cached native overview resources remained valid and were prepared offline: PNG 1024×1024, 108,097 encoded bytes, 4,194,304 decoded bytes, SHA-256 `6b6bf1597ddcceb834e0859e7b18299ff37a86facf130ac01de285c835451e74`, origin `(-2000,3250)`, scale `5.5`, reference 1024. It is installed at ignored `var/maps-final/overviews/de_cache`. Source/header/hash proof: `/tmp/cswatch-cache-overview-final-proof.json`.
 
 Four original-QA browser profiles (1440 desktop/390 phone, dark/light) loaded that actual HTTP PNG and checked exact calibrated marker projection before/after seeking, with deliberately misleading world bounds and forced no-WebGL. All passed, with no GLB request, duplicate compact radar, errors or overflow. Screenshots explicitly label synthetic positions and are not evidence of a real Cache recording or 3D rendering. All four captures were inspected. Evidence: `.design/cache-overview-validation/report.json`.
+
+## Current release image proof
+
+Runtime `b01a0d53d630d1df667872b65f7681ceeaf92ac0`, workflow `44290141910`, run number 22. Both latest and immutable commit/run tags returned anonymous HTTP 200 and the exact corresponding workflow digest:
+
+- Application `ghcr.io/buco7854/cswatch:latest` and `sha-b01a0d53d630d1df667872b65f7681ceeaf92ac0-22`: `sha256:52a5a27dbc99cc066e3188e0b13ed5e265462ad3c849ef53d56a27aa81b04ab0`.
+- Assets `ghcr.io/buco7854/cswatch:assets-latest` and `assets-sha-b01a0d53d630d1df667872b65f7681ceeaf92ac0-22`: `sha256:19318d79fc05e7e19001051b87c2c40db806584d3bb6a459a725627ac3cd83d1`.
+
+Local release evidence: `.design/latest-ci-verification.json`, `.design/latest-published-images.json`, `.design/latest-release-result.json`. A documentation-only signoff does not change the verified runtime code. Proprietary assets, QA recordings, private credentials and generated captures remain outside Git/images. Native engine acoustics/animation/material parity, physical-device FPS, full current-map conversion on this disk-constrained host and live provider credentials remain explicit limitations.
