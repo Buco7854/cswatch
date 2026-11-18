@@ -1,6 +1,6 @@
 # Feature status
 
-Updated 2026-11-18. This file is the capability contract. The previous [verified runtime release `3d8c2ee`](https://github.com/Buco7854/cswatch/actions/runs/44226669557) passed its local and hardened-container gates and published both images. The active revision adds disclosed latest-official maps, recorded gameplay audio, playback pacing fixes and a public-entry correction. Its final local checks pass 333 backend/native, 220 asset and 145 public browser cases, plus private/setup and required runtime checks. New commit-specific container verification/publication remain pending; never inherit prior passing counts. See [verification](VERIFICATION.md). Cache has verified 2D overview coverage, with 3D unavailable.
+Updated 2026-11-18. This file is the capability contract. Runtime [`b01a0d5`](https://github.com/Buco7854/cswatch/actions/runs/44290141910) adds disclosed latest-official maps, recorded gameplay audio, playback pacing/pose fixes and the refined public upload entry. Local and CI checks pass 333 backend/native, 220 asset and 145 public browser cases, plus private/setup and required runtime checks. Both hardened containers passed, both images published and anonymous latest/immutable digest checks match this exact workflow. Do not inherit earlier passing counts. See [verification](VERIFICATION.md). Cache has verified 2D overview coverage, with 3D unavailable.
 
 ## Access and personal workspace
 
@@ -54,7 +54,7 @@ Updated 2026-11-18. This file is the capability contract. The previous [verified
 
 ## Deployment and limits
 
-Docker/Compose runs TypeScript services behind the operator's reverse proxy, without Caddy. The default image is `ghcr.io/buco7854/cswatch:latest` with `CSWATCH_IMAGE` override. Weekly rebuild/publication and dependency-update workflows exist, including the separate optional `assets` image target. Both release images passed their hardened checks and published in runtime workflow `44226669557`. Docker was unavailable locally; CI supplies the container evidence.
+Docker/Compose runs TypeScript services behind the operator's reverse proxy, without Caddy. The default image is `ghcr.io/buco7854/cswatch:latest` with `CSWATCH_IMAGE` override. Weekly rebuild/publication and dependency-update workflows exist, including the separate optional `assets` image target. Both release images passed their hardened checks and published in runtime workflow `44290141910`. Docker was unavailable locally; CI supplies the container evidence.
 
 [Automatic official map preparation](product/MAP-ACQUISITION.md) remains behind `AUTO_OFFICIAL_MAPS_ENABLED` (default off, environment override/admin policy) and the optional Compose `assets` profile. Prefer a unique operator-approved source. Otherwise safe non-addon recordings may use current worker-observed official map membership. A terminal unavailable historical source can select latest; integrity failures do not silently switch. Fixed anonymous Steam app 730/depot 2347770 metadata refreshes hourly without downloading the game. Each request pins the manifest and file SHA-1/size; downloaded content gets SHA-256 and a distinct immutable pack ID. Newly shipped official map names need no code whitelist or historical catalog entry. Owner/guest authorization, Origin/CSRF, rates and bounded deduplication remain. No arbitrary URL or uploaded-map conversion exists.
 
