@@ -144,6 +144,49 @@ test('a different returned manifest stops before any selected download or native
   }
 });
 
+test('inventory selection mismatches stop before any map download or native conversion', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'cswatch-steam-membership-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const tool = join(root, 'tool');
+  await writeFile(tool, '#!/bin/sh\nexit 0\n', { mode: 0o700 });
+  let calls = 0;
+  await assert.rejects(
+    installSteamAssets(
+      {
+        maps: ['de_fixture'],
+        manifest: '42',
+        output: join(root, 'maps'),
+        cache: join(root, 'cache'),
+        s2v: tool,
+        downloader: tool,
+        expectedMapFiles: { de_fixture: { sha1: 'b'.repeat(40), bytes: 10 } },
+      },
+      {
+        run: async (_command, args) => {
+          calls++;
+          assert.equal(args[0], 'ls');
+          return {
+            code: 0,
+            stdout: initialSteamFiles('de_fixture')
+              .map((file) => `${STEAM_DEPOT}\t42\t${'a'.repeat(40)}\t10\t${file}`)
+              .join('\n'),
+            stderr: '',
+          };
+        },
+      },
+    ),
+    (error) => error.code === 'SOURCE_MAP_MISMATCH',
+  );
+  assert.equal(calls, 1);
+  for (const expectedMapFiles of [
+    {},
+    { de_fixture: { sha1: 'x', bytes: 10 } },
+    { de_fixture: { sha1: 'a'.repeat(40), bytes: 0 } },
+    { de_other: { sha1: 'a'.repeat(40), bytes: 10 } },
+  ])
+    await assert.rejects(installSteamAssets({ maps: ['de_fixture'], expectedMapFiles }), /exactly/);
+});
+
 test('linked output and cache ancestors are rejected before bootstrap or writes through them', async () => {
   const root = await mkdtemp(join(tmpdir(), 'cswatch-steam-roots-'));
   try {
@@ -558,6 +601,26 @@ test('operator children receive fixed managed-memory settings and retain actual 
   }
 });
 
+test('operator exit status stays structured without treating a native exit 4 as Steam rate evidence', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'cswatch-exit-code-'));
+  try {
+    await assert.rejects(
+      runAssetProcess(process.execPath, ['-e', 'process.exit(4)'], {
+        cwd: root,
+        home: root,
+        temporary: root,
+      }),
+      (error) => {
+        assert.equal(error.exitCode, 4);
+        assert.equal(error.code, undefined);
+        return true;
+      },
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('operator completed-output work is awaited across split lines and aborts its own stage on failure', async () => {
   const root = await mkdtemp(join(tmpdir(), 'cswatch-asset-output-'));
   try {
@@ -724,6 +787,7 @@ test('synthetic installer run pins every selective fetch and removes only its ow
       );
     const commands = [],
       scratch = [];
+    let verifiedSource;
     const run = async (command, args, context) => {
       commands.push({ command, args: [...args], context });
       const argument = (name) => args[args.indexOf(name) + 1];
@@ -790,6 +854,19 @@ test('synthetic installer run pins every selective fetch and removes only its ow
             .update(content.get(`game/csgo/maps/${template.map}.vpk`))
             .digest('hex'),
         },
+        expectedMapFiles: {
+          [template.map]: {
+            sha1: createHash('sha1')
+              .update(content.get(`game/csgo/maps/${template.map}.vpk`))
+              .digest('hex'),
+            bytes: content.get(`game/csgo/maps/${template.map}.vpk`).length,
+          },
+        },
+        onSourceVerified: async (source) => {
+          // This callback is before the first native metadata/conversion step.
+          assert.ok(commands.every((entry) => entry.command === tool));
+          verifiedSource = source;
+        },
       },
       {
         run,
@@ -820,6 +897,17 @@ test('synthetic installer run pins every selective fetch and removes only its ow
       },
     );
     assert.equal(result.maps[0].map, template.map);
+    assert.deepEqual(verifiedSource, {
+      map: template.map,
+      manifest: '42',
+      mapSha256: createHash('sha256')
+        .update(content.get(`game/csgo/maps/${template.map}.vpk`))
+        .digest('hex'),
+      sha1: createHash('sha1')
+        .update(content.get(`game/csgo/maps/${template.map}.vpk`))
+        .digest('hex'),
+      bytes: content.get(`game/csgo/maps/${template.map}.vpk`).length,
+    });
     assert.equal(commands.find((entry) => entry.args[0] === 'ls').args[2], `${STEAM_DEPOT}:42`);
     assert.ok(
       commands
@@ -853,6 +941,32 @@ test('synthetic installer run pins every selective fetch and removes only its ow
       content.get(`game/csgo/maps/${template.map}.vpk`),
     );
     assert.ok((await readFile(result.report)).length > 0);
+    await assert.rejects(
+      installSteamAssets(
+        {
+          maps: [template.map],
+          manifest: '42',
+          cache: join(template.root, 'corrupt-cache'),
+          output: join(template.root, 'corrupt-output'),
+          s2v: converter,
+          downloader: tool,
+          onSourceVerified: () =>
+            assert.fail('Corrupt Steam bytes cannot produce a verified source.'),
+        },
+        {
+          run: async (command, args, context) => {
+            const result = await run(command, args, context);
+            if (args[0] === 'track')
+              await writeFile(
+                join(args[args.indexOf('--output') + 1], 'game/csgo/maps', `${template.map}.vpk`),
+                'corrupt source',
+              );
+            return result;
+          },
+        },
+      ),
+      (error) => error.code === 'SOURCE_MAP_MISMATCH',
+    );
     await assert.rejects(
       installSteamAssets(
         {

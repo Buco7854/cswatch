@@ -102,7 +102,9 @@ export default function Upload({ compact = false }: { compact?: boolean }) {
         </>
       )}
       <div className="upload-source-choice">
-        <span id="upload-source-label">{t(compact ? 'Source' : 'Where is your demo?')}</span>
+        <span id="upload-source-label" className={compact ? 'visually-hidden' : undefined}>
+          {t(compact ? 'Source' : 'Where is your demo?')}
+        </span>
         <SelectControl
           label={t('Demo import source')}
           value={source}
@@ -143,13 +145,15 @@ export default function Upload({ compact = false }: { compact?: boolean }) {
             ) : (
               <UploadCloud size={27} strokeWidth={1.3} />
             )}
-            <strong>
-              {busy
-                ? progress === 100
-                  ? t('Adding to processing queue…')
-                  : t('Uploading {{v0}}%', { v0: progress })
-                : t('Drop your demo here')}
-            </strong>
+            {(!compact || busy) && (
+              <strong>
+                {busy
+                  ? progress === 100
+                    ? t('Adding to processing queue…')
+                    : t('Uploading {{v0}}%', { v0: progress })
+                  : t('Drop your demo here')}
+              </strong>
+            )}
             <span className={compact && !busy ? 'upload-file-action' : undefined}>
               {busy
                 ? t('Keep this window open.')

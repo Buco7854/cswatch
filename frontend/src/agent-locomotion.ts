@@ -34,7 +34,8 @@ export function recordedLocomotion(
     to.alive &&
     Number.isFinite(interval) &&
     interval > 0 &&
-    interval <= 0.5;
+    interval <= 0.25 &&
+    Math.hypot(to.x - from.x, to.y - from.y) <= Math.max(128, 4096 * interval);
   const speed = known ? (Math.hypot(to.x - from.x, to.y - from.y) * 0.0254) / interval : 0;
   const duck =
     from.duck === undefined

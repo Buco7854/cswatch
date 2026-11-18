@@ -1,0 +1,361 @@
+import { test, expect, type Page } from '@playwright/test';
+import { Matrix4, Vector3 } from 'three';
+import { createHash } from 'node:crypto';
+import { originalMapReplay, qaActor } from './fixtures/original-map';
+import { installMapFixture } from './fixtures/map-assets';
+import { originalEquipmentCatalog, originalEquipmentGLB } from './fixtures/original-equipment';
+
+async function fixture(page: Page, id: string, gpu = false) {
+  const data = originalMapReplay('de_pacing_qa');
+  data.events = [];
+  data.grenades = [];
+  data.rounds = [];
+  data.frames = [0, 4, 8, 1280].map((tick, index) => ({
+    tick,
+    players: data.frames[0].players.map((p, i) => ({
+      ...p,
+      x: i ? 128 : index * 8,
+      y: i ? 0 : index * 4,
+      z: index * 2,
+      yaw: index ? 1 : 359,
+      pitch: index ? 10 : 350,
+      duck: index ? 1 : 0,
+      weapon: 'ak47',
+    })),
+  }));
+  if (gpu) data.frames[2].players = data.frames[2].players.filter((p) => p.id !== qaActor);
+  await page.addInitScript(() => {
+    localStorage.setItem('cswatch.language', 'en');
+    for (const key of ['viewer-settings', 'viewer-settings-mobile'])
+      localStorage.setItem(
+        key,
+        JSON.stringify({
+          quality: 'low',
+          autoHideControls: false,
+          autoSkip: false,
+          matchScore: false,
+          economy: false,
+          xray: false,
+          crosshair: false,
+          killReplay: false,
+          grenadeLanding: false,
+        }),
+      );
+  });
+  await page.route(`**/api/demos/${id}`, (route) =>
+    route.fulfill({
+      json: {
+        id,
+        name: 'Original pacing QA positions, not a CS2 recording',
+        status: 'ready',
+        owned: false,
+        public: true,
+        map: data.map,
+      },
+    }),
+  );
+  await page.route(`**/api/demos/${id}/playback`, (route) => route.fulfill({ json: data }));
+  await installMapFixture(page, data.map, id);
+  await page.route('**/api/assets/agents', (route) =>
+    route.fulfill({ json: { ct: null, t: null } }),
+  );
+  await page.route('**/api/assets/equipment-models', (route) =>
+    route.fulfill({ json: originalEquipmentCatalog(['ak47']) }),
+  );
+  await page.route('**/api/assets/equipment-models/ak47.glb', (route) =>
+    route.fulfill({ contentType: 'model/gltf-binary', body: originalEquipmentGLB() }),
+  );
+  return data;
+}
+test('visible playback follows elapsed time after a long animation frame, rebases seeks and honors speed', async ({
+  page,
+}) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE));
+  await fixture(page, 'clock-pacing');
+  await page.goto('/watch/clock-pacing');
+  await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
+  await page.getByRole('combobox', { name: 'Camera mode', exact: true }).click();
+  await page.getByRole('option', { name: '2D tactical · low power', exact: true }).click();
+  const slider = page.getByRole('slider', { name: 'Playback position' });
+  await slider.fill('0');
+  await page.clock.install();
+  await page.clock.pauseAt(new Date(Date.now() + 1000));
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await page.clock.fastForward(1000);
+  expect(Number(await slider.inputValue())).toBeCloseTo(64, 0);
+  await page.getByRole('button', { name: 'Pause', exact: true }).click();
+  await slider.fill('400');
+  await page.getByRole('combobox', { name: 'Playback speed', exact: true }).click();
+  await page.getByRole('option', { name: '2×', exact: true }).click();
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await page.clock.fastForward(500);
+  expect(Number(await slider.inputValue())).toBeCloseTo(464, 0);
+  await page.getByRole('button', { name: 'Pause', exact: true }).click();
+  await page.clock.fastForward(5000);
+  expect(Number(await slider.inputValue())).toBeCloseTo(464, 0);
+});
+
+test('POV camera and equipment share interpolated recorded angles, eye height and identity at sub-sample seeks', async ({
+  page,
+}) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE));
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.addInitScript(() => {
+    const names = new WeakMap<WebGLUniformLocation, string>(),
+      get = WebGL2RenderingContext.prototype.getUniformLocation,
+      mat = WebGL2RenderingContext.prototype.uniformMatrix4fv,
+      vec = WebGL2RenderingContext.prototype.uniform3f,
+      use = WebGL2RenderingContext.prototype.useProgram,
+      draw = WebGL2RenderingContext.prototype.drawArrays,
+      drawIndexed = WebGL2RenderingContext.prototype.drawElements,
+      clear = WebGL2RenderingContext.prototype.clear,
+      colors = new WeakMap<WebGLProgram, boolean>(),
+      modelViews = new WeakMap<WebGLProgram, number[]>();
+    let program: WebGLProgram | null = null;
+    const state = { view: null as number[] | null, modelViews: [] as number[][] };
+    (window as unknown as { qaPoseGPU: typeof state }).qaPoseGPU = state;
+    WebGL2RenderingContext.prototype.getUniformLocation = function (program, name) {
+      const location = get.call(this, program, name);
+      if (location) names.set(location, name);
+      return location;
+    };
+    WebGL2RenderingContext.prototype.useProgram = function (value) {
+      program = value;
+      return use.call(this, value);
+    };
+    WebGL2RenderingContext.prototype.clear = function (mask) {
+      if (mask & this.COLOR_BUFFER_BIT) state.modelViews = [];
+      return clear.call(this, mask);
+    };
+    WebGL2RenderingContext.prototype.uniform3f = function (location, x, y, z) {
+      if (location && program && names.get(location) === 'diffuse')
+        colors.set(program, x === 1 && y === 0 && z === 1);
+      return vec.call(this, location, x, y, z);
+    };
+    WebGL2RenderingContext.prototype.uniformMatrix4fv = function (
+      location,
+      transpose,
+      value,
+      ...rest
+    ) {
+      const name = location && names.get(location);
+      if (name === 'viewMatrix') state.view = Array.from(value);
+      if (name === 'modelViewMatrix' && program) modelViews.set(program, Array.from(value));
+      return mat.call(this, location, transpose, value, ...rest);
+    };
+    const capture = (count: number) => {
+      const currentModelView = program ? modelViews.get(program) : undefined;
+      // The original three-room floor is 18 non-indexed vertices beneath the documented
+      // +90Y S2V root. Its GPU model-view provides the real camera even when viewMatrix
+      // is optimized out of this standard-material shader.
+      if (count === 18 && currentModelView) {
+        const m = currentModelView;
+        state.view = [
+          m[8],
+          m[9],
+          m[10],
+          m[11],
+          m[4],
+          m[5],
+          m[6],
+          m[7],
+          -m[0],
+          -m[1],
+          -m[2],
+          -m[3],
+          m[12],
+          m[13],
+          m[14],
+          m[15],
+        ];
+      }
+      if (program && colors.get(program) && currentModelView)
+        state.modelViews.push([...currentModelView]);
+    };
+    WebGL2RenderingContext.prototype.drawArrays = function (...args) {
+      capture(args[2]);
+      return draw.apply(this, args);
+    };
+    WebGL2RenderingContext.prototype.drawElements = function (...args) {
+      capture(args[1]);
+      return drawIndexed.apply(this, args);
+    };
+  });
+  await fixture(page, 'pose-pacing', true);
+  await page.goto('/watch/pose-pacing');
+  const scene = page.locator('.scene'),
+    slider = page.getByRole('slider', { name: 'Playback position' });
+  await expect(scene).toHaveAttribute('data-map-model-state', 'ready');
+  await page.getByRole('combobox', { name: 'Camera mode', exact: true }).click();
+  await page.getByRole('option', { name: 'Player perspective', exact: true }).click();
+  await slider.fill('2');
+  await expect(scene).toHaveAttribute(
+    'data-equipment-ready-instances',
+    new RegExp('pov:' + qaActor + ':ak47'),
+  );
+  const pose = () =>
+    page.evaluate(
+      () =>
+        (window as unknown as { qaPoseGPU: { view: number[] | null; modelViews: number[][] } })
+          .qaPoseGPU,
+    );
+  await expect
+    .poll(async () => {
+      const p = await pose();
+      if (!p.view) return Infinity;
+      const camera = new Matrix4().fromArray(p.view).invert(),
+        v = new Vector3().setFromMatrixPosition(camera);
+      return v.distanceTo(new Vector3(0.1016, 1.3254, -0.0508));
+    })
+    .toBeLessThan(1e-5);
+  const matrices = await pose(),
+    camera = new Matrix4().fromArray(matrices.view!).invert();
+  const direction = new Vector3(0, 0, -1).transformDirection(camera);
+  expect(direction.distanceTo(new Vector3(1, 0, 0))).toBeLessThan(1e-5);
+  await expect
+    .poll(async () => {
+      const p = await pose();
+      if (!p.modelViews.length || !p.view) return Infinity;
+      const viewInverse = new Matrix4().fromArray(p.view).invert();
+      return Math.min(
+        ...p.modelViews.map((m) =>
+          new Vector3()
+            .setFromMatrixPosition(viewInverse.clone().multiply(new Matrix4().fromArray(m)))
+            .distanceTo(new Vector3(0.7516, 1.0954, 0.1492)),
+        ),
+      );
+    })
+    .toBeLessThan(1e-5);
+  await slider.fill('8');
+  await expect(scene).toHaveAttribute('data-equipment-ready-instances', /^(?!.*pov:)/);
+  const held = await pose();
+  expect(new Matrix4().fromArray(held.view!).invert().elements).toEqual(camera.elements);
+  await slider.fill('2');
+  await expect(scene).toHaveAttribute(
+    'data-equipment-ready-instances',
+    new RegExp('pov:' + qaActor + ':ak47'),
+  );
+});
+
+test('retiring a model during bounded embedded-image parsing finishes without false texture errors, disposes late bitmaps and reloads safely', async ({
+  page,
+}) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE));
+  const errors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(message.text());
+  });
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.addInitScript(() => {
+    const fetchOriginal = window.fetch.bind(window),
+      decode = window.createImageBitmap.bind(window),
+      close = ImageBitmap.prototype.close;
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve)),
+      bitmaps: ImageBitmap[] = [];
+    const state = {
+      started: 0,
+      closed: 0,
+      decoded: 0,
+      hold: true,
+      release: () => {
+        state.hold = false;
+        release();
+      },
+    };
+    (window as unknown as { qaLocalParse: typeof state }).qaLocalParse = state;
+    window.fetch = async (input, options) => {
+      const url =
+        typeof input === 'string' ? input : input instanceof Request ? input.url : input.toString();
+      if (url.startsWith('blob:') && state.hold) {
+        state.started++;
+        await gate;
+      }
+      return fetchOriginal(input, options);
+    };
+    window.createImageBitmap = (async (...args: Parameters<typeof createImageBitmap>) => {
+      const bitmap = await decode(...args);
+      state.decoded++;
+      bitmaps.push(bitmap);
+      return bitmap;
+    }) as typeof createImageBitmap;
+    ImageBitmap.prototype.close = function () {
+      if (bitmaps.includes(this)) state.closed++;
+      return close.call(this);
+    };
+  });
+  await fixture(page, 'local-parse');
+  const source = originalEquipmentGLB(),
+    jsonSize = source.readUInt32LE(12),
+    json = JSON.parse(source.subarray(20, 20 + jsonSize).toString()),
+    bin = source.subarray(28 + jsonSize),
+    webp = Buffer.from(
+      'UklGRioAAABXRUJQVlA4TB0AAAAvD8ADAA9wkaR3KR8mc/5jCWLBZP7S3RlE9D90AQA=',
+      'base64',
+    );
+  json.bufferViews.push({ buffer: 0, byteOffset: bin.length, byteLength: webp.length });
+  json.images = [{ bufferView: json.bufferViews.length - 1, mimeType: 'image/webp' }];
+  json.textures = [{ extensions: { EXT_texture_webp: { source: 0 } } }];
+  json.materials[0].pbrMetallicRoughness.baseColorTexture = { index: 0 };
+  json.extensionsUsed.push('EXT_texture_webp');
+  json.extensionsRequired = ['EXT_texture_webp'];
+  const binary = Buffer.concat([bin, webp, Buffer.alloc((4 - (webp.length % 4)) % 4)]);
+  json.buffers[0].byteLength = binary.length;
+  const serialized = Buffer.from(JSON.stringify(json)),
+    padded = Buffer.concat([serialized, Buffer.alloc((4 - (serialized.length % 4)) % 4, 32)]),
+    header = Buffer.alloc(20),
+    binHeader = Buffer.alloc(8);
+  header.write('glTF');
+  header.writeUInt32LE(2, 4);
+  header.writeUInt32LE(28 + padded.length + binary.length, 8);
+  header.writeUInt32LE(padded.length, 12);
+  header.writeUInt32LE(0x4e4f534a, 16);
+  binHeader.writeUInt32LE(binary.length);
+  binHeader.writeUInt32LE(0x004e4942, 4);
+  const textured = Buffer.concat([header, padded, binHeader, binary]),
+    catalog = originalEquipmentCatalog(['ak47']);
+  catalog.items.ak47 = {
+    ...catalog.items.ak47,
+    sha256: createHash('sha256').update(textured).digest('hex'),
+    bytes: textured.length,
+    decodedTextureBytes: 1024,
+  };
+  await page.route('**/api/assets/equipment-models', (route) => route.fulfill({ json: catalog }));
+  await page.route('**/api/assets/equipment-models/ak47.glb', (route) =>
+    route.fulfill({ contentType: 'model/gltf-binary', body: textured }),
+  );
+  await page.goto('/watch/local-parse');
+  await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => (window as unknown as { qaLocalParse: { started: number } }).qaLocalParse.started,
+      ),
+    )
+    .toBe(1);
+  await page.getByRole('combobox', { name: 'Camera mode', exact: true }).click();
+  await page.getByRole('option', { name: '2D tactical · low power', exact: true }).click();
+  await expect(page.locator('.scene canvas')).toHaveCount(0);
+  await page.evaluate(() =>
+    (window as unknown as { qaLocalParse: { release: () => void } }).qaLocalParse.release(),
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => (window as unknown as { qaLocalParse: { closed: number } }).qaLocalParse.closed,
+      ),
+    )
+    .toBe(1);
+  expect(errors).toEqual([]);
+  await page.getByRole('combobox', { name: 'Camera mode', exact: true }).click();
+  await page.getByRole('option', { name: 'Free camera', exact: true }).click();
+  await expect(page.locator('.scene')).toHaveAttribute('data-equipment-ready-count', '2');
+  const state = await page.evaluate(() => {
+    const { decoded, closed } = (
+      window as unknown as { qaLocalParse: { decoded: number; closed: number } }
+    ).qaLocalParse;
+    return { decoded, closed };
+  });
+  expect(state).toEqual({ decoded: 2, closed: 1 });
+  expect(errors).toEqual([]);
+});

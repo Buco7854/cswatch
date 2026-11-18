@@ -438,3 +438,32 @@ test(
     }
   },
 );
+
+test(
+  'native sound-bank publication is same-parent and no-replace even for empty targets or symlinks',
+  { skip: !enabled },
+  () => {
+    const root = mkdtempSync(join(tmpdir(), 'cswatch-sound-publish-'));
+    try {
+      const helper = buildNetworkDeny(join(root, 'boundary')),
+        stage = join(root, '.sounds-Ab12cd'),
+        target = join(root, 'sounds');
+      mkdirSync(stage, { mode: 0o700 });
+      writeFileSync(join(stage, 'proof'), 'original');
+      assert.equal(run(helper, ['--publish-sounds', stage, target]).status, 0);
+      assert.equal(readFileSync(join(target, 'proof'), 'utf8'), 'original');
+      mkdirSync(stage, { mode: 0o700 });
+      assert.equal(run(helper, ['--publish-sounds', stage, target]).status, 125);
+      rmSync(target, { recursive: true });
+      mkdirSync(target);
+      assert.equal(run(helper, ['--publish-sounds', stage, target]).status, 125);
+      rmSync(target, { recursive: true });
+      symlinkSync(stage, target);
+      assert.equal(run(helper, ['--publish-sounds', stage, target]).status, 125);
+      assert.equal(run(helper, ['--publish-sounds', stage, join(root, 'other')]).status, 125);
+      assert.equal(run(helper, ['--publish-sounds', root, target]).status, 125);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);

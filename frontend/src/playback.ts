@@ -83,6 +83,17 @@ export type ViewerSettings = {
   chat: boolean;
   voiceScope: 'selected' | 'team' | 'all';
   voiceVolume: number;
+  gameSounds: boolean;
+  gameVolume: number;
+  audioVolume: number;
+  audioMuted: boolean;
+  spatialAudio: boolean;
+  soundWeapons: boolean;
+  soundFootsteps: boolean;
+  soundReloads: boolean;
+  soundUtility: boolean;
+  soundObjectives: boolean;
+  soundRounds: boolean;
   quality: 'auto' | 'low' | 'high';
 };
 export const defaultSettings: ViewerSettings = {
@@ -114,6 +125,17 @@ export const defaultSettings: ViewerSettings = {
   chat: false,
   voiceScope: 'selected',
   voiceVolume: 0.7,
+  gameSounds: true,
+  gameVolume: 0.8,
+  audioVolume: 1,
+  audioMuted: false,
+  spatialAudio: true,
+  soundWeapons: true,
+  soundFootsteps: true,
+  soundReloads: true,
+  soundUtility: true,
+  soundObjectives: true,
+  soundRounds: true,
   quality: 'auto',
 };
 export function readSettings(key = 'viewer-settings'): ViewerSettings {
@@ -126,7 +148,8 @@ export function readSettings(key = 'viewer-settings'): ViewerSettings {
         typeof saved[k] === typeof settings[k] &&
         (k !== 'inputLayout' || ['wasd', 'zqsd'].includes(saved[k])) &&
         (k !== 'voiceScope' || ['selected', 'team', 'all'].includes(saved[k])) &&
-        (k !== 'voiceVolume' || (Number.isFinite(saved[k]) && saved[k] >= 0 && saved[k] <= 1)) &&
+        (!['voiceVolume', 'gameVolume', 'audioVolume'].includes(k) ||
+          (Number.isFinite(saved[k]) && saved[k] >= 0 && saved[k] <= 1)) &&
         (k !== 'quality' || ['auto', 'low', 'high'].includes(saved[k])) &&
         (k !== 'cameraFov' || (Number.isFinite(saved[k]) && saved[k] >= 40 && saved[k] <= 110)) &&
         (k !== 'teamLayout' || ['split', 'right'].includes(saved[k])) &&

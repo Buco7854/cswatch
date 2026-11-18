@@ -1,4 +1,11 @@
-import { lstatSync, readFileSync, opendirSync, writeFileSync, mkdirSync } from 'node:fs';
+import {
+  lstatSync,
+  readFileSync,
+  opendirSync,
+  writeFileSync,
+  mkdirSync,
+  unlinkSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { gzipSync, gunzipSync } from 'node:zlib';
 import { z } from 'zod';
@@ -12,6 +19,8 @@ import type {
 import { opusDuration } from './voice-packets.js';
 import { isRecordedUtilityThrow } from './player-input.js';
 import { crosshairCodePattern } from './crosshairs.js';
+import { gameplaySoundRegistry } from './gameplay-sound-registry.js';
+import { gameplaySoundLimits } from './gameplay-sounds.js';
 import { mapIdentitySchema } from './map-identity.js';
 import {
   ItemArtifactValidator,
@@ -258,6 +267,44 @@ const communicationInfoSchema = z
     unsupportedPackets: z.number().int().min(0).max(10000000),
   })
   .strict();
+export const gameplaySoundCueSchema = z
+  .object({
+    id: z.string().min(1).max(100),
+    tick: mediaTick,
+    endTick: mediaTick.optional(),
+    soundId: z.string().max(60),
+    category: z.enum(['weapon', 'footstep', 'reload', 'utility', 'objective', 'round']),
+    eventName: z.string().min(1).max(128).optional(),
+    evidence: z.enum(['game-event', 'network-sound']),
+    selection: z.enum(['representative', 'recorded']),
+    actor: speaker.optional(),
+    position: z.object({ x: coordinate, y: coordinate, z: coordinate }).strict().optional(),
+    volume: z.number().finite().min(0).max(1).optional(),
+    pitch: z.number().finite().min(0.25).max(4).optional(),
+  })
+  .strict()
+  .refine(
+    (cue) =>
+      Object.hasOwn(gameplaySoundRegistry.items, cue.soundId) &&
+      gameplaySoundRegistry.items[cue.soundId].category === cue.category,
+    'Unknown sound or category',
+  );
+const soundCoverage = z.enum(['available', 'partial', 'unavailable']);
+const gameplaySoundInfoSchema = z
+  .object({
+    coverage: z
+      .object({
+        weapon: soundCoverage,
+        footstep: soundCoverage,
+        reload: soundCoverage,
+        utility: soundCoverage,
+        objective: soundCoverage,
+        round: soundCoverage,
+      })
+      .strict(),
+    truncated: z.boolean(),
+  })
+  .strict();
 const event = z
   .object({ type: z.string().max(100), tick })
   .catchall(z.union([z.string().max(1000), z.number().finite(), z.boolean(), z.null()]));
@@ -324,6 +371,7 @@ export const manifestSchema = z
     chat: z.array(chatMessageSchema).max(10000).optional(),
     captions: z.array(captionCueSchema).max(20000).optional(),
     communications: communicationInfoSchema.optional(),
+    gameplaySounds: gameplaySoundInfoSchema.optional(),
     objectives: z
       .object({ samples: z.array(objectiveSampleSchema).max(10000), complete: z.boolean() })
       .strict()
@@ -408,6 +456,7 @@ export const chunkSchema = z
       .max(replayLimits.chunkFrames + replayLimits.contextFrames + 1),
     grenades: z.array(grenade).max(20000),
     voice: z.array(voicePacketSchema).max(50000).optional(),
+    sounds: z.array(gameplaySoundCueSchema).max(gameplaySoundLimits.chunkSamples).optional(),
     itemSamples: z.array(itemSampleSchema).max(itemChunkSampleLimit).optional(),
   })
   .strict();
@@ -450,8 +499,49 @@ function trailFrame(frame: Frame): Frame {
 
 /** Each adjacent chunk shares its boundary frame, preserving interpolation across seeks. */
 export async function writeReplay(folder: string, data: Playback): Promise<void> {
+  const written: string[] = [];
+  try {
+    await writeReplayCore(folder, data, written);
+  } catch (error) {
+    if (
+      data.sounds === undefined ||
+      !(error instanceof Error) ||
+      ![
+        'Replay output limit',
+        'Stored replay limit',
+        'Replay has too many chunks',
+        'Replay metadata limit',
+      ].includes(error.message)
+    )
+      throw error;
+    // Optional audio must not make an otherwise valid long replay unavailable.
+    // Remove only files created by this invocation, preserving all primary data on the retry.
+    for (const path of written) unlinkSync(path);
+    const unavailable = 'unavailable' as const;
+    await writeReplayCore(
+      folder,
+      {
+        ...data,
+        sounds: [],
+        gameplaySounds: {
+          coverage: {
+            weapon: unavailable,
+            footstep: unavailable,
+            reload: unavailable,
+            utility: unavailable,
+            objective: unavailable,
+            round: unavailable,
+          },
+          truncated: true,
+        },
+      },
+      [],
+    );
+  }
+}
+async function writeReplayCore(folder: string, data: Playback, written: string[]): Promise<void> {
   if (!data.frames.length) throw new Error('No replay frames');
-  const { version: _version, frames, grenades, voice, itemSamples, ...metadata } = data;
+  const { version: _version, frames, grenades, voice, sounds, itemSamples, ...metadata } = data;
   const items = new ItemSliceIndex(itemSamples || []);
   if (frames.length > replayLimits.chunks * replayLimits.chunkFrames + 1)
     throw new Error('Replay has too many chunks');
@@ -500,6 +590,7 @@ export async function writeReplay(folder: string, data: Playback): Promise<void>
     const contextStart = Math.max(0, offset - replayLimits.contextFrames);
     const context = frames.slice(contextStart, offset).map(trailFrame);
     const hasVoice = Boolean(voice?.length);
+    const hasSounds = sounds !== undefined;
     const hasItems = itemSamples !== undefined;
     const itemsAt = items.from(frames[contextStart].tick);
     const overhead = Buffer.byteLength(
@@ -509,6 +600,7 @@ export async function writeReplay(folder: string, data: Playback): Promise<void>
         frames: [],
         grenades: [],
         ...(hasVoice ? { voice: [] } : {}),
+        ...(hasSounds ? { sounds: [] } : {}),
         ...(hasItems ? { itemSamples: [] } : {}),
       }),
     );
@@ -536,6 +628,14 @@ export async function writeReplay(folder: string, data: Playback): Promise<void>
         if (bytes > replayLimits.chunkBytes) return null;
         packets.push(packet);
       }
+      const soundSlice = (sounds || []).filter(
+        (cue) => cue.tick >= startTick && cue.tick <= endTick,
+      );
+      if (soundSlice.length > gameplaySoundLimits.chunkSamples) return null;
+      for (const [i, cue] of soundSlice.entries()) {
+        bytes += Buffer.byteLength(replayJSON(cue)) + (i ? 1 : 0);
+        if (bytes > replayLimits.chunkBytes) return null;
+      }
       const itemSlice = itemsAt(endTick);
       if (itemSlice.length > itemChunkSampleLimit) return null;
       for (const [itemIndex, sample] of itemSlice.entries()) {
@@ -551,6 +651,7 @@ export async function writeReplay(folder: string, data: Playback): Promise<void>
           frames: [...context, ...frames.slice(offset, end + 1)],
           grenades: paths,
           ...(hasVoice ? { voice: packets } : {}),
+          ...(hasSounds ? { sounds: soundSlice } : {}),
           ...(hasItems ? { itemSamples: itemSlice } : {}),
         },
       };
@@ -591,6 +692,7 @@ export async function writeReplay(folder: string, data: Playback): Promise<void>
       mode: 0o600,
       flag: 'wx',
     });
+    written.push(join(folder, 'chunks', `${index}.json.gz`));
     manifest.chunks.push({
       index,
       startTick: frames[offset].tick,
@@ -608,6 +710,7 @@ export async function writeReplay(folder: string, data: Playback): Promise<void>
   if (Buffer.byteLength(json) > replayLimits.manifestBytes)
     throw new Error('Replay metadata limit');
   writeFileSync(join(folder, 'manifest.json.gz'), gzipSync(json), { mode: 0o600, flag: 'wx' });
+  written.push(join(folder, 'manifest.json.gz'));
 }
 
 function regularFile(path: string, limit: number) {
@@ -710,6 +813,7 @@ export function validateReplayArtifacts(folder: string): {
   }
   if (count !== manifest.chunks.length) throw new Error('Missing replay files');
   let rawTotal = 0;
+  const soundIdentities = new Map<string, string>();
   for (const [i, info] of manifest.chunks.entries()) {
     if (
       info.index !== i ||
@@ -726,6 +830,28 @@ export function validateReplayArtifacts(folder: string): {
     if (rawTotal > replayLimits.totalBytes || json.byteLength !== info.bytes)
       throw new Error('Replay size mismatch');
     const chunk = chunkSchema.parse(JSON.parse(json.toString('utf8')));
+    if (Boolean(manifest.gameplaySounds) !== (chunk.sounds !== undefined))
+      throw Error('Gameplay sound capability mismatch');
+    const chunkSoundIds = new Set<string>();
+    for (const [n, cue] of (chunk.sounds || []).entries()) {
+      const serialized = JSON.stringify(cue),
+        previous = soundIdentities.get(cue.id);
+      if (
+        (cue.endTick !== undefined &&
+          (cue.endTick < cue.tick || cue.endTick > manifest.lastTick)) ||
+        cue.tick < info.firstFrameTick ||
+        cue.tick > info.endTick ||
+        (cue.actor !== undefined && !actors.has(cue.actor)) ||
+        (n > 0 && cue.tick < chunk.sounds![n - 1].tick) ||
+        chunkSoundIds.has(cue.id) ||
+        (previous !== undefined && previous !== serialized)
+      )
+        throw Error('Invalid gameplay sound identity or time');
+      chunkSoundIds.add(cue.id);
+      soundIdentities.set(cue.id, serialized);
+      if (soundIdentities.size > gameplaySoundLimits.samples)
+        throw Error('Gameplay sound sample limit');
+    }
     if (Boolean(manifest.itemState) !== (chunk.itemSamples !== undefined))
       throw new Error('Recorded item capability mismatch');
     if (chunk.itemSamples)

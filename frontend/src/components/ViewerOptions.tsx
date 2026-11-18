@@ -1,7 +1,6 @@
 import { t } from '../i18n';
 import {
   useEffect,
-  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -11,6 +10,7 @@ import {
 import { MessageSquareText, X } from 'lucide-react';
 import type { ViewerSettings } from '../playback';
 import type { DemoMapSummary } from '../demo-map-assets';
+import type { MapIdentity } from '../../../shared/map-acquisition';
 import type { EquipmentRenderState } from '../equipment-assets';
 import {
   CROSSHAIR_LIMITS,
@@ -20,6 +20,11 @@ import {
 } from '../crosshair';
 import Crosshair from './Crosshair';
 import RecordedCrosshair from './RecordedCrosshair';
+import MapDetails from './MapDetails';
+import { RangeSetting, ToggleSetting } from './ViewerSettingControls';
+import GameplaySoundSettings from './GameplaySoundSettings';
+import type { ViewerAudio } from '../viewer-audio';
+import type { GameplayAudioReport } from '../useGameplayAudio';
 import { recordedCrosshair } from '../recorded-crosshair';
 import { SelectControl } from './Controls';
 import './viewer-options.css';
@@ -36,50 +41,6 @@ const categories = [
   { id: 'performance', label: 'Performance' },
 ] as const;
 
-function RangeSetting({
-  label,
-  value,
-  min,
-  max,
-  step,
-  display,
-  description,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  display: string;
-  description?: string;
-  onChange: (value: number) => void;
-}) {
-  const id = useId();
-  return (
-    <div className="viewer-option-range">
-      <div className="viewer-option-range-heading">
-        <label htmlFor={id}>{label}</label>
-        <output htmlFor={id} aria-live="off">
-          {display}
-        </output>
-      </div>
-      {description && <p id={id + '-description'}>{description}</p>}
-      <input
-        id={id}
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        aria-valuetext={display}
-        aria-describedby={description ? id + '-description' : undefined}
-        onChange={(event) => onChange(Number(event.target.value))}
-      />
-    </div>
-  );
-}
-
 export default function ViewerOptions({
   settings,
   onChange,
@@ -88,6 +49,9 @@ export default function ViewerOptions({
   playerCrosshairCode,
   equipment,
   mapAcquisition,
+  recordedMapIdentity,
+  audio,
+  gameAudio,
 }: {
   settings: ViewerSettings;
   onChange: (s: ViewerSettings) => void;
@@ -96,6 +60,9 @@ export default function ViewerOptions({
   playerCrosshairCode?: string;
   equipment?: EquipmentRenderState;
   mapAcquisition?: DemoMapSummary;
+  recordedMapIdentity?: MapIdentity;
+  audio: ViewerAudio;
+  gameAudio: GameplayAudioReport;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const tabButtons = useRef<Partial<Record<Category, HTMLButtonElement>>>({});
@@ -145,21 +112,16 @@ export default function ViewerOptions({
     value: CrosshairStyle[Key],
   ) => onChange({ ...settings, crosshairStyle: { ...style, [key]: value } });
   const toggle = (key: BooleanSetting, title: string, description?: string) => (
-    <label className="viewer-option-toggle" key={key}>
-      <span className="viewer-option-copy">
-        {title}
-        {description && <small>{description}</small>}
-      </span>
-      <span className="viewer-option-switch">
-        <input
-          type="checkbox"
-          role="switch"
-          checked={settings[key]}
-          onChange={(event) => onChange({ ...settings, [key]: event.target.checked })}
-        />
-        <span className="viewer-option-switch-track" aria-hidden="true" />
-      </span>
-    </label>
+    <ToggleSetting
+      key={key}
+      label={title}
+      description={description}
+      checked={settings[key]}
+      onChange={(checked) => {
+        if (key === 'voice' && checked) void audio.unlock();
+        onChange({ ...settings, [key]: checked });
+      }}
+    />
   );
   const crosshairToggle = (key: 'outline' | 'centerDot' | 'tStyle', label: string) => (
     <label className="viewer-option-toggle">
@@ -530,6 +492,12 @@ export default function ViewerOptions({
           {panel(
             'playback',
             <section className="viewer-option-section">
+              <GameplaySoundSettings
+                audio={audio}
+                report={gameAudio}
+                settings={settings}
+                onChange={onChange}
+              />
               <h3>{t('Communications')}</h3>
               {toggle('voice', t('Recorded voice'))}
               {toggle('subtitles', t('Communication subtitles'))}
@@ -621,21 +589,7 @@ export default function ViewerOptions({
                 )}
               </p>
               {mapAcquisition && (
-                <div
-                  className="viewer-option-note"
-                  data-map-verification={mapAcquisition.verification}
-                >
-                  <h4>{t('Map provenance')}</h4>
-                  <p>
-                    {t(
-                      mapAcquisition.verification === 'operator-approved'
-                        ? 'This pack matches an operator-approved map identity. Approval is not cryptographic proof of the recording’s geometry.'
-                        : mapAcquisition.verification === 'version-unverified'
-                          ? 'This operator-installed pack has not been matched to the recorded map version.'
-                          : 'No verified map pack is available for this recording.',
-                    )}
-                  </p>
-                </div>
+                <MapDetails acquisition={mapAcquisition} recorded={recordedMapIdentity} />
               )}
               {equipment && (
                 <div

@@ -19,7 +19,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Document, NodeIO } from '@gltf-transform/core';
 import sharp from 'sharp';
-import { canonicalMapApproval, mapPackId } from '../../backend/dist/map-catalog.js';
+import {
+  canonicalMapApproval,
+  mapPackId,
+  latestOfficialSelection,
+  latestMapRequestId,
+  latestMapPackId,
+} from '../../backend/dist/map-catalog.js';
 import {
   enqueueMapRequest,
   prepareMapJobs,
@@ -27,6 +33,9 @@ import {
   readMapResult,
   writeMapJobResult,
   retryMapRequest,
+  retryLatestMapRequest,
+  enqueueLatestMapRequest,
+  writeOfficialMapInventory,
 } from '../../backend/dist/map-jobs.js';
 import {
   lockMapWorker,
@@ -34,6 +43,8 @@ import {
   mapWorkerOptions,
   processOneMapRequest,
   sourceCache,
+  runMapWorker,
+  mapWorkerLimits,
 } from './map-worker.mjs';
 import { validatePreparedMap } from './prepared-map-publication.mjs';
 import { buildNetworkDeny } from './build-network-deny.mjs';
@@ -99,6 +110,267 @@ async function fixture(t, entry = structuredClone(approval)) {
   return { root, options, entry, packId, target, catalog };
 }
 let originals;
+async function latestFixture(t) {
+  const f = await fixture(t);
+  await rm(join(f.options.jobs, 'requests', f.packId + '.json'));
+  await f.catalog([]);
+  const inventory = {
+    schemaVersion: 1,
+    appId: 730,
+    depotId: 2347770,
+    manifest: f.entry.source.manifest,
+    updatedAt: Math.floor(Date.now() / 1000),
+    maps: [{ map: f.entry.identity.map, sha1: 'b'.repeat(40), bytes: 100 }],
+  };
+  await writeOfficialMapInventory(f.options.jobs, inventory);
+  const selection = latestOfficialSelection(inventory, f.entry.identity.map);
+  await enqueueLatestMapRequest(f.options.jobs, selection);
+  f.entry.assetVersion = `steam-2347770-${inventory.manifest}`;
+  return {
+    ...f,
+    inventory,
+    selection,
+    packId: latestMapRequestId(selection),
+    assetPackId: latestMapPackId(selection.map, f.entry.source),
+  };
+}
+
+test('explicit Steam rate failures pause globally without reclassifying as unavailable source or affecting native exit 4', async (t) => {
+  const f = await fixture(t);
+  let limited = 0;
+  const downloader = join(f.root, 'rate-limited-downloader');
+  await writeFile(
+    downloader,
+    '#!/bin/sh\necho "Steam gave no manifest request code" >&2\nexit 4\n',
+    { mode: 0o700 },
+  );
+  await processOneMapRequest(
+    { ...f.options, onSteamRateLimit: () => limited++ },
+    {
+      prepareToolchain: async () => ({ downloader, s2v: '/trusted/unused-s2v' }),
+      prepare: async (options, subprocess) => {
+        await mkdir(options.output, { recursive: true });
+        const tools = await subprocess.prepareToolchain({});
+        await subprocess.run(tools.downloader, ['ls'], {
+          cwd: options.output,
+          home: options.output,
+          temporary: options.output,
+          log: join(options.output, 'private-steam.log'),
+        });
+      },
+    },
+  );
+  assert.equal(limited, 1);
+  assert.equal((await readMapResult(f.options.jobs, f.packId)).code, 'preparation_failed');
+  const native = await fixture(t);
+  let nativeLimited = 0;
+  await processOneMapRequest(
+    { ...native.options, onSteamRateLimit: () => nativeLimited++ },
+    {
+      prepare: async (options, subprocess) => {
+        await mkdir(options.output, { recursive: true });
+        await subprocess.run(process.execPath, ['-e', 'process.exit(4)'], {
+          cwd: options.output,
+          home: options.output,
+          temporary: options.output,
+          conversionWriteRoots: [options.output],
+        });
+      },
+    },
+  );
+  assert.equal(nativeLimited, 0);
+  assert.equal(
+    (await readMapResult(native.options.jobs, native.packId)).code,
+    'preparation_failed',
+  );
+});
+
+test('shared Steam cooldown blocks queued work after inventory rate failure and keeps heartbeat responsive', async (t) => {
+  const f = await fixture(t),
+    controller = new AbortController(),
+    refreshes = [],
+    jobs = [],
+    beats = [];
+  let clock = 1000;
+  const before = await readFile(join(f.options.jobs, 'requests', f.packId + '.json'));
+  await runMapWorker(
+    { ...f.options, signal: controller.signal },
+    {
+      now: () => clock,
+      refreshInventory: async () => {
+        refreshes.push(clock);
+        if (refreshes.length === 1)
+          throw Object.assign(Error('Rate limit'), { code: 'STEAM_RATE_LIMIT' });
+        return { manifest: '1', maps: [{}] };
+      },
+      processRequest: async () => {
+        jobs.push(clock);
+        controller.abort();
+        return true;
+      },
+      delay: async (ms, _value, { signal }) => {
+        if (signal.aborted) throw new DOMException('Stopped', 'AbortError');
+        assert.equal(jobs.length, 0);
+        const status = JSON.parse(
+          await readFile(join(f.options.jobs, 'worker-status.json'), 'utf8'),
+        );
+        assert.equal(status.status, 'idle');
+        assert.equal(status.updatedAt, clock);
+        beats.push(status.updatedAt);
+        assert.ok(ms <= 15000 && ms > 0);
+        clock += ms / 1000;
+      },
+    },
+  );
+  assert.deepEqual(refreshes, [1000, 1000 + mapWorkerLimits.steamCooldownSeconds]);
+  assert.deepEqual(jobs, [1900]);
+  assert.ok(beats.length >= 60);
+  assert.deepEqual(await readFile(join(f.options.jobs, 'requests', f.packId + '.json')), before);
+  assert.equal(
+    await lockMapWorker(f.options.jobs).then(async (release) => {
+      if (!release) return false;
+      await release();
+      return true;
+    }),
+    true,
+  );
+});
+
+test('shared Steam cooldown from a queued job also defers an inventory refresh becoming due during the pause', async (t) => {
+  const f = await fixture(t),
+    controller = new AbortController(),
+    refreshes = [],
+    jobs = [],
+    beats = [];
+  let clock = 1000;
+  await runMapWorker(
+    { ...f.options, signal: controller.signal },
+    {
+      now: () => clock,
+      refreshInventory: async () => {
+        refreshes.push(clock);
+        return { manifest: '1', maps: [{}] };
+      },
+      processRequest: async (options) => {
+        jobs.push(clock);
+        if (jobs.length === 1) {
+          clock += 2600;
+          return true;
+        }
+        if (jobs.length === 2) {
+          clock += 900;
+          options.onSteamRateLimit();
+          return true;
+        }
+        controller.abort();
+        return true;
+      },
+      delay: async (ms, _value, { signal }) => {
+        if (signal.aborted) throw new DOMException('Stopped', 'AbortError');
+        assert.equal(jobs.length, 2);
+        assert.equal(refreshes.length, 1);
+        const status = JSON.parse(
+          await readFile(join(f.options.jobs, 'worker-status.json'), 'utf8'),
+        );
+        assert.equal(status.status, 'idle');
+        assert.equal(status.updatedAt, clock);
+        beats.push(clock);
+        clock += ms / 1000;
+      },
+    },
+  );
+  assert.deepEqual(jobs, [1000, 3600, 5400]);
+  assert.deepEqual(refreshes, [1000, 5400]);
+  assert.equal(beats[0], 4500);
+  assert.ok(beats.at(-1) < 5400);
+  assert.ok(beats.length >= 60);
+});
+test('latest official source publishes a distinct content-bound immutable pack and recovers it without another conversion', async (t) => {
+  const f = await latestFixture(t);
+  let calls = 0;
+  const prepare = async (options) => {
+    calls++;
+    assert.deepEqual(options.expectedMapFiles, {
+      [f.selection.map]: { sha1: f.selection.sha1, bytes: f.selection.bytes },
+    });
+    assert.equal(options.expectedMapHashes, undefined);
+    await options.onSourceVerified({ ...f.selection, mapSha256: f.entry.source.mapSha256 });
+    const processing = await readMapResult(f.options.jobs, f.packId);
+    assert.equal(processing.status, 'processing');
+    assert.equal(processing.assetPackId, f.assetPackId);
+    await originalPack(options.output, f.entry);
+  };
+  await processOneMapRequest(f.options, { prepare });
+  const result = await readMapResult(f.options.jobs, f.packId);
+  assert.equal(result.status, 'ready');
+  assert.notEqual(f.packId, f.assetPackId);
+  assert.equal(result.assetPackId, f.assetPackId);
+  assert.deepEqual(result.source, f.entry.source);
+  const target = join(f.options.assets, 'packs', f.assetPackId);
+  const marker = JSON.parse(await readFile(join(target, 'pack.json')));
+  assert.equal(marker.kind, 'latest-official');
+  assert.equal(marker.requestId, f.packId);
+  assert.equal(marker.packId, f.assetPackId);
+  assert.deepEqual(marker.selection, f.selection);
+  await writeMapJobResult(f.options.jobs, { ...result, status: 'processing' });
+  await processOneMapRequest(f.options, { prepare });
+  assert.equal(calls, 1);
+  assert.equal((await readMapResult(f.options.jobs, f.packId)).status, 'ready');
+  const ledger = await readFile(join(f.options.jobs, 'locks', `${f.packId}.attempts.json`), 'utf8');
+  await writeMapJobResult(f.options.jobs, {
+    ...result,
+    status: 'failed',
+    code: 'worker_interrupted',
+  });
+  assert.equal(
+    await retryLatestMapRequest(f.options.jobs, f.selection, result.updatedAt + 301),
+    'queued',
+  );
+  await processOneMapRequest(f.options, {
+    prepare: () => assert.fail('A retry of already-published content must not reconvert.'),
+  });
+  assert.equal((await readMapResult(f.options.jobs, f.packId)).status, 'ready');
+  assert.equal(
+    await readFile(join(f.options.jobs, 'locks', `${f.packId}.attempts.json`), 'utf8'),
+    ledger,
+  );
+});
+test('latest conversion refuses absent or inconsistent source proof and removed official membership', async (t) => {
+  for (const mode of ['absent', 'sha1', 'manifest', 'membership'])
+    await t.test(mode, async (t) => {
+      const f = await latestFixture(t);
+      if (mode === 'membership')
+        await writeOfficialMapInventory(f.options.jobs, {
+          ...f.inventory,
+          maps: [{ ...f.inventory.maps[0], map: 'de_other' }],
+        });
+      let calls = 0;
+      await processOneMapRequest(f.options, {
+        prepare: async (options) => {
+          calls++;
+          if (mode !== 'absent')
+            await options.onSourceVerified({
+              ...f.selection,
+              mapSha256: f.entry.source.mapSha256,
+              ...(mode === 'sha1' ? { sha1: 'c'.repeat(40) } : { manifest: '42' }),
+            });
+          await originalPack(options.output, f.entry);
+        },
+      });
+      const result = await readMapResult(f.options.jobs, f.packId);
+      assert.equal(result.status, 'failed');
+      assert.equal(
+        result.code,
+        mode === 'membership'
+          ? 'approval_removed'
+          : mode === 'absent'
+            ? 'preparation_failed'
+            : 'source_mismatch',
+      );
+      assert.equal(calls, mode === 'membership' ? 0 : 1);
+      assert.equal(await absent(join(f.options.assets, 'packs', f.assetPackId)), true);
+    });
+});
 test('a concurrent or interrupted web atomic request never blocks another valid map job', async (t) => {
   const f = await fixture(t);
   const temporary = join(f.options.jobs, 'requests', `.${'b'.repeat(64)}-${'c'.repeat(24)}.tmp`);

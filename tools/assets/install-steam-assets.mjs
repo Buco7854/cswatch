@@ -197,8 +197,11 @@ export async function runAssetProcess(
           );
         if (failure) throw failure;
         if (code !== 0 && !allowFailure)
-          throw new Error(
-            `Operator asset stage failed with exit ${code ?? 'none'}, signal ${exitSignal ?? 'none'}. See ${log || 'the private cache log'}.`,
+          throw Object.assign(
+            new Error(
+              `Operator asset stage failed with exit ${code ?? 'none'}, signal ${exitSignal ?? 'none'}. See ${log || 'the private cache log'}.`,
+            ),
+            { exitCode: code },
           );
         resolveJob({ code, signal: exitSignal, stdout, stderr });
       } catch (error) {
@@ -236,6 +239,24 @@ export async function installSteamAssets(options, adapters = {}) {
       Object.keys(options.expectedMapHashes).some((map) => !maps.includes(map)))
   )
     throw new Error('Expected source hashes must cover exactly the selected maps.');
+  if (
+    options.expectedMapFiles !== undefined &&
+    (!options.expectedMapFiles ||
+      typeof options.expectedMapFiles !== 'object' ||
+      Array.isArray(options.expectedMapFiles) ||
+      Object.keys(options.expectedMapFiles).length !== maps.length ||
+      Object.keys(options.expectedMapFiles).some((map) => !maps.includes(map)) ||
+      maps.some(
+        (map) =>
+          !/^[a-f0-9]{40}$/.test(options.expectedMapFiles[map]?.sha1 || '') ||
+          !Number.isSafeInteger(options.expectedMapFiles[map]?.bytes) ||
+          options.expectedMapFiles[map].bytes < 1 ||
+          options.expectedMapFiles[map].bytes > steamAssetLimits.selectedBytes,
+      ))
+  )
+    throw new Error('Expected official source files must cover exactly the selected maps.');
+  if (options.onSourceVerified !== undefined && typeof options.onSourceVerified !== 'function')
+    throw new Error('Invalid trusted source verification callback.');
   if (!options.output || !options.cache || Boolean(options.s2v) !== Boolean(options.downloader))
     throw new Error(
       'Provide --output and --cache. Supply both --s2v and --downloader to override the verified bootstrap.',
@@ -373,6 +394,15 @@ export async function installSteamAssets(options, adapters = {}) {
       assetVersion = options.assetVersion ?? `steam-${STEAM_DEPOT}-${plan.manifest}`;
     if (manifest && plan.manifest !== manifest)
       throw new Error('Selected Steam depot manifest does not match the requested version.');
+    for (const map of maps) {
+      const expected = options.expectedMapFiles?.[map],
+        actual = plan.files.find((file) => file.file === `game/csgo/maps/${map}.vpk`);
+      if (expected && (!actual || actual.sha1 !== expected.sha1 || actual.bytes !== expected.bytes))
+        throw Object.assign(
+          new Error('Official source differs from the selected inventory snapshot.'),
+          { code: 'SOURCE_MAP_MISMATCH' },
+        );
+    }
     await writeFile(
       join(pins, `manifest_${STEAM_DEPOT}.txt`),
       `Content Manifest for Depot ${STEAM_DEPOT}\n\nManifest ID / date     : ${plan.manifest} / pinned by selective preflight\n`,
@@ -384,21 +414,35 @@ export async function installSteamAssets(options, adapters = {}) {
     );
     for (const file of plan.files)
       if ((await fileHash(join(game, file.file), 'sha1', file.bytes)) !== file.sha1)
-        throw new Error('A selected Steam file failed its manifest hash check.');
+        throw Object.assign(new Error('A selected Steam file failed its manifest hash check.'), {
+          code: 'SOURCE_MAP_MISMATCH',
+        });
     for (const map of maps) {
       const expected = options.expectedMapHashes?.[map];
-      if (
-        expected &&
-        (await fileHash(
-          join(game, 'game/csgo/maps', `${map}.vpk`),
-          'sha256',
-          steamAssetLimits.selectedBytes,
-        )) !== expected
-      )
+      const actualHash =
+        expected || options.onSourceVerified
+          ? await fileHash(
+              join(game, 'game/csgo/maps', `${map}.vpk`),
+              'sha256',
+              steamAssetLimits.selectedBytes,
+            )
+          : undefined;
+      if (expected && actualHash !== expected)
         throw Object.assign(
           new Error('Official map content does not match its approved source hash.'),
           { code: 'SOURCE_MAP_MISMATCH' },
         );
+      if (options.onSourceVerified) {
+        const file = plan.files.find((file) => file.file === `game/csgo/maps/${map}.vpk`);
+        await options.onSourceVerified({
+          map,
+          manifest: plan.manifest,
+          mapSha256: actualHash,
+          sha1: file.sha1,
+          bytes: file.bytes,
+        });
+        signal?.throwIfAborted();
+      }
     }
     const shaderIndexes = await Promise.all(
       ['csgo', 'core'].map(async (group) => [

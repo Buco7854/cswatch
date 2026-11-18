@@ -18,10 +18,9 @@ export function PublicShell({
   theme: string;
   toggleTheme: () => void;
 }) {
-  const { config, signIn } = useApp();
+  const { signIn } = useApp();
   return (
     <div className="public-site">
-      <LandingBackdrop enabled={config.public_access && !config.setup_required} />
       <header className="public-header">
         <Brand />
         <div className="public-utilities">
@@ -54,45 +53,42 @@ export function Landing() {
   const { config, signIn } = useApp();
   return (
     <section className="landing-upload" aria-labelledby="landing-title">
-      <header className="landing-copy">
-        <h1 id="landing-title">{t('Review your match.')}</h1>
-        <p>{t('Upload a CS2 demo. Explore every perspective.')}</p>
-      </header>
-      <div className="landing-import">
-        {config.guest_uploads_enabled ? (
-          <>
-            <Upload compact />
-            <div className="landing-privacy">
-              <LockKeyhole size={15} aria-hidden="true" />
+      <LandingBackdrop enabled={config.public_access && !config.setup_required} />
+      <div className="landing-workspace">
+        <header className="landing-copy">
+          <h1 id="landing-title">{t('Open your demo.')}</h1>
+          <p>{t('Every round, another perspective.')}</p>
+        </header>
+        <div className="landing-import">
+          {config.guest_uploads_enabled ? (
+            <>
+              <Upload compact />
+              <div className="landing-privacy">
+                <LockKeyhole size={15} aria-hidden="true" />
+                <p>
+                  {t('Private upload · {{hours}}h maximum.', {
+                    hours: config.guest_retention_hours,
+                  })}
+                </p>
+              </div>
+            </>
+          ) : (
+            <section className="upload-panel upload-signin" aria-labelledby="upload-title">
+              <LockKeyhole size={30} strokeWidth={1.5} aria-hidden="true" />
+              <h2 id="upload-title" className="visually-hidden">
+                {t('Sign in to upload')}
+              </h2>
               <p>
-                {t('No account needed. Private to this browser for up to {{hours}}h.', {
-                  hours: config.guest_retention_hours,
-                })}
+                {t('Guest uploads are disabled on this instance. Sign in to review your demo.')}
               </p>
-            </div>
-          </>
-        ) : (
-          <section className="upload-panel upload-signin" aria-labelledby="upload-title">
-            <LockKeyhole size={30} strokeWidth={1.5} aria-hidden="true" />
-            <h2 id="upload-title" className="visually-hidden">
-              {t('Sign in to upload')}
-            </h2>
-            <p>{t('Guest uploads are disabled on this instance. Sign in to review your demo.')}</p>
-            <button className="button primary" onClick={signIn}>
-              {t('Sign in to upload')}
-              <ArrowUpRight size={17} />
-            </button>
-          </section>
-        )}
-      </div>
-      {config.guest_uploads_enabled && (
-        <div className="landing-account">
-          <button className="text-button" onClick={signIn}>
-            {t('Sign in to keep demos and notes.')}
-            <ArrowUpRight size={14} aria-hidden="true" />
-          </button>
+              <button className="button primary" onClick={signIn}>
+                {t('Sign in to upload')}
+                <ArrowUpRight size={17} />
+              </button>
+            </section>
+          )}
         </div>
-      )}
+      </div>
     </section>
   );
 }

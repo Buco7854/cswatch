@@ -39,7 +39,7 @@ COPY --from=asset-build /build/tools/assets/*.mjs ./tools/assets/
 COPY --from=asset-build /build/tools/assets/bin/asset-network-deny ./tools/assets/bin/asset-network-deny
 COPY --from=backend /build/backend/dist/map-catalog.js /build/backend/dist/map-identity.js /build/backend/dist/map-jobs.js /build/backend/dist/map-asset-files.js /build/backend/dist/asset-content.js ./backend/dist/
 COPY --from=backend /build/backend/node_modules/zod ./backend/node_modules/zod
-COPY shared/equipment-icons.json shared/equipment-models.json shared/agent-animation.json shared/map-previews.json ./shared/
+COPY shared/equipment-icons.json shared/equipment-models.json shared/agent-animation.json shared/map-previews.json shared/gameplay-sounds.json shared/gameplay-sound-files.mjs ./shared/
 RUN mkdir -p /map-assets /map-jobs /map-cache /map-catalog \
     && node -e "const fs=require('node:fs'); fs.writeFileSync('backend/package.json', JSON.stringify({type:'module',private:true})); fs.writeFileSync('/map-catalog/catalog.json',JSON.stringify({schemaVersion:1,entries:[]})+'\n',{mode:0o640})" \
     && chown -R node:node /map-assets /map-jobs /map-cache /map-catalog

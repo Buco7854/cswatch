@@ -1,7 +1,9 @@
 /** Run locally after build, or feed to `docker run -i ... node --input-type=module`. */
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import {
   existsSync,
+  writeFileSync,
   mkdirSync,
   copyFileSync,
   constants,
@@ -53,6 +55,56 @@ try {
       .statusCode,
     404,
   );
+  const emptySounds = await app.inject({ method: 'GET', url: '/api/sound-assets', headers });
+  assert.deepEqual(
+    emptySounds.json(),
+    { schemaVersion: 1, items: {} },
+    'No proprietary audio is bundled.',
+  );
+  const sound = Buffer.alloc(1644);
+  sound.write('RIFF');
+  sound.writeUInt32LE(sound.length - 8, 4);
+  sound.write('WAVEfmt ', 8);
+  sound.writeUInt32LE(16, 16);
+  sound.writeUInt16LE(1, 20);
+  sound.writeUInt16LE(1, 22);
+  sound.writeUInt32LE(8000, 24);
+  sound.writeUInt32LE(16000, 28);
+  sound.writeUInt16LE(2, 32);
+  sound.writeUInt16LE(16, 34);
+  sound.write('data', 36);
+  sound.writeUInt32LE(1600, 40);
+  const soundPath = join(root, 'maps', 'sounds', 'ak47-fire');
+  mkdirSync(soundPath, { recursive: true });
+  writeFileSync(join(soundPath, 'sound.wav'), sound);
+  writeFileSync(
+    join(soundPath, 'manifest.json'),
+    JSON.stringify({
+      schemaVersion: 1,
+      id: 'ak47-fire',
+      extension: 'wav',
+      sha256: createHash('sha256').update(sound).digest('hex'),
+      bytes: sound.length,
+      durationMs: 100,
+      sampleRate: 8000,
+      channels: 1,
+    }),
+  );
+  const originalSound = await app.inject({
+    method: 'GET',
+    url: '/api/sound-assets/ak47-fire.wav',
+    headers,
+  });
+  assert.equal(originalSound.statusCode, 200);
+  assert.deepEqual(originalSound.rawPayload, sound);
+  sound[100] = 1;
+  writeFileSync(join(soundPath, 'sound.wav'), sound);
+  assert.equal(
+    (await app.inject({ method: 'GET', url: '/api/sound-assets/ak47-fire.wav', headers }))
+      .statusCode,
+    404,
+    'Same-size unverified sound replacement is not served.',
+  );
   const registration = await app.inject({
     method: 'POST',
     url: '/api/auth/register',
@@ -95,6 +147,16 @@ try {
   const manifest = JSON.parse(gunzipSync(playback.rawPayload).toString());
   assert.equal(manifest.version, 2);
   assert.equal(manifest.map, 'de_mirage');
+  assert.equal(
+    manifest.gameplaySounds?.coverage.footstep,
+    'partial',
+    'Recorded native footstep tokens survive confined parsing.',
+  );
+  assert.equal(
+    manifest.gameplaySounds?.coverage.reload,
+    'partial',
+    'Recorded native reload sound tokens survive confined parsing.',
+  );
   assert.equal(
     manifest.matchState?.complete,
     true,

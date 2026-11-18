@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api';
 import { sample } from './sample';
 import { ReplayCache, chunkIndex, validateManifest } from './replay-cache';
 import { validateItemSamples, validateItemState } from './item-state';
+import { validateGameplaySoundInfo, validateGameplaySoundCues } from './gameplay-sound-assets';
 import type { Demo, Playback } from './types';
 import type { PlaybackChunk, PlaybackManifest } from '../../shared/playback';
 
@@ -86,6 +87,13 @@ export function useReplay(
           if (replay.version !== 1 || !replay.frames?.length)
             throw new Error('Replay metadata is invalid.');
           validateItemState(replay.itemState);
+          replay.gameplaySounds = validateGameplaySoundInfo(replay.gameplaySounds);
+          replay.sounds = validateGameplaySoundCues(
+            replay.sounds,
+            replay.frames[0].tick,
+            replay.frames.at(-1)!.tick,
+            replay.frames.at(-1)!.tick,
+          );
           replay.itemSamples = validateItemSamples(replay.itemSamples, replay.frames.at(-1)!.tick);
           if (Boolean(replay.itemState) !== (replay.itemSamples !== undefined))
             throw new Error('Replay item metadata is invalid.');
@@ -139,13 +147,23 @@ export function useReplay(
     };
   }, [manifest, index, retry, identity, loadedFor]);
 
+  const availableUntil = useCallback(
+    (at: number) => {
+      if (loadedFor !== identity) return at;
+      return cache.current ? cache.current.readyUntil(at) : (data?.frames.at(-1)?.tick ?? at);
+    },
+    [identity, loadedFor, data],
+  );
+  const currentData = loadedFor === identity ? cache.current?.peek(tick) || data : null;
+  const missingCurrent = Boolean(manifest && loadedFor === identity && !cache.current?.has(tick));
   return {
-    data: loadedFor === identity ? data : null,
+    data: currentData,
     demo: metadataFor === identity ? demo : null,
     setDemo,
     error,
     chunkError,
-    buffering,
+    buffering: buffering || missingCurrent,
+    availableUntil,
     ...bounds,
     retryChunk: () => setRetry((n) => n + 1),
   };

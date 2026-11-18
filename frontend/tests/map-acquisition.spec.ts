@@ -44,6 +44,37 @@ const ready = {
     },
   },
 };
+const latestSelection = {
+  map: qaMap,
+  appId: 730,
+  depotId: 2347770,
+  manifest: '12345678901234567890',
+  sha1: 'c'.repeat(40),
+  bytes: 128000,
+};
+const latestEligible = {
+  ...eligible,
+  resolution: {
+    status: 'latest',
+    selection: latestSelection,
+    inventoryUpdatedAt: 1795000000,
+    source: null,
+  },
+  packId: null,
+};
+const latestReady = {
+  ...ready,
+  resolution: {
+    ...latestEligible.resolution,
+    source: {
+      appId: 730,
+      depotId: 2347770,
+      manifest: latestSelection.manifest,
+      mapSha256: 'd'.repeat(64),
+    },
+  },
+  verification: 'latest-official',
+};
 async function install(page: Page) {
   await page.addInitScript(() => {
     localStorage.setItem('cswatch.language', 'en');
@@ -360,4 +391,130 @@ test('failed-job cooldown is checked sparsely and becoming eligible never enqueu
     page.locator('.scene').getByRole('status', { name: 'Map preparation queued', exact: true }),
   ).toBeVisible();
   expect(posts).toBe(1);
+});
+
+test('an unavailable exact source can select one distinct latest job without replaying its lost enqueue response', async ({
+  page,
+}) => {
+  const legacy = await install(page);
+  let posts = 0,
+    gets = 0;
+  await page.route('**/api/demos/acquisition-a/map-assets', (route) => {
+    if (route.request().method() === 'POST') {
+      posts++;
+      expect(route.request().postDataJSON()).toEqual({});
+      if (posts === 1)
+        return route.fulfill({
+          status: 202,
+          json: { ...eligible, canAcquire: false, acquisition: 'queued' },
+        });
+      return route.abort('failed');
+    }
+    gets++;
+    // The server, never the browser, resolves the approved source's unavailable
+    // result to a fixed official selection. A lost POST remains uncertain.
+    return route.fulfill({ json: gets === 1 ? eligible : latestEligible });
+  });
+  await page.goto('/watch/acquisition-a');
+  await expect(page.locator('.map-unavailable p')).toContainText(
+    'The preparation request could not be confirmed',
+  );
+  expect(posts).toBe(2);
+  expect(gets).toBe(3);
+  await page.clock.install();
+  await page.clock.fastForward(600000);
+  expect(posts).toBe(2);
+  expect(gets).toBe(3);
+  expect(legacy()).toBe(0);
+  await expect(page).toHaveURL(/\/watch\/acquisition-a$/);
+});
+
+test('latest ready maps disclose layout uncertainty and raw recorded identity in progressive responsive details', async ({
+  page,
+}) => {
+  const legacy = await install(page);
+  const recorded = {
+    map: qaMap,
+    buildNum: 17000,
+    patchVersion: 14100,
+    demoVersionGuid: '12345678-1234-1234-1234-123456789abc',
+    addonPresence: 'none',
+  };
+  await page.route('**/api/demos/acquisition-a/playback', (route) =>
+    route.fulfill({ json: { ...originalMapReplay(), mapIdentity: recorded } }),
+  );
+  let posts = 0;
+  await page.route('**/api/demos/acquisition-a/map-assets', (route) => {
+    if (route.request().method() === 'POST') posts++;
+    return route.fulfill({ json: latestReady });
+  });
+  await page.goto('/watch/acquisition-a');
+  await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
+  const badge = page.locator('.viewer-map-verification');
+  await expect(badge).toContainText('Latest official map');
+  await expect(badge).toHaveAttribute('title', /layout may differ/);
+  await page.getByRole('button', { name: 'Options', exact: true }).click();
+  await page.getByRole('tab', { name: 'Performance', exact: true }).click();
+  const provenance = page.locator('section[data-map-verification="latest-official"]');
+  await expect(provenance).toContainText('not a verified historical match');
+  await expect(provenance.getByText(recorded.demoVersionGuid, { exact: true })).toBeHidden();
+  await provenance.getByText('Version details', { exact: true }).click();
+  await expect(provenance.getByText(recorded.demoVersionGuid, { exact: true })).toBeVisible();
+  await expect(provenance.getByText('17000', { exact: true })).toBeVisible();
+  await expect(provenance.getByText('14100', { exact: true })).toBeVisible();
+  await expect(provenance.getByText(latestSelection.manifest, { exact: true })).toBeVisible();
+  await expect(provenance).toContainText('do not identify a Steam manifest');
+  for (const theme of ['dark', 'light']) {
+    await page.evaluate((theme) => {
+      document.documentElement.dataset.theme = theme;
+    }, theme);
+    for (const width of [1440, 768, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      const dialog = page.locator('.viewer-options-dialog');
+      expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+        true,
+      );
+      expect(
+        await provenance.evaluate((element) => element.scrollWidth <= element.clientWidth),
+      ).toBe(true);
+      const contentPack = provenance.getByText(pack, { exact: true });
+      await contentPack.scrollIntoViewIfNeeded();
+      await expect(contentPack).toBeInViewport({ ratio: 1 });
+      await expect(provenance.getByText('d'.repeat(64), { exact: true })).toBeVisible();
+    }
+  }
+  expect(posts).toBe(0);
+  expect(legacy()).toBe(0);
+});
+
+test('a different eligible source returned by enqueue is observed before one new request and its lost response never replays', async ({
+  page,
+}) => {
+  const legacy = await install(page);
+  let posts = 0,
+    gets = 0;
+  await page.route('**/api/demos/acquisition-a/map-assets', (route) => {
+    if (route.request().method() === 'POST') {
+      posts++;
+      expect(route.request().postDataJSON()).toEqual({});
+      if (posts === 1) return route.fulfill({ status: 202, json: latestEligible });
+      expect(gets).toBe(2);
+      // A new selection is a distinct authorized intent. A lost reply must not
+      // replay that intent even when the following read still reports eligible.
+      return route.abort('failed');
+    }
+    gets++;
+    return route.fulfill({ json: gets === 1 ? eligible : latestEligible });
+  });
+  await page.goto('/watch/acquisition-a');
+  await expect(page.locator('.map-unavailable p')).toContainText(
+    'The preparation request could not be confirmed',
+  );
+  expect(posts).toBe(2);
+  expect(gets).toBe(3);
+  await page.clock.install();
+  await page.clock.fastForward(600000);
+  expect(posts).toBe(2);
+  expect(gets).toBe(3);
+  expect(legacy()).toBe(0);
 });

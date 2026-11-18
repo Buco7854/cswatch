@@ -12,6 +12,7 @@ import {
 } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Group, MathUtils, Matrix4, type Object3D } from 'three';
+import { playerPose, type PoseTiming } from '../player-pose';
 import { nativeWeaponFrame } from '../agent-attachment';
 import {
   prepareEquipmentModel,
@@ -194,11 +195,14 @@ export function PovEquipment({
   position,
   next,
   alpha,
+  timing,
 }: {
   position: Position;
   next?: Position;
   alpha: number;
+  timing?: PoseTiming;
 }) {
+  const pose = playerPose(position, next, alpha, timing);
   const context = useContext(EquipmentModels),
     key = equipmentIconKey(position.weapon);
   const asset = key && context?.catalog.items[key];
@@ -209,18 +213,12 @@ export function PovEquipment({
   );
   const root = useMemo(() => new Group(), []);
   useFrame(() => {
-    const to = next && next.alive === position.alive ? next : position;
     root.position.set(
-      (position.x + (to.x - position.x) * alpha) * 0.0254,
-      (position.z + (to.z - position.z) * alpha) * 0.0254 + 1.65 - (position.duck ?? 0) * 0.7,
-      -(position.y + (to.y - position.y) * alpha) * 0.0254,
+      pose.x * 0.0254,
+      pose.z * 0.0254 + 1.65 - (pose.duck ?? 0) * 0.7,
+      -pose.y * 0.0254,
     );
-    root.rotation.set(
-      0,
-      MathUtils.degToRad(position.yaw),
-      -MathUtils.degToRad(position.pitch),
-      'YZX',
-    );
+    root.rotation.set(0, MathUtils.degToRad(pose.yaw), -MathUtils.degToRad(pose.pitch), 'YZX');
   });
   if (!asset || !preset || !position.alive) return null;
   return (

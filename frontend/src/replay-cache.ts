@@ -1,7 +1,9 @@
 import type { Playback, PlaybackManifest, PlaybackChunk } from '../../shared/playback';
 import { validateItemSamples, validateItemState } from './item-state';
+import { validateGameplaySoundInfo, validateGameplaySoundCues } from './gameplay-sound-assets';
 
 export function validateManifest(value: PlaybackManifest): PlaybackManifest {
+  value.gameplaySounds = validateGameplaySoundInfo(value.gameplaySounds);
   if (
     value.version !== 2 ||
     !Number.isSafeInteger(value.firstTick) ||
@@ -56,6 +58,7 @@ export function chunkIndex(manifest: PlaybackManifest, tick: number): number {
 /** At most three decoded slices and two requests; seeking cancels irrelevant transfers. */
 export class ReplayCache {
   private cache = new Map<number, PlaybackChunk>();
+  private views = new Map<number, Playback>();
   private pending = new Map<
     number,
     { controller: AbortController; promise: Promise<PlaybackChunk> }
@@ -75,6 +78,42 @@ export class ReplayCache {
   }
   has(tick: number) {
     return this.cache.has(chunkIndex(this.manifest, tick));
+  }
+
+  /** Synchronous canonical lookup avoids rendering a previous slice after a cached boundary seek. */
+  peek(tick: number): Playback | undefined {
+    const index = chunkIndex(this.manifest, tick),
+      part = this.cache.get(index);
+    return part ? this.view(index, part) : undefined;
+  }
+  /** Only contiguous already-decoded slices may extend the playback clock horizon. */
+  readyUntil(tick: number): number {
+    let index = chunkIndex(this.manifest, tick);
+    if (!this.cache.has(index)) return tick;
+    while (index + 1 < this.manifest.chunks.length && this.cache.has(index + 1)) index++;
+    return this.manifest.chunks[index].endTick;
+  }
+  private view(index: number, part: PlaybackChunk): Playback {
+    const existing = this.views.get(index);
+    if (existing) return existing;
+    const {
+      version: _version,
+      chunks: _chunks,
+      firstTick: _first,
+      lastTick: _last,
+      ...metadata
+    } = this.manifest;
+    const value: Playback = {
+      ...metadata,
+      version: 1,
+      frames: part.frames,
+      grenades: part.grenades,
+      voice: part.voice,
+      sounds: part.sounds,
+      itemSamples: part.itemSamples,
+    };
+    if (this.cache.get(index) === part) this.views.set(index, value);
+    return value;
   }
 
   private load(index: number): Promise<PlaybackChunk> {
@@ -107,12 +146,19 @@ export class ReplayCache {
         )
           throw new Error('Replay chunk is invalid.');
         part.itemSamples = validateItemSamples(part.itemSamples, info.endTick);
+        part.sounds = validateGameplaySoundCues(
+          part.sounds,
+          info.firstFrameTick,
+          info.endTick,
+          this.manifest.lastTick,
+        );
         if (Boolean(this.manifest.itemState) !== (part.itemSamples !== undefined))
           throw new Error('Replay item metadata is invalid.');
         this.cache.set(index, part);
         while (this.cache.size > 3) {
           const oldest = this.cache.keys().next().value!;
           this.cache.delete(oldest);
+          this.views.delete(oldest);
         }
         return part;
       })
@@ -137,21 +183,7 @@ export class ReplayCache {
     if (this.disposed) throw new DOMException('Replay closed', 'AbortError');
     if (this.target === index && index + 1 < this.manifest.chunks.length && this.pending.size < 2)
       void this.load(index + 1).catch(() => {});
-    const {
-      version: _version,
-      chunks: _chunks,
-      firstTick: _first,
-      lastTick: _last,
-      ...metadata
-    } = this.manifest;
-    return {
-      ...metadata,
-      version: 1,
-      frames: part.frames,
-      grenades: part.grenades,
-      voice: part.voice,
-      itemSamples: part.itemSamples,
-    };
+    return this.view(index, part);
   }
 
   close() {
@@ -159,5 +191,6 @@ export class ReplayCache {
     for (const request of this.pending.values()) request.controller.abort();
     this.pending.clear();
     this.cache.clear();
+    this.views.clear();
   }
 }

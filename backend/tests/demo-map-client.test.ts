@@ -4,6 +4,7 @@ import {
   validateDemoMapAssets,
   mapAcquisitionMessage,
   readMapJSON,
+  mapAcquisitionKey,
 } from '../../frontend/src/demo-map-assets.js';
 const map = 'de_qa',
   pack = 'a'.repeat(64),
@@ -72,6 +73,20 @@ test('demo discovery accepts only matching immutable complete packs and explicit
   );
   assert.equal(manual.acquisition?.verification, 'version-unverified');
   assert.equal(mapAcquisitionMessage(manual), undefined);
+  assert.throws(() =>
+    validateDemoMapAssets(
+      {
+        ...pending,
+        resolution: { status: 'unknown' },
+        canAcquire: false,
+        acquisition: 'disabled',
+        verification: 'version-unverified',
+        packId: null,
+        assets: { ...empty, environment: full.environment },
+      },
+      map,
+    ),
+  );
 });
 test('missing identity, failed jobs, queued jobs and disabled policy produce distinct truthful status', () => {
   const unknown = validateDemoMapAssets(
@@ -127,4 +142,164 @@ test('failed eligibility is accepted only for bounded transient retry codes, nev
     );
   for (const code of ['source_mismatch', 'approval_removed', undefined])
     assert.throws(() => validateDemoMapAssets({ ...pending, acquisition: 'failed', code }, map));
+});
+
+const selection = {
+  map,
+  appId: 730,
+  depotId: 2347770,
+  manifest: '12345678901234567890',
+  sha1: 'c'.repeat(40),
+  bytes: 128000,
+};
+const latestPending = {
+  ...pending,
+  resolution: {
+    status: 'latest',
+    selection,
+    inventoryUpdatedAt: 1795000000,
+    source: null,
+  },
+  packId: null,
+};
+const source = {
+  appId: 730,
+  depotId: 2347770,
+  manifest: selection.manifest,
+  mapSha256: 'd'.repeat(64),
+};
+const latestReady = {
+  ...latestPending,
+  resolution: { ...latestPending.resolution, source },
+  canAcquire: false,
+  acquisition: 'ready',
+  verification: 'latest-official',
+  packId: pack,
+  assets: full,
+};
+test('latest official selection keeps queue eligibility separate from ready content provenance', () => {
+  const pendingState = validateDemoMapAssets(latestPending, map);
+  assert.equal(pendingState.acquisition?.packId, null);
+  assert.equal(pendingState.acquisition?.latest?.source, null);
+  assert.match(mapAcquisitionMessage(pendingState)!.description, /latest official/);
+  assert.equal(
+    mapAcquisitionMessage({ ...pendingState, pollingEnded: true })!.title,
+    'Map preparation is still pending',
+  );
+  assert.equal(
+    mapAcquisitionMessage({ ...pendingState, pollingEnded: true, requesting: true })!.title,
+    'Requesting map preparation',
+  );
+  const queued = validateDemoMapAssets(
+    { ...latestPending, acquisition: 'queued', canAcquire: false },
+    map,
+  );
+  assert.equal(queued.status, 'pending');
+  assert.match(mapAcquisitionMessage(queued)!.description, /layout may differ/);
+  const ready = validateDemoMapAssets(latestReady, map);
+  assert.equal(ready.status, 'ready');
+  assert.equal(ready.acquisition?.verification, 'latest-official');
+  assert.deepEqual(ready.acquisition?.latest?.source, source);
+  assert.equal(ready.assets.model, full.model);
+  assert.equal(mapAcquisitionMessage(ready), undefined);
+  assert.equal(mapAcquisitionKey(pendingState.acquisition), mapAcquisitionKey(ready.acquisition));
+  assert.notEqual(
+    mapAcquisitionKey(pendingState.acquisition),
+    mapAcquisitionKey(validateDemoMapAssets(pending, map).acquisition),
+  );
+  const refreshed = validateDemoMapAssets(
+    {
+      ...latestPending,
+      resolution: {
+        ...latestPending.resolution,
+        selection: { ...selection, manifest: '12345678901234567891' },
+      },
+    },
+    map,
+  );
+  assert.notEqual(
+    mapAcquisitionKey(pendingState.acquisition),
+    mapAcquisitionKey(refreshed.acquisition),
+  );
+  const unavailable = validateDemoMapAssets(
+    {
+      ...latestPending,
+      canAcquire: false,
+      acquisition: 'failed',
+      code: 'source_unavailable',
+    },
+    map,
+  );
+  assert.match(mapAcquisitionMessage(unavailable)!.description, /selected official Steam source/);
+});
+test('latest official discovery rejects malformed selections and unrelated prepared sources', () => {
+  for (const change of [
+    { map: 'de_other' },
+    { appId: 731 },
+    { depotId: 2347771 },
+    { manifest: 1234567 },
+    { manifest: '012345' },
+    { manifest: '18446744073709551616' },
+    { sha1: 'c'.repeat(39) },
+    { bytes: 0 },
+    { bytes: 2 * 1024 ** 3 + 1 },
+    { bytes: 1.5 },
+    { url: 'https://untrusted.invalid/map.vpk' },
+  ])
+    assert.throws(() =>
+      validateDemoMapAssets(
+        {
+          ...latestPending,
+          resolution: { ...latestPending.resolution, selection: { ...selection, ...change } },
+        },
+        map,
+      ),
+    );
+  for (const changedSource of [
+    null,
+    undefined,
+    { ...source, appId: 731 },
+    { ...source, depotId: 2347771 },
+    { ...source, manifest: '12345' },
+    { ...source, mapSha256: '../escape' },
+    { ...source, url: 'https://untrusted.invalid' },
+  ])
+    assert.throws(() =>
+      validateDemoMapAssets(
+        { ...latestReady, resolution: { ...latestReady.resolution, source: changedSource } },
+        map,
+      ),
+    );
+  for (const inventoryUpdatedAt of [-1, 1.5, Infinity, 8640000000001])
+    assert.throws(() =>
+      validateDemoMapAssets(
+        { ...latestPending, resolution: { ...latestPending.resolution, inventoryUpdatedAt } },
+        map,
+      ),
+    );
+});
+test('latest official readiness never accepts manual URLs, incomplete assets or exact-version labeling', () => {
+  for (const change of [
+    { packId: null },
+    { packId: 'b'.repeat(64) },
+    { verification: 'operator-approved' },
+    { verification: 'version-unverified' },
+    { assets: { ...full, mobile: null } },
+    { assets: { ...full, environment: null } },
+    { assets: { ...full, model: '/map-assets/de_qa/desktop/scene.glb' } },
+  ])
+    assert.throws(() => validateDemoMapAssets({ ...latestReady, ...change }, map));
+  assert.throws(() => validateDemoMapAssets({ ...latestPending, packId: pack }, map));
+  assert.throws(() =>
+    validateDemoMapAssets(
+      {
+        ...latestPending,
+        resolution: latestReady.resolution,
+        acquisition: 'processing',
+        canAcquire: false,
+        packId: pack,
+      },
+      map,
+    ),
+  );
 });

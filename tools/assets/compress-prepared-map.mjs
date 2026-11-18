@@ -12,6 +12,10 @@ import { localDirectory, regularFile } from './toolchain-security.mjs';
 import { validateTexturePlan } from './texture-plan-validation.mjs';
 import { writePreparedModel } from './prepared-model-output.mjs';
 import { writeTierMetadata } from './map-tier-output.mjs';
+import { NodeIO } from '@gltf-transform/core';
+import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
+import { MeshoptDecoder } from './meshopt-glb.mjs';
+import { batchMapMeshes } from './batch-map-meshes.mjs';
 
 async function bounded(path, limit) {
   await localDirectory(dirname(path));
@@ -22,7 +26,7 @@ async function bounded(path, limit) {
     await handle.close();
   }
 }
-export async function compressPreparedGeometry({ input, output, map, tier }) {
+export async function compressPreparedGeometry({ input, output, map, tier, batchStatic = false }) {
   input = resolve(input);
   output = resolve(output);
   if (
@@ -50,9 +54,27 @@ export async function compressPreparedGeometry({ input, output, map, tier }) {
   try {
     const bytes = await bounded(input, 2 * 1024 ** 3),
       metadata = await readAtmosphereGlb(input);
-    const compressed = metadata.document.extensionsRequired?.includes('EXT_meshopt_compression')
-      ? { bytes, report: { ...previous.geometryCompression, reusedExisting: true } }
-      : await compressGlbGeometry(bytes);
+    let batching,
+      preparedBytes = bytes;
+    if (batchStatic) {
+      await MeshoptDecoder.ready;
+      const io = new NodeIO()
+          .registerExtensions(ALL_EXTENSIONS)
+          .registerDependencies({ 'meshopt.decoder': MeshoptDecoder })
+          .setAllowNetwork(false),
+        document = await io.readBinary(bytes);
+      batching = await batchMapMeshes(document, { cellSize: tier === 'mobile' ? 16 : 64 });
+      document
+        .getRoot()
+        .listExtensionsUsed()
+        .find((extension) => extension.extensionName === 'EXT_meshopt_compression')
+        ?.dispose();
+      preparedBytes = await io.writeBinary(document);
+    }
+    const compressed =
+      !batchStatic && metadata.document.extensionsRequired?.includes('EXT_meshopt_compression')
+        ? { bytes, report: { ...previous.geometryCompression, reusedExisting: true } }
+        : await compressGlbGeometry(preparedBytes);
     const size = await writePreparedModel(join(output, 'scene.glb'), compressed.bytes);
     const manifest = {
       ...previous,
@@ -62,6 +84,12 @@ export async function compressPreparedGeometry({ input, output, map, tier }) {
       sourceSha256: source.sha256,
       sourceBytes: source.bytes,
       geometryCompression: compressed.report,
+      ...(batching
+        ? {
+            staticBatching: batching,
+            geometry: `Opaque static sibling geometry batched in ${batching.cellSize}m cells; source hierarchy and materials retained`,
+          }
+        : {}),
       preparedAt: new Date().toISOString(),
     };
     const serialized = Buffer.from(JSON.stringify(manifest, null, 2));
@@ -83,20 +111,22 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       map: { type: 'string' },
       tier: { type: 'string' },
       help: { type: 'boolean' },
+      'batch-static': { type: 'boolean' },
     },
   });
   if (values.help || !values.input || !values.output || !values.map || !values.tier) {
     console.log(
-      'Usage: node compress-prepared-map.mjs --input /OLD/map/tier/scene.glb --output /NEW/map/tier --map de_dust2 --tier desktop|mobile',
+      'Usage: node compress-prepared-map.mjs --input /OLD/map/tier/scene.glb --output /NEW/map/tier --map de_dust2 --tier desktop|mobile [--batch-static]',
     );
     process.exit(values.help ? 0 : 1);
   }
-  const result = await compressPreparedGeometry(values);
+  const result = await compressPreparedGeometry({ ...values, batchStatic: values['batch-static'] });
   console.log(
     JSON.stringify({
       path: result.path,
       bytes: result.manifest.bytes,
       geometryCompression: result.manifest.geometryCompression,
+      ...(result.manifest.staticBatching ? { staticBatching: result.manifest.staticBatching } : {}),
       textureBudget: result.manifest.textureBudget,
     }),
   );

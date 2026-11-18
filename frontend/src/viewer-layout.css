@@ -621,6 +621,12 @@
   .viewer-context .viewer-map-status[data-status='ready'] {
     display: none;
   }
+  .viewer-frame[data-score-visible='true']
+    .viewer-context:has(.viewer-map-status[data-status='ready'])
+    > .viewer-map-verification::before {
+    content: none;
+    margin: 0;
+  }
   .viewer-frame .viewer-dock {
     padding: 6px 8px;
     border-radius: 8px;

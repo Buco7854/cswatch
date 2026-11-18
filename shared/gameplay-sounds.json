@@ -1,0 +1,1108 @@
+{
+  "schemaVersion": 1,
+  "items": {
+    "ak47-fire": {
+      "source": "sounds/weapons/ak47/ak47_01.vsnd_c",
+      "category": "weapon",
+      "weapon": "ak47"
+    },
+    "aug-fire": {
+      "source": "sounds/weapons/aug/aug_01.vsnd_c",
+      "category": "weapon",
+      "weapon": "aug"
+    },
+    "awp-fire": {
+      "source": "sounds/weapons/awp/awp_01.vsnd_c",
+      "category": "weapon",
+      "weapon": "awp"
+    },
+    "bizon-fire": {
+      "source": "sounds/weapons/bizon/bizon_01.vsnd_c",
+      "category": "weapon",
+      "weapon": "bizon"
+    },
+    "cz75a-fire": {
+      "source": "sounds/weapons/cz75a/cz75_01.vsnd_c",
+      "category": "weapon",
+      "weapon": "cz75a"
+    },
+    "deagle-fire": {
+      "source": "sounds/weapons/deagle/deagle_01.vsnd_c",
+      "category": "weapon",
+      "weapon": "deagle"
+    },
+    "elite-fire": {
+      "source": "sounds/weapons/elite/elites_01.vsnd_c",
+      "category": "weapon",
+      "weapon": "elite"
+    },
+    "famas-fire": {
+      "source": "sounds/weapons/famas/famas_01.vsnd_c",
+      "category": "weapon",
+      "weapon": "famas"
+    },
+    "fiveseven-fire": {
+      "source": "sounds/weapons/fiveseven/fiveseven_01.vsnd_c",
+      "category": "weapon",
+      "weapon": "fiveseven"
+    },
+    "g3sg1-fire": {
+      "source": "sounds/weapons/g3sg1/g3sg1_01.vsnd_c",
+      "category": "weapon",
+      "weapon": "g3sg1"
+    },
+    "galilar-fire": {
+      "source": "sounds/weapons/galilar/galil_01.vsnd_c",
+      "category": "weapon",
+      "weapon": "galilar"
+    },
+    "glock-fire": {
+      "source": "sounds/weapons/glock18/glock_01.vsnd_c",
+      "category": "weapon",
+      "weapon": "glock"
+    },
+    "hkp2000-fire": {
+      "source": "sounds/weapons/hkp2000/hkp2000_01.vsnd_c",
+      "category": "weapon",
+      "weapon": "hkp2000"
+    },
+    "m249-fire": {
+      "source": "sounds/weapons/m249/m249_01.vsnd_c",
+      "category": "weapon",
+      "weapon": "m249"
+    },
+    "m4a1-fire": {
+      "source": "sounds/weapons/m4a1/m4a1_01.vsnd_c",
+      "category": "weapon",
+      "weapon": "m4a1"
+    },
+    "mac10-fire": {
+      "source": "sounds/weapons/mac10/mac10_01.vsnd_c",
+      "category": "weapon",
+      "weapon": "mac10"
+    },
+    "mp5sd-fire": {
+      "source": "sounds/weapons/mp5/mp5_01.vsnd_c",
+      "category": "weapon",
+      "weapon": "mp5sd"
+    },
+    "mp7-fire": {
+      "source": "sounds/weapons/mp7/mp7_01.vsnd_c",
+      "category": "weapon",
+      "weapon": "mp7"
+    },
+    "mp9-fire": {
+      "source": "sounds/weapons/mp9/mp9_01.vsnd_c",
+      "category": "weapon",
+      "weapon": "mp9"
+    },
+    "negev-fire": {
+      "source": "sounds/weapons/negev/negev_01.vsnd_c",
+      "category": "weapon",
+      "weapon": "negev"
+    },
+    "nova-fire": {
+      "source": "sounds/weapons/nova/nova-1.vsnd_c",
+      "category": "weapon",
+      "weapon": "nova"
+    },
+    "p250-fire": {
+      "source": "sounds/weapons/p250/p250_01.vsnd_c",
+      "category": "weapon",
+      "weapon": "p250"
+    },
+    "p90-fire": {
+      "source": "sounds/weapons/p90/p90_01.vsnd_c",
+      "category": "weapon",
+      "weapon": "p90"
+    },
+    "revolver-fire": {
+      "source": "sounds/weapons/revolver/revolver-1_01.vsnd_c",
+      "category": "weapon",
+      "weapon": "revolver"
+    },
+    "sawedoff-fire": {
+      "source": "sounds/weapons/sawedoff/sawedoff-1.vsnd_c",
+      "category": "weapon",
+      "weapon": "sawedoff"
+    },
+    "scar20-fire": {
+      "source": "sounds/weapons/scar20/scar20_01.vsnd_c",
+      "category": "weapon",
+      "weapon": "scar20"
+    },
+    "sg556-fire": {
+      "source": "sounds/weapons/sg556/sg556_01.vsnd_c",
+      "category": "weapon",
+      "weapon": "sg556"
+    },
+    "ssg08-fire": {
+      "source": "sounds/weapons/ssg08/ssg08_01.vsnd_c",
+      "category": "weapon",
+      "weapon": "ssg08"
+    },
+    "tec9-fire": {
+      "source": "sounds/weapons/tec9/tec9_02.vsnd_c",
+      "category": "weapon",
+      "weapon": "tec9"
+    },
+    "ump45-fire": {
+      "source": "sounds/weapons/ump45/ump45_02.vsnd_c",
+      "category": "weapon",
+      "weapon": "ump45"
+    },
+    "uspsilencer-fire": {
+      "source": "sounds/weapons/usp/usp_01.vsnd_c",
+      "category": "weapon",
+      "weapon": "uspsilencer"
+    },
+    "xm1014-fire": {
+      "source": "sounds/weapons/xm1014/xm1014-1.vsnd_c",
+      "category": "weapon",
+      "weapon": "xm1014"
+    },
+    "footstep": {
+      "source": "sounds/player/footsteps/concrete_ct_01.vsnd_c",
+      "category": "footstep"
+    },
+    "he-explode": {
+      "source": "sounds/weapons/hegrenade/hegrenade_detonate_02.vsnd_c",
+      "category": "utility"
+    },
+    "flash-explode": {
+      "source": "sounds/weapons/flashbang/flashbang_explode1.vsnd_c",
+      "category": "utility"
+    },
+    "fire-ignite": {
+      "source": "sounds/weapons/molotov/fire_ignite_1.vsnd_c",
+      "category": "utility"
+    },
+    "bomb-plant": {
+      "source": "sounds/weapons/c4/c4_plant.vsnd_c",
+      "category": "objective"
+    },
+    "bomb-defuse-start": {
+      "source": "sounds/weapons/c4/c4_disarmstart.vsnd_c",
+      "category": "objective"
+    },
+    "bomb-defuse": {
+      "source": "sounds/weapons/c4/c4_disarmfinish.vsnd_c",
+      "category": "objective"
+    },
+    "bomb-explode": {
+      "source": "sounds/weapons/c4/c4_explode1.vsnd_c",
+      "category": "objective"
+    },
+    "m4a1silencer-fire": {
+      "source": "sounds/weapons/m4a1/m4a1_silencer_01.vsnd_c",
+      "category": "weapon",
+      "weapon": "m4a1silencer"
+    },
+    "mag7-fire": {
+      "source": "sounds/weapons/mag7/mag7_01.vsnd_c",
+      "category": "weapon",
+      "weapon": "mag7"
+    },
+    "reload-a99402fc6679": {
+      "source": "sounds/weapons/ak47/ak47_clipout_01.vsnd_c",
+      "category": "reload"
+    },
+    "reload-0a42905342e0": {
+      "source": "sounds/weapons/magazine_slide_01.vsnd_c",
+      "category": "reload"
+    },
+    "reload-9dfbc831bf80": {
+      "source": "sounds/weapons/hkp2000/hkp2000_clipout.vsnd_c",
+      "category": "reload"
+    },
+    "reload-e98cf29a4171": {
+      "source": "sounds/weapons/deagle/de_clipout.vsnd_c",
+      "category": "reload"
+    },
+    "reload-40e2add048ee": {
+      "source": "sounds/weapons/ak47/ak47_boltpull_01.vsnd_c",
+      "category": "reload"
+    },
+    "reload-7e22925a81f4": {
+      "source": "sounds/weapons/hkp2000/hkp2000_clipin.vsnd_c",
+      "category": "reload"
+    },
+    "reload-501d456bd37a": {
+      "source": "sounds/weapons/deagle/de_slideback.vsnd_c",
+      "category": "reload"
+    },
+    "reload-3d7047a8c895": {
+      "source": "sounds/weapons/deagle/de_slideforward.vsnd_c",
+      "category": "reload"
+    },
+    "reload-5f227cdafa52": {
+      "source": "sounds/weapons/hkp2000/hkp2000_slideback.vsnd_c",
+      "category": "reload"
+    },
+    "reload-70b581099c3e": {
+      "source": "sounds/weapons/m4a1/m4a1_clipout.vsnd_c",
+      "category": "reload"
+    },
+    "reload-31a8c9b3d2b9": {
+      "source": "sounds/weapons/hkp2000/hkp2000_sliderelease.vsnd_c",
+      "category": "reload"
+    },
+    "reload-a7980e6e88b6": {
+      "source": "sounds/weapons/m4a1/m4a1_clipin.vsnd_c",
+      "category": "reload"
+    },
+    "reload-139b2c1ab852": {
+      "source": "sounds/weapons/glock18/glock_clipout.vsnd_c",
+      "category": "reload"
+    },
+    "reload-4113fba14888": {
+      "source": "sounds/weapons/glock18/glock_clipin.vsnd_c",
+      "category": "reload"
+    },
+    "reload-978d5d79cc70": {
+      "source": "sounds/weapons/glock18/glock_slideback.vsnd_c",
+      "category": "reload"
+    },
+    "reload-681934ab44ef": {
+      "source": "sounds/weapons/glock18/glock_sliderelease.vsnd_c",
+      "category": "reload"
+    },
+    "reload-42fa82363536": {
+      "source": "sounds/weapons/aug/aug_hit_01.vsnd_c",
+      "category": "reload"
+    },
+    "reload-ec853a9423af": {
+      "source": "sounds/weapons/awp/awp_clipout.vsnd_c",
+      "category": "reload"
+    },
+    "reload-4f604d5dd63b": {
+      "source": "sounds/weapons/awp/awp_clipin.vsnd_c",
+      "category": "reload"
+    },
+    "reload-875c4b8402fc": {
+      "source": "sounds/weapons/awp/awp_cliphit.vsnd_c",
+      "category": "reload"
+    },
+    "reload-5cff022d869f": {
+      "source": "sounds/weapons/ssg08/ssg08_clipout.vsnd_c",
+      "category": "reload"
+    },
+    "reload-4ca6bcca9598": {
+      "source": "sounds/weapons/ssg08/ssg08_clipin.vsnd_c",
+      "category": "reload"
+    },
+    "reload-851dcb91fb0d": {
+      "source": "sounds/weapons/ssg08/ssg08_hit_01.vsnd_c",
+      "category": "reload"
+    },
+    "reload-f1a13d970cab": {
+      "source": "sounds/weapons/ssg08/ssg08_boltback.vsnd_c",
+      "category": "reload"
+    },
+    "reload-3519a0c0999f": {
+      "source": "sounds/weapons/mac10/mac10_clipout.vsnd_c",
+      "category": "reload"
+    },
+    "reload-2a86126209b6": {
+      "source": "sounds/weapons/mac10/mac10_clipin.vsnd_c",
+      "category": "reload"
+    },
+    "reload-a617b359c60a": {
+      "source": "sounds/weapons/mac10/mac10_boltforward.vsnd_c",
+      "category": "reload"
+    },
+    "reload-282bd7c54515": {
+      "source": "sounds/weapons/mac10/mac10_boltback.vsnd_c",
+      "category": "reload"
+    },
+    "reload-09b1bbd00d19": {
+      "source": "sounds/weapons/m4a1/m4a1_cliphit.vsnd_c",
+      "category": "reload"
+    },
+    "reload-874ed5592dfd": {
+      "source": "sounds/weapons/revolver/revolver_siderelease.vsnd_c",
+      "category": "reload"
+    },
+    "reload-8c58ace439f2": {
+      "source": "sounds/weapons/revolver/revolver_prepare.vsnd_c",
+      "category": "reload"
+    },
+    "reload-61977a0f229b": {
+      "source": "sounds/weapons/mp9/mp9_clipout.vsnd_c",
+      "category": "reload"
+    },
+    "reload-ff42792a9277": {
+      "source": "sounds/weapons/mp9/mp9_clipin.vsnd_c",
+      "category": "reload"
+    },
+    "reload-200ff254dc61": {
+      "source": "sounds/weapons/mp9/mp9_boltback.vsnd_c",
+      "category": "reload"
+    },
+    "reload-e4102d37e5d9": {
+      "source": "sounds/weapons/mp9/mp9_boltforward.vsnd_c",
+      "category": "reload"
+    },
+    "reload-6a92465670b9": {
+      "source": "sounds/weapons/ssg08/ssg08_boltforward.vsnd_c",
+      "category": "reload"
+    },
+    "reload-384e107eb8b7": {
+      "source": "sounds/weapons/famas/famas_clipout.vsnd_c",
+      "category": "reload"
+    },
+    "reload-007a68b93b98": {
+      "source": "sounds/weapons/famas/famas_clipin.vsnd_c",
+      "category": "reload"
+    },
+    "reload-dc66516c60f7": {
+      "source": "sounds/weapons/famas/famas_cliphit.vsnd_c",
+      "category": "reload"
+    },
+    "reload-32039e9dda0b": {
+      "source": "sounds/weapons/p250/p250_clipout.vsnd_c",
+      "category": "reload"
+    },
+    "reload-c7bc8f457299": {
+      "source": "sounds/weapons/p250/p250_clipin.vsnd_c",
+      "category": "reload"
+    },
+    "reload-189dbff2044e": {
+      "source": "sounds/weapons/p250/p250_slideback.vsnd_c",
+      "category": "reload"
+    },
+    "reload-3a6d4714d5c4": {
+      "source": "sounds/weapons/p250/p250_sliderelease.vsnd_c",
+      "category": "reload"
+    },
+    "reload-8bece223f5b7": {
+      "source": "sounds/weapons/awp/awp_boltback.vsnd_c",
+      "category": "reload"
+    },
+    "reload-b9ef3c21500e": {
+      "source": "sounds/weapons/awp/awp_boltforward.vsnd_c",
+      "category": "reload"
+    },
+    "reload-da1e3d2fdb46": {
+      "source": "sounds/weapons/revolver/revolver_clipout.vsnd_c",
+      "category": "reload"
+    },
+    "reload-6a602a3499c9": {
+      "source": "sounds/weapons/revolver/revolver_clipin.vsnd_c",
+      "category": "reload"
+    },
+    "reload-f6d2b96927ec": {
+      "source": "sounds/weapons/revolver/revolver_sideback.vsnd_c",
+      "category": "reload"
+    },
+    "footstep-5f376e116aae": {
+      "source": "sounds/player/footsteps/tile_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-e6054f20c7fc": {
+      "source": "sounds/player/footsteps/sand_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-dab529ca5b2b": {
+      "source": "sounds/player/footsteps/suit_t_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-babe5bb86ba6": {
+      "source": "sounds/player/footsteps/suit_ct_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-1b1212d92523": {
+      "source": "sounds/player/footsteps/wood_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-c525c64ed93c": {
+      "source": "sounds/player/footsteps/dirt_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-2530c17a7f0b": {
+      "source": "sounds/player/footsteps/metal_auto_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-4d5d4792439e": {
+      "source": "sounds/physics/cardboard/cardboard_box_impact_soft1.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-eb0d28d23d98": {
+      "source": "sounds/player/footsteps/ladder_wood_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-f6959db476c2": {
+      "source": "sounds/player/footsteps/metal_vent_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-a3a62ecc6884": {
+      "source": "sounds/player/footsteps/ladder_01.vsnd_c",
+      "category": "footstep"
+    },
+    "objective-fd580ee330b8": {
+      "source": "sounds/weapons/c4/c4_initiate.vsnd_c",
+      "category": "objective"
+    },
+    "objective-ea2e5a089958": {
+      "source": "sounds/weapons/c4/c4_plant_quiet.vsnd_c",
+      "category": "objective"
+    },
+    "weapon-88d02cb178a2": {
+      "source": "sounds/weapons/knife/knife_slash1.vsnd_c",
+      "category": "weapon"
+    },
+    "weapon-38bfea6dc5fa": {
+      "source": "sounds/weapons/knife/knife_hit_01.vsnd_c",
+      "category": "weapon"
+    },
+    "utility-e25495e3b206": {
+      "source": "sounds/items/pickup_grenade_03.vsnd_c",
+      "category": "utility"
+    },
+    "utility-86bcb15c8f02": {
+      "source": "sounds/weapons/flashbang/grenade_hit1.vsnd_c",
+      "category": "utility"
+    },
+    "utility-a7a3e1dae27b": {
+      "source": "sounds/weapons/hegrenade/he_bounce-1.vsnd_c",
+      "category": "utility"
+    },
+    "utility-ac1d0e125a77": {
+      "source": "sounds/physics/glass/glass_bottle_impact_hard1.vsnd_c",
+      "category": "utility"
+    },
+    "utility-7b29234ccca5": {
+      "source": "sounds/weapons/flashbang/flashbang_throw_03.vsnd_c",
+      "category": "utility"
+    },
+    "utility-b812e57ce86b": {
+      "source": "sounds/weapons/molotov/molotov_throw_01.vsnd_c",
+      "category": "utility"
+    },
+    "utility-dd79475db107": {
+      "source": "sounds/weapons/molotov/molotov_extinguish.vsnd_c",
+      "category": "utility"
+    },
+    "round-ct-win": {
+      "source": "sounds/vo/announcer/cs2_classic/ctwin.vsnd_c",
+      "category": "round"
+    },
+    "round-t-win": {
+      "source": "sounds/vo/announcer/cs2_classic/terwin.vsnd_c",
+      "category": "round"
+    },
+    "taser-fire": {
+      "source": "sounds/weapons/taser/taser_shoot.vsnd_c",
+      "category": "weapon",
+      "weapon": "taser"
+    },
+    "uspsilencer-unsilenced-fire": {
+      "source": "sounds/weapons/usp/usp_unsilenced_01.vsnd_c",
+      "category": "weapon",
+      "weapon": "uspsilencer"
+    }
+  },
+  "events": {
+    "Weapon_AK47.Clipout": {
+      "soundId": "reload-a99402fc6679",
+      "channel": "weapon-sound",
+      "volume": 1,
+      "pitch": 1
+    },
+    "Weapon_AK47.Clipin": {
+      "soundId": "reload-0a42905342e0",
+      "channel": "weapon-sound",
+      "volume": 0.3,
+      "pitch": 1
+    },
+    "Weapon_hkp2000.Clipout": {
+      "soundId": "reload-9dfbc831bf80",
+      "channel": "weapon-sound",
+      "volume": 0.599976,
+      "pitch": 1.01
+    },
+    "Weapon_DEagle.Clipout": {
+      "soundId": "reload-e98cf29a4171",
+      "channel": "weapon-sound",
+      "volume": 0.9,
+      "pitch": 1
+    },
+    "Weapon_DEagle.Clipin": {
+      "soundId": "reload-0a42905342e0",
+      "channel": "weapon-sound",
+      "volume": 1,
+      "pitch": 1
+    },
+    "Weapon_AK47.BoltPull": {
+      "soundId": "reload-40e2add048ee",
+      "channel": "weapon-sound",
+      "volume": 1,
+      "pitch": 1
+    },
+    "Weapon_hkp2000.Clipin": {
+      "soundId": "reload-7e22925a81f4",
+      "channel": "weapon-sound",
+      "volume": 0.599976,
+      "pitch": 1.01
+    },
+    "Weapon_DEagle.Slideback": {
+      "soundId": "reload-501d456bd37a",
+      "channel": "weapon-sound",
+      "volume": 1,
+      "pitch": 1
+    },
+    "Weapon_DEagle.Slideforward": {
+      "soundId": "reload-3d7047a8c895",
+      "channel": "weapon-sound",
+      "volume": 1,
+      "pitch": 1
+    },
+    "Weapon_hkp2000.Slideback": {
+      "soundId": "reload-5f227cdafa52",
+      "channel": "weapon-sound",
+      "volume": 0.5,
+      "pitch": 1.01
+    },
+    "Weapon_M4A1.Clipout": {
+      "soundId": "reload-70b581099c3e",
+      "channel": "weapon-sound",
+      "volume": 0.6,
+      "pitch": 1.005
+    },
+    "Weapon_hkp2000.Sliderelease": {
+      "soundId": "reload-31a8c9b3d2b9",
+      "channel": "weapon-sound",
+      "volume": 0.5,
+      "pitch": 1.01
+    },
+    "Weapon_M4A1.Clipin": {
+      "soundId": "reload-a7980e6e88b6",
+      "channel": "weapon-sound",
+      "volume": 0.35,
+      "pitch": 1.025
+    },
+    "Weapon_Glock.Clipout": {
+      "soundId": "reload-139b2c1ab852",
+      "channel": "weapon-sound",
+      "volume": 0.599976,
+      "pitch": 0.93
+    },
+    "Weapon_Glock.Clipin": {
+      "soundId": "reload-4113fba14888",
+      "channel": "weapon-sound",
+      "volume": 0.599976,
+      "pitch": 0.93
+    },
+    "Weapon_Glock.Slideback": {
+      "soundId": "reload-978d5d79cc70",
+      "channel": "weapon-sound",
+      "volume": 0.599976,
+      "pitch": 0.93
+    },
+    "Weapon_Glock.Sliderelease": {
+      "soundId": "reload-681934ab44ef",
+      "channel": "weapon-sound",
+      "volume": 0.7,
+      "pitch": 0.93
+    },
+    "Weapon_AUG.Cliphit": {
+      "soundId": "reload-42fa82363536",
+      "channel": "weapon-sound",
+      "volume": 0.5,
+      "pitch": 1.01
+    },
+    "Weapon_AWP.Clipout": {
+      "soundId": "reload-ec853a9423af",
+      "channel": "weapon-sound",
+      "volume": 0.75,
+      "pitch": 1.01
+    },
+    "Weapon_AWP.Clipin": {
+      "soundId": "reload-4f604d5dd63b",
+      "channel": "weapon-sound",
+      "volume": 0.75,
+      "pitch": 1.01
+    },
+    "Weapon_AWP.Cliphit": {
+      "soundId": "reload-875c4b8402fc",
+      "channel": "weapon-sound",
+      "volume": 0.75,
+      "pitch": 1.01
+    },
+    "Weapon_SSG08.Clipout": {
+      "soundId": "reload-5cff022d869f",
+      "channel": "weapon-sound",
+      "volume": 0.75,
+      "pitch": 1.01
+    },
+    "Weapon_SSG08.Clipin": {
+      "soundId": "reload-4ca6bcca9598",
+      "channel": "weapon-sound",
+      "volume": 0.75,
+      "pitch": 1.01
+    },
+    "Weapon_SSG08.ClipHit": {
+      "soundId": "reload-851dcb91fb0d",
+      "channel": "weapon-sound",
+      "volume": 0.75,
+      "pitch": 1.01
+    },
+    "Weapon_SSG08.BoltBack": {
+      "soundId": "reload-f1a13d970cab",
+      "channel": "weapon-sound",
+      "volume": 0.75,
+      "pitch": 1.01
+    },
+    "Weapon_MAC10.Clipout": {
+      "soundId": "reload-3519a0c0999f",
+      "channel": "weapon-sound",
+      "volume": 1,
+      "pitch": 1
+    },
+    "Weapon_MAC10.Clipin": {
+      "soundId": "reload-2a86126209b6",
+      "channel": "weapon-sound",
+      "volume": 0.5,
+      "pitch": 1
+    },
+    "Weapon_MAC10.BoltBack": {
+      "soundId": "reload-a617b359c60a",
+      "channel": "weapon-sound",
+      "volume": 0.7,
+      "pitch": 1
+    },
+    "Weapon_MAC10.BoltForward": {
+      "soundId": "reload-282bd7c54515",
+      "channel": "weapon-sound",
+      "volume": 0.7,
+      "pitch": 1
+    },
+    "Weapon_M4A1.ClipHit": {
+      "soundId": "reload-09b1bbd00d19",
+      "channel": "weapon-sound",
+      "volume": 0.5,
+      "pitch": 1
+    },
+    "Weapon_Revolver.Siderelease": {
+      "soundId": "reload-874ed5592dfd",
+      "channel": "weapon-sound",
+      "volume": 1,
+      "pitch": 1.01
+    },
+    "Weapon_Revolver.BarrelRoll": {
+      "soundId": "reload-8c58ace439f2",
+      "channel": "weapon-sound",
+      "volume": 0.199951,
+      "pitch": 1.2
+    },
+    "Weapon_MP9.Clipout": {
+      "soundId": "reload-61977a0f229b",
+      "channel": "weapon-sound",
+      "volume": 1,
+      "pitch": 1
+    },
+    "Weapon_MP9.Clipin": {
+      "soundId": "reload-ff42792a9277",
+      "channel": "weapon-sound",
+      "volume": 0.5,
+      "pitch": 1
+    },
+    "Weapon_MP9.BoltBack": {
+      "soundId": "reload-200ff254dc61",
+      "channel": "weapon-sound",
+      "volume": 1,
+      "pitch": 1
+    },
+    "Weapon_MP9.BoltForward": {
+      "soundId": "reload-e4102d37e5d9",
+      "channel": "weapon-sound",
+      "volume": 1,
+      "pitch": 1
+    },
+    "Weapon_SSG08.BoltForward": {
+      "soundId": "reload-6a92465670b9",
+      "channel": "weapon-sound",
+      "volume": 0.75,
+      "pitch": 1.01
+    },
+    "Weapon_FAMAS.Clipout": {
+      "soundId": "reload-384e107eb8b7",
+      "channel": "weapon-sound",
+      "volume": 1,
+      "pitch": 1
+    },
+    "Weapon_FAMAS.Clipin": {
+      "soundId": "reload-007a68b93b98",
+      "channel": "weapon-sound",
+      "volume": 0.2,
+      "pitch": 1
+    },
+    "Weapon_FAMAS.ClipHit": {
+      "soundId": "reload-dc66516c60f7",
+      "channel": "weapon-sound",
+      "volume": 1,
+      "pitch": 1
+    },
+    "Weapon_p250.Clipout": {
+      "soundId": "reload-32039e9dda0b",
+      "channel": "weapon-sound",
+      "volume": 0.75,
+      "pitch": 1.01
+    },
+    "Weapon_p250.Clipin": {
+      "soundId": "reload-c7bc8f457299",
+      "channel": "weapon-sound",
+      "volume": 0.75,
+      "pitch": 1.01
+    },
+    "Weapon_p250.Slideback": {
+      "soundId": "reload-189dbff2044e",
+      "channel": "weapon-sound",
+      "volume": 0.75,
+      "pitch": 1.01
+    },
+    "Weapon_p250.Sliderelease": {
+      "soundId": "reload-3a6d4714d5c4",
+      "channel": "weapon-sound",
+      "volume": 0.75,
+      "pitch": 1.01
+    },
+    "Weapon_AWP.BoltBack": {
+      "soundId": "reload-8bece223f5b7",
+      "channel": "weapon-sound",
+      "volume": 1,
+      "pitch": 1.01
+    },
+    "Weapon_AWP.BoltForward": {
+      "soundId": "reload-b9ef3c21500e",
+      "channel": "weapon-sound",
+      "volume": 1,
+      "pitch": 1.01
+    },
+    "Weapon_Revolver.Clipout": {
+      "soundId": "reload-da1e3d2fdb46",
+      "channel": "weapon-sound",
+      "volume": 0.75,
+      "pitch": 1.01
+    },
+    "Weapon_Revolver.Clipin": {
+      "soundId": "reload-6a602a3499c9",
+      "channel": "weapon-sound",
+      "volume": 0.75,
+      "pitch": 1.01
+    },
+    "Weapon_Revolver.Sideback": {
+      "soundId": "reload-f6d2b96927ec",
+      "channel": "weapon-sound",
+      "volume": 0.75,
+      "pitch": 1.01
+    },
+    "T_Concrete.StepLeft": {
+      "soundId": "footstep",
+      "channel": "sos",
+      "hash": 4163677892,
+      "volume": 0.9,
+      "pitch": 1.1
+    },
+    "CT_Concrete.StepLeft": {
+      "soundId": "footstep",
+      "channel": "sos",
+      "hash": 1194677450,
+      "volume": 0.9,
+      "pitch": 1
+    },
+    "T_Tile.StepLeft": {
+      "soundId": "footstep-5f376e116aae",
+      "channel": "sos",
+      "hash": 1163426340,
+      "volume": 1,
+      "pitch": 1
+    },
+    "CT_Tile.StepLeft": {
+      "soundId": "footstep-5f376e116aae",
+      "channel": "sos",
+      "hash": 2061955732,
+      "volume": 1,
+      "pitch": 0.98
+    },
+    "T_Sand.StepLeft": {
+      "soundId": "footstep-e6054f20c7fc",
+      "channel": "sos",
+      "hash": 1404198078,
+      "volume": 1,
+      "pitch": 1
+    },
+    "CT_Sand.StepLeft": {
+      "soundId": "footstep-e6054f20c7fc",
+      "channel": "sos",
+      "hash": 1763490157,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Gear.JumpLand.T": {
+      "soundId": "footstep-dab529ca5b2b",
+      "channel": "sos",
+      "hash": 740474905,
+      "volume": 0,
+      "pitch": 1
+    },
+    "Gear.JumpLand.CT": {
+      "soundId": "footstep-babe5bb86ba6",
+      "channel": "sos",
+      "hash": 4160462271,
+      "volume": 0,
+      "pitch": 1.05
+    },
+    "CT_Default.StepLeft": {
+      "soundId": "footstep",
+      "channel": "sos",
+      "hash": 520432428,
+      "volume": 0.9,
+      "pitch": 1
+    },
+    "T_Default.StepLeft": {
+      "soundId": "footstep",
+      "channel": "sos",
+      "hash": 4082928848,
+      "volume": 0.9,
+      "pitch": 1.02
+    },
+    "T_Wood.StepLeft": {
+      "soundId": "footstep-1b1212d92523",
+      "channel": "sos",
+      "hash": 1161855519,
+      "volume": 1,
+      "pitch": 1
+    },
+    "CT_WoodBox.StepLeft": {
+      "soundId": "footstep-1b1212d92523",
+      "channel": "sos",
+      "hash": 3342414459,
+      "volume": 1,
+      "pitch": 0.98
+    },
+    "CT_Wood.StepLeft": {
+      "soundId": "footstep-1b1212d92523",
+      "channel": "sos",
+      "hash": 2207486967,
+      "volume": 1,
+      "pitch": 0.98
+    },
+    "T_WoodBox.StepLeft": {
+      "soundId": "footstep-1b1212d92523",
+      "channel": "sos",
+      "hash": 1253503839,
+      "volume": 1,
+      "pitch": 1
+    },
+    "T_Dirt.StepLeft": {
+      "soundId": "footstep-c525c64ed93c",
+      "channel": "sos",
+      "hash": 2708661994,
+      "volume": 0.6,
+      "pitch": 1
+    },
+    "CT_Dirt.StepLeft": {
+      "soundId": "footstep-c525c64ed93c",
+      "channel": "sos",
+      "hash": 988265811,
+      "volume": 0.6,
+      "pitch": 1
+    },
+    "CT_MetalVehicle.StepLeft": {
+      "soundId": "footstep-2530c17a7f0b",
+      "channel": "sos",
+      "hash": 29217150,
+      "volume": 1,
+      "pitch": 0.98
+    },
+    "T_Cardboard.StepLeft": {
+      "soundId": "footstep-4d5d4792439e",
+      "channel": "sos",
+      "hash": 3172583021,
+      "volume": 1,
+      "pitch": 1
+    },
+    "T_MetalVent.StepLeft": {
+      "soundId": "footstep-2530c17a7f0b",
+      "channel": "sos",
+      "hash": 1403457606,
+      "volume": 1,
+      "pitch": 1
+    },
+    "CT_Wood_Ladder.StepLeft": {
+      "soundId": "footstep-eb0d28d23d98",
+      "channel": "sos",
+      "hash": 1440734007,
+      "volume": 1,
+      "pitch": 0.98
+    },
+    "CT_MetalBarrel.StepLeft": {
+      "soundId": "footstep-f6959db476c2",
+      "channel": "sos",
+      "hash": 2684452812,
+      "volume": 1,
+      "pitch": 0.98
+    },
+    "CT_Wood_Panel.StepLeft": {
+      "soundId": "footstep-1b1212d92523",
+      "channel": "sos",
+      "hash": 3161194970,
+      "volume": 1,
+      "pitch": 0.98
+    },
+    "CT_Ladder.StepLeft": {
+      "soundId": "footstep-a3a62ecc6884",
+      "channel": "sos",
+      "hash": 3257325156,
+      "volume": 0.7,
+      "pitch": 0.98
+    },
+    "T_Flesh.StepLeft": {
+      "soundId": "footstep",
+      "channel": "sos",
+      "hash": 1506215040,
+      "volume": 1,
+      "pitch": 1
+    },
+    "T_MetalBarrel.StepLeft": {
+      "soundId": "footstep-f6959db476c2",
+      "channel": "sos",
+      "hash": 931543849,
+      "volume": 1,
+      "pitch": 1
+    },
+    "T_Wood_Basket.StepLeft": {
+      "soundId": "footstep-1b1212d92523",
+      "channel": "sos",
+      "hash": 1635413700,
+      "volume": 1,
+      "pitch": 1
+    },
+    "CT_MetalVent.StepLeft": {
+      "soundId": "footstep-2530c17a7f0b",
+      "channel": "sos",
+      "hash": 2745524735,
+      "volume": 1,
+      "pitch": 0.98
+    },
+    "T_Ladder.StepLeft": {
+      "soundId": "footstep-a3a62ecc6884",
+      "channel": "sos",
+      "hash": 3299941720,
+      "volume": 0.7,
+      "pitch": 1
+    },
+    "T_Wood_Panel.StepLeft": {
+      "soundId": "footstep-1b1212d92523",
+      "channel": "sos",
+      "hash": 96240187,
+      "volume": 1,
+      "pitch": 1
+    },
+    "c4.initiate": {
+      "soundId": "objective-fd580ee330b8",
+      "channel": "sos",
+      "hash": 2535926257,
+      "volume": 0.799805,
+      "pitch": 1
+    },
+    "c4.plantquiet": {
+      "soundId": "objective-ea2e5a089958",
+      "channel": "sos",
+      "hash": 158273274,
+      "volume": 0.4,
+      "pitch": 1
+    },
+    "c4.disarmfinish": {
+      "soundId": "bomb-defuse",
+      "channel": "sos",
+      "hash": 637225500,
+      "volume": 0.699707,
+      "pitch": 1
+    },
+    "c4.explode": {
+      "soundId": "bomb-explode",
+      "channel": "sos",
+      "hash": 1758033930,
+      "volume": 0.5,
+      "pitch": 1
+    },
+    "c4.disarmstart": {
+      "soundId": "bomb-defuse-start",
+      "channel": "sos",
+      "hash": 994749310,
+      "volume": 0.699707,
+      "pitch": 1
+    },
+    "Weapon_Knife.Slash": {
+      "soundId": "weapon-88d02cb178a2",
+      "channel": "sos",
+      "hash": 3634660983,
+      "volume": 0.3,
+      "pitch": 1.01
+    },
+    "Weapon_Knife.HitWall": {
+      "soundId": "weapon-38bfea6dc5fa",
+      "channel": "sos",
+      "hash": 2486534908,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Inferno.Fire.Ignite": {
+      "soundId": "fire-ignite",
+      "channel": "sos",
+      "hash": 1465521547,
+      "volume": 0.3,
+      "pitch": 1
+    },
+    "Player.PickupGrenadeAudible": {
+      "soundId": "utility-e25495e3b206",
+      "channel": "sos",
+      "hash": 1792523944,
+      "volume": 0.5,
+      "pitch": 1
+    },
+    "Flashbang.Bounce": {
+      "soundId": "utility-86bcb15c8f02",
+      "channel": "sos",
+      "hash": 1964534378,
+      "volume": 0.8,
+      "pitch": 1.1
+    },
+    "HEGrenade.Bounce": {
+      "soundId": "utility-a7a3e1dae27b",
+      "channel": "sos",
+      "hash": 3325837742,
+      "volume": 0.8,
+      "pitch": 1
+    },
+    "Molotov.Bounce": {
+      "soundId": "utility-ac1d0e125a77",
+      "channel": "sos",
+      "hash": 390116200,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Flashbang.Throw": {
+      "soundId": "utility-7b29234ccca5",
+      "channel": "sos",
+      "hash": 4260648194,
+      "pitch": 1
+    },
+    "Molotov.Throw": {
+      "soundId": "utility-b812e57ce86b",
+      "channel": "sos",
+      "hash": 746506829,
+      "volume": 0.6,
+      "pitch": 1
+    },
+    "Molotov.Extinguish": {
+      "soundId": "utility-dd79475db107",
+      "channel": "sos",
+      "hash": 1991628669,
+      "volume": 1,
+      "pitch": 1
+    }
+  }
+}

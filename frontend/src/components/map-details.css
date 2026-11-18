@@ -1,0 +1,50 @@
+.viewer-map-provenance h4 {
+  margin: 0 0 8px;
+  color: var(--viewer-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+.viewer-map-provenance > p {
+  margin: 0 0 12px;
+}
+.viewer-options-dialog .viewer-map-details {
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+.viewer-map-details summary {
+  min-height: 44px;
+  padding-block: 12px;
+  color: var(--viewer-ink);
+  cursor: pointer;
+}
+.viewer-map-details dl {
+  display: grid;
+  gap: 12px;
+  margin: 12px 0 20px;
+}
+.viewer-map-details dl > div {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  align-items: baseline;
+  gap: 16px;
+}
+.viewer-map-details dt {
+  color: var(--viewer-muted);
+}
+.viewer-map-details dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--viewer-ink);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.viewer-map-details p {
+  margin: 12px 0;
+}
+@media (max-width: 400px) {
+  .viewer-map-details dl > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+}

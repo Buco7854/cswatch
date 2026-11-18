@@ -1,6 +1,6 @@
 # Map assets
 
-Official map preparation is optional and defaults off. The web app matches a demo's recorded map identity against an operator-approved catalog, then queues one shared immutable pack. It never guesses that today's map matches an older recording. The separate asset worker downloads selected official Steam resources and prepares them on the CPU. Browsers render the result locally.
+Official map preparation is optional and defaults off. The web app prefers a unique operator-approved source for the recording. If a historical selection is unavailable, it can use a clearly disclosed latest official snapshot from worker-observed Steam metadata. Latest geometry is never presented as the original recording's revision. The separate worker prepares game assets on the CPU and browsers render them locally.
 
 The worker requires Linux x86-64, Landlock ABI 3 or later and seccomp. The published application image stays the default Docker target. The optional image is `ghcr.io/buco7854/cswatch:assets-latest`, with revision tags named `assets-sha-<commit>-<run>`. Neither image includes game artwork, recordings or prepared Steam assets.
 
@@ -15,7 +15,7 @@ docker compose up -d
 docker compose --profile assets up -d
 ```
 
-Set `AUTO_OFFICIAL_MAPS_ENABLED=true` in `.env` to lock the feature on, or leave it empty and enable it in the admin UI. An empty value permits UI management and initially defaults off. Enabling the worker without catalog approvals does not authorize any downloads. Steam/FACEIT credentials and `.env` are never passed to this service.
+Set `AUTO_OFFICIAL_MAPS_ENABLED=true` in `.env` to lock the feature on, or leave it empty and enable it in the admin UI. An empty value permits UI management and initially defaults off. The worker refreshes bounded official map metadata at startup and about hourly. With automatic acquisition enabled, a known official name can use the disclosed latest mode without any catalog entries. Optional catalog approvals remain preferred for established historical sources. Steam/FACEIT credentials and `.env` are never passed to this service.
 
 Compose keeps these stores separate:
 
@@ -31,7 +31,15 @@ The asset service has its own egress network, no published ports, a read-only ro
 
 New volume roots are owned by UID 1000 in both images. Bind-mount replacements need equivalent ownership and permissions. For existing manual packs, mount the complete prepared maps tree at `/map-assets` read-only in web. Use the same tree read/write in the asset worker if automatic preparation is enabled.
 
-## Approve exact sources
+## Latest official snapshots
+
+No manual map whitelist or default approval is needed. The worker lists direct map VPK entries only from fixed anonymous app `730`, depot `2347770`. A fresh inventory binds safe map basenames to one Steam manifest, SHA-1 and byte size. It is capped at 128 KiB and 256 unique names. New selections require a check within 24 hours. Failed refreshes back off rather than opening a login loop. The inventory is not a statement about an uploaded demo's original map version.
+
+An owner/guest request contains no source arguments. The server derives its selection from that inventory and the recording's safe map name. Explicit addon/conflicting evidence and unknown official names remain blocked. Downloaded map size and SHA-1 must match the selected snapshot, and the worker computes SHA-256 before conversion. Queued jobs keep their manifest pin even if Steam updates again. A denied pin fails without silently selecting another one inside the same job.
+
+The viewer distinguishes a latest snapshot from an approved historical source and displays its manifest/check time. Existing immutable snapshot URLs remain stable after inventory refresh. Stale metadata cannot create another acquisition, but can retain a validated cached snapshot. These rules do not promise exact historical geometry or continued access to old Steam manifests.
+
+## Optional approved historical sources
 
 The initial catalog is deliberately empty:
 
@@ -41,7 +49,7 @@ The initial catalog is deliberately empty:
 
 Each entry must match the complete recorded `map`, `buildNum`, `patchVersion`, `demoVersionGuid` and `addonPresence: "none"`. Its source must identify app 730, depot 2347770, one pinned uint64 Steam manifest and the expected SHA-256 of the selected map VPK. An optional `assetVersion` labels preparation provenance. See the [shared contract](../shared/map-acquisition.d.ts) and [validated catalog schema](../backend/src/map-catalog.ts).
 
-Recorded build fields are unsigned evidence from the demo, not Steam manifest IDs or cryptographic layout proof. Approvals are explicit operator provenance. Addon maps, incomplete identity, ambiguous approvals, unavailable historical versions and unknown sources remain unavailable for automatic preparation. No arbitrary URL, caller-supplied source path, whole-game selector or authenticated Steam account is accepted.
+Recorded build fields are unsigned evidence from the demo, not Steam manifest IDs or cryptographic layout proof. Approvals are explicit operator provenance. A complete matching tuple can prefer that approved source. Incomplete or ambiguous identities can instead use disclosed latest mode when official membership is known. Explicit addon/conflicted evidence remains blocked. A historical source with terminal `source_unavailable` can use a fresh latest selection, while integrity and still-selected removed-approval failures do not silently switch sources. No arbitrary URL, caller-supplied source path, whole-game selector or authenticated Steam account is accepted.
 
 The authorized replay manifest at `GET /api/demos/:id/playback` exposes the recording's optional `mapIdentity`. Obtain the source manifest from the pinned official preparation report, and hash its selected `game/csgo/maps/<map>.vpk` with SHA-256. Establish the source/recording relationship before approving it. Copying a header tuple alone does not verify that relationship.
 
@@ -53,7 +61,7 @@ docker compose --profile maintenance run --rm -T catalog < /trusted/catalog.json
 
 The updater accepts at most 256 KiB of UTF-8 JSON and 512 strict schema entries, opens every filesystem ancestor without following links, and requires an owned control directory. A real filesystem lock serializes updates. It refuses linked, hardlinked, special or concurrently changed catalog targets, fsyncs a private temporary file and atomically renames it before syncing the directory. Failed validation preserves the active catalog. This is operator approval maintenance, not automatic Steam mapping discovery or catalog generation.
 
-The worker rechecks approval before conversion stages and publication. Published packs use immutable content-derived IDs, matching manifests, self-contained geometry, calibrated overview, decoded sky images and hashes. Web access remains scoped to the demo and instance policy. Current manual map-name packs are explicitly version-unverified and are used only when automatic preparation is disabled.
+The worker rechecks the selected source policy before conversion stages and publication. Removing a catalog entry revokes that approved source and its URLs, but is not a permanent ban on preparing the same official map through the separate latest policy. Published packs use immutable content-derived IDs, matching manifests, self-contained geometry, calibrated overview, decoded sky images and hashes. Web access remains scoped to the demo and instance policy. Current manual map-name packs are explicitly version-unverified and are used only when automatic preparation is disabled.
 
 ## Resources and recovery
 
@@ -61,7 +69,9 @@ The worker serializes acquisition with a real filesystem lock. Private source/to
 
 Desktop/mobile preparation budgets decoded textures at 512/256 MiB and uses lossless Meshopt transport compression. Compression reduces transfer bytes, not decoded geometry or GPU mip memory. Native map exports still need substantial RAM and scratch space. No server GPU is required.
 
-Inspect service state with `docker compose --profile assets logs assets`. Transient source, storage, conversion and interruption failures can be explicitly retried by an owner after the five-minute cooldown while the worker is healthy and approval is still valid. Source mismatches or removed approvals require operator correction. Steam may deny historical manifest request codes even when an older manifest file was previously available. A failed old source never falls back to the latest map.
+Compatible opaque static desktop siblings are also batched in 64 m cells, preserving material/source metadata, named hierarchy, transforms and exact images. Mobile stays unbatched by default after both 16 m and 64 m experiments regressed this host's measured software-rendered pacing. Explicit mobile 16 m re-optimization remains experimental. Batching reduces draw submissions independently of compression and does not promise a frame rate. Existing tiers can be re-optimized into fresh directories with `tools/assets/compress-prepared-map.mjs --batch-static`; see the [asset tooling](../tools/assets/README.md). Never overwrite active packs or discard the original provenance. Runtime model cancellation aborts initial transfer promptly while allowing already-started bounded embedded-image parsing to settle into private retired-resource cleanup, avoiding false texture errors on camera/2D switches.
+
+Inspect service state with `docker compose --profile assets logs assets`. Transient source, storage, conversion and interruption failures can be explicitly retried by an owner after the five-minute cooldown while the worker is healthy and approval is still valid. Source mismatches or removed approvals require operator correction. Steam may deny historical manifest request codes even when an older manifest file was previously available. An unavailable historical selection can create a separate, clearly disclosed latest request from fresh inventory. It never relabels the failed old job or changes a pin within that job.
 
 Only exact worker-owned source/staging markers are cleanup candidates. Prepared packs and unmarked operator folders are preserved. Back up the catalog and prepared assets. Disposable source/tool caches can be rebuilt, subject to upstream availability. Stop active viewers before replacing manual assets and reload tabs afterward.
 

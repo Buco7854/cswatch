@@ -7,6 +7,7 @@ import type { Playback } from '../types';
 import type { CaptionCue } from '../../../shared/communications';
 import { frameAt, type ViewerSettings } from '../playback';
 import { VoicePlayback } from '../voice-playback';
+import { ViewerAudio, useViewerAudioState } from '../viewer-audio';
 import { SelectControl } from './Controls';
 import './communications.css';
 
@@ -31,6 +32,7 @@ export default function Communications({
   open,
   close,
   onSeek,
+  audio,
 }: {
   id: string;
   data: Playback;
@@ -45,6 +47,7 @@ export default function Communications({
   close: () => void;
   onSeek: (tick: number) => void;
   owned: boolean;
+  audio: ViewerAudio;
 }) {
   const { config } = useApp();
   const sampleExample = id === 'sample' && data.sample === true;
@@ -77,6 +80,7 @@ export default function Communications({
     };
   }, [id, overlaysEnabled]);
   const engine = useRef<VoicePlayback | null>(null);
+  const audioState = useViewerAudioState(audio);
   const [audioError, setAudioError] = useState('');
   const [captionError, setCaptionError] = useState('');
   const [captions, setCaptions] = useState<Captions>({ status: 'unavailable', cues: [] });
@@ -107,21 +111,36 @@ export default function Communications({
     setCaptionError('');
   }, [id]);
   useEffect(() => {
-    const audio = new VoicePlayback(setAudioError);
-    engine.current = audio;
+    const playback = new VoicePlayback(setAudioError, audio);
+    engine.current = playback;
     return () => {
-      audio.close();
+      playback.close();
       engine.current = null;
     };
-  }, [id]);
+  }, [id, audio]);
   useEffect(() => {
     if (open) dialog.current?.showModal();
     else dialog.current?.close();
   }, [open]);
   useEffect(() => {
-    if (!settings.voice || !playing) engine.current?.stop();
-    else void engine.current?.unlock();
-  }, [settings.voice, playing, id]);
+    if (
+      !settings.voice ||
+      !playing ||
+      settings.audioMuted ||
+      settings.audioVolume === 0 ||
+      settings.voiceVolume === 0 ||
+      audioState !== 'running'
+    )
+      engine.current?.stop();
+  }, [
+    settings.voice,
+    playing,
+    id,
+    settings.audioMuted,
+    settings.audioVolume,
+    settings.voiceVolume,
+    audioState,
+  ]);
   const frame = frameAt(data, tick).frame;
   const selectedTeam = frame.players.find((player) => player.id === selected)?.team;
   const speakers = useMemo(() => {
@@ -142,7 +161,14 @@ export default function Communications({
   }, [data.players, data.voice, frame.players, selected, selectedTeam, settings.voiceScope, muted]);
   const speakerKey = speakers.join(',');
   useEffect(() => {
-    if (settings.voice && playing)
+    if (
+      settings.voice &&
+      playing &&
+      !settings.audioMuted &&
+      settings.audioVolume > 0 &&
+      settings.voiceVolume > 0 &&
+      audioState === 'running'
+    )
       engine.current?.sync(
         data.voice || [],
         tick,
@@ -160,6 +186,9 @@ export default function Communications({
     settings.voice,
     settings.voiceVolume,
     speakerKey,
+    settings.audioMuted,
+    settings.audioVolume,
+    audioState,
   ]);
   useEffect(() => {
     const controller = new AbortController();
@@ -245,7 +274,10 @@ export default function Communications({
         type="checkbox"
         checked={settings[key]}
         disabled={disabled}
-        onChange={(event) => onChange({ ...settings, [key]: event.target.checked })}
+        onChange={(event) => {
+          if (key === 'voice' && event.target.checked) void engine.current?.unlock();
+          onChange({ ...settings, [key]: event.target.checked });
+        }}
       />
     </label>
   );

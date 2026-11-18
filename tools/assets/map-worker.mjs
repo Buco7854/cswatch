@@ -21,7 +21,8 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import {
   canonicalMapApproval,
-  mapPackId,
+  latestMapPackId,
+  latestMapPackMarkerSchema,
   readMapCatalog,
   resolveMap,
 } from '../../backend/dist/map-catalog.js';
@@ -31,6 +32,8 @@ import {
   prepareMapJobs,
   readMapRequest,
   readMapResult,
+  readOfficialMapInventory,
+  latestMapResultMatches,
   writeMapJobResult,
   writeMapWorkerStatus,
 } from '../../backend/dist/map-jobs.js';
@@ -55,6 +58,8 @@ import {
 } from './install-steam-assets.mjs';
 import { prepareToolchain } from './prepare-toolchain.mjs';
 import { selectedSteamManifest } from './steam-assets-plan.mjs';
+import { refreshOfficialMapInventory, markSteamRateLimit } from './official-map-inventory.mjs';
+import { installGameplaySounds } from './install-gameplay-sounds.mjs';
 
 export const mapWorkerLimits = Object.freeze({
   deadlineMs: 45 * 60 * 1000,
@@ -62,6 +67,7 @@ export const mapWorkerLimits = Object.freeze({
   assetBytes: 32 * 1024 ** 3,
   keepSources: 2,
   attempts: 3,
+  steamCooldownSeconds: 15 * 60,
 });
 const sourceMarker = '.cswatch-official-source.json';
 const defaultNetworkDeny = fileURLToPath(new URL('./bin/asset-network-deny', import.meta.url));
@@ -142,8 +148,14 @@ async function requests(jobs) {
     })) || []
   );
 }
-async function approved(catalogFile, request) {
-  const catalog = await readMapCatalog(catalogFile);
+async function approved(options, request) {
+  if (request.kind === 'latest-official') {
+    // The request was admitted against fresh worker-observed membership. A
+    // later inventory refresh must not rewrite its immutable source selection.
+    const inventory = await readOfficialMapInventory(options.jobs, now(), { allowStale: true });
+    return Boolean(inventory?.maps.some((entry) => entry.map === request.selection.map));
+  }
+  const catalog = await readMapCatalog(options.catalog);
   const resolution = resolveMap(request.approval.identity, catalog);
   return (
     resolution.status === 'approved' &&
@@ -272,8 +284,13 @@ export async function sourceCache(options, manifest) {
   return current;
 }
 
-const preparationMarker = (packId) =>
-  JSON.stringify({ schemaVersion: 1, packId, kind: 'cswatch-official-map-preparation' });
+const preparationMarker = (packId, requestId) =>
+  JSON.stringify({
+    schemaVersion: 1,
+    packId,
+    kind: 'cswatch-official-map-preparation',
+    ...(requestId ? { requestId } : {}),
+  });
 
 /** Call only while holding the worker flock, after confined converters have
  * exited. Exact markers distinguish our interrupted scratch from operator data. */
@@ -292,7 +309,17 @@ export async function cleanMapPreparations(options) {
     try {
       await localDirectory(path);
       await regular(marker, 256);
-      if ((await readFile(marker, 'utf8')) !== preparationMarker(match[1])) continue;
+      const text = await readFile(marker, 'utf8');
+      if (text !== preparationMarker(match[1])) {
+        const data = JSON.parse(text);
+        if (
+          !/^[a-f0-9]{64}$/.test(data.packId || '') ||
+          !/^[a-f0-9]{64}$/.test(data.requestId || '') ||
+          ![data.packId, data.requestId].includes(match[1]) ||
+          text !== preparationMarker(data.packId, data.requestId)
+        )
+          continue;
+      }
     } catch {
       continue;
     }
@@ -316,6 +343,7 @@ async function budgets(options) {
 }
 export function mapFailureCode(error, signal) {
   if (signal?.aborted) return 'worker_interrupted';
+  if (error?.code === 'STEAM_RATE_LIMIT') return 'preparation_failed';
   if (error?.code === 'SOURCE_MAP_MISMATCH') return 'source_mismatch';
   if (error?.code === 'ASSET_ATTEMPTS_EXHAUSTED') return 'worker_interrupted';
   if (error?.code === 'STEAM_SOURCE_UNAVAILABLE') return 'source_unavailable';
@@ -325,19 +353,34 @@ export function mapFailureCode(error, signal) {
     /free disk space|storage limit|disk quota|ENOSPC/i.test(error?.message || '')
   )
     return 'storage_limit';
-  if (
-    /manifest request code|selected map.*absent|Steam.*unavailable|selected Steam file.*hash/i.test(
-      error?.message || '',
-    )
-  )
+  if (/manifest request code|selected map.*absent|Steam.*unavailable/i.test(error?.message || ''))
     return 'source_unavailable';
   return 'preparation_failed';
 }
 
-async function validatePack(root, request, validate) {
+async function validatePack(root, request, validate, proof) {
   const marker = join(root, 'pack.json');
   await regular(marker, 16384);
   const data = JSON.parse(await readFile(marker, 'utf8'));
+  if (request.kind === 'latest-official') {
+    const marker = latestMapPackMarkerSchema.parse(data);
+    if (
+      !proof ||
+      !latestMapResultMatches(request, proof) ||
+      marker.requestId !== request.packId ||
+      marker.packId !== proof.assetPackId ||
+      JSON.stringify(marker.selection) !== JSON.stringify(request.selection) ||
+      marker.source.mapSha256 !== proof.source.mapSha256 ||
+      marker.source.manifest !== proof.source.manifest
+    )
+      throw Error('Prepared latest pack source differs.');
+    await validate(
+      join(root, 'maps'),
+      request.selection.map,
+      `steam-2347770-${request.selection.manifest}`,
+    );
+    return;
+  }
   if (
     data.schemaVersion !== 1 ||
     data.packId !== request.packId ||
@@ -359,6 +402,14 @@ export async function processOneMapRequest(options, adapters = {}) {
     const previous = await readMapResult(options.jobs, packId);
     if (previous && previous.status !== 'processing') continue;
     let staging;
+    let proof =
+      request.kind === 'latest-official' && previous && latestMapResultMatches(request, previous)
+        ? {
+            assetPackId: previous.assetPackId,
+            source: previous.source,
+            sourceCheckedAt: previous.sourceCheckedAt,
+          }
+        : undefined;
     const signal = options.signal
       ? AbortSignal.any([options.signal, AbortSignal.timeout(mapWorkerLimits.deadlineMs)])
       : AbortSignal.timeout(mapWorkerLimits.deadlineMs);
@@ -368,10 +419,11 @@ export async function processOneMapRequest(options, adapters = {}) {
         packId,
         status,
         updatedAt: now(),
+        ...proof,
         ...(code ? { code } : {}),
       });
     try {
-      if (!(await approved(options.catalog, request)))
+      if (!(await approved(options, request)))
         throw Object.assign(Error('Approval removed.'), { code: 'APPROVAL_REMOVED' });
       signal.throwIfAborted();
       await result('processing');
@@ -380,19 +432,23 @@ export async function processOneMapRequest(options, adapters = {}) {
         status: 'processing',
         updatedAt: now(),
       });
-      const packs = join(options.assets, 'packs'),
-        target = join(packs, packId);
+      const packs = join(options.assets, 'packs');
+      let assetPackId = proof?.assetPackId || packId;
+      let target = join(packs, assetPackId);
       await readableDirectory(packs);
       await localDirectory(packs);
-      if (await exists(target)) {
+      if ((request.kind !== 'latest-official' || proof) && (await exists(target))) {
         await localDirectory(target);
-        await validatePack(target, request, validate);
+        await validatePack(target, request, validate, { packId, ...proof });
       } else {
         if (!(await reserveAttempt(options.jobs, request)))
           throw Object.assign(Error('Map preparation restart budget exhausted.'), {
             code: 'ASSET_ATTEMPTS_EXHAUSTED',
           });
-        const cache = await sourceCache(options, request.approval.source.manifest);
+        const latest = request.kind === 'latest-official',
+          map = latest ? request.selection.map : request.approval.identity.map,
+          manifest = latest ? request.selection.manifest : request.approval.source.manifest;
+        const cache = await sourceCache(options, manifest);
         await budgets(options);
         staging = await mkdtemp(join(packs, `.preparing-${packId}-`));
         await writeFile(join(staging, '.preparation.json'), preparationMarker(packId), {
@@ -400,21 +456,52 @@ export async function processOneMapRequest(options, adapters = {}) {
           mode: 0o600,
         });
         const prepare = adapters.prepare || installSteamAssets;
-        const approval = request.approval;
         let tools;
         await prepare(
           {
-            maps: [approval.identity.map],
-            manifest: approval.source.manifest,
-            assetVersion: approval.assetVersion,
-            expectedMapHashes: { [approval.identity.map]: approval.source.mapSha256 },
+            maps: [map],
+            manifest,
+            ...(latest
+              ? {
+                  expectedMapFiles: {
+                    [map]: { sha1: request.selection.sha1, bytes: request.selection.bytes },
+                  },
+                  onSourceVerified: async (source) => {
+                    if (
+                      source.map !== map ||
+                      source.manifest !== manifest ||
+                      source.sha1 !== request.selection.sha1 ||
+                      source.bytes !== request.selection.bytes ||
+                      !/^[a-f0-9]{64}$/.test(source.mapSha256 || '')
+                    )
+                      throw Object.assign(Error('Official source changed.'), {
+                        code: 'SOURCE_MAP_MISMATCH',
+                      });
+                    const verified = {
+                      appId: 730,
+                      depotId: 2347770,
+                      manifest,
+                      mapSha256: source.mapSha256,
+                    };
+                    assetPackId = latestMapPackId(map, verified);
+                    target = join(packs, assetPackId);
+                    proof = { assetPackId, source: verified, sourceCheckedAt: now() };
+                    // Persist before conversion/publication so a crash after rename
+                    // can recover exactly this content without another download.
+                    await result('processing');
+                  },
+                }
+              : {
+                  assetVersion: request.approval.assetVersion,
+                  expectedMapHashes: { [map]: request.approval.source.mapSha256 },
+                }),
             output: join(staging, 'maps'),
             cache,
             signal,
           },
           {
             prepareToolchain: async ({ signal, onProgress }) => {
-              tools = await prepareToolchain({
+              tools = await (adapters.prepareToolchain || prepareToolchain)({
                 cache: join(options.cache, 'tools'),
                 signal,
                 onProgress,
@@ -422,7 +509,7 @@ export async function processOneMapRequest(options, adapters = {}) {
               return tools;
             },
             run: async (command, args, context) => {
-              if (!(await approved(options.catalog, request)))
+              if (!(await approved(options, request)))
                 throw Object.assign(Error('Approval removed.'), { code: 'APPROVAL_REMOVED' });
               await budgets(options);
               let executable = command,
@@ -445,14 +532,21 @@ export async function processOneMapRequest(options, adapters = {}) {
               } else if (command !== tools?.downloader)
                 throw Error('Unrecognized asset preparation command.');
               try {
-                return await runAssetProcess(executable, arguments_, {
+                const outcome = await runAssetProcess(executable, arguments_, {
                   ...context,
                   storageGuard: async () => {
                     await context.storageGuard?.();
                     await checkFreeReserve(options.cache, options.assets);
                   },
                 });
+                if (command === tools?.downloader && outcome.code === 4)
+                  throw Object.assign(Error('Steam login rate limit.'), {
+                    code: 'STEAM_RATE_LIMIT',
+                    exitCode: 4,
+                  });
+                return outcome;
               } catch (error) {
+                if (command === tools?.downloader && markSteamRateLimit(error)) throw error;
                 if (command === tools?.downloader && context.log) {
                   try {
                     await regular(context.log, 4 * 1024 ** 2);
@@ -473,38 +567,72 @@ export async function processOneMapRequest(options, adapters = {}) {
           },
         );
         signal.throwIfAborted();
-        const version = approval.assetVersion || `steam-2347770-${approval.source.manifest}`;
-        await validate(join(staging, 'maps'), approval.identity.map, version);
+        if (latest && !proof) throw Error('Official source proof was not produced.');
+        const version = (!latest && request.approval.assetVersion) || `steam-2347770-${manifest}`;
+        await validate(join(staging, 'maps'), map, version);
+        if (latest) {
+          // The native converter has exited. Publication requires the content
+          // ID in the private stage name, rather than the queue selection ID.
+          const destination = await mkdtemp(join(packs, `.preparing-${assetPackId}-`));
+          await rm(destination, { recursive: true });
+          // Both pre/post-rename names recognize this exact marker after a crash.
+          await writeFile(
+            join(staging, '.preparation.json'),
+            preparationMarker(assetPackId, packId),
+          );
+          await rename(staging, destination);
+          staging = destination;
+        }
         await writeFile(
           join(staging, 'pack.json'),
-          JSON.stringify({
-            schemaVersion: 1,
-            packId,
-            approval: canonicalMapApproval(approval),
-            preparedAt: now(),
-          }) + '\n',
+          JSON.stringify(
+            latest
+              ? latestMapPackMarkerSchema.parse({
+                  schemaVersion: 1,
+                  kind: 'latest-official',
+                  packId: assetPackId,
+                  requestId: packId,
+                  selection: request.selection,
+                  source: proof.source,
+                  preparedAt: now(),
+                })
+              : {
+                  schemaVersion: 1,
+                  packId,
+                  approval: canonicalMapApproval(request.approval),
+                  preparedAt: now(),
+                },
+          ) + '\n',
           { flag: 'wx', mode: 0o644 },
         );
         await chmod(staging, 0o755);
-        await validatePack(staging, request, validate);
-        if (!(await approved(options.catalog, request)))
+        await validatePack(staging, request, validate, { packId, ...proof });
+        if (!(await approved(options, request)))
           throw Object.assign(Error('Approval removed.'), { code: 'APPROVAL_REMOVED' });
         await budgets(options);
-        const publication = spawnSync(
-          options.networkDeny || defaultNetworkDeny,
-          ['--publish', staging, target],
-          { stdio: 'ignore', timeout: 10000 },
-        );
-        if (publication.error || publication.status !== 0)
-          throw Error('Exclusive prepared map publication failed.');
-        staging = undefined;
+        if (await exists(target)) {
+          await localDirectory(target);
+          await validatePack(target, request, validate, { packId, ...proof });
+          await rm(staging, { recursive: true });
+          staging = undefined;
+        } else {
+          const publication = spawnSync(
+            options.networkDeny || defaultNetworkDeny,
+            ['--publish', staging, target],
+            { stdio: 'ignore', timeout: 10000 },
+          );
+          if (publication.error || publication.status !== 0)
+            throw Error('Exclusive prepared map publication failed.');
+          staging = undefined;
+        }
       }
-      if (!(await approved(options.catalog, request)))
+      if (!(await approved(options, request)))
         throw Object.assign(Error('Approval removed.'), { code: 'APPROVAL_REMOVED' });
       signal.throwIfAborted();
       await result('ready');
       options.log?.({ event: 'map.ready', packId });
     } catch (error) {
+      if (error?.code === 'STEAM_RATE_LIMIT') options.onSteamRateLimit?.();
       const code = mapFailureCode(error, signal);
       await result('failed', code);
       options.log?.({ event: 'map.failed', packId, code });
@@ -521,7 +649,14 @@ export async function processOneMapRequest(options, adapters = {}) {
   return false;
 }
 
-export async function runMapWorker(options) {
+export async function runMapWorker(options, adapters = {}) {
+  // Test adapters replace scheduling time and remote work, never confinement,
+  // worker locking, heartbeat storage or publication ownership.
+  const clock = adapters.now || now,
+    sleep = adapters.delay || delay,
+    refreshInventory = adapters.refreshInventory || refreshOfficialMapInventory,
+    processRequest = adapters.processRequest || processOneMapRequest,
+    prepareSounds = adapters.prepareSounds || prepareIdleGameplaySounds;
   await localDirectory(options.jobs, true);
   await readableDirectory(options.assets);
   await localDirectory(options.assets);
@@ -545,12 +680,26 @@ export async function runMapWorker(options) {
   if (!release) throw Error('Another official-map worker owns this queue or flock is unavailable.');
   let busy = false,
     beat;
+  let blockedUntil = 0;
+  const onSteamRateLimit = () => {
+    blockedUntil = Math.max(blockedUntil, clock() + mapWorkerLimits.steamCooldownSeconds);
+    options.log?.({ event: 'map.steam_rate_limited', retryAt: blockedUntil });
+    options.onSteamRateLimit?.();
+  };
+  const workOptions = { ...options, onSteamRateLimit };
+  const pause = async (milliseconds) => {
+    try {
+      await sleep(milliseconds, undefined, { signal: options.signal });
+    } catch (error) {
+      if (!options.signal?.aborted) throw error;
+    }
+  };
   const heartbeat = () => {
     if (beat) return beat;
     beat = writeMapWorkerStatus(options.jobs, {
       schemaVersion: 1,
       status: busy ? 'processing' : 'idle',
-      updatedAt: now(),
+      updatedAt: clock(),
     }).finally(() => {
       beat = undefined;
     });
@@ -562,12 +711,65 @@ export async function runMapWorker(options) {
   try {
     await cleanMapPreparations(options);
     await heartbeat();
+    let refreshAt = 0,
+      refreshFailures = 0,
+      audioManifest,
+      audioAttempts = 0;
     while (!options.signal?.aborted) {
+      if (clock() < blockedUntil) {
+        await heartbeat();
+        await pause(Math.min(15000, (blockedUntil - clock()) * 1000));
+        continue;
+      }
+      if (clock() >= refreshAt) {
+        busy = true;
+        try {
+          await budgets(options);
+          const inventory = await refreshInventory(workOptions);
+          refreshFailures = 0;
+          refreshAt = clock() + 3600;
+          if (audioAttempts < 3) audioManifest = inventory.manifest;
+          options.log?.({
+            event: 'map.inventory_ready',
+            manifest: inventory.manifest,
+            maps: inventory.maps.length,
+          });
+        } catch (error) {
+          if (error?.code === 'STEAM_RATE_LIMIT') onSteamRateLimit();
+          refreshFailures++;
+          // Discovery backoff and the shared explicit-rate cooldown are separate.
+          // Both respect Steam's advised fifteen-minute login-rate pause.
+          refreshAt = clock() + Math.min(3600, 900 * 2 ** Math.min(refreshFailures - 1, 2));
+          options.log?.({ event: 'map.inventory_unavailable' });
+        }
+        busy = false;
+        await heartbeat();
+      }
+      if (options.signal?.aborted) break;
+      if (clock() < blockedUntil) continue;
       busy = true;
-      const worked = await processOneMapRequest(options);
+      const worked = await processRequest(workOptions);
       busy = false;
       await heartbeat();
-      if (!worked) await delay(2000, undefined, { signal: options.signal }).catch(() => undefined);
+      if (!worked && audioManifest && !options.signal?.aborted) {
+        const selected = audioManifest;
+        audioManifest = undefined;
+        audioAttempts++;
+        busy = true;
+        try {
+          await prepareSounds(workOptions, selected);
+          options.log?.({ event: 'sound.ready', manifest: selected });
+          audioAttempts = 3;
+        } catch (error) {
+          if (error?.code === 'STEAM_RATE_LIMIT') onSteamRateLimit();
+          if (error?.code === 'SOURCE_MAP_MISMATCH') audioAttempts = 3;
+          options.log?.({ event: 'sound.failed', code: mapFailureCode(error, options.signal) });
+        } finally {
+          busy = false;
+          await heartbeat();
+        }
+      }
+      if (!worked) await pause(2000);
     }
   } finally {
     clearInterval(timer);
@@ -578,6 +780,39 @@ export async function runMapWorker(options) {
       await release();
     }
   }
+}
+
+/** Idle-only fixed audio preparation never changes map/replay results. */
+export async function prepareIdleGameplaySounds(options, manifest, adapters = {}) {
+  selectedSteamManifest(manifest);
+  const signal = options.signal
+    ? AbortSignal.any([options.signal, AbortSignal.timeout(15 * 60 * 1000)])
+    : AbortSignal.timeout(15 * 60 * 1000);
+  await budgets(options);
+  const cache = await sourceCache(options, manifest);
+  return (adapters.install || installGameplaySounds)(
+    {
+      cache,
+      output: options.assets,
+      toolchainCache: join(options.cache, 'tools'),
+      manifest,
+      networkDeny: options.networkDeny || defaultNetworkDeny,
+      signal,
+      beforePublish: () => budgets(options),
+    },
+    {
+      run: async (command, args, context) => {
+        await budgets(options);
+        return runAssetProcess(command, args, {
+          ...context,
+          storageGuard: async () => {
+            await context.storageGuard?.();
+            await checkFreeReserve(options.cache, options.assets);
+          },
+        });
+      },
+    },
+  );
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

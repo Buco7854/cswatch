@@ -42,7 +42,7 @@ test('optional map artwork leaves upload geometry, language menus and file picki
           );
           await page.goto('/', { waitUntil: 'domcontentloaded' });
           const upload = page.getByRole('button', {
-            name: language === 'fr' ? /Déposez votre démo ici/ : /Drop your demo here/,
+            name: language === 'fr' ? /Choisir le fichier de démo/ : /Choose demo file/,
           });
           await expect(upload).toBeVisible();
           await fonts(page);
@@ -121,7 +121,7 @@ test('missing, failed or malformed optional previews preserve entry and never fe
     await page.goto('/');
     await previewResponse;
     if (imageResponse) await imageResponse;
-    await expect(page.getByRole('button', { name: /Drop your demo here/ })).toBeEnabled();
+    await expect(page.getByRole('button', { name: /Choose demo file/ })).toBeEnabled();
     await expect(page.locator('.landing-backdrop')).toHaveCount(0);
     await expect(page.getByRole('alert')).toHaveCount(0);
     await page.unroute('**/api/map-preview');

@@ -10,6 +10,7 @@ import {
   useState,
 } from 'react';
 import type { ReactNode } from 'react';
+import type { ListenerPose } from '../viewer-audio';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
@@ -46,6 +47,7 @@ import { equipmentIconKey } from '../equipment-icons';
 import { projectileEquipment } from '../projectile-equipment';
 import { useAgentAssets } from '../agent-assets';
 import { useModelLeases } from '../equipment-loader';
+import { playerPose, type PoseTiming } from '../player-pose';
 import { recordedLocomotion } from '../agent-locomotion';
 import RenderAgent, {
   GenericAgentBody,
@@ -308,6 +310,7 @@ function Agent({
   rate,
   frameTick,
   nextTick,
+  roundBoundary,
 }: {
   position: Position;
   next?: Position;
@@ -320,7 +323,14 @@ function Agent({
   rate: number;
   frameTick: number;
   nextTick: number;
+  roundBoundary: boolean;
 }) {
+  const pose = playerPose(position, next, alpha, {
+    fromTick: frameTick,
+    nextTick,
+    tickRate: rate,
+    roundBoundary,
+  });
   const motion = recordedLocomotion(position, next, frameTick, nextTick, rate, alpha);
   const weaponAnchor = useRef<THREE.Object3D | null>(null);
   const registerWeaponAnchor = useCallback((bone: THREE.Object3D) => {
@@ -332,12 +342,8 @@ function Agent({
   const ref = useRef<THREE.Group>(null);
   useFrame(() => {
     if (!ref.current) return;
-    const from = vector(position);
-    const to = next && next.alive === position.alive ? vector(next) : from;
-    ref.current.position.copy(from.lerp(to, alpha));
-    const yaw =
-      position.yaw + ((((next?.yaw ?? position.yaw) - position.yaw + 540) % 360) - 180) * alpha;
-    ref.current.rotation.y = THREE.MathUtils.degToRad(yaw);
+    ref.current.position.set(pose.x * UNIT, pose.z * UNIT, -pose.y * UNIT);
+    ref.current.rotation.y = THREE.MathUtils.degToRad(pose.yaw);
   }, -3);
   const color = position.team === 3 ? '#9ec7da' : '#e7ba73';
   if (!position.alive) return null;
@@ -361,15 +367,15 @@ function Agent({
           id={position.id}
           tick={tick}
           rate={rate}
-          speed={motion.speed}
-          duck={motion.duck}
+          speed={roundBoundary ? 0 : motion.speed}
+          duck={pose.duck ?? 0}
           registerWeaponAnchor={registerWeaponAnchor}
           fallback={<GenericAgentBody team={position.team} id={position.id} />}
         />
       ) : (
         <GenericAgentBody team={position.team} id={position.id} />
       )}
-      <HeldEquipment position={{ ...position, duck: motion.duck }} anchor={weaponAnchor} />
+      <HeldEquipment position={pose} anchor={weaponAnchor} />
       {showMarkers && (
         <mesh position={[0, 2, 0]}>
           <sphereGeometry args={[selected ? 0.15 : 0.09, 8, 8]} />
@@ -403,6 +409,7 @@ function World({
   focus,
   utilityState,
   items,
+  onAudioListener,
 }: {
   data: Playback;
   tick: number;
@@ -426,6 +433,7 @@ function World({
   focus?: SceneFocus;
   utilityState: UtilityPresentation;
   items: PresentItem[];
+  onAudioListener?: (pose: ListenerPose | null) => void;
 }) {
   const { camera, gl, invalidate } = useThree();
   const fogResources = useRef<SourceFogResources>({ fog: null, cube: null });
@@ -523,7 +531,13 @@ function World({
   }, [mode, preview, gl, invalidate]);
   const freeView = useRef<{ position: THREE.Vector3; target: THREE.Vector3 } | null>(null);
   const { frame, next, alpha } = frameAt(data, tick);
-  const viewedPlayer = frame.players.find((player) => player.id === selected) || frame.players[0];
+  const viewedPlayer = frame.players.find((player) => player.id === selected);
+  const poseTiming: PoseTiming = {
+    fromTick: frame.tick,
+    nextTick: next.tick,
+    tickRate: data.tickRate,
+    roundBoundary: data.rounds.some((round) => round.tick > frame.tick && round.tick <= next.tick),
+  };
   const bounds = useMemo(() => {
     if (data.sample) return { center: new THREE.Vector3(0, 0, 0), extent: 52 };
     const b = playbackBounds(data);
@@ -603,25 +617,26 @@ function World({
       if (movement.current.size) invalidate();
       return;
     }
-    const p =
-      frame.players.find((p) => p.id === selected) ??
-      (mode === 'follow' ? undefined : frame.players[0]);
-    if (!p) return;
-    const n = next.players.find((n) => n.id === p.id);
-    const pos = vector(p).lerp(n ? vector(n) : vector(p), alpha);
     if (mode === 'tactical') {
       camera.position.copy(bounds.center).add(new THREE.Vector3(0, bounds.extent * 1.15, 0.01));
       camera.lookAt(bounds.center);
-    } else if (mode === 'follow') {
-      const follow = thirdPersonFollow(p, n, alpha);
+      return;
+    }
+    const p = viewedPlayer;
+    if (!p) return;
+    const n = next.players.find((n) => n.id === p.id),
+      pose = playerPose(p, n, alpha, poseTiming);
+    const pos = vector(pose);
+    if (mode === 'follow') {
+      const follow = thirdPersonFollow(p, n, alpha, poseTiming);
       if (follow) {
         camera.position.set(...follow.position);
         camera.lookAt(...follow.target);
       }
     } else {
-      const yaw = THREE.MathUtils.degToRad(p.yaw),
-        pitch = THREE.MathUtils.degToRad(p.pitch);
-      camera.position.copy(pos).add(new THREE.Vector3(0, 1.65 - (p.duck ?? 0) * 0.7, 0));
+      const yaw = THREE.MathUtils.degToRad(pose.yaw),
+        pitch = THREE.MathUtils.degToRad(pose.pitch);
+      camera.position.copy(pos).add(new THREE.Vector3(0, 1.65 - (pose.duck ?? 0) * 0.7, 0));
       camera.lookAt(
         camera.position
           .clone()
@@ -635,6 +650,19 @@ function World({
       );
     }
   });
+  const audioForward = useRef(new THREE.Vector3());
+  const audioUp = useRef(new THREE.Vector3());
+  useFrame(() => {
+    if (!onAudioListener) return;
+    camera.getWorldDirection(audioForward.current);
+    audioUp.current.set(0, 1, 0).applyQuaternion(camera.quaternion);
+    onAudioListener({
+      position: camera.position.toArray(),
+      forward: audioForward.current.toArray(),
+      up: audioUp.current.toArray(),
+    });
+  });
+  useEffect(() => () => onAudioListener?.(null), [onAudioListener]);
   return (
     <>
       <EnvironmentBackground
@@ -692,6 +720,7 @@ function World({
               rate={data.tickRate}
               frameTick={frame.tick}
               nextTick={next.tick}
+              roundBoundary={Boolean(poseTiming.roundBoundary)}
             />
           ))}
         {!preview && mode === 'pov' && viewedPlayer && (
@@ -699,6 +728,7 @@ function World({
             position={viewedPlayer}
             next={next.players.find((player) => player.id === viewedPlayer.id)}
             alpha={alpha}
+            timing={poseTiming}
           />
         )}
         {!preview && <RecordedEquipment items={items} />}
@@ -848,6 +878,7 @@ export default function Scene({
   assetScope = 'public',
   onMapStatus,
   focus,
+  onAudioListener,
 }: {
   data: Playback;
   tick?: number;
@@ -859,7 +890,17 @@ export default function Scene({
   assetScope?: string;
   onMapStatus?: (state: MapRenderState) => void;
   focus?: SceneFocus;
+  onAudioListener?: (pose: ListenerPose | null) => void;
 }) {
+  const listenerScope = useMemo(() => ({}), [assetScope, data.map, onAudioListener]);
+  const currentListenerScope = useRef(listenerScope);
+  currentListenerScope.current = listenerScope;
+  const reportAudioListener = useCallback(
+    (pose: ListenerPose | null) => {
+      if (currentListenerScope.current === listenerScope) onAudioListener?.(pose);
+    },
+    [listenerScope, onAudioListener],
+  );
   const equipmentIdentity = useMemo(() => ({}), [data.map, assetScope]);
   const equipmentAssets = useEquipmentAssets(`${assetScope}:${data.map}`, !preview && !data.sample);
   const agentAssets = useAgentAssets(`${assetScope}:${data.map}`, !preview && !data.sample);
@@ -1281,6 +1322,7 @@ export default function Scene({
                     focus={focus}
                     utilityState={utilityState}
                     items={liveItems}
+                    onAudioListener={reportAudioListener}
                   />
                 </AgentModels.Provider>
               </EquipmentModels.Provider>
