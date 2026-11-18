@@ -1,6 +1,6 @@
 # Active work
 
-Updated 2026-11-18. The acquisition, animation, landing and security revision has passed its local integration gates. The user authorized specialist agents and pushing verified changes to main. The current commit’s Actions is authoritative for hardened Docker verification and image publication. The previous `413bb88` workflow failed a resize journey; its synchronized test now passes locally.
+Updated 2026-11-18. The acquisition, animation, landing and security revision is released. The [verified runtime release `3d8c2ee`](https://github.com/Buco7854/cswatch/actions/runs/44226669557) passed local and CI integration gates, including both hardened container checks and image publication. Anonymous pulls of both images passed. The user authorized specialist agents and pushing to main. Newer documentation-only signoff changes do not alter the verified runtime code.
 
 ## Completed integration
 
@@ -18,11 +18,11 @@ After the private preview was gracefully stopped, the complete ignored pack tree
 
 ## Release and subsequent work
 
-Local integration gates pass. Push the reviewed source to main as authorized and follow that commit’s hardened Docker verification and publication before reporting either application or asset-worker image released. Local Docker is unavailable. If CI exposes a failure, fix its cause and repeat the affected checks. The latest Actions result establishes deployment status, not an older successful workflow.
+The runtime release and publication are verified. There is no pending release gate. Future source changes need meaningful checks for their scope; do not repeat the completed release or weaken assertions/deadlines. Keep exact historical map matching, source availability, broader prepared equipment and physical-device validation explicit as conditions, rather than claiming universal coverage.
 
-Cache is explicitly unavailable as a native pack. Its resource/shader acquisition resolved, but export stopped at the unchanged 512 MiB disk reserve. Do not retry on the current disk capacity, lower the reserve or modify existing verified packs. A later operator run needs adequate storage first.
+Cache now has a genuine calibrated overview, prepared offline from CRC/hash-verified cached manifest `807392217824910805` resources. Actual HTTP delivery, exact source-coordinate projection, seeking and no-WebGL full 2D passed on desktop and phone in both themes using clearly labeled original QA positions. This is 2D coverage, not a Cache recording or 3D-map verification. The initial 3D export hit the unchanged disk reserve; after 323,903,488 bytes of safe cache-gap reclamation, Steam denied the explicit source manifest before another export. All 2,164 retained Cache resource CRCs and 182 prior prepared-file hashes verified. Its missing sky prefab prevents complete offline 3D preparation. Never substitute a newer version silently.
 
-Prepared sources use Steam manifest `6678473446694075055`. A later official listing is `807392217824910805`. Explicit map `--manifest` pinning and mismatch rejection are verified. Treat different manifests as distinct immutable versions and retain dependency CRCs, bounded shader streaming, source-image compaction and exclusive publication.
+Prepared model sources use Steam manifest `6678473446694075055`. Cached clips/preview/Cache-overview inputs use `807392217824910805`. Both pins were subsequently denied in separate anonymous source requests. Cached validated artifacts remain usable, with retained provenance. Treat manifests as distinct immutable versions and preserve dependency CRCs, bounded conversion and exclusive publication.
 
 The user's automatic map-loading question is documented in [MAP-ACQUISITION](MAP-ACQUISITION.md). The dedicated optional `assets` service now implements catalog-matched official acquisition, separate from the networkless replay/speech workers. `AUTO_OFFICIAL_MAPS_ENABLED` is environment-locked or admin-managed and defaults off. Exact full recorded identity must resolve to one operator-approved fixed app/depot/manifest/map-hash tuple. Sources are not inferred from map name, protocol, engine date or latest Steam build. Empty catalogs remain explicitly unmatched. Workshop and automatic historical/current catalog generation remain unsupported.
 
@@ -30,4 +30,4 @@ Map requests are owner-authorized, CSRF-protected, deduplicated and bounded. Wor
 
 Use Node 24 and the lockfile's Chromium. Run heavy native/inference, export and actual-map browser jobs serially. Preserve the TypeScript/CPU-only/reverse-proxy architecture and host quotas. Reclaim only verified scratch owned by the task, retaining provenance and prepared packs.
 
-Broader map/version coverage, live Steam/FACEIT credentials, representative subtitle quality, exact native grips/recorded animation graphs, physical S24/TV performance and independent security review remain external evidence or future implementation. Do not claim Source 2 parity, native smoke physics, Steam automatic demo downloads, all 67 prepared models, Cache rendering or physical-device certification.
+Broader map/version coverage, live Steam/FACEIT credentials, representative subtitle quality, exact native grips/recorded animation graphs, physical S24/TV performance and independent security review remain external evidence or future implementation. Do not claim Source 2 parity, native smoke physics, Steam automatic demo downloads, all 67 prepared models, Cache 3D rendering or physical-device certification.

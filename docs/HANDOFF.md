@@ -1,6 +1,6 @@
 # Current handoff
 
-Updated 2026-11-18. Start with [active work](product/WORK.md), [feature status](STATUS.md), [verification](VERIFICATION.md) and [security](../SECURITY.md). Repository: https://github.com/Buco7854/cswatch. The user authorized specialist agents and pushing verified changes to main. Current local integration gates pass. Docker is unavailable locally, so the current commit’s Actions determines hardened container verification and publication. Previous commit `413bb88` failed one browser resize check and published no image; the synchronized resize journey now passes locally.
+Updated 2026-11-18. Start with [active work](product/WORK.md), [feature status](STATUS.md), [verification](VERIFICATION.md) and [security](../SECURITY.md). Repository: https://github.com/Buco7854/cswatch. The user authorized specialist agents and pushing to main. The [verified runtime release `3d8c2ee`](https://github.com/Buco7854/cswatch/actions/runs/44226669557) passed all local and CI gates, including both hardened container checks. Application and asset-worker images published and both permit anonymous pulls. A newer documentation-only signoff does not change the verified runtime code. No game assets are bundled in Git or images.
 
 ## Current state
 
@@ -10,7 +10,7 @@ Complete Mirage, Dust2 and Ancient packs now render geometry, decoded textures, 
 
 The current full verification passed 283 backend/native/offline EN/FR tests, 178 asset tests and 135 public browser journeys, with two intentional public-policy skips. Dedicated private registrations closed/open each passed their journey, and setup passed four cases with its one environment-policy skip. Required HTTP/parser/ownership/guest/sharing/speech smoke and isolated asset publication smoke passed. Builds, locales, formatting, all-profile Compose validation and four production dependency audits pass. See [verification](VERIFICATION.md) for exact evidence and limitations.
 
-Cache acquisition resolved its resources and shaders, but scene export stopped at the unchanged 512 MiB disk reserve. No Cache runtime pack was published. Do not lower the reserve or call its recording's successful parser check a map-rendering check.
+Cache now has a genuine calibrated overview, prepared offline from CRC/hash-verified cached manifest `807392217824910805` resources. Actual HTTP delivery, exact source-coordinate projection, seeking and no-WebGL full 2D passed on desktop and phone in both themes using clearly labeled original QA positions. This is 2D coverage, not a Cache recording or 3D-map verification. The initial 3D export hit the unchanged disk reserve; after 323,903,488 bytes of safe cache-gap reclamation, Steam denied the explicit source manifest before another export. All 2,164 retained Cache resource CRCs and 182 prior prepared-file hashes verified. Its missing sky prefab prevents complete offline 3D preparation. Never substitute a newer version silently.
 
 ## Product and access decisions
 
@@ -34,7 +34,7 @@ Keep required Linux Landlock/seccomp confinement, stripped environments, bounded
 
 ## Operator assets
 
-Manual acquisition remains an operator tool. A separate optional official-map worker can also prepare uniquely catalog-approved sources. It has no application database, recordings, account credentials or provider tokens. The HTTP service and networkless replay worker never run native map conversion or fetch game files. No game content or toolchain cache belongs in Git or images. Current prepared evidence uses depot `2347770`, manifest `6678473446694075055`. Steam's latest listing has advanced to `807392217824910805`. Use an explicit manifest pin when continuing the old source version, and do not mix or relabel cached versions. The explicit map `--manifest` path passed 20 focused installer checks, including mismatched source rejection.
+Manual acquisition remains an operator tool. A separate optional official-map worker can also prepare uniquely catalog-approved sources. It has no application database, recordings, account credentials or provider tokens. The HTTP service and networkless replay worker never run native map conversion or fetch game files. No game content or toolchain cache belongs in Git or images. Current prepared evidence uses depot `2347770`, manifest `6678473446694075055`. A later listing identified `807392217824910805`; both source pins were subsequently denied in separate anonymous acquisition attempts. Use an explicit manifest pin when continuing the old source version, and do not mix or relabel cached versions. The explicit map `--manifest` path passed 20 focused installer checks, including mismatched source rejection.
 
 The map pipeline verifies selected VPK entries, follows bounded dependencies, preflights authored shaders and publishes complete model/overview/environment packs. Large selected shader entries use streaming CRC checks without raising the 128 MiB resource-allocation limit. Keep the periodic disk guard, exclusive outputs and verified cleanup. Asset URLs are immutable for an app session. Stop viewers, install a new complete pack and reload tabs rather than replacing active assets.
 
@@ -54,6 +54,6 @@ A durable ledger allows three fresh-conversion attempts per request generation a
 
 ## Finish and release
 
-The local gates in [WORK](product/WORK.md) pass. Push the reviewed source as authorized and follow that commit’s hardened Docker verification and publication. If its workflow fails, fix the cause and rerun meaningful checks before pushing again. Preserve assertions and resource bounds. Run native/ASR suites, exports and software-rendered browser checks serially with Node 24 and the lockfile Chromium. Local Docker remains unavailable.
+Release gates are complete for runtime `3d8c2ee`. The current task has no pending code, verification or publication action. Continue from a new user request and preserve the capability limits below. Run heavy native/ASR suites, exports and software-rendered browser jobs serially with Node 24 and the lockfile Chromium. The current local preview uses the prepared tree and requires secure first-admin enrollment; no default administrator was introduced.
 
 Keep missing live provider credentials, broader map coverage, physical Galaxy S24/TV performance and independent security review explicit. Browser viewport checks are not real-device certification, and CPU hosting is not a low-memory guarantee.
