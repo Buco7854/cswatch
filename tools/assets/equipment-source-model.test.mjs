@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { inspectEquipmentSourceModel, staticModelDependency } from './equipment-source-model.mjs';
 import { scanEquipmentDependencies } from './equipment-dependencies.mjs';
+import { agentAnimationRegistry } from './agent-animation-registry.mjs';
 function metadata({ groups = '2,1', mask = '1', lod = '255,255' } = {}) {
   return {
     data: `--- Data for block "DATA" ---\nm_refMeshes = [ ]\nm_refMeshGroupMasks = [${groups}]\nm_refLODGroupMasks = [${lod}]\nm_nDefaultMeshGroupMask = ${mask}\n`,
@@ -33,6 +34,43 @@ test('native uint64 default groups and first actual LOD select only authored mes
   const duplicate = metadata();
   duplicate.control = duplicate.control.replace('m_nMeshIndex = 1', 'm_nMeshIndex = 0');
   assert.throws(() => inspectEquipmentSourceModel(duplicate), /inconsistent/);
+});
+test('locomotion closure accepts only the five fixed clips and their skeleton, never other clips or animation graphs', async () => {
+  const seeds = Object.values(agentAnimationRegistry),
+    skeleton = 'animation/skeletons/characters/worldmodel.vnmskel_c',
+    graph = 'animation/graphs/unselected.vnmgraph_c';
+  const clip = resource([skeleton, graph]),
+    data = new Map(seeds.map((seed) => [seed, clip]));
+  data.set(skeleton, resource([]));
+  const entries = new Map(
+      [...data].map(([name, bytes]) => [
+        name,
+        { resource: name, length: bytes.length, preloadBytes: 0, preload: Buffer.alloc(0) },
+      ]),
+    ),
+    read = [];
+  const index = async (path) => ({
+    provenance: { path },
+    entries: path.includes('/csgo/') ? entries : new Map(),
+    readEntry: async (name) => {
+      read.push(name);
+      return data.get(name);
+    },
+  });
+  const result = await scanEquipmentDependencies({ game: '/fixed', seeds, index });
+  assert.deepEqual(result.pending, { csgo: [], core: [] });
+  assert.deepEqual(result.skipped, [graph]);
+  assert.ok(read.includes(skeleton));
+  assert.equal(read.includes(graph), false);
+  await assert.rejects(
+    () =>
+      scanEquipmentDependencies({
+        game: '/fixed',
+        seeds: ['animation/anims/world/rifle/_default_rifle/unselected.vnmclip_c'],
+        index,
+      }),
+    /fixed selected/,
+  );
 });
 function resource(references) {
   const strings = references.map((x) => Buffer.from(x + '\0')),

@@ -1,3 +1,4 @@
+import { installDemoMapDescriptor } from './fixtures/map-assets';
 import { test, expect, type Page } from '@playwright/test';
 import { readFileSync, mkdirSync } from 'node:fs';
 import { selectOptionsCategory } from './fixtures/viewer-options';
@@ -249,6 +250,7 @@ async function fixture(
       },
     }),
   );
+  await installDemoMapDescriptor(page, 'scoreboard-fixture');
   await page.goto('/watch/scoreboard-fixture');
   await expect(
     page.getByRole('heading', { name: 'scoreboard_fixture', exact: true }),

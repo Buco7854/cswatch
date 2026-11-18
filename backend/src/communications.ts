@@ -6,6 +6,7 @@ import { observeObjectives } from './objectives.js';
 import { observeMatchState } from './match-state.js';
 import { observeCrosshairs } from './crosshairs.js';
 import { observeItemState } from './item-state.js';
+import { observeMapIdentity } from './map-identity.js';
 
 export async function readCommunications(
   path: string,
@@ -16,6 +17,7 @@ export async function readCommunications(
   const voice: VoicePacket[] = [],
     chat: ChatMessage[] = [];
   const reader = new DemoReader();
+  const finishMapIdentity = observeMapIdentity(reader);
   const finishObjectives = observeObjectives(reader, tickRate, lastTick);
   const finishMatchState = observeMatchState(reader, tickRate, lastTick);
   const finishCrosshairs = observeCrosshairs(reader, lastTick, actors);
@@ -125,6 +127,7 @@ export async function readCommunications(
   return {
     voice,
     chat,
+    mapIdentity: finishMapIdentity(),
     communications,
     objectives,
     matchState,

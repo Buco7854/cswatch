@@ -1,3 +1,5 @@
+import { manualMapAssets } from './fixtures/map-assets';
+import { originalOverviewPNG, qaOverview } from './fixtures/original-map';
 import { expect, test, type Page } from '@playwright/test';
 import { originalMapGLB, originalMapReplay } from './fixtures/original-map';
 import { originalAgentGLB } from './fixtures/original-agent';
@@ -46,9 +48,13 @@ async function install(page: Page, badT = false) {
   await page.route('**/api/demos/agent-fixture/playback', (route) =>
     route.fulfill({ json: replay }),
   );
-  await page.route(`**/api/maps/${replay.map}`, (route) =>
+  await page.route('**/api/demos/agent-fixture/map-assets', (route) =>
     route.fulfill({
-      json: { model: `/map-assets/${replay.map}/desktop/scene.glb`, mobile: null, overview: null },
+      json: manualMapAssets({
+        model: `/map-assets/${replay.map}/desktop/scene.glb`,
+        mobile: null,
+        overview: { ...qaOverview, image: `/api/maps/${replay.map}/overview.png` },
+      }),
     }),
   );
   await page.route(`**/map-assets/${replay.map}/desktop/scene.glb`, (route) =>
@@ -56,6 +62,9 @@ async function install(page: Page, badT = false) {
   );
   await page.route('**/api/assets/equipment-models', (route) =>
     route.fulfill({ json: { schemaVersion: 1, items: {} } }),
+  );
+  await page.route(`**/api/maps/${replay.map}/overview.png`, (route) =>
+    route.fulfill({ contentType: 'image/png', body: originalOverviewPNG() }),
   );
   await page.route('**/api/assets/agents', (route) =>
     route.fulfill({

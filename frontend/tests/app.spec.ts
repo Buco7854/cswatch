@@ -86,9 +86,7 @@ test('the single public page uploads a private guest demo into the whole-tab vie
       .evaluate((element) => Math.abs(element.getBoundingClientRect().height - innerHeight) < 2),
   ).toBe(true);
   await choose(page, 'Camera mode', '2D tactical · low power');
-  await expect(
-    page.getByRole('img', { name: 'Player position plot. No map geometry.' }),
-  ).toBeVisible();
+  await expect(page.getByRole('status', { name: 'Map unavailable', exact: true })).toBeVisible();
   const slider = page.getByRole('slider', { name: 'Playback position' });
   const before = await slider.inputValue();
   await page.getByRole('button', { name: 'Play', exact: true }).click();
@@ -321,6 +319,14 @@ test('viewer menus support keyboard selection, bounded touch lists and fullscree
       [844, 390],
     ]) {
       await page.setViewportSize({ width, height });
+      // Resize events close Radix selects. Let the browser deliver that event
+      // and commit the responsive layout before opening the next keyboard list.
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          ),
+      );
       const camera = page.getByRole('combobox', { name: 'Camera mode' });
       await page.getByRole('button', { name: 'Viewer menu', exact: true }).focus();
       await page.keyboard.press('Shift+Tab');

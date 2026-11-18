@@ -1,3 +1,4 @@
+import { installDemoMapDescriptor } from './fixtures/map-assets';
 import { test, expect } from '@playwright/test';
 import { selectOptionsCategory } from './fixtures/viewer-options';
 
@@ -166,6 +167,7 @@ test('broadcast objective HUD follows recorded custom timers, interruptions and 
   await page.route('**/api/demos/objective-fixture/playback', (route) =>
     route.fulfill({ json: replay }),
   );
+  await installDemoMapDescriptor(page, 'objective-fixture');
   await page.goto('/watch/objective-fixture');
   const slider = page.getByRole('slider', { name: 'Playback position' });
   const hud = page.getByRole('group', { name: 'Bomb objective', exact: true });
@@ -314,6 +316,7 @@ test('opening a replay mid-defuse registers the live region before its first not
       },
     }),
   );
+  await installDemoMapDescriptor(page, 'objective-mid-recording');
   await page.goto('/watch/objective-mid-recording');
   await expect(page.getByRole('group', { name: 'Bomb objective', exact: true })).toHaveAttribute(
     'data-phase',

@@ -9,6 +9,8 @@ import {
   withDirectory,
 } from './map-asset-files.js';
 import { HttpError } from './security.js';
+import { legacyMapLocation, type MapAssetLocation } from './map-asset-location.js';
+import type { FastifyRequest } from 'fastify';
 
 export const mapModelBytes = 2 * 1024 ** 3;
 type ModelFile = { file: FileHandle; size: number; version: string };
@@ -18,8 +20,9 @@ export async function openMapModel(
   root: string,
   parts: string[],
   filename: string,
+  baseParts: string[] = ['maps'],
 ): Promise<ModelFile | undefined> {
-  return withDirectory(root, ['maps', ...parts], async (directory) => {
+  return withDirectory(root, [...baseParts, ...parts], async (directory) => {
     const file = await regularFile(directory, filename, 24, mapModelBytes);
     if (!file) return;
     let keep = false;
@@ -46,7 +49,15 @@ export async function openMapModel(
   });
 }
 
-const reserved = new Set(['agents', 'equipment', 'equipment-models', 'overviews', 'environments']);
+const reserved = new Set([
+  'agents',
+  'equipment',
+  'equipment-models',
+  'overviews',
+  'environments',
+  'previews',
+  'packs',
+]);
 function modelPath(value: string) {
   const agent = /^agents\/(ct|t)\.glb$/.exec(value);
   if (agent) return { parts: ['agents'], filename: `${agent[1]}.glb` };
@@ -88,12 +99,21 @@ function singleRange(
 export async function mapModelFileRoutes(
   app: FastifyInstance,
   root: string,
-  { digest: proveContent = fileDigest }: { digest?: typeof fileDigest } = {},
+  {
+    digest: proveContent = fileDigest,
+    url = '/map-assets/*',
+    resolveLocation = async () => legacyMapLocation(root),
+  }: {
+    digest?: typeof fileDigest;
+    url?: string;
+    resolveLocation?: (request: FastifyRequest) => Promise<MapAssetLocation>;
+  } = {},
 ) {
   app.route<{ Params: { '*': string } }>({
     method: ['GET', 'HEAD'],
-    url: '/map-assets/*',
+    url,
     handler: async (request, reply) => {
+      const location = await resolveLocation(request);
       const path = modelPath(request.params['*']);
       if (!path) throw new HttpError(404, 'Map model not found.');
       const cancellation = new AbortController();
@@ -119,7 +139,7 @@ export async function mapModelFileRoutes(
       reply.raw.once('close', closed);
       try {
         connected();
-        model = await openMapModel(root, path.parts, path.filename);
+        model = await openMapModel(location.root, path.parts, path.filename, location.parts);
         if (!model) throw new HttpError(404, 'Map model not found.');
         connected();
         // Fresh content proof also prevents same-size/same-timestamp rewrites from satisfying an old ETag.

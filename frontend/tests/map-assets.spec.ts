@@ -1,3 +1,4 @@
+import { manualMapAssets } from './fixtures/map-assets';
 import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
 import {
   originalMapGLB,
@@ -19,6 +20,7 @@ async function install(
   assets: MapAssets,
   options: {
     theme?: string;
+    language?: string;
     id?: string;
     map?: string;
     model?: (route: Route) => Promise<void>;
@@ -32,9 +34,9 @@ async function install(
   let discoveries = 0,
     models = 0;
   await page.addInitScript(
-    ({ theme, crosshair }) => {
+    ({ theme, crosshair, language }) => {
       localStorage.setItem('theme', theme);
-      localStorage.setItem('cswatch.language', 'en');
+      localStorage.setItem('cswatch.language', language);
       ['viewer-settings', 'viewer-settings-mobile'].forEach((key) =>
         localStorage.setItem(
           key,
@@ -49,7 +51,11 @@ async function install(
         ),
       );
     },
-    { theme: options.theme || 'dark', crosshair: options.crosshair ?? false },
+    {
+      theme: options.theme || 'dark',
+      crosshair: options.crosshair ?? false,
+      language: options.language || 'en',
+    },
   );
   await page.route(`**/api/demos/${id}`, (route) =>
     route.fulfill({
@@ -67,9 +73,9 @@ async function install(
   await page.route(`**/api/demos/${id}/playback`, (route) =>
     route.fulfill({ json: options.playback || originalMapReplay(map) }),
   );
-  await page.route(`**/api/maps/${map}`, (route) => {
+  await page.route(`**/api/demos/${id}/map-assets`, (route) => {
     discoveries++;
-    return route.fulfill({ json: assets });
+    return route.fulfill({ json: manualMapAssets(assets) });
   });
   await page.route(`**/api/maps/${map}/overview.png`, (route) =>
     options.image ? options.image(route) : route.fulfill({ contentType: 'image/png', body: image }),
@@ -116,9 +122,48 @@ async function mapPalette(plot: Locator) {
       ct: colors('[data-player-id="76561198000000001"] circle'),
       t: colors('[data-player-id="76561198000000002"] circle'),
       grid: colors('.tactical-grid'),
+      opacity: getComputedStyle(svg).opacity,
+      imageOpacity: svg.querySelector('image')
+        ? getComputedStyle(svg.querySelector('image')!).opacity
+        : null,
     };
   });
 }
+async function samplePixel(page: Page, x: number, y: number) {
+  const bytes = await page.screenshot({
+    clip: { x: Math.floor(x), y: Math.floor(y), width: 1, height: 1 },
+  });
+  return page.evaluate(
+    async (bytes) => {
+      const bitmap = await createImageBitmap(
+          new Blob([new Uint8Array(bytes)], { type: 'image/png' }),
+        ),
+        surface = new OffscreenCanvas(1, 1),
+        context = surface.getContext('2d')!;
+      context.drawImage(bitmap, 0, 0);
+      bitmap.close();
+      return Array.from(context.getImageData(0, 0, 1, 1).data).slice(0, 3);
+    },
+    [...bytes],
+  );
+}
+async function expectRadarCompositing(page: Page, radar: Locator) {
+  const box = (await radar.boundingBox())!,
+    painted = await samplePixel(page, box.x + 3, box.y + 3);
+  await radar.evaluate((node) => ((node as SVGElement).style.visibility = 'hidden'));
+  let underneath: number[];
+  try {
+    underneath = await samplePixel(page, box.x + 3, box.y + 3);
+  } finally {
+    await radar.evaluate((node) => (node as SVGElement).style.removeProperty('visibility'));
+  }
+  for (let channel = 0; channel < 3; channel++)
+    expect(
+      Math.abs(painted[channel] - underneath![channel] * 0.62),
+      'Radar paints one38%black layer over the actual scene',
+    ).toBeLessThanOrEqual(3);
+}
+
 async function centerPixel(page: Page) {
   const pixels = await page.locator('.scene canvas').screenshot();
   return page.evaluate(
@@ -163,14 +208,19 @@ test('original QA overview aligns players, utility and radar across desktop, tab
       await page.setViewportSize(size);
       const requests = await install(
         page,
-        { model: null, mobile: null, overview: qaOverview },
+        { model: `/map-assets/${qaMap}/desktop/scene.glb`, mobile: null, overview: qaOverview },
         { theme },
       );
       await open(page);
       const radar = page.locator('.position-radar');
       await expect(radar).toHaveAttribute('data-map-image-state', 'ready');
+      await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
       const colors = await mapPalette(radar);
-      expect(colors.ground).not.toBe('rgb(250, 251, 252)');
+      expect(colors.ground).toBe('rgba(0, 0, 0, 0)');
+      expect(colors.plane?.fill).toBe('rgba(0, 0, 0, 0.38)');
+      expect(colors.opacity).toBe('1');
+      expect(colors.imageOpacity).toBe('1');
+      await expectRadarCompositing(page, radar);
       palette ||= colors;
       expect(
         colors,
@@ -181,7 +231,7 @@ test('original QA overview aligns players, utility and radar across desktop, tab
         'transform',
         'translate(35 60)',
       );
-      await expect(page.locator('.viewer-map-status')).toHaveText('No 3D map installed');
+      await expect(page.locator('.viewer-map-status')).toHaveText('3D map');
       await page.screenshot({
         path: info.outputPath(`original-QA-radar-${theme}-${size.width}.png`),
       });
@@ -190,8 +240,12 @@ test('original QA overview aligns players, utility and radar across desktop, tab
       await expect(plot).toHaveAttribute('data-map-image-state', 'ready');
       expect(
         await mapPalette(plot),
-        '2D and radar share the theme-independent map palette',
-      ).toEqual(palette);
+        '2D keeps an opaque readable ground and the same map/marker colors',
+      ).toEqual({
+        ...palette,
+        ground: 'rgb(82, 82, 82)',
+        plane: { fill: 'rgb(82, 82, 82)', stroke: 'none' },
+      });
       await expect(plot.locator(`[data-player-id="${qaActor}"]`)).toHaveAttribute(
         'transform',
         'translate(35 60)',
@@ -206,30 +260,142 @@ test('original QA overview aligns players, utility and radar across desktop, tab
       expect(Number(await smoke.getAttribute('r'))).toBeCloseTo((146 / 2048) * 100, 6);
       await expect(page.locator('.viewer-map-status')).toHaveText('Map overview');
       expect(requests.discoveries).toBe(1);
-      expect(requests.models).toBe(0);
+      expect(requests.models).toBe(1);
       await page.screenshot({
         path: info.outputPath(`original-QA-overview-${theme}-${size.width}.png`),
       });
     }
 });
 
-test('missing-overview grid and team markers keep map contrast in both interface themes', async ({
+test('a real 3D map without an overview omits the compact radar and explains unavailable2D in both themes', async ({
   page,
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE));
-  let palette: Awaited<ReturnType<typeof mapPalette>> | undefined;
   for (const theme of ['dark', 'light']) {
-    await install(page, { model: null, mobile: null, overview: null }, { theme });
+    await install(
+      page,
+      { model: `/map-assets/${qaMap}/desktop/scene.glb`, mobile: null, overview: null },
+      { theme },
+    );
     await open(page);
-    const radar = page.locator('.position-radar');
-    await expect(radar).toHaveAttribute('data-map-image-state', 'missing');
-    const colors = await mapPalette(radar);
-    expect(colors.grid?.stroke).not.toBe('none');
-    palette ||= colors;
-    expect(colors).toEqual(palette);
+    await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
+    await expect(page.locator('.position-radar')).toHaveCount(0);
     await camera(page, '2D tactical · low power');
-    expect(await mapPalette(page.locator('.tactical-plot'))).toEqual(palette);
+    await expect(
+      page.getByRole('status', { name: 'Map overview unavailable', exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText('No calibrated overview is installed. Choose a 3D camera to view this map.'),
+    ).toBeVisible();
+    await expect(page.locator('.tactical-plot,[data-player-id] circle')).toHaveCount(0);
   }
+});
+
+test('known and unknown map names without instance packs show localized unavailable state instead of player dots', async ({
+  page,
+}) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE));
+  await page.setViewportSize({ width: 390, height: 844 });
+  for (const [map, language] of [
+    ['de_mirage', 'en'],
+    ['de_unknown_qa', 'fr'],
+  ]) {
+    const id = 'missing-' + language;
+    await install(
+      page,
+      { model: null, mobile: null, overview: null },
+      { id, map, language, theme: 'light' },
+    );
+    await open(page, id);
+    await expect(
+      page.getByRole('status', {
+        name: language === 'fr' ? 'Carte indisponible' : 'Map unavailable',
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(page.locator('[data-map-unavailable="missing"]')).toBeVisible();
+    await expect(page.locator('.scene canvas,.position-radar,.tactical-plot')).toHaveCount(0);
+    await expect(page.locator('.map-unavailable p')).toContainText(
+      language === 'fr' ? 'administrateur' : 'administrator',
+    );
+    await expect(page.locator('.viewer-frame')).toBeInViewport();
+  }
+});
+
+test('discovery and overview image decoding keep recorded markers hidden until an actual calibrated map is ready', async ({
+  page,
+}) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE));
+  let revealAssets = () => {},
+    revealImage = () => {};
+  const descriptor = new Promise<void>((resolve) => (revealAssets = resolve)),
+    raster = new Promise<void>((resolve) => (revealImage = resolve));
+  await install(
+    page,
+    { model: null, mobile: null, overview: qaOverview },
+    {
+      image: async (route) => {
+        await raster;
+        await route.fulfill({ contentType: 'image/png', body: image });
+      },
+    },
+  );
+  await page.route('**/api/demos/original-map-fixture/map-assets', async (route) => {
+    await descriptor;
+    await route.fulfill({
+      json: manualMapAssets({ model: null, mobile: null, overview: qaOverview }),
+    });
+  });
+  await open(page);
+  await expect(
+    page.getByRole('status', { name: 'Loading map assets…', exact: true }),
+  ).toBeVisible();
+  await expect(page.locator('.scene canvas,.tactical-plot,.position-radar')).toHaveCount(0);
+  revealAssets();
+  await expect(page.locator('.tactical-plot')).toHaveAttribute('data-map-image-state', 'pending');
+  await expect(page.locator('.tactical-plot [data-player-id] circle').first()).toBeHidden();
+  await expect(page.locator('.viewer-map-status')).toHaveText('Loading map overview…');
+  revealImage();
+  await expect(page.locator('.tactical-plot')).toHaveAttribute('data-map-image-state', 'ready');
+  await expect(page.locator('.tactical-plot [data-player-id] circle').first()).toBeVisible();
+  await expect(page.locator('.viewer-map-status')).toHaveText('2D map fallback');
+  await expect(page.locator('.scene canvas,.position-radar')).toHaveCount(0);
+});
+
+test('failed3D without an overview and noWebGL without an overview expose distinct unavailable reasons', async ({
+  page,
+}) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE));
+  await install(
+    page,
+    { model: `/map-assets/${qaMap}/desktop/scene.glb`, mobile: null, overview: null },
+    {
+      model: (route) =>
+        route.fulfill({
+          contentType: 'model/gltf-binary',
+          body: Buffer.from('Original bad QA GLB'),
+        }),
+    },
+  );
+  await open(page);
+  await expect(page.locator('[data-map-unavailable="model-error"]')).toBeVisible();
+  await expect(
+    page.getByText('The 3D map could not be loaded and no usable overview is installed.'),
+  ).toBeVisible();
+  await expect(page.locator('.scene canvas,.tactical-plot,.position-radar')).toHaveCount(0);
+  await page.addInitScript(() => {
+    const get = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (type: string, ...args: unknown[]) {
+      if (['webgl', 'webgl2', 'experimental-webgl'].includes(type)) return null;
+      return Reflect.apply(get, this, [type, ...args]);
+    } as typeof get;
+  });
+  await page.reload();
+  await expect(page.locator('[data-map-unavailable="renderer-error"]')).toBeVisible();
+  await expect(
+    page.getByText('This device could not render the 3D map and no usable overview is installed.'),
+  ).toBeVisible();
+  await expect(page.locator('.scene canvas,.tactical-plot,.position-radar')).toHaveCount(0);
 });
 
 test('recorded world equipment shares radar calibration and survives seeking without duplicate projectiles or stale lifetimes', async ({
@@ -311,7 +477,7 @@ test('recorded world equipment shares radar calibration and survives seeking wit
   );
   await install(
     page,
-    { model: null, mobile: null, overview: qaOverview },
+    { model: `/map-assets/${qaMap}/desktop/scene.glb`, mobile: null, overview: qaOverview },
     { playback, theme: 'light' },
   );
   await open(page);
@@ -393,11 +559,12 @@ test('3D map readiness waits for an actual GLB and a failed map retries without 
   await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'pending');
   release();
   await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'error');
-  await expect(page.locator('.viewer-map-status')).toHaveText('3D map failed to load');
+  await expect(page.locator('.viewer-map-status')).toHaveText('2D map · 3D failed');
   const canvas = page.locator('.scene canvas');
-  await expect(canvas).toBeVisible();
-  await expect(page.locator('.position-radar')).toHaveAttribute('data-map-image-state', 'ready');
-  const failed = await canvas.screenshot();
+  await expect(canvas).toHaveCount(0);
+  await expect(page.locator('.tactical-plot')).toHaveAttribute('data-map-image-state', 'ready');
+  await expect(page.locator('.position-radar')).toHaveCount(0);
+  const failed = await page.locator('.viewer-stage').screenshot();
   good = true;
   await page.getByRole('link', { name: 'Back to home', exact: true }).click();
   await expect(page.locator('.viewer-frame')).toHaveCount(0);
@@ -406,7 +573,7 @@ test('3D map readiness waits for an actual GLB and a failed map retries without 
   await expect(page.locator('.viewer-map-status')).toHaveText('3D map');
   await page.waitForTimeout(150);
   expect(
-    (await canvas.screenshot()).equals(failed),
+    (await page.locator('.viewer-stage').screenshot()).equals(failed),
     'The valid original GLB must change real rendered scene pixels',
   ).toBe(false);
   expect(requests.models).toBe(2);
@@ -435,7 +602,7 @@ test('high quality accepts an installed mobile-only GLB and no WebGL still shows
   await page.reload();
   await expect(page.locator('.tactical-plot')).toHaveAttribute('data-map-image-state', 'ready');
   await expect(page.locator('.tactical-plot image')).toHaveAttribute('href', qaOverview.image);
-  await expect(page.locator('.viewer-map-status')).toHaveText('2D map fallback');
+  await expect(page.locator('.viewer-map-status')).toHaveText('2D map · 3D unavailable');
   await expect(page.locator('.position-radar')).toHaveCount(0);
 });
 
@@ -475,7 +642,7 @@ test('a failed renderer recovers through 2D to actual 3D without stale same-map 
   });
   await open(page);
   await expect(page.locator('.tactical-plot')).toHaveAttribute('data-map-image-state', 'ready');
-  await expect(page.locator('.viewer-map-status')).toHaveText('2D map fallback');
+  await expect(page.locator('.viewer-map-status')).toHaveText('2D map · 3D unavailable');
   await expect(page.locator('.position-radar')).toHaveCount(0);
   await expect(page.locator('.viewer-crosshair')).toHaveCount(0);
   await camera(page, '2D tactical · low power');
@@ -589,9 +756,9 @@ test('embedded WebP map textures render under production CSP and missing require
   const response = await open(page);
   expect(response?.headers()['content-security-policy']).toMatch(/connect-src\s+[^;]*blob:/);
   await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'error');
-  await expect(page.locator('.viewer-map-status')).toHaveText('3D map failed to load');
-  await expect(page.locator('.scene canvas')).toBeVisible();
-  await expect(page.locator('.position-radar')).toHaveAttribute('data-map-image-state', 'ready');
+  await expect(page.locator('.viewer-map-status')).toHaveText('2D map · 3D failed');
+  await expect(page.locator('.scene canvas')).toHaveCount(0);
+  await expect(page.locator('.tactical-plot')).toHaveAttribute('data-map-image-state', 'ready');
   broken = false;
   await page.getByRole('link', { name: 'Back to home', exact: true }).click();
   await expect(page.locator('.viewer-frame')).toHaveCount(0);
@@ -658,10 +825,11 @@ test('overview image failure stays explicit and a new viewer retries updated cal
   await open(page);
   await camera(page, '2D tactical · low power');
   await expect(page.locator('.viewer-map-status')).toHaveText('Map overview failed to load');
-  await expect(page.locator('.tactical-plot')).toHaveAttribute(
-    'aria-label',
-    'Player position plot. No map geometry.',
-  );
+  await expect(page.getByRole('status', { name: 'Map unavailable', exact: true })).toBeVisible();
+  await expect(
+    page.getByText('The installed map overview could not be loaded. Reopen the viewer to retry.'),
+  ).toBeVisible();
+  await expect(page.locator('.tactical-plot')).toHaveCount(0);
   await expect(page.locator('.tactical-plot image')).toHaveCount(0);
   good = true;
   version = 'original-QA-v2';
@@ -696,9 +864,11 @@ test('switching demos clears the old map image before delayed discovery resolves
   );
   let release: () => void = () => {};
   const gate = new Promise<void>((resolve) => (release = resolve));
-  await page.route(`**/api/maps/${nextMap}`, async (route) => {
+  await page.route(`**/api/demos/${nextId}/map-assets`, async (route) => {
     await gate;
-    await route.fulfill({ json: { model: null, mobile: null, overview: nextOverview } });
+    await route.fulfill({
+      json: manualMapAssets({ model: null, mobile: null, overview: nextOverview }),
+    });
   });
   await open(page);
   await camera(page, '2D tactical · low power');

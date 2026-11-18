@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** Prepare a genuine agent with one explicitly approximate static native idle pose. */
+/** Prepare bounded native agents with an explicit static or native locomotion approximation. */
 import { createHash } from 'node:crypto';
 import { mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
@@ -17,6 +17,12 @@ import { compressGlbGeometry, MeshoptDecoder } from './meshopt-glb.mjs';
 import { verifyPreparedGlb } from './prepared-glb.mjs';
 import { poseAgentIdle } from './pose-agent-idle.mjs';
 import { staticModelBounds } from './static-model-bounds.mjs';
+import {
+  agentAnimationRegistry,
+  agentAnimationRoles,
+  agentAnimationLimits,
+} from './agent-animation-registry.mjs';
+import { retargetAgentAnimations } from './retarget-agent-animations.mjs';
 export const agentSourceRegistry = Object.freeze({
   ct: 'agents/models/ctm_sas/ctm_sas.vmdl_c',
   t: 'agents/models/tm_phoenix/tm_phoenix.vmdl_c',
@@ -24,16 +30,32 @@ export const agentSourceRegistry = Object.freeze({
 export { agentIdleResource } from './equipment-dependencies.mjs';
 import { agentIdleResource } from './equipment-dependencies.mjs';
 const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
-export async function prepareAgentModel({ input, idle, output, team, assetVersion }) {
+export async function prepareAgentModel({
+  input,
+  idle,
+  animations,
+  output,
+  team,
+  assetVersion,
+  sourceAssetVersion = assetVersion,
+  animationAssetVersion = assetVersion,
+}) {
   if (
     !Object.hasOwn(agentSourceRegistry, team) ||
-    typeof assetVersion !== 'string' ||
-    !assetVersion.trim() ||
-    assetVersion.length > 100
+    [assetVersion, sourceAssetVersion, animationAssetVersion].some(
+      (version) => typeof version !== 'string' || !version.trim() || version.length > 100,
+    )
   )
     throw Error('Provide fixed agent team ct/t and a bounded source version.');
   input = resolve(input);
-  idle = resolve(idle);
+  if (
+    animations &&
+    (Object.keys(animations).length !== agentAnimationRoles.length ||
+      agentAnimationRoles.some((role) => typeof animations[role] !== 'string' || !animations[role]))
+  )
+    throw Error('Provide every fixed native locomotion role explicitly.');
+  if (!animations && !idle) throw Error('Provide a native idle or all native locomotion clips.');
+  if (idle) idle = resolve(idle);
   output = resolve(output);
   await readableDirectory(output);
   await localDirectory(output);
@@ -42,8 +64,19 @@ export async function prepareAgentModel({ input, idle, output, team, assetVersio
     if (await exists(join(output, name)))
       throw Error('Refusing to overwrite an installed agent or its metadata.');
   const source = await inspectEquipmentGltf(input),
-    clip = await inspectEquipmentGltf(idle);
-  if (source.bytes + clip.bytes > limits.sourceBytes)
+    clipInputs = animations
+      ? Object.fromEntries(agentAnimationRoles.map((role) => [role, resolve(animations[role])]))
+      : { idle },
+    clipSources = {};
+  let sourceBytes = source.bytes;
+  for (const [role, path] of Object.entries(clipInputs)) {
+    const inspected = await inspectEquipmentGltf(path);
+    if (animations && inspected.bytes > agentAnimationLimits.sourceBytes)
+      throw Error('A native locomotion source exceeds8MiB.');
+    clipSources[role] = inspected;
+    sourceBytes += inspected.bytes;
+  }
+  if (sourceBytes > limits.sourceBytes)
     throw Error('Agent and native idle resources exceed512MiB.');
   await MeshoptDecoder.ready;
   const io = new NodeIO()
@@ -51,11 +84,14 @@ export async function prepareAgentModel({ input, idle, output, team, assetVersio
     .registerDependencies({ 'meshopt.decoder': MeshoptDecoder })
     .setAllowNetwork(false);
   const document = await io.read(input),
-    idleDocument = await io.read(idle),
-    pose = poseAgentIdle(document, idleDocument);
+    clipDocuments = {};
+  for (const [role, path] of Object.entries(clipInputs)) clipDocuments[role] = await io.read(path);
+  const pose = animations
+    ? retargetAgentAnimations(document, clipDocuments)
+    : poseAgentIdle(document, clipDocuments.idle);
   for (const accessor of document.getRoot().listAccessors()) accessor.setSparse(false);
-  await document.transform(dedup(), prune());
-  const bounds = staticModelBounds(document),
+  await document.transform(dedup(), prune({ keepAttributes: true }));
+  const bounds = pose.sampledBounds ?? staticModelBounds(document),
     geometryBytes = document
       .getRoot()
       .listAccessors()
@@ -78,7 +114,8 @@ export async function prepareAgentModel({ input, idle, output, team, assetVersio
     team,
     assetVersion,
     coordinateSystem: 's2v-meters-y-up-viewer-rotates-positive-90y',
-    pose: 'approximate-static-native-idle',
+    pose: pose.pose,
+    ...(animations ? { animations: pose.clips } : {}),
     sha256: hash(compressed.bytes),
     bytes: compressed.bytes.length,
     geometryBytes,
@@ -88,16 +125,28 @@ export async function prepareAgentModel({ input, idle, output, team, assetVersio
   const provenance = {
     ...manifest,
     sourceResource: agentSourceRegistry[team],
-    idleResource: agentIdleResource,
+    sourceAssetVersion,
+    animationAssetVersion,
+    ...(animations
+      ? { animationResources: agentAnimationRegistry }
+      : { idleResource: agentIdleResource }),
     sourceFiles: source.resources,
-    idleFiles: clip.resources,
+    ...(animations
+      ? {
+          animationFiles: Object.fromEntries(
+            Object.entries(clipSources).map(([role, record]) => [role, record.resources]),
+          ),
+        }
+      : { idleFiles: clipSources.idle.resources }),
     posePreparation: pose,
     textureBudget: budget.plan,
     geometryCompression: compressed.report,
-    limitations: [
-      'One generic rifle idle pose sampled at native frame zero, not recorded player bones',
-      'No native locomotion, crouch, weapon-specific pose or animation playback',
-    ],
+    limitations: animations
+      ? pose.limitations
+      : [
+          'One generic rifle idle pose sampled at native frame zero, not recorded player bones',
+          'No native locomotion, crouch, weapon-specific pose or animation playback',
+        ],
     preparedAt: new Date().toISOString(),
   };
   const artifacts = [
@@ -142,6 +191,10 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     options: {
       input: { type: 'string' },
       idle: { type: 'string' },
+      walk: { type: 'string' },
+      run: { type: 'string' },
+      'crouch-idle': { type: 'string' },
+      'crouch-walk': { type: 'string' },
       output: { type: 'string' },
       team: { type: 'string' },
       'asset-version': { type: 'string' },
@@ -157,10 +210,17 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     !values['asset-version']
   ) {
     console.log(
-      'Usage: node prepare-agent-model.mjs --input NATIVE_AGENT.gltf --idle NATIVE_SINGLE_IDLE.gltf --team ct|t --output DATA_DIR/maps/agents --asset-version BUILD',
+      'Usage: node prepare-agent-model.mjs --input NATIVE_AGENT.gltf --idle IDLE.gltf [--walk WALK.gltf --run RUN.gltf --crouch-idle CROUCH_IDLE.gltf --crouch-walk CROUCH_WALK.gltf] --team ct|t --output DATA_DIR/maps/agents --asset-version BUILD',
     );
     process.exit(values.help ? 0 : 1);
   }
-  const result = await prepareAgentModel({ ...values, assetVersion: values['asset-version'] });
+  const animated = agentAnimationRoles.some((role) => role !== 'idle' && values[role]);
+  const result = await prepareAgentModel({
+    ...values,
+    ...(animated
+      ? { animations: Object.fromEntries(agentAnimationRoles.map((role) => [role, values[role]])) }
+      : {}),
+    assetVersion: values['asset-version'],
+  });
   console.log(JSON.stringify({ path: result.path, manifest: result.manifest }));
 }

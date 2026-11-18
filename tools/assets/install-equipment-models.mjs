@@ -9,7 +9,8 @@ import { fileURLToPath } from 'node:url';
 import { runAssetProcess } from './install-steam-assets.mjs';
 import { equipmentModelRegistry, selectedEquipmentModels } from './equipment-model-registry.mjs';
 import { inspectEquipmentSourceModel } from './equipment-source-model.mjs';
-import { scanEquipmentDependencies, agentIdleResource } from './equipment-dependencies.mjs';
+import { scanEquipmentDependencies } from './equipment-dependencies.mjs';
+import { agentAnimationRegistry, agentAnimationRoles } from './agent-animation-registry.mjs';
 import { readVpkDirectory } from './source2-dependencies.mjs';
 import { preflightMaterialShaders } from './shader-preflight.mjs';
 import { checkedBatch, parseSteamListing, STEAM_APP, STEAM_DEPOT } from './steam-assets-plan.mjs';
@@ -182,7 +183,10 @@ export async function installEquipmentModels(options, adapters = {}) {
         ...agents.map((team) => agentSourceRegistry[team]),
       ]),
     ];
-    const closureSeeds = [...resources, ...(agents.length ? [agentIdleResource] : [])];
+    const closureSeeds = [
+      ...resources,
+      ...(agents.length ? Object.values(agentAnimationRegistry) : []),
+    ];
     await download(
       closureSeeds.map((resource) => {
         const entry = csgo.entries.get(resource);
@@ -306,34 +310,40 @@ export async function installEquipmentModels(options, adapters = {}) {
       await rm(exportRoot, { recursive: true, force: true });
     }
     if (agents.length) {
-      const idleRoot = join(root, 'native-single-idle');
-      await mkdir(idleRoot);
-      const idle = join(idleRoot, 'idle.gltf');
-      const idleResult = await execute(
-        tools.s2v,
-        [
-          '-i',
-          join(game, 'game/csgo/pak01_dir.vpk'),
-          '--game',
-          join(game, 'game/csgo'),
-          '--vpk_filepath',
-          agentIdleResource,
-          '--output',
-          idle,
-          '--gltf_export_format',
-          'gltf',
-        ],
-        'agent-single-idle-export',
-        { allowFailure: true },
-      );
-      if (
-        idleResult.code !== 0 ||
-        !(await exists(idle)) ||
-        /(?:Failed to|Could not|Unable to|Exception|Error:)/i.test(
-          idleResult.stdout + idleResult.stderr,
+      const animationRoot = join(root, 'native-locomotion');
+      await mkdir(animationRoot);
+      const animations = {};
+      for (const role of agentAnimationRoles) {
+        const path = join(animationRoot, `${role}.gltf`);
+        const result = await execute(
+          tools.s2v,
+          [
+            '-i',
+            join(game, 'game/csgo/pak01_dir.vpk'),
+            '--game',
+            join(game, 'game/csgo'),
+            '--vpk_filepath',
+            agentAnimationRegistry[role],
+            '--output',
+            path,
+            '--gltf_export_format',
+            'gltf',
+            '--gltf_compose_additive',
+            '--gltf_keep_all_keyframes',
+          ],
+          `agent-${role}-export`,
+          { allowFailure: true },
+        );
+        if (
+          result.code !== 0 ||
+          !(await exists(path)) ||
+          /(?:Failed to|Could not|Unable to|Exception|Error:)/i.test(result.stdout + result.stderr)
         )
-      )
-        throw Error('The selected native idle clip could not be exported without a full graph.');
+          throw Error(
+            'The selected native locomotion clip could not be exported without a full graph.',
+          );
+        animations[role] = path;
+      }
       for (const team of agents) {
         const resource = agentSourceRegistry[team],
           selection = modelSelections.get(resource),
@@ -372,8 +382,7 @@ export async function installEquipmentModels(options, adapters = {}) {
             agentScript,
             '--input',
             input,
-            '--idle',
-            idle,
+            ...agentAnimationRoles.flatMap((role) => [`--${role}`, animations[role]]),
             '--output',
             agentOutput,
             '--team',
@@ -386,7 +395,7 @@ export async function installEquipmentModels(options, adapters = {}) {
         installedAgents.push(team);
         await rm(exportRoot, { recursive: true, force: true });
       }
-      await rm(idleRoot, { recursive: true, force: true });
+      await rm(animationRoot, { recursive: true, force: true });
     }
     const report = {
       schemaVersion: 1,
@@ -399,7 +408,7 @@ export async function installEquipmentModels(options, adapters = {}) {
       downloads,
       tools: tools.provenance,
       limitations: [
-        'Static native model geometry only; no animation graphs, recoil or native attachment poses',
+        'Weapons are static; agent locomotion uses five native rifle cycles, not the native animation graph',
         'C4 planted state uses the static C4 model; no native digits or arming animation',
       ],
     };

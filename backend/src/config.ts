@@ -31,6 +31,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     host: appUrl.host,
     cookieSecure,
     dataDir: resolve(env.DATA_DIR || '../var'),
+    mapAssetsDir: resolve(env.MAP_ASSETS_DIR || `${env.DATA_DIR || '../var'}/maps`),
+    mapCatalogFile: resolve(env.MAP_CATALOG_FILE || `${env.DATA_DIR || '../var'}/map-catalog.json`),
+    mapJobsDir: resolve(env.MAP_JOBS_DIR || `${env.DATA_DIR || '../var'}/map-jobs`),
     frontendDir: resolve(env.FRONTEND_DIR || '../frontend/dist'),
     port: integer(env.PORT, 8000),
     trustProxy:
@@ -39,6 +42,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
         .filter(Boolean) ?? false,
     flags: {
       public_access: boolean(env.PUBLIC_ACCESS),
+      auto_official_maps_enabled: boolean(env.AUTO_OFFICIAL_MAPS_ENABLED),
       guest_uploads_enabled: boolean(env.GUEST_UPLOADS_ENABLED),
       registrations_enabled: boolean(env.REGISTRATIONS_ENABLED),
       steam_enabled: boolean(env.STEAM_ENABLED),
@@ -102,6 +106,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
 export type Config = ReturnType<typeof loadConfig>;
 export const flagDefaults = {
   public_access: true,
+  auto_official_maps_enabled: false,
   guest_uploads_enabled: true,
   registrations_enabled: true,
   steam_enabled: false,

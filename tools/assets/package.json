@@ -8,12 +8,17 @@
     "prepare-overview": "node prepare-overview.mjs",
     "install-steam": "node install-steam-assets.mjs",
     "prepare-toolchain": "node prepare-toolchain.mjs",
+    "build:boundary": "node build-network-deny.mjs --output bin/asset-network-deny",
+    "worker": "node map-worker.mjs",
+    "update-catalog": "node update-map-catalog.mjs",
+    "test:catalog": "node --test update-map-catalog.test.mjs",
+    "test:worker": "node --test map-worker.test.mjs",
     "test:equipment": "node --test prepare-equipment.test.mjs",
     "test:overview": "node --test prepare-overview.test.mjs",
     "test:installer": "node --test *.test.mjs",
     "test:toolchain": "node --test prepare-toolchain.test.mjs",
     "install-equipment-models": "node install-equipment-models.mjs",
-    "test:models": "node --test equipment-source-model.test.mjs prepare-equipment-model.test.mjs pose-agent-idle.test.mjs prepare-agent-model.test.mjs"
+    "test:models": "node --test equipment-source-model.test.mjs prepare-equipment-model.test.mjs pose-agent-idle.test.mjs retarget-agent-animations.test.mjs prepare-agent-model.test.mjs install-equipment-models.test.mjs"
   },
   "dependencies": {
     "@gltf-transform/core": "^4.3.0",

@@ -3,6 +3,7 @@ import { constants, readFileSync } from 'node:fs';
 import { open, type FileHandle } from 'node:fs/promises';
 import { HttpError } from './security.js';
 import { z } from 'zod';
+import { join } from 'node:path';
 import { validPng } from './png.js';
 import { createHash } from 'node:crypto';
 import { fileDigest, fileVersion } from './asset-content.js';
@@ -59,8 +60,8 @@ async function withDirectory<T>(
     if (process.platform !== 'linux') return;
     const flags = constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW;
     // DATA_DIR itself is trusted operator configuration; its children may never redirect opens.
-    handles.push(await open(root, constants.O_RDONLY | constants.O_DIRECTORY));
-    for (const name of ['maps', 'equipment'])
+    handles.push(await open(root, flags));
+    for (const name of ['equipment'])
       handles.push(await open(`/proc/self/fd/${handles.at(-1)!.fd}/${name}`, flags));
     return await read(handles.at(-1)!);
   } catch {
@@ -70,7 +71,11 @@ async function withDirectory<T>(
   }
 }
 
-export async function equipmentAssetRoutes(app: FastifyInstance, dataRoot: string) {
+export async function equipmentAssetRoutes(
+  app: FastifyInstance,
+  dataRoot: string,
+  mapsRoot = join(dataRoot, 'maps'),
+) {
   const cache = new Map<string, { version: string; digest: string; data: Buffer }>();
   let cachedBytes = 0;
   const discard = (key: string) => {
@@ -128,7 +133,7 @@ export async function equipmentAssetRoutes(app: FastifyInstance, dataRoot: strin
   };
   app.get('/api/assets/equipment', async () => ({
     icons:
-      (await withDirectory(dataRoot, async (folder) => {
+      (await withDirectory(mapsRoot, async (folder) => {
         const icons: Record<string, string> = {};
         for (const key of equipmentIconKeys)
           if (await load(folder, key)) icons[key] = `/api/assets/equipment/${key}.png`;
@@ -140,7 +145,7 @@ export async function equipmentAssetRoutes(app: FastifyInstance, dataRoot: strin
     async (request, reply) => {
       const match = /^([a-z0-9]+)\.png$/.exec(request.params.filename);
       if (!match || !known.has(match[1])) throw new HttpError(404, 'Equipment artwork not found.');
-      const data = await withDirectory(dataRoot, (folder) => load(folder, match[1]));
+      const data = await withDirectory(mapsRoot, (folder) => load(folder, match[1]));
       if (!data) throw new HttpError(404, 'Equipment artwork not found.');
       return reply.type('image/png').send(data);
     },

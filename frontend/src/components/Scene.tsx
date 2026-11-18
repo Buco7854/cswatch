@@ -33,7 +33,10 @@ import { frameAt, playbackBounds, defaultSettings, type ViewerSettings } from '.
 import { Line } from '@react-three/drei';
 import { freeCameraAction, typingOrDialog } from '../free-camera';
 import { thirdPersonFollow } from '../follow-camera';
-import type { AssetStatus, MapAssetState } from '../map-assets';
+import { mapSurface, type MapUnavailableReason } from '../map-availability';
+import MapUnavailable from './MapUnavailable';
+import { mapAcquisitionMessage, type DemoMapState } from '../demo-map-assets';
+import type { AssetStatus } from '../map-assets';
 import { assertMapBaseColorTextures, prepareMapModel } from '../map-model';
 import { renderSkyBehindMap, skyCameraFor, updateSkyCamera } from '../sky-render';
 import { useMapGLTF, useMapModelScope } from '../map-loader';
@@ -43,6 +46,7 @@ import { equipmentIconKey } from '../equipment-icons';
 import { projectileEquipment } from '../projectile-equipment';
 import { useAgentAssets } from '../agent-assets';
 import { useModelLeases } from '../equipment-loader';
+import { recordedLocomotion } from '../agent-locomotion';
 import RenderAgent, {
   GenericAgentBody,
   AgentModels,
@@ -66,13 +70,15 @@ export type MapRenderState = {
   map: string;
   model: AssetStatus;
   renderer: '3d' | '2d';
+  failure?: 'webgl' | 'model' | 'assets';
   environment: AssetStatus;
   environmentVersion: string | null;
   landscape: AssetStatus;
   equipment?: EquipmentRenderState;
 };
-type MapResources = MapAssetState & {
+type MapResources = DemoMapState & {
   reportOverview: (image: string, version: string, status: 'ready' | 'error') => void;
+  retryAcquisition?: () => void;
 };
 
 const UNIT = 0.0254;
@@ -300,6 +306,8 @@ function Agent({
   model,
   tick,
   rate,
+  frameTick,
+  nextTick,
 }: {
   position: Position;
   next?: Position;
@@ -310,7 +318,17 @@ function Agent({
   model: string | null;
   tick: number;
   rate: number;
+  frameTick: number;
+  nextTick: number;
 }) {
+  const motion = recordedLocomotion(position, next, frameTick, nextTick, rate, alpha);
+  const weaponAnchor = useRef<THREE.Object3D | null>(null);
+  const registerWeaponAnchor = useCallback((bone: THREE.Object3D) => {
+    weaponAnchor.current = bone;
+    return () => {
+      if (weaponAnchor.current === bone) weaponAnchor.current = null;
+    };
+  }, []);
   const ref = useRef<THREE.Group>(null);
   useFrame(() => {
     if (!ref.current) return;
@@ -320,7 +338,7 @@ function Agent({
     const yaw =
       position.yaw + ((((next?.yaw ?? position.yaw) - position.yaw + 540) % 360) - 180) * alpha;
     ref.current.rotation.y = THREE.MathUtils.degToRad(yaw);
-  });
+  }, -3);
   const color = position.team === 3 ? '#9ec7da' : '#e7ba73';
   if (!position.alive) return null;
   return (
@@ -343,14 +361,15 @@ function Agent({
           id={position.id}
           tick={tick}
           rate={rate}
-          moving={!!next && Math.hypot(next.x - position.x, next.y - position.y) > 1}
-          crouched={(position.duck ?? 0) > 0.5}
+          speed={motion.speed}
+          duck={motion.duck}
+          registerWeaponAnchor={registerWeaponAnchor}
           fallback={<GenericAgentBody team={position.team} id={position.id} />}
         />
       ) : (
         <GenericAgentBody team={position.team} id={position.id} />
       )}
-      <HeldEquipment position={position} />
+      <HeldEquipment position={{ ...position, duck: motion.duck }} anchor={weaponAnchor} />
       {showMarkers && (
         <mesh position={[0, 2, 0]}>
           <sphereGeometry args={[selected ? 0.15 : 0.09, 8, 8]} />
@@ -642,22 +661,6 @@ function World({
         <Courtyard />
       ) : (
         <>
-          {!modelReady && (
-            <group>
-              <mesh
-                rotation={[-Math.PI / 2, 0, 0]}
-                position={[bounds.center.x, bounds.center.y - 0.5, bounds.center.z]}
-                receiveShadow
-              >
-                <planeGeometry args={[bounds.extent * 1.5, bounds.extent * 1.5]} />
-                <meshStandardMaterial color="#333b37" />
-              </mesh>
-              <gridHelper
-                args={[bounds.extent * 1.5, 30, '#626e63', '#424d44']}
-                position={[bounds.center.x, bounds.center.y - 0.48, bounds.center.z]}
-              />
-            </group>
-          )}
           {model && modelScope && (
             <MapModelBoundary key={model} url={model} scope={modelScope} report={reportModel}>
               <Suspense fallback={null}>
@@ -672,53 +675,61 @@ function World({
           )}
         </>
       )}
-      {frame.players
-        .filter((p) => !(mode === 'pov' && p.id === viewedPlayer?.id))
-        .map((p) => (
-          <Agent
-            key={p.id}
-            position={p}
-            next={next.players.find((n) => n.id === p.id)}
+      <group visible={Boolean(data.sample) || modelReady}>
+        {frame.players
+          .filter((p) => !(mode === 'pov' && p.id === viewedPlayer?.id))
+          .map((p) => (
+            <Agent
+              key={p.id}
+              position={p}
+              next={next.players.find((n) => n.id === p.id)}
+              alpha={alpha}
+              selected={p.id === selected && !preview}
+              xray={settings.xray && !preview}
+              showMarkers={!(mode === 'follow' && p.id === selected)}
+              model={!preview ? (p.team === 3 ? agents.ct : agents.t) : null}
+              tick={tick}
+              rate={data.tickRate}
+              frameTick={frame.tick}
+              nextTick={next.tick}
+            />
+          ))}
+        {!preview && mode === 'pov' && viewedPlayer && (
+          <PovEquipment
+            position={viewedPlayer}
+            next={next.players.find((player) => player.id === viewedPlayer.id)}
             alpha={alpha}
-            selected={p.id === selected && !preview}
-            xray={settings.xray && !preview}
-            showMarkers={!(mode === 'follow' && p.id === selected)}
-            model={!preview ? (p.team === 3 ? agents.ct : agents.t) : null}
-            tick={tick}
-            rate={data.tickRate}
           />
-        ))}
-      {!preview && mode === 'pov' && viewedPlayer && (
-        <PovEquipment
-          position={viewedPlayer}
-          next={next.players.find((player) => player.id === viewedPlayer.id)}
-          alpha={alpha}
-        />
-      )}
-      {!preview && <RecordedEquipment items={items} />}
-      {!preview && (
-        <UtilityLayer
-          data={data}
-          tick={tick}
-          selected={selected}
-          settings={settings}
-          utilityState={utilityState}
-        />
-      )}
-      {mode === 'orbit' &&
-        focus &&
-        tick >= (focus.fromTick ?? -Infinity) &&
-        tick <= (focus.untilTick ?? Infinity) && (
-          <mesh
-            name="review-impact-target"
-            position={[focus.target.x * UNIT, focus.target.z * UNIT + 0.05, -focus.target.y * UNIT]}
-            rotation={[-Math.PI / 2, 0, 0]}
-            renderOrder={11}
-          >
-            <ringGeometry args={[0.4, 0.47, 32]} />
-            <meshBasicMaterial color="#e4b575" depthTest={false} transparent opacity={0.8} />
-          </mesh>
         )}
+        {!preview && <RecordedEquipment items={items} />}
+        {!preview && (
+          <UtilityLayer
+            data={data}
+            tick={tick}
+            selected={selected}
+            settings={settings}
+            utilityState={utilityState}
+          />
+        )}
+        {mode === 'orbit' &&
+          focus &&
+          tick >= (focus.fromTick ?? -Infinity) &&
+          tick <= (focus.untilTick ?? Infinity) && (
+            <mesh
+              name="review-impact-target"
+              position={[
+                focus.target.x * UNIT,
+                focus.target.z * UNIT + 0.05,
+                -focus.target.y * UNIT,
+              ]}
+              rotation={[-Math.PI / 2, 0, 0]}
+              renderOrder={11}
+            >
+              <ringGeometry args={[0.4, 0.47, 32]} />
+              <meshBasicMaterial color="#e4b575" depthTest={false} transparent opacity={0.8} />
+            </mesh>
+          )}
+      </group>
       <OrbitControls
         ref={orbit}
         enabled={mode === 'orbit' && !preview}
@@ -1063,7 +1074,15 @@ export default function Scene({
     equipmentAssets.status === 'pending' || equipmentAssets.status === 'error'
       ? 0
       : unavailableEquipment;
-  const equipmentActive = mode !== '2d' && rendererFailure !== data.map;
+  const surface = mapSurface({
+    sample: Boolean(data.sample),
+    requested2D: mode === '2d',
+    discovery: mapAssets.status,
+    model,
+    modelStatus,
+    rendererFailed: rendererFailure === data.map && rendererAttempt.failed,
+  });
+  const equipmentActive = surface === '3d';
   const equipmentPending =
     equipmentAssets.status === 'pending'
       ? expectedEquipment.length
@@ -1098,7 +1117,15 @@ export default function Scene({
       onMapStatus?.({
         map: data.map,
         model: data.sample ? 'ready' : modelStatus,
-        renderer: mode === '2d' || rendererFailure === data.map ? '2d' : '3d',
+        renderer: surface === 'plot' ? '2d' : '3d',
+        failure:
+          rendererFailure === data.map
+            ? 'webgl'
+            : mapAssets.status === 'error'
+              ? 'assets'
+              : modelStatus === 'error'
+                ? 'model'
+                : undefined,
         environment: environmentStatus,
         environmentVersion: environment?.assetVersion || null,
         landscape: landscapeStatus,
@@ -1114,9 +1141,33 @@ export default function Scene({
       landscapeStatus,
       environment?.assetVersion,
       onMapStatus,
+      surface,
+      mapAssets.status,
       equipmentReport,
     ],
   );
+  const unavailableReason: MapUnavailableReason =
+    mapAssets.status === 'pending'
+      ? 'loading'
+      : rendererFailure === data.map
+        ? 'renderer-error'
+        : mapAssets.status === 'error'
+          ? 'discovery-error'
+          : modelStatus === 'error'
+            ? 'model-error'
+            : mode === '2d' && model
+              ? 'overview'
+              : 'missing';
+  const unavailableAction =
+    mapAssets.acquisition?.acquisition === 'failed' &&
+    mapAssets.acquisition.canAcquire &&
+    mapAssets.retryAcquisition
+      ? {
+          label: mapAssets.requesting ? 'Requesting map preparation' : 'Retry map preparation',
+          onClick: mapAssets.retryAcquisition,
+          disabled: mapAssets.requesting,
+        }
+      : undefined;
   const plot = (
     <TacticalPlot
       data={data}
@@ -1126,6 +1177,9 @@ export default function Scene({
       overview={mapAssets.assets.overview}
       overviewStatus={mapAssets.overviewStatus}
       onOverviewState={mapAssets.reportOverview}
+      unavailableReason={unavailableReason}
+      unavailableNotice={mapAcquisitionMessage(mapAssets)}
+      unavailableAction={unavailableAction}
       focus={
         focus && tick >= (focus.fromTick ?? -Infinity) && tick <= (focus.untilTick ?? Infinity)
           ? focus.target
@@ -1133,7 +1187,6 @@ export default function Scene({
       }
     />
   );
-  if (mode === '2d') return plot;
   return (
     <div
       className="scene"
@@ -1171,60 +1224,74 @@ export default function Scene({
       data-focus-z={focus?.target.z}
       data-projectile-count={utilityState.projectiles.length}
       data-utility-zone-count={utilityState.zones.length}
-      role="img"
+      role={surface === '3d' ? 'img' : undefined}
       aria-label={
-        data.sample
-          ? t('An original 3D training courtyard with ten players')
-          : t(
-              modelStatus === 'ready'
-                ? '3D map {{map}} with recorded player positions'
-                : 'Recorded player positions on {{map}}. Map geometry unavailable.',
-              { map: data.map },
-            )
+        surface !== '3d'
+          ? undefined
+          : data.sample
+            ? t('An original 3D training courtyard with ten players')
+            : t(
+                modelStatus === 'ready'
+                  ? '3D map {{map}} with recorded player positions'
+                  : 'Loading 3D map…',
+                { map: data.map },
+              )
       }
     >
-      <SceneBoundary
-        key={data.map}
-        fallback={<RendererFallback report={reportRendererFallback}>{plot}</RendererFallback>}
-      >
-        <Canvas
-          frameloop={preview ? 'always' : 'demand'}
-          onCreated={reportRendererCreated}
-          shadows={!low}
-          dpr={low ? 1 : [1, 1.75]}
-          camera={{ position: [32, 36, 34], fov: settings.cameraFov, near: 0.05, far: 3000 }}
-          gl={{ antialias: true, powerPreference: 'high-performance' }}
-          fallback={<span>{t('3D rendering is unavailable.')}</span>}
-        >
-          <EquipmentModels.Provider value={equipmentContext}>
-            <AgentModels.Provider value={agentContext}>
-              <World
-                data={data}
-                tick={tick}
-                mode={mode}
-                selected={selected}
-                model={model}
-                modelReady={modelStatus === 'ready'}
-                reportModel={reportModel}
-                modelScope={modelScope}
-                sky={
-                  modelLoad?.url === model && modelLoad.status === 'ready' ? modelLoad.sky : null
-                }
-                environment={environment}
-                reportEnvironment={reportEnvironment}
-                preview={preview}
-                settings={settings}
-                agents={agents}
-                focus={focus}
-                utilityState={utilityState}
-                items={liveItems}
-              />
-            </AgentModels.Provider>
-          </EquipmentModels.Provider>
-        </Canvas>
-      </SceneBoundary>
-      {!onMapStatus && !data.sample && modelStatus !== 'ready' && (
-        <div className="map-notice">{t('Position view · map model not installed')}</div>
+      {surface === 'plot' ? (
+        plot
+      ) : surface === 'loading' ? (
+        <MapUnavailable reason="loading" notice={mapAcquisitionMessage(mapAssets)} />
+      ) : (
+        <>
+          <SceneBoundary
+            key={data.map}
+            fallback={<RendererFallback report={reportRendererFallback}>{plot}</RendererFallback>}
+          >
+            <Canvas
+              frameloop={preview ? 'always' : 'demand'}
+              onCreated={reportRendererCreated}
+              shadows={!low}
+              dpr={low ? 1 : [1, 1.75]}
+              camera={{ position: [32, 36, 34], fov: settings.cameraFov, near: 0.05, far: 3000 }}
+              gl={{ antialias: true, powerPreference: 'high-performance' }}
+              fallback={<span>{t('3D rendering is unavailable.')}</span>}
+            >
+              <EquipmentModels.Provider value={equipmentContext}>
+                <AgentModels.Provider value={agentContext}>
+                  <World
+                    data={data}
+                    tick={tick}
+                    mode={mode}
+                    selected={selected}
+                    model={model}
+                    modelReady={modelStatus === 'ready'}
+                    reportModel={reportModel}
+                    modelScope={modelScope}
+                    sky={
+                      modelLoad?.url === model && modelLoad.status === 'ready'
+                        ? modelLoad.sky
+                        : null
+                    }
+                    environment={environment}
+                    reportEnvironment={reportEnvironment}
+                    preview={preview}
+                    settings={settings}
+                    agents={agents}
+                    focus={focus}
+                    utilityState={utilityState}
+                    items={liveItems}
+                  />
+                </AgentModels.Provider>
+              </EquipmentModels.Provider>
+            </Canvas>
+          </SceneBoundary>
+          {!data.sample && modelStatus === 'pending' && (
+            <div className="map-loading-overlay">
+              <span>{t('Loading 3D map…')}</span>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

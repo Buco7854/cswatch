@@ -316,6 +316,7 @@ export async function parse(folder: string, maxExpanded: number) {
     grenades,
     warnings,
     capabilities: replayCapabilities(frames, events),
+    mapIdentity: media.mapIdentity,
     voice: media.voice,
     chat: media.chat,
     communications: media.communications,

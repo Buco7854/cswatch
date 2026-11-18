@@ -28,6 +28,9 @@ import { equipmentAssetRoutes } from './equipment-assets.js';
 import { equipmentModelAssetRoutes } from './equipment-model-assets.js';
 import { mapAssetRoutes } from './map-assets.js';
 import { mapModelFileRoutes } from './map-model-files.js';
+import { mapPreviewRoutes } from './map-preview.js';
+import { demoMapAssetRoutes } from './demo-map-assets.js';
+import { cleanupMapRequestTemps } from './map-jobs.js';
 import { currentGuest, guestRoutes, guestUploadsEnabled } from './guest.js';
 import { prepareSetup, provisionAdmin, setupRequired, setupRoutes } from './setup.js';
 
@@ -37,6 +40,9 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
     throw new Error('ADMIN_USERNAME and ADMIN_PASSWORD must be configured together.');
   await provisionAdmin(db, c);
   prepareSetup(db);
+  // One web process owns request publication. Reclaim only its recognized
+  // orphan temporary files before any HTTP request can begin a live write.
+  await cleanupMapRequestTemps(c.mapJobsDir);
   const app = Fastify({
     logger: {
       level: process.env.LOG_LEVEL || 'info',
@@ -178,10 +184,19 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
   await setupRoutes(app, db, c);
   await guestRoutes(app, db, c);
   await providerRoutes(app, db, c);
-  await equipmentAssetRoutes(app, db.root);
-  await equipmentModelAssetRoutes(app, db.root);
-  await mapAssetRoutes(app, db.root);
-  await mapModelFileRoutes(app, db.root);
+  await equipmentAssetRoutes(app, db.root, c.mapAssetsDir);
+  await equipmentModelAssetRoutes(app, db.root, c.mapAssetsDir);
+  const manualMapLocation = {
+    root: c.mapAssetsDir,
+    parts: [],
+    key: 'manual',
+    apiPrefix: '/api/maps',
+    modelPrefix: '/map-assets',
+  };
+  const maps = await mapAssetRoutes(app, db.root, manualMapLocation);
+  await mapModelFileRoutes(app, db.root, { resolveLocation: async () => manualMapLocation });
+  await demoMapAssetRoutes(app, db, c, maps);
+  await mapPreviewRoutes(app, db.root, c.mapAssetsDir);
   const visible = (row: Record<string, any>, uid?: string, guestId?: string) => ({
     ...Object.fromEntries(
       [

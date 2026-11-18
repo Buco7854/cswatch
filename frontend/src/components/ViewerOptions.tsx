@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { MessageSquareText, X } from 'lucide-react';
 import type { ViewerSettings } from '../playback';
+import type { DemoMapSummary } from '../demo-map-assets';
 import type { EquipmentRenderState } from '../equipment-assets';
 import {
   CROSSHAIR_LIMITS,
@@ -86,6 +87,7 @@ export default function ViewerOptions({
   openCommunications,
   playerCrosshairCode,
   equipment,
+  mapAcquisition,
 }: {
   settings: ViewerSettings;
   onChange: (s: ViewerSettings) => void;
@@ -93,6 +95,7 @@ export default function ViewerOptions({
   openCommunications: () => void;
   playerCrosshairCode?: string;
   equipment?: EquipmentRenderState;
+  mapAcquisition?: DemoMapSummary;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const tabButtons = useRef<Partial<Record<Category, HTMLButtonElement>>>({});
@@ -269,7 +272,7 @@ export default function ViewerOptions({
                 {toggle(
                   'radar',
                   t('Position radar'),
-                  t('Show all alive players on a compact position plot.'),
+                  t('Show the calibrated overview when this map’s artwork is installed.'),
                 )}
                 {toggle(
                   'killfeed',
@@ -612,6 +615,28 @@ export default function ViewerOptions({
                   'Utility zones approximate event positions and durations. They do not reproduce Source 2’s volumetric smoke simulation.',
                 )}
               </p>
+              <p className="viewer-option-note">
+                {t(
+                  'Installed character cycles approximate locomotion from recorded speed and crouch. They do not reproduce the recorded animation graph.',
+                )}
+              </p>
+              {mapAcquisition && (
+                <div
+                  className="viewer-option-note"
+                  data-map-verification={mapAcquisition.verification}
+                >
+                  <h4>{t('Map provenance')}</h4>
+                  <p>
+                    {t(
+                      mapAcquisition.verification === 'operator-approved'
+                        ? 'This pack matches an operator-approved map identity. Approval is not cryptographic proof of the recording’s geometry.'
+                        : mapAcquisition.verification === 'version-unverified'
+                          ? 'This operator-installed pack has not been matched to the recorded map version.'
+                          : 'No verified map pack is available for this recording.',
+                    )}
+                  </p>
+                </div>
+              )}
               {equipment && (
                 <div
                   className="viewer-equipment-report"
@@ -652,7 +677,7 @@ export default function ViewerOptions({
                   )}
                   <p className="viewer-option-note">
                     {t(
-                      'Equipment uses static spectator attachments, without native arms or recoil animations.',
+                      'Held models follow an installed character’s weapon bone when available. POV models use approximate presets without first-person arms or recoil.',
                     )}
                   </p>
                 </div>

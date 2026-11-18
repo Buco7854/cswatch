@@ -70,7 +70,9 @@ import Scoreboard from './Scoreboard';
 import ReviewFeed, { type ReviewFeedTab } from './ReviewFeed';
 import ThrowInputBadges from './ThrowInputBadges';
 import type { SceneFocus, MapRenderState } from './Scene';
-import { useMapAssets, type AssetStatus } from '../map-assets';
+import type { AssetStatus } from '../map-assets';
+import { useDemoMapAssets } from '../useDemoMapAssets';
+import { mapAcquisitionMessage } from '../demo-map-assets';
 import PlayerPicker from './PlayerPicker';
 import RecordedCrosshair from './RecordedCrosshair';
 import { buildRecordedCrosshairTimeline, recordedCrosshairAt } from '../recorded-crosshair';
@@ -142,7 +144,12 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     },
     user?.id,
   );
-  const mapAssets = useMapAssets(data && !data.sample ? data.map : undefined, user?.id || 'public');
+  const mapAssets = useDemoMapAssets(
+    data && !data.sample ? id : undefined,
+    data && !data.sample ? data.map : undefined,
+    user?.id,
+  );
+  const acquisitionNotice = mapAcquisitionMessage(mapAssets);
   const [mapRender, setMapRender] = useState<MapRenderState>();
   const using2D =
     mode === '2d' ||
@@ -171,27 +178,34 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     (environmentStatus === 'pending' || environmentStatus === 'error')
       ? environmentStatus
       : mapStatus;
-  const mapStatusText = using2D
-    ? mapStatus === 'ready'
-      ? mode === '2d'
-        ? 'Map overview'
-        : '2D map fallback'
-      : mapStatus === 'pending'
-        ? 'Loading map overview…'
-        : mapStatus === 'error'
-          ? 'Map overview failed to load'
-          : 'No map overview installed'
-    : mapStatus === 'ready'
-      ? environmentStatus === 'pending'
-        ? '3D map · loading sky…'
-        : environmentStatus === 'error'
-          ? '3D map · sky unavailable'
-          : '3D map'
-      : mapStatus === 'pending'
-        ? 'Loading 3D map…'
-        : mapStatus === 'error'
-          ? '3D map failed to load'
-          : 'No 3D map installed';
+  const mapStatusText =
+    acquisitionNotice && mapAssets.status !== 'ready'
+      ? acquisitionNotice.title
+      : using2D
+        ? mapStatus === 'ready'
+          ? mode === '2d'
+            ? 'Map overview'
+            : mapRender?.failure === 'webgl'
+              ? '2D map · 3D unavailable'
+              : mapRender?.failure === 'model'
+                ? '2D map · 3D failed'
+                : '2D map fallback'
+          : mapStatus === 'pending'
+            ? 'Loading map overview…'
+            : mapStatus === 'error'
+              ? 'Map overview failed to load'
+              : 'Map unavailable'
+        : mapStatus === 'ready'
+          ? environmentStatus === 'pending'
+            ? '3D map · loading sky…'
+            : environmentStatus === 'error'
+              ? '3D map · sky unavailable'
+              : '3D map'
+          : mapStatus === 'pending'
+            ? 'Loading 3D map…'
+            : mapStatus === 'error'
+              ? '3D map failed to load'
+              : 'Map unavailable';
   const allReviewEvents = useMemo(
     () => (data ? roundEvents(data, { number: 0, start: first, end: last }, selected) : []),
     [data, first, last, selected],
@@ -1050,10 +1064,20 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
                 <span
                   className="viewer-map-status"
                   data-status={mapNoticeStatus}
-                  role="status"
                   title={t(mapStatusText)}
                 >
                   {t(mapStatusText)}
+                </span>
+              )}
+              {!data.sample && mapAssets.acquisition?.verification === 'version-unverified' && (
+                <span
+                  className="viewer-map-verification"
+                  title={t(
+                    'This operator-installed pack has not been matched to the recorded map version.',
+                  )}
+                >
+                  <span className="map-verification-full">{t('Map version unverified')}</span>
+                  <span className="map-verification-short">{t('Unverified')}</span>
                 </span>
               )}
               {data.deadTimes?.some((period) => tick >= period.start && tick < period.end) && (
@@ -1721,7 +1745,9 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
             )}
           </div>
         </div>
-        <ReviewActions actions={reviewActions} heading={reviewHeading} recap={reviewRecap} />
+        {!(mapAssets.acquisition?.acquisition === 'failed' && mapAssets.acquisition.canAcquire) && (
+          <ReviewActions actions={reviewActions} heading={reviewHeading} recap={reviewRecap} />
+        )}
       </div>
       {scoreboardOpen && (
         <Scoreboard
@@ -1745,6 +1771,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
           settings={settings}
           playerCrosshairCode={playerCrosshairCode}
           equipment={mapRender?.map === data.map ? mapRender.equipment : undefined}
+          mapAcquisition={mapAssets.acquisition}
           onChange={setSettings}
           close={closeViewerOptions}
           openCommunications={() => {

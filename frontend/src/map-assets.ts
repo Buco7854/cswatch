@@ -4,7 +4,7 @@ import { validateMapCubeFog } from './map-fog';
 
 export type AssetStatus = 'pending' | 'ready' | 'missing' | 'error';
 export type MapAssetState = { status: AssetStatus; assets: MapAssets; overviewStatus: AssetStatus };
-const emptyAssets: MapAssets = Object.freeze({
+export const emptyMapAssets: MapAssets = Object.freeze({
   model: null,
   mobile: null,
   overview: null,
@@ -12,12 +12,12 @@ const emptyAssets: MapAssets = Object.freeze({
 });
 const missing: MapAssetState = Object.freeze({
   status: 'missing',
-  assets: emptyAssets,
+  assets: emptyMapAssets,
   overviewStatus: 'missing',
 });
 const pending: MapAssetState = Object.freeze({
   status: 'pending',
-  assets: emptyAssets,
+  assets: emptyMapAssets,
   overviewStatus: 'missing',
 });
 type Entry = {
@@ -34,7 +34,15 @@ const coordinate = (value: unknown) =>
   typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 1e7;
 
 /** Accept only the fixed local discovery contract, never arbitrary URLs from a response. */
-export function validateMapAssets(value: unknown, map: string): MapAssets {
+export function validateMapAssets(value: unknown, map: string, packId?: string): MapAssets {
+  if (packId !== undefined && !/^[a-f0-9]{64}$/.test(packId)) throw new Error('Invalid map pack');
+  const imageRoot = packId ? `/api/map-packs/${packId}/maps/${map}` : `/api/maps/${map}`;
+  const desktop = packId
+    ? `/api/map-packs/${packId}/models/${map}/desktop/scene.glb`
+    : `/map-assets/${map}/desktop/scene.glb`;
+  const phone = packId
+    ? `/api/map-packs/${packId}/models/${map}/mobile/scene.glb`
+    : `/map-assets/${map}/mobile/scene.glb`;
   if (
     !/^[a-zA-Z0-9_-]{1,80}$/.test(map) ||
     !value ||
@@ -47,19 +55,18 @@ export function validateMapAssets(value: unknown, map: string): MapAssets {
     mobile = input.mobile ?? null;
   if (
     model !== null &&
-    model !== `/map-assets/${map}/desktop/scene.glb` &&
-    model !== `/map-assets/${map}.glb`
+    model !== desktop &&
+    (packId !== undefined || model !== `/map-assets/${map}.glb`)
   )
     throw new Error('Invalid map model');
-  if (mobile !== null && mobile !== `/map-assets/${map}/mobile/scene.glb`)
-    throw new Error('Invalid mobile map model');
+  if (mobile !== null && mobile !== phone) throw new Error('Invalid mobile map model');
   let overview: MapOverview | null = null;
   if (input.overview !== undefined && input.overview !== null) {
     const item = input.overview as Partial<MapOverview>;
     if (
       typeof item !== 'object' ||
       Array.isArray(item) ||
-      item.image !== `/api/maps/${map}/overview.png` ||
+      item.image !== `${imageRoot}/overview.png` ||
       !item.origin ||
       !coordinate(item.origin.x) ||
       !coordinate(item.origin.y) ||
@@ -85,7 +92,7 @@ export function validateMapAssets(value: unknown, map: string): MapAssets {
   if (input.environment !== undefined && input.environment !== null) {
     const item = input.environment as Partial<MapEnvironment>;
     const expected = ['px', 'nx', 'py', 'ny', 'pz', 'nz'].map(
-      (face) => `/api/maps/${map}/environment/${face}.png`,
+      (face) => `${imageRoot}/environment/${face}.png`,
     ) as MapEnvironment['sky']['faces'];
     if (
       typeof item !== 'object' ||
@@ -142,7 +149,7 @@ async function discover(entry: Entry) {
     });
   } catch {
     if (entries.get(entry.key) === entry && entry.controller === controller && entry.listeners.size)
-      publish(entry, { status: 'error', assets: emptyAssets, overviewStatus: 'error' });
+      publish(entry, { status: 'error', assets: emptyMapAssets, overviewStatus: 'error' });
   } finally {
     window.clearTimeout(timeout);
     if (entry.controller === controller) entry.controller = undefined;

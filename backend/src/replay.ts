@@ -12,6 +12,7 @@ import type {
 import { opusDuration } from './voice-packets.js';
 import { isRecordedUtilityThrow } from './player-input.js';
 import { crosshairCodePattern } from './crosshairs.js';
+import { mapIdentitySchema } from './map-identity.js';
 import {
   ItemArtifactValidator,
   ItemSliceIndex,
@@ -282,6 +283,7 @@ export const manifestSchema = z
   .object({
     version: z.literal(2),
     map: z.string().min(1).max(80),
+    mapIdentity: mapIdentitySchema.optional(),
     tickRate: z.number().int().min(1).max(128),
     sample: z.boolean(),
     players: z
@@ -633,6 +635,8 @@ export function validateReplayArtifacts(folder: string): {
     manifest.chunks.at(-1)!.endTick !== manifest.lastTick
   )
     throw new Error('Invalid replay bounds');
+  if (manifest.mapIdentity && manifest.mapIdentity.map !== manifest.map)
+    throw new Error('Recorded map identity does not match replay map');
   const actors = new Set(manifest.players.map((player) => player.id));
   const itemValidator = new ItemArtifactValidator();
   for (const [index, sample] of (manifest.crosshairs?.samples || []).entries()) {

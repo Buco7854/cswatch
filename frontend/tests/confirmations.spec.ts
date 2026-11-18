@@ -1,3 +1,4 @@
+import { installDemoMapDescriptor } from './fixtures/map-assets';
 import { test, expect } from '@playwright/test';
 import { sample } from '../src/sample';
 
@@ -48,6 +49,7 @@ test('demo deletion uses an accessible reusable modal with safe cancellation and
   page.on('dialog', () => {
     throw new Error('Browser confirmation must not be used.');
   });
+  await installDemoMapDescriptor(page, 'confirm-fixture');
   await page.goto('/watch/confirm-fixture');
   await page.getByRole('button', { name: 'Viewer menu', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Manage', exact: true }).click();
@@ -116,6 +118,8 @@ test('a late rename cannot overwrite a different demo after its manager closes',
       },
     });
   });
+  await installDemoMapDescriptor(page, 'rename-a');
+  await installDemoMapDescriptor(page, 'rename-b');
   await page.goto('/watch/rename-a');
   await page.getByRole('button', { name: 'Viewer menu', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Manage', exact: true }).click();

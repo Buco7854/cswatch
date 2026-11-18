@@ -12,7 +12,9 @@ export async function withDirectory<T>(
   const handles: FileHandle[] = [];
   try {
     if (process.platform !== 'linux') return;
-    handles.push(await open(root, constants.O_RDONLY | constants.O_DIRECTORY));
+    handles.push(
+      await open(root, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW),
+    );
     for (const part of parts)
       handles.push(
         await open(

@@ -216,6 +216,26 @@ export async function installSteamAssets(options, adapters = {}) {
   const maps = selectedMaps(options.maps);
   const manifest =
     options.manifest === undefined ? undefined : selectedSteamManifest(options.manifest);
+  if (
+    options.assetVersion !== undefined &&
+    (typeof options.assetVersion !== 'string' ||
+      !/^[A-Za-z0-9._-]{1,100}$/.test(options.assetVersion))
+  )
+    throw new Error('Prepared asset version must be a bounded local identifier.');
+  if (
+    options.expectedMapHashes !== undefined &&
+    (!options.expectedMapHashes ||
+      typeof options.expectedMapHashes !== 'object' ||
+      Array.isArray(options.expectedMapHashes) ||
+      Object.keys(options.expectedMapHashes).length !== maps.length ||
+      maps.some(
+        (map) =>
+          typeof options.expectedMapHashes[map] !== 'string' ||
+          !/^[a-f0-9]{64}$/.test(options.expectedMapHashes[map]),
+      ) ||
+      Object.keys(options.expectedMapHashes).some((map) => !maps.includes(map)))
+  )
+    throw new Error('Expected source hashes must cover exactly the selected maps.');
   if (!options.output || !options.cache || Boolean(options.s2v) !== Boolean(options.downloader))
     throw new Error(
       'Provide --output and --cache. Supply both --s2v and --downloader to override the verified bootstrap.',
@@ -269,7 +289,8 @@ export async function installSteamAssets(options, adapters = {}) {
     pins = join(runRoot, 'manifests');
   for (const path of [home, temporary, game, pins]) await localDirectory(path, true);
   let sequence = 0,
-    selectedBytes = 0;
+    selectedBytes = 0,
+    conversionRoot;
   const selections = new Map(),
     permittedPrefabs = new Set(),
     downloads = [],
@@ -278,8 +299,11 @@ export async function installSteamAssets(options, adapters = {}) {
     progress(stage);
     return run(command, args, {
       cwd: runRoot,
-      home,
-      temporary,
+      home: command !== tools.downloader && conversionRoot ? join(conversionRoot, '.home') : home,
+      temporary:
+        command !== tools.downloader && conversionRoot ? join(conversionRoot, '.tmp') : temporary,
+      conversionWriteRoots:
+        command !== tools.downloader && conversionRoot ? [conversionRoot] : undefined,
       signal,
       log: join(runRoot, `${String(++sequence).padStart(3, '0')}-${stage}.log`),
       storageGuard: () => checkFreeReserve(cache, output),
@@ -346,7 +370,7 @@ export async function installSteamAssets(options, adapters = {}) {
       { timeoutMs: 120000 },
     );
     const plan = parseSteamListing(listed.stdout, initial),
-      assetVersion = `steam-${STEAM_DEPOT}-${plan.manifest}`;
+      assetVersion = options.assetVersion ?? `steam-${STEAM_DEPOT}-${plan.manifest}`;
     if (manifest && plan.manifest !== manifest)
       throw new Error('Selected Steam depot manifest does not match the requested version.');
     await writeFile(
@@ -361,6 +385,21 @@ export async function installSteamAssets(options, adapters = {}) {
     for (const file of plan.files)
       if ((await fileHash(join(game, file.file), 'sha1', file.bytes)) !== file.sha1)
         throw new Error('A selected Steam file failed its manifest hash check.');
+    for (const map of maps) {
+      const expected = options.expectedMapHashes?.[map];
+      if (
+        expected &&
+        (await fileHash(
+          join(game, 'game/csgo/maps', `${map}.vpk`),
+          'sha256',
+          steamAssetLimits.selectedBytes,
+        )) !== expected
+      )
+        throw Object.assign(
+          new Error('Official map content does not match its approved source hash.'),
+          { code: 'SOURCE_MAP_MISMATCH' },
+        );
+    }
     const shaderIndexes = await Promise.all(
       ['csgo', 'core'].map(async (group) => [
         group,
@@ -369,6 +408,9 @@ export async function installSteamAssets(options, adapters = {}) {
     );
     for (const map of maps) {
       const stage = await mkdtemp(join(runRoot, `${map}-`));
+      conversionRoot = stage;
+      await mkdir(join(stage, '.home'), { mode: 0o700 });
+      await mkdir(join(stage, '.tmp'), { mode: 0o700 });
       try {
         const packageFile = `game/csgo/maps/${map}.vpk`;
         const shaderPreflights = [];

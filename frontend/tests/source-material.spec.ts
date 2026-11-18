@@ -1,3 +1,4 @@
+import { manualMapAssets } from './fixtures/map-assets';
 import { expect, test, type Page } from '@playwright/test';
 import {
   originalMapGLB,
@@ -80,14 +81,14 @@ async function install(
   await page.route('**/api/demos/original-source-material/playback', (route) =>
     route.fulfill({ json: originalMapReplay() }),
   );
-  await page.route(`**/api/maps/${qaMap}`, (route) =>
+  await page.route('**/api/demos/original-source-material/map-assets', (route) =>
     route.fulfill({
-      json: {
+      json: manualMapAssets({
         model: `/map-assets/${qaMap}/desktop/scene.glb`,
         mobile: null,
         overview: qaOverview,
         environment: environment(),
-      },
+      }),
     }),
   );
   await page.route(`**/api/maps/${qaMap}/overview.png`, (route) =>
