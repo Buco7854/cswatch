@@ -1,10 +1,26 @@
 import { spawn } from 'node:child_process';
-import { constants, existsSync, lstatSync, opendirSync, realpathSync } from 'node:fs';
+import {
+  closeSync,
+  constants,
+  existsSync,
+  fstatSync,
+  lstatSync,
+  openSync,
+  opendirSync,
+  readFileSync,
+  realpathSync,
+} from 'node:fs';
 import { access } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { Config } from './config.js';
 import { replayLimits } from './replay.js';
+import {
+  JobFailure,
+  parserFailureMessages,
+  sandboxFailureReason,
+  type ParserFailureCode,
+} from './parser-failure.js';
 
 const runtime = resolve(dirname(fileURLToPath(import.meta.url)), '../dist');
 
@@ -109,7 +125,7 @@ export async function runIsolatedJob(
           String(options.timeoutSeconds),
           ...(options.modelDir ? [options.entry, realpathSync(options.modelDir)] : []),
         ];
-  if (!existsSync(join(runtime, options.entry)))
+  if (!existsSync(join(runtime, options.entry)) || !existsSync(join(runtime, 'job-stdio.js')))
     throw new Error('Build the job entry before running jobs');
   if (c.parserSandbox !== 'off') {
     if (process.platform !== 'linux')
@@ -121,6 +137,7 @@ export async function runIsolatedJob(
     const child = spawn(c.parserSandbox === 'off' ? process.execPath : sandbox, args, {
       cwd: folder,
       env: {
+        NODE_OPTIONS: `--import=${pathToFileURL(join(runtime, 'job-stdio.js')).href}`,
         HOME: folder,
         TMPDIR: folder,
         RAYON_NUM_THREADS: '2',
@@ -139,7 +156,7 @@ export async function runIsolatedJob(
           ),
         ),
       },
-      stdio: 'ignore',
+      stdio: ['ignore', 'ignore', 'pipe'],
       detached: true,
     });
     const killGroup = () => {
@@ -152,26 +169,32 @@ export async function runIsolatedJob(
       }
     };
     let failure: Error | undefined;
+    let stderr = '';
+    child.stderr?.on('data', (chunk: Buffer) => {
+      // Always drain the pipe so hostile output cannot block the child, but
+      // retain at most 4096 bytes. Raw output is never logged or published.
+      if (stderr.length < 4096) stderr += chunk.toString('utf8').slice(0, 4096 - stderr.length);
+    });
     const timer = setTimeout(() => {
-      failure = new Error('Parser timed out');
+      failure = new JobFailure('timeout');
       killGroup();
     }, options.timeoutSeconds * 1000);
     const cancel = setInterval(() => {
       try {
         options.inspect();
         if (cancelled()) {
-          failure = new Error('Parser job cancelled');
+          failure = new JobFailure('cancelled');
           killGroup();
         }
-      } catch {
-        failure = new Error('Parser state unavailable');
+      } catch (error) {
+        failure = error instanceof Error ? error : new Error('Parser state unavailable');
         killGroup();
       }
     }, 500);
     child.once('error', (error) => {
       failure = error;
     });
-    child.once('close', (code) => {
+    child.once('close', (code, signal) => {
       clearTimeout(timer);
       clearInterval(cancel);
       // Kill any surviving descendants before reading output. The required sandbox also
@@ -179,7 +202,48 @@ export async function runIsolatedJob(
       killGroup();
       if (failure) rejectJob(failure);
       else if (code === 0) resolveJob();
-      else rejectJob(new Error('Parser or kernel sandbox failed'));
+      else {
+        const sandboxReason = sandboxFailureReason(stderr);
+        let reason: ParserFailureCode =
+          code === 125 || sandboxReason
+            ? 'sandbox_unavailable'
+            : signal
+              ? 'parser_crash'
+              : 'processing_failed';
+        if (/heap out of memory|allocation failed/i.test(stderr)) reason = 'memory_limit';
+        if (signal === 'SIGXCPU') reason = 'timeout';
+        if (signal === 'SIGXFSZ') reason = 'storage_limit';
+        if (!sandboxReason && !signal) {
+          let fd: number | undefined;
+          try {
+            fd = openSync(
+              join(folder, 'failure.txt'),
+              constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+            );
+            const info = fstatSync(fd);
+            if (info.isFile() && info.nlink === 1 && info.size <= 1024) {
+              const record = JSON.parse(readFileSync(fd, 'utf8'));
+              if (
+                record &&
+                typeof record.code === 'string' &&
+                Object.hasOwn(parserFailureMessages, record.code)
+              )
+                reason = record.code;
+            }
+          } catch {
+            /* Missing or invalid failure metadata never becomes a trusted reason. */
+          } finally {
+            if (fd !== undefined) closeSync(fd);
+          }
+        }
+        rejectJob(
+          new JobFailure(reason, {
+            exitCode: code,
+            signal,
+            ...(sandboxReason ? { sandboxReason } : {}),
+          }),
+        );
+      }
     });
   });
   options.inspect();

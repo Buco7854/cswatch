@@ -17,6 +17,111 @@
   overscroll-behavior: contain;
   scrollbar-width: thin;
 }
+.viewer-frame .viewer-context-actions.is-combat {
+  max-height: 192px;
+}
+.combat-recap {
+  min-width: 0;
+  padding: 6px 8px 0;
+}
+.combat-recap-title {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+.combat-recap-title > span {
+  flex: none;
+}
+.combat-recap-title > strong,
+.combat-recap-damage-column li > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.combat-recap [data-team='3'] {
+  color: var(--team-ct);
+}
+.combat-recap [data-team='2'] {
+  color: var(--team-t);
+}
+.combat-recap-weapon {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: var(--viewer-muted);
+  font-size: 11px;
+  line-height: 18px;
+}
+.viewer-frame .viewer-context-actions .combat-recap-weapon > .equipment-glyph {
+  flex: none;
+  width: 28px;
+  height: 16px;
+}
+.combat-recap-weapon > span:not(.equipment-glyph):not(.review-event-glyph) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.combat-recap-damage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  margin-top: 6px;
+}
+.combat-recap-damage-column h3 {
+  margin: 0 0 2px;
+  color: var(--viewer-muted);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+}
+.combat-recap-damage-column ul {
+  max-height: 44px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+}
+.combat-recap-damage-column li {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 20px;
+  font-size: 11px;
+  line-height: 18px;
+}
+.combat-recap-damage-column li > strong {
+  flex: none;
+  min-width: 29px;
+  padding-inline: 3px;
+  border-radius: 4px;
+  background: var(--viewer-raised);
+  text-align: center;
+  font-weight: 600;
+}
+.combat-recap-damage-column:first-child li > strong {
+  color: var(--danger);
+}
+.combat-recap-damage-column p,
+.combat-recap-coverage {
+  margin: 0;
+  color: var(--viewer-muted);
+  font-size: 11px;
+  line-height: 20px;
+}
+.combat-recap-coverage {
+  margin-top: 3px;
+  color: var(--viewer-faint);
+  font-size: 10px;
+  line-height: 14px;
+}
 .review-moment-heading {
   display: flex;
   align-items: center;
@@ -93,10 +198,19 @@
   .viewer-frame:has(.review-inputs-panel) .viewer-context-actions {
     width: min(190px, calc(100% - 208px));
   }
+  .viewer-frame .viewer-context-actions.is-combat {
+    width: min(320px, calc(100% - 16px));
+  }
+  .viewer-frame:has(.review-inputs-panel) .viewer-context-actions.is-combat {
+    width: min(190px, calc(100% - 208px));
+  }
 }
 @media (max-width: 360px) {
   .viewer-frame .viewer-context-actions,
   .viewer-frame:has(.review-inputs-panel) .viewer-context-actions {
+    width: calc(100% - 16px);
+  }
+  .viewer-frame:has(.review-inputs-panel) .viewer-context-actions.is-combat {
     width: calc(100% - 16px);
   }
   .viewer-frame .viewer-context-actions .review-action {

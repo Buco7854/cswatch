@@ -9,10 +9,10 @@ import './broadcast-economy.css';
 
 const known = (value: number | undefined) =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
-const number = (value: number | undefined) => known(value)?.toLocaleString(locale()) ?? '—';
+const number = (value: number | undefined) => known(value)?.toLocaleString(locale()) ?? '-';
 const money = (value: number | undefined) =>
-  known(value) === undefined ? '—' : '$' + number(value);
-const yesNo = (value: boolean | undefined) => (value === undefined ? '—' : t(value ? 'Yes' : 'No'));
+  known(value) === undefined ? '-' : '$' + number(value);
+const yesNo = (value: boolean | undefined) => (value === undefined ? '-' : t(value ? 'Yes' : 'No'));
 export type LoadoutMember = { player: Player; state: Position | undefined };
 
 function UtilityInventory({ state }: { state: Position | undefined }) {
@@ -24,7 +24,7 @@ function UtilityInventory({ state }: { state: Position | undefined }) {
         title={t('Inventory is unavailable at this moment.')}
         aria-label={t('Inventory is unavailable at this moment.')}
       >
-        —
+        -
       </span>
     );
   if (!items.length)
@@ -57,7 +57,7 @@ function UtilityInventory({ state }: { state: Position | undefined }) {
   );
 }
 
-function PlayerRow({
+export function PlayerRow({
   member,
   selected,
   onSelect,
@@ -186,7 +186,7 @@ function PlayerRow({
 }
 
 export function SelectedLoadout({ member }: { member: LoadoutMember }) {
-  const { player, state } = member;
+  const { state } = member;
   const items = useMemo(() => {
     if (state?.inventory === undefined) return null;
     const counted = new Map<string, { item: string; count: number }>();
@@ -207,12 +207,7 @@ export function SelectedLoadout({ member }: { member: LoadoutMember }) {
       }}
     >
       <summary>
-        <span>
-          <span className="broadcast-loadout-label" title={t('Selected loadout')}>
-            {t('Selected loadout')}
-          </span>
-          <strong title={player.name}>{player.name}</strong>
-        </span>
+        <span>{t('Weapons and equipment')}</span>
         <ChevronDown size={14} />
       </summary>
       <div className="broadcast-loadout-body">

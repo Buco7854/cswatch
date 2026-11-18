@@ -30,6 +30,7 @@ export async function authRoutes(app: FastifyInstance, db: Store, c: Config) {
           identities: db.all('SELECT provider,subject FROM identities WHERE user_id=?', r.user.id),
         }
       : null,
+    guest_session: r.guest ? { csrf: r.guest.csrf, expires_at: r.guest.expires_at } : null,
   }));
   app.post('/api/auth/register', async (r, reply) => {
     if (!db.flag(c, 'registrations_enabled'))
@@ -53,7 +54,10 @@ export async function authRoutes(app: FastifyInstance, db: Store, c: Config) {
     const b = credentials.parse(r.body);
     rateLimit(db, r, 'login-ip', 20);
     rateLimit(db, r, 'login-user', 10, 900, b.username.toLowerCase());
-    const u = db.one('SELECT * FROM users WHERE username=? COLLATE NOCASE', b.username);
+    const u = db.one(
+      'SELECT * FROM users u WHERE username=? COLLATE NOCASE AND NOT EXISTS(SELECT 1 FROM guest_sessions g WHERE g.owner_id=u.id)',
+      b.username,
+    );
     if (!(await verifyPassword(u?.password_hash, b.password)))
       throw new HttpError(401, 'Username or password is incorrect.');
     const csrf = newSession(db, c, r, reply, u!.id);

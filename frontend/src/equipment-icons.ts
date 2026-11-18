@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import catalog from '../../shared/equipment-icons.json';
-import { equipmentKey } from './equipment-key';
+import { canonicalEquipmentKey } from './equipment-key';
 
 type Icons = Readonly<Record<string, string>>;
 const empty: Icons = Object.freeze({});
@@ -8,29 +8,9 @@ let icons = empty;
 const listeners = new Set<() => void>();
 let pending: AbortController | undefined;
 let loaded = false;
-const aliases: Record<string, string> = {
-  m4a4: 'm4a1',
-  m4a1s: 'm4a1silencer',
-  p2000: 'hkp2000',
-  usps: 'uspsilencer',
-  glock18: 'glock',
-  sg553: 'sg556',
-  galil: 'galilar',
-  ppbizon: 'bizon',
-  cz75auto: 'cz75a',
-  deserteagle: 'deagle',
-  dualberettas: 'elite',
-  zeus: 'taser',
-  zeusx27: 'taser',
-  incendiarygrenade: 'incgrenade',
-  decoygrenade: 'decoy',
-  defusekit: 'defuser',
-  kevlar: 'armor',
-};
 
 export function equipmentIconKey(item: string) {
-  const key = equipmentKey(item);
-  const canonical = aliases[key] || key;
+  const canonical = canonicalEquipmentKey(item);
   return Object.hasOwn(catalog.items, canonical) ? canonical : undefined;
 }
 

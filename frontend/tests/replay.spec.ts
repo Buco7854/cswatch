@@ -16,7 +16,9 @@ test('viewer streams only nearby time slices, pauses on a failed seek, retries a
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.addInitScript(() =>
-    localStorage.setItem('viewer-settings', JSON.stringify({ economy: true, quality: 'low' })),
+    ['viewer-settings', 'viewer-settings-mobile'].forEach((key) =>
+      localStorage.setItem(key, JSON.stringify({ economy: true, quality: 'low' })),
+    ),
   );
   try {
     await writeReplay(dir, {
@@ -78,16 +80,19 @@ test('viewer streams only nearby time slices, pauses on a failed seek, retries a
     await page.getByRole('button', { name: 'Pause', exact: true }).click();
     await page.getByRole('button', { name: 'More controls', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Rounds', exact: true }).click();
-    const context = page.locator('.timeline-context-label');
+    const context = page.getByRole('combobox', { name: 'Timeline range', exact: true });
     const transport = page.locator('.viewer-controlbar');
     const rail = page.locator('.viewer-rounds-rail');
     const secondRound = page.getByRole('button', { name: 'Jump to round 2', exact: true });
-    await expect(context).toHaveCSS('pointer-events', 'none');
+    await expect(context).toBeVisible();
     const contextBounds = (await context.boundingBox())!;
     const transportBounds = (await transport.boundingBox())!;
     const railBounds = (await rail.boundingBox())!;
-    expect(contextBounds.y).toBeCloseTo(transportBounds.y, 0);
-    expect(contextBounds.y + contextBounds.height).toBeLessThanOrEqual(railBounds.y + 1);
+    expect(contextBounds.y).toBeGreaterThanOrEqual(transportBounds.y);
+    expect(contextBounds.y + contextBounds.height).toBeLessThanOrEqual(
+      transportBounds.y + transportBounds.height + 1,
+    );
+    expect(transportBounds.y + transportBounds.height).toBeLessThanOrEqual(railBounds.y + 1);
     expect(
       await secondRound.evaluate((button) => {
         const bounds = button.getBoundingClientRect();

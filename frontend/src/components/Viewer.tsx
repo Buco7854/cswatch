@@ -1,4 +1,4 @@
-import i18n, { t, locale, setLanguage } from '../i18n';
+import i18n, { t, setLanguage } from '../i18n';
 import {
   lazy,
   Suspense,
@@ -25,6 +25,7 @@ import {
   FastForward,
   Users,
   ListVideo,
+  ScanLine,
   X,
   Sun,
   Moon,
@@ -38,7 +39,9 @@ import { useViewerChrome } from '../useViewerChrome';
 import { useReviewLayout } from '../useReviewLayout';
 import { useApp } from '../context';
 import type { Bookmark } from '../types';
-import { frameAt, readSettings, skipDeadTime } from '../playback';
+import { frameAt, skipDeadTime } from '../playback';
+import { useViewerPreferences } from '../viewer-device';
+import { typingOrDialog } from '../free-camera';
 import { roundAt, roundEvents } from '../review-events';
 import { RoundEventReview } from './RoundEvents';
 import ReplayTimeline from './ReplayTimeline';
@@ -52,6 +55,8 @@ import ReviewHud from './ReviewHud';
 import ReviewActions, { type ReviewAction } from './ReviewActions';
 import ReviewEventGlyph from './ReviewEventGlyph';
 import EquipmentGlyph from './EquipmentGlyph';
+import { equipmentName } from '../equipment-display';
+import './kill-feed.css';
 import type { LandingPrompt, ThrowPrompt } from '../review-prompts';
 import {
   buildReviewMoments,
@@ -64,8 +69,13 @@ import MatchScore from './MatchScore';
 import Scoreboard from './Scoreboard';
 import ReviewFeed, { type ReviewFeedTab } from './ReviewFeed';
 import ThrowInputBadges from './ThrowInputBadges';
-import type { SceneFocus } from './Scene';
-import { SelectedLoadout } from './MatchEconomy';
+import type { SceneFocus, MapRenderState } from './Scene';
+import { useMapAssets, type AssetStatus } from '../map-assets';
+import PlayerPicker from './PlayerPicker';
+import RecordedCrosshair from './RecordedCrosshair';
+import { buildRecordedCrosshairTimeline, recordedCrosshairAt } from '../recorded-crosshair';
+import CombatRecap from './CombatRecap';
+import { combatDamage } from '../combat-recap';
 import Communications from './Communications';
 import ViewerOptions from './ViewerOptions';
 import Crosshair from './Crosshair';
@@ -73,6 +83,7 @@ import TacticalPlot from './TacticalPlot';
 import ManageDemo from './ManageDemo';
 import AccountMenu from './AccountMenu';
 import { ActionMenu, SelectControl, type MenuAction } from './Controls';
+import { useConfirm } from './Confirmation';
 const Scene = lazy(() => import('./Scene'));
 const clock = (seconds: number) =>
   t('{{v0}}:{{v1}}', {
@@ -83,10 +94,26 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
   const { id } = useParams();
   const location = useLocation();
   const { user, config, notify, signIn } = useApp();
+  const confirm = useConfirm();
+  const [cameraNotice, setCameraNotice] = useState(false);
+  const cameraNoticeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(cameraNoticeTimer.current), []);
+  function cueCameraChange() {
+    clearTimeout(cameraNoticeTimer.current);
+    setCameraNotice(true);
+    cameraNoticeTimer.current = setTimeout(() => setCameraNotice(false), 900);
+  }
+  function selectPlayer(playerId: string, dismissPicker = false) {
+    if (!data?.players.some((player) => player.id === playerId)) return;
+    setSelected(playerId);
+    setGrenadeFocus(undefined);
+    setMode('pov');
+    cueCameraChange();
+    if (dismissPicker) closePanel();
+  }
   const previous = location.state?.from;
   const backTo =
-    typeof previous === 'string' &&
-    ['/', '/library', '/explore', '/features/viewer'].includes(previous)
+    typeof previous === 'string' && ['/', '/library'].includes(previous)
       ? previous
       : user
         ? '/library'
@@ -115,15 +142,66 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     },
     user?.id,
   );
+  const mapAssets = useMapAssets(data && !data.sample ? data.map : undefined, user?.id || 'public');
+  const [mapRender, setMapRender] = useState<MapRenderState>();
+  const using2D =
+    mode === '2d' ||
+    Boolean(mapRender && mapRender.map === data?.map && mapRender.renderer === '2d');
+  const mapStatus: AssetStatus =
+    mapAssets.status === 'pending'
+      ? 'pending'
+      : mapAssets.status === 'error'
+        ? 'error'
+        : using2D
+          ? mapAssets.overviewStatus
+          : mapRender && mapRender.map === data?.map
+            ? mapRender.model
+            : mapAssets.assets.model || mapAssets.assets.mobile
+              ? 'pending'
+              : 'missing';
+  const environmentStatus: AssetStatus = mapAssets.assets.environment
+    ? mapRender?.map === data?.map &&
+      mapRender?.environmentVersion === mapAssets.assets.environment.assetVersion
+      ? mapRender.environment
+      : 'pending'
+    : 'missing';
+  const mapNoticeStatus =
+    !using2D &&
+    mapStatus === 'ready' &&
+    (environmentStatus === 'pending' || environmentStatus === 'error')
+      ? environmentStatus
+      : mapStatus;
+  const mapStatusText = using2D
+    ? mapStatus === 'ready'
+      ? mode === '2d'
+        ? 'Map overview'
+        : '2D map fallback'
+      : mapStatus === 'pending'
+        ? 'Loading map overview…'
+        : mapStatus === 'error'
+          ? 'Map overview failed to load'
+          : 'No map overview installed'
+    : mapStatus === 'ready'
+      ? environmentStatus === 'pending'
+        ? '3D map · loading sky…'
+        : environmentStatus === 'error'
+          ? '3D map · sky unavailable'
+          : '3D map'
+      : mapStatus === 'pending'
+        ? 'Loading 3D map…'
+        : mapStatus === 'error'
+          ? '3D map failed to load'
+          : 'No 3D map installed';
   const allReviewEvents = useMemo(
     () => (data ? roundEvents(data, { number: 0, start: first, end: last }, selected) : []),
     [data, first, last, selected],
   );
-  const [settings, setSettings] = useState(readSettings),
-    [options, setOptions] = useState(false),
+  const { settings, setSettings } = useViewerPreferences();
+  const [options, setOptions] = useState(false),
     [manage, setManage] = useState(false);
   const [communicationsOpen, setCommunicationsOpen] = useState(false);
   const [timelineOptionsOpen, setTimelineOptionsOpen] = useState(false);
+  const [timelineScope, setTimelineScope] = useState<'match' | 'round'>('match');
   const [scoreboardOpen, setScoreboardOpen] = useState(false);
   const [feedTab, setFeedTab] = useState<ReviewFeedTab>('kills');
   const scoreboardHeld = useRef(false);
@@ -142,6 +220,10 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     () => (data ? buildObjectiveTimeline(data) : null),
     [data?.events, data?.objectives, data?.rounds, data?.players, data?.tickRate],
   );
+  const crosshairTimeline = useMemo(
+    () => buildRecordedCrosshairTimeline(data),
+    [data?.crosshairs, data?.players],
+  );
   const objective =
     !buffering && objectiveTimeline ? objectiveAt(objectiveTimeline, tick) : undefined;
   const recentMoment = reviewIndex
@@ -150,7 +232,21 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
         utilities: settings.grenadeLanding,
       })
     : null;
-  const [mapAvailable, setMapAvailable] = useState(false);
+  const recapDamage = useMemo(
+    () =>
+      data && recentMoment?.kind === 'combat'
+        ? combatDamage(data, recentMoment, selected, last)
+        : undefined,
+    [
+      data?.events,
+      data?.rounds,
+      data?.players,
+      data?.eventAvailability,
+      recentMoment?.id,
+      selected,
+      last,
+    ],
+  );
   const communicationsTrigger = useRef<HTMLElement | null>(null);
   const communicationsWasOpen = useRef(false);
   useEffect(() => {
@@ -160,11 +256,6 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       queueMicrotask(() => restoreViewerFocus(communicationsTrigger.current));
     }
   }, [communicationsOpen]);
-  useEffect(() => {
-    try {
-      localStorage.setItem('viewer-settings', JSON.stringify(settings));
-    } catch {}
-  }, [settings]);
   const [panel, setPanel] = useState<'players' | 'review' | null>(null);
   const showReviewFeed =
     settings.reviewFeed &&
@@ -257,18 +348,14 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
         document.querySelector('dialog[open]:not(.review-feed-inline)')
       )
         return;
-      if (held) stage.current?.focus({ preventScroll: true });
+      if (held && scoreboardTrigger.current === stage.current)
+        stage.current?.focus({ preventScroll: true });
       else restoreViewerFocus(scoreboardTrigger.current);
     });
   }
   function closeReviewFeed() {
     setSettings((value) => ({ ...value, reviewFeed: false }));
-    requestAnimationFrame(() => restoreViewerFocus(mobileMoreTrigger.current));
-  }
-  function toggleReviewFeed() {
-    setSettings((value) => ({ ...value, reviewFeed: !value.reviewFeed }));
-    setPanel(null);
-    chrome.show();
+    requestAnimationFrame(() => restoreViewerFocus(optionsTrigger.current));
   }
   const [compactPanels, setCompactPanels] = useState(
     () => window.matchMedia('(max-width:540px),(max-height:560px)').matches,
@@ -392,14 +479,14 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
   useEffect(() => {
     const controller = new AbortController();
     if (id !== 'sample') setBookmarks([]);
-    if (id !== 'sample' && user)
+    if (id !== 'sample' && user && demo && !demo.guest_owned)
       api<Bookmark[]>('/api/demos/' + id + '/bookmarks', { signal: controller.signal })
         .then((notes) => {
           if (!controller.signal.aborted) setBookmarks(notes);
         })
         .catch(() => {});
     return () => controller.abort();
-  }, [id, user?.id]);
+  }, [id, user?.id, demo?.id, demo?.guest_owned]);
   const rate = data?.tickRate ?? 64;
   const seek = useCallback(
     (value: number) => {
@@ -437,6 +524,8 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     function keys(e: KeyboardEvent) {
       const target = e.target as HTMLElement;
       if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+      const viewer = full.current;
+      if (!viewer || (target !== document.body && !viewer.contains(target))) return;
       if (
         e.code === 'Escape' &&
         settings.reviewFeed &&
@@ -456,12 +545,14 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
         e.code === 'Tab' &&
         !e.shiftKey &&
         !e.repeat &&
-        target === stage.current &&
-        !panel &&
+        !typingOrDialog(target) &&
+        !document.querySelector(
+          'dialog[open]:not(.review-feed-inline),[aria-modal="true"],[role="menu"],[role="listbox"]',
+        ) &&
         !scoreboardOpen
       ) {
         e.preventDefault();
-        openScoreboard(stage.current, true);
+        openScoreboard(target, true);
         return;
       }
       if (
@@ -647,15 +738,19 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     const publish = !demo.public;
     if (
       publish &&
-      !window.confirm(
-        t(
+      !(await confirm({
+        title: t('Share demo'),
+        confirmLabel: t('Share demo'),
+        tone: 'normal',
+        description: t(
           config.public_access
-            ? 'Make this demo public? Anyone can access its replay data and recorded voice, chat and subtitles. It will appear in Community. Personal notes stay private.'
+            ? 'Make this demo public? Anyone with its link can access its replay data and recorded voice, chat and subtitles. Personal notes stay private.'
             : 'Share this demo with instance members, including replay data and recorded voice, chat and subtitles? They must sign in. Personal notes stay private.',
         ),
-      )
+      }))
     )
       return;
+    if (!scope.active) return;
     try {
       await api('/api/demos/' + id, { method: 'PATCH', body: JSON.stringify({ public: publish }) });
       if (!scope.active) return;
@@ -681,7 +776,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
         <h1>{t('Demo unavailable')}</h1>
         <p role="alert">{t(error)}</p>
         <Link className="button" to={backTo}>
-          {t('Back to library')}
+          {t(backTo === '/' ? 'Back to home' : 'Back to library')}
         </Link>
       </div>
     );
@@ -690,7 +785,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       <>
         <Link className="back-link" to={backTo}>
           <ArrowLeft size={16} />
-          {t('Library')}
+          {t(backTo === '/' ? 'Home' : 'Library')}
         </Link>
         <div className="processing">
           <span className={'processing-mark ' + (demo?.status !== 'failed' ? 'spin' : '')}>↻</span>
@@ -702,13 +797,17 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
                 : t('Your demo is in the queue')}
           </h1>
           <p>
-            {demo?.error ||
-              t(
-                'You can leave this page. Your match will be ready in the library when processing finishes.',
-              )}
+            {demo?.error
+              ? t(demo.error)
+              : t(
+                  demo?.guest_owned
+                    ? 'Keep this link to return to your private demo in this browser before it expires.'
+                    : 'You can leave this page. Your match will be ready in the library when processing finishes.',
+                )}
           </p>
+          {demo?.status === 'failed' && <p>{t('Demo reference: {{id}}', { id: demo.id })}</p>}
           <Link className="button" to={backTo}>
-            {t('Return to library')}
+            {t(backTo === '/' ? 'Back to home' : 'Return to library')}
           </Link>
           {demo?.owned && demo.status === 'failed' && (
             <button className="button" onClick={() => setManage(true)}>
@@ -722,6 +821,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       </>
     );
   function openNote(trigger: HTMLElement | null) {
+    if (demo?.guest_owned) return;
     panelTrigger.current = trigger;
     setPlaying(false);
     setTab('notes');
@@ -778,15 +878,6 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       label: t('Scoreboard'),
       onSelect: () => openScoreboard(eventMenuTrigger.current),
     },
-    { id: 'round-review', label: t('Kills and utility review'), onSelect: toggleReviewFeed },
-    {
-      id: 'communications',
-      label: t('Communications'),
-      onSelect: () => {
-        communicationsTrigger.current = eventMenuTrigger.current;
-        setCommunicationsOpen(true);
-      },
-    },
     {
       id: 'round-events',
       label: t('Current round events'),
@@ -794,36 +885,8 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       onSelect: () => openRoundReview(eventMenuTrigger.current),
     },
     {
-      id: 'timeout',
-      label: t('Skip timeout'),
-      onSelect: () => {
-        const target = skipDeadTime(data, tick, 'timeout', last);
-        if (target === tick) notify('No tactical or technical timeout at this position.');
-        else seek(target);
-      },
-    },
-    {
-      id: 'kill',
-      label: t('Next player kill'),
-      onSelect: () => {
-        const event = allReviewEvents.find((event) => event.type === 'kill' && event.tick > tick);
-        if (event) seek(Math.max(first, event.tick - rate * 3));
-        else notify('No later elimination by this player.');
-      },
-    },
-    {
-      id: 'death',
-      label: t('Next player death'),
-      onSelect: () => {
-        const event = allReviewEvents.find((event) => event.type === 'death' && event.tick > tick);
-        if (event) seek(Math.max(first, event.tick - rate * 3));
-        else notify('No later death for this player.');
-      },
-    },
-    {
       id: 'previous-sample',
       label: t('Previous sample'),
-      separatorBefore: true,
       onSelect: () => {
         setPlaying(false);
         seek(tick - 4);
@@ -839,27 +902,26 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     },
   ];
   const { frame } = frameAt(data, tick);
-  const selectedPlayer = data.players.find((player) => player.id === selected);
+  const playerCrosshairCode =
+    !buffering && frame.players.some((player) => player.id === selected)
+      ? recordedCrosshairAt(crosshairTimeline, selected, tick)
+      : undefined;
   const round = data.rounds.filter((r) => r.tick <= tick).at(-1);
   const reviewRound = roundAt(data, tick, last);
   const reviewActions: ReviewAction[] = [];
   let reviewHeading: ReactNode;
+  let reviewRecap: ReactNode;
   if (!panel && !buffering && recentMoment) {
     if (recentMoment.kind === 'combat') {
       const moment = recentMoment;
-      reviewHeading = (
-        <>
-          <EquipmentGlyph item={moment.weapon} />
-          <strong title={`${moment.attacker} → ${moment.victim}`}>
-            {moment.attacker || t('Unknown player')} → {moment.victim || t('Unknown player')}
-          </strong>
-        </>
-      );
+      const death = moment.victimId === selected;
+      if (recapDamage)
+        reviewRecap = <CombatRecap moment={moment} selected={selected} damage={recapDamage} />;
       if (moment.attackerId && moment.attackerId !== moment.victimId)
         reviewActions.push({
           id: moment.id + ':attacker',
           label: t('Replay kill'),
-          shortLabel: t('Killer POV'),
+          shortLabel: t(death ? 'See kill' : 'Replay'),
           title: t('Replay this elimination from the killer’s perspective.'),
           icon: <ReviewEventGlyph event={{ type: 'kill' }} size={18} />,
           run: () => replayCombat(moment, 'attacker'),
@@ -868,11 +930,12 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
         reviewActions.push({
           id: moment.id + ':victim',
           label: t('Replay death'),
-          shortLabel: t('Victim POV'),
+          shortLabel: t(death ? 'Replay' : 'See death'),
           title: t('Replay this elimination from the victim’s perspective.'),
           icon: <ReviewEventGlyph event={{ type: 'death' }} size={18} />,
           run: () => replayCombat(moment, 'victim'),
         });
+      if (death) reviewActions.reverse();
     } else {
       const moment = recentMoment;
       const actor = data.players.find((player) => player.id === moment.throwerId);
@@ -961,7 +1024,11 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
         aria-hidden={!chrome.visible}
       >
         <div className="viewer-identity">
-          <Link className="icon-button viewer-back" to={backTo} aria-label={t('Back to library')}>
+          <Link
+            className="icon-button viewer-back"
+            to={backTo}
+            aria-label={t(backTo === '/' ? 'Back to home' : 'Back to library')}
+          >
             <ArrowLeft size={19} />
           </Link>
           <div className="viewer-match">
@@ -979,12 +1046,14 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
                   {t('Round')} {round?.number ?? 1}
                 </span>
               )}
-              {!data.sample && mode !== '2d' && !mapAvailable && (
+              {!data.sample && (
                 <span
                   className="viewer-map-status"
-                  title={t('Position view · map model not installed')}
+                  data-status={mapNoticeStatus}
+                  role="status"
+                  title={t(mapStatusText)}
                 >
-                  {t('Position view')}
+                  {t(mapStatusText)}
                 </span>
               )}
               {data.deadTimes?.some((period) => tick >= period.start && tick < period.end) && (
@@ -998,7 +1067,27 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
             </div>
           </div>
         </div>
-        <div className="viewer-global-actions viewer-camera-tools">
+        <div
+          className="viewer-global-actions viewer-camera-tools"
+          data-camera-changed={cameraNotice}
+        >
+          <span className="visually-hidden" role="status">
+            {cameraNotice
+              ? t('Camera changed to {{mode}}', {
+                  mode: t(
+                    mode === 'pov'
+                      ? 'Player perspective'
+                      : mode === 'follow'
+                        ? 'Third-person follow'
+                        : mode === 'orbit'
+                          ? 'Free camera'
+                          : mode === 'tactical'
+                            ? 'Overhead'
+                            : '2D tactical · low power',
+                  ),
+                })
+              : ''}
+          </span>
           <SelectControl
             label={t('Camera mode')}
             className="camera-select"
@@ -1007,11 +1096,13 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
             onValueChange={(value) => {
               setGrenadeFocus(undefined);
               setMode(value);
+              cueCameraChange();
             }}
             options={[
               { value: 'orbit', label: t('Free camera') },
               { value: 'tactical', label: t('Overhead') },
               { value: '2d', label: t('2D tactical · low power') },
+              { value: 'follow', label: t('Third-person follow') },
               { value: 'pov', label: t('Player perspective') },
             ]}
           />
@@ -1098,9 +1189,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
           tabIndex={0}
           aria-label={t('Demo view · tap or press H to show or hide controls')}
           aria-keyshortcuts="H Enter Tab"
-          aria-description={t(
-            'Hold Tab in the scene to view the scoreboard. Shift+Tab navigates to controls.',
-          )}
+          aria-description={t('Hold Tab to view the scoreboard. Shift+Tab navigates to controls.')}
           inert={Boolean(panel) && compactPanels}
         >
           <Suspense fallback={<div className="scene-fallback">{t('Starting renderer…')}</div>}>
@@ -1110,7 +1199,9 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
               mode={mode}
               selected={selected}
               settings={settings}
-              onMapAvailability={setMapAvailable}
+              mapAssets={mapAssets}
+              assetScope={user?.id || 'public'}
+              onMapStatus={setMapRender}
               focus={grenadeFocus}
             />
           </Suspense>
@@ -1124,7 +1215,14 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
               )}
             </div>
           )}
-          {settings.crosshair && mode === 'pov' && <Crosshair value={settings.crosshairStyle} />}
+          {settings.crosshair &&
+            mode === 'pov' &&
+            !using2D &&
+            (settings.crosshairSource === 'player' ? (
+              <RecordedCrosshair code={playerCrosshairCode} />
+            ) : (
+              <Crosshair value={settings.crosshairStyle} />
+            ))}
           <div
             className="viewer-game-hud"
             data-viewer-chrome
@@ -1139,21 +1237,40 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
                   )
                   .slice(-4)
                   .map((e, i) => (
-                    <div key={i}>
+                    <div key={i} className="killfeed-entry">
                       <strong>{e.attacker_name || t('World')}</strong>
-                      <span>{e.weapon || t('eliminated')}</span>
-                      {e.user_name || t('Player')}
+                      <span
+                        className="killfeed-weapon"
+                        role="img"
+                        aria-label={
+                          (e.weapon ? equipmentName(e.weapon) : t('eliminated')) +
+                          (e.headshot === true ? ` · ${t('Headshot')}` : '')
+                        }
+                      >
+                        {e.weapon ? (
+                          <EquipmentGlyph item={e.weapon} />
+                        ) : (
+                          <ReviewEventGlyph event={{ type: 'elimination' }} />
+                        )}
+                        {e.headshot === true && (
+                          <ReviewEventGlyph event={{ type: 'kill' }} detail="headshot" size={14} />
+                        )}
+                      </span>
+                      <span className="killfeed-player">{e.user_name || t('Player')}</span>
                     </div>
                   ))}
               </div>
             )}
-            {settings.radar && mode !== '2d' && (
+            {settings.radar && !using2D && (
               <TacticalPlot
                 data={data}
                 tick={tick}
                 selected={selected}
                 settings={settings}
                 compact
+                overview={mapAssets.assets.overview}
+                overviewStatus={mapAssets.overviewStatus}
+                onOverviewState={mapAssets.reportOverview}
               />
             )}
           </div>
@@ -1179,84 +1296,12 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
             </div>
             <div className="viewer-drawer-content">
               {panel === 'players' ? (
-                <div className="roster-panel">
-                  {' '}
-                  {[3, 2, 1, 0].map((team) => {
-                    const ps = data.players.filter(
-                      (p) => (frame.players.find((s) => s.id === p.id)?.team ?? p.team) === team,
-                    );
-                    if (!ps.length) return null;
-                    return (
-                      <div className="team-roster" key={team}>
-                        <h3>
-                          <span className={'team-dot team-' + team} />
-                          {team === 3
-                            ? t('Counter-terrorists')
-                            : team === 2
-                              ? t('Terrorists')
-                              : t('Other players')}
-                        </h3>
-                        {ps.map((p) => {
-                          const state = frame.players.find((s) => s.id === p.id);
-                          return (
-                            <button
-                              className={'player-row ' + (p.id === selected ? 'selected' : '')}
-                              key={p.id}
-                              onClick={() => {
-                                setSelected(p.id);
-                                if (window.innerWidth < 700) closePanel();
-                              }}
-                              aria-pressed={p.id === selected}
-                            >
-                              <span className={'player-number team-' + team}>
-                                {data.players.indexOf(p) + 1}
-                              </span>
-                              <span className="player-identity">
-                                <strong>{p.name}</strong>
-                                <small>
-                                  {state?.weapon?.replace('weapon_', '').replaceAll('_', ' ') ||
-                                    t('No weapon')}
-                                  {state?.ammo !== undefined
-                                    ? t(' · {{v0}}', { v0: state.ammo })
-                                    : ''}
-                                </small>
-                                {state?.money !== undefined && (
-                                  <small>
-                                    ${state.money.toLocaleString(locale())} · {state.armor ?? '—'}{' '}
-                                    {t('armor')}
-                                  </small>
-                                )}
-                              </span>
-                              <span
-                                className={'health num ' + (state && !state.alive ? 'dead' : '')}
-                              >
-                                {state?.health ?? '—'}
-                                <small>
-                                  {!state
-                                    ? t('State unavailable')
-                                    : state.alive
-                                      ? t('HP')
-                                      : t('Out')}
-                                </small>
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    );
-                  })}
-                  <div className="roster-foot">
-                    {t('Select a player, then choose player perspective.')}
-                  </div>
-                  {selectedPlayer && (
-                    <SelectedLoadout
-                      member={{
-                        player: selectedPlayer,
-                        state: frame.players.find((state) => state.id === selected),
-                      }}
-                    />
-                  )}
-                </div>
+                <PlayerPicker
+                  players={data.players}
+                  frame={frame}
+                  selected={selected}
+                  onSelect={(playerId) => selectPlayer(playerId, true)}
+                />
               ) : (
                 <>
                   {' '}
@@ -1358,7 +1403,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
           settings={settings}
           hidden={Boolean(panel) || buffering}
           chromeVisible={chrome.visible}
-          onSelect={setSelected}
+          onSelect={selectPlayer}
         />
         <div
           className="viewer-objective-layer"
@@ -1384,6 +1429,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
             last={last}
             round={reviewRound}
             selected={selected}
+            scope={timelineScope}
             onSeek={seekEvent}
             onReview={() => openRoundReview(mobileMoreTrigger.current)}
             optionsOpen={timelineOptionsOpen}
@@ -1396,6 +1442,19 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
             }}
           />
           <div className="viewer-controlbar">
+            <div className="viewer-timeline-navigation">
+              <SelectControl
+                label={t('Timeline range')}
+                className="timeline-scope-control"
+                value={timelineScope}
+                onValueChange={(value) => setTimelineScope(value === 'round' ? 'round' : 'match')}
+                icon={<ScanLine size={16} />}
+                options={[
+                  { value: 'match', label: t('All match') },
+                  { value: 'round', label: t('Current round'), disabled: !data.rounds.length },
+                ]}
+              />
+            </div>
             <div className="viewer-transport">
               <button
                 className="icon-button transport-step"
@@ -1506,14 +1565,16 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
                 <ListVideo size={19} />
                 <span className="viewer-action-label">{t('Key moments')}</span>
               </button>
-              <button
-                className="icon-button desktop-viewer-action"
-                aria-label={t('Add note')}
-                title={t('Add note')}
-                onClick={(event) => openNote(event.currentTarget)}
-              >
-                <BookmarkPlus size={19} />
-              </button>
+              {!demo?.guest_owned && (
+                <button
+                  className="icon-button desktop-viewer-action"
+                  aria-label={t('Add note')}
+                  title={t('Add note')}
+                  onClick={(event) => openNote(event.currentTarget)}
+                >
+                  <BookmarkPlus size={19} />
+                </button>
+              )}
               <button
                 className="icon-button desktop-viewer-action"
                 aria-label={t('Toggle fullscreen')}
@@ -1546,13 +1607,6 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
                     label: t('Key moments'),
                     onSelect: () => openRoundReview(mobileMoreTrigger.current),
                   },
-                  ...[0.25, 0.5, 1, 2, 4].map((value, index) => ({
-                    id: 'speed-' + value,
-                    label: t('Playback speed: {{speed}}', { speed: value + '×' }),
-                    separatorBefore: index === 0,
-                    disabled: speed === value,
-                    onSelect: () => setSpeed(value),
-                  })),
                   {
                     id: 'timeline-options',
                     label: t('Timeline options'),
@@ -1586,18 +1640,16 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
                     label: t('Rounds'),
                     onSelect: () => setRoundsOpen((value) => !value),
                   },
-                  {
-                    id: 'hide-controls',
-                    label: t('Hide viewer controls'),
-                    onSelect: chrome.hide,
-                    separatorBefore: true,
-                  },
-                  {
-                    id: 'add-note',
-                    label: t('Add note'),
-                    icon: <BookmarkPlus size={16} />,
-                    onSelect: () => openNote(mobileMoreTrigger.current),
-                  },
+                  ...(demo?.guest_owned
+                    ? []
+                    : [
+                        {
+                          id: 'add-note',
+                          label: t('Add note'),
+                          icon: <BookmarkPlus size={16} />,
+                          onSelect: () => openNote(mobileMoreTrigger.current),
+                        },
+                      ]),
                   {
                     id: 'rewind',
                     label: t('Rewind five seconds'),
@@ -1669,7 +1721,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
             )}
           </div>
         </div>
-        <ReviewActions actions={reviewActions} heading={reviewHeading} />
+        <ReviewActions actions={reviewActions} heading={reviewHeading} recap={reviewRecap} />
       </div>
       {scoreboardOpen && (
         <Scoreboard
@@ -1680,8 +1732,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
           buffering={buffering}
           close={closeScoreboard}
           onSelect={(playerId) => {
-            setSelected(playerId);
-            if (mode !== '2d') setMode('pov');
+            selectPlayer(playerId);
             closeScoreboard();
           }}
         />
@@ -1692,6 +1743,8 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       {options && (
         <ViewerOptions
           settings={settings}
+          playerCrosshairCode={playerCrosshairCode}
+          equipment={mapRender?.map === data.map ? mapRender.equipment : undefined}
           onChange={setSettings}
           close={closeViewerOptions}
           openCommunications={() => {

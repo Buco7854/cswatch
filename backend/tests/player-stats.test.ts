@@ -4,8 +4,9 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { gzipSync, gunzipSync } from 'node:zlib';
-import { collectFrameState } from '../src/frame-state.js';
-import { readPlayerRows } from '../src/parser-fields.js';
+import { collectColumnFrameState, collectFrameState } from '../src/frame-state.js';
+import { readPlayerColumns } from '../src/parser-fields.js';
+import { columnsOf } from './fixtures/player-columns.js';
 import { validateReplayArtifacts, writeReplay } from '../src/replay.js';
 import { sample } from '../../frontend/src/sample.js';
 
@@ -62,21 +63,21 @@ test('controller counters preserve pre-recording totals and actual zeroes while 
 });
 
 test('unsupported optional counter fields do not erase other counters or economy state', () => {
-  const rows = readPlayerRows(
+  const columns = readPlayerColumns(
     (fields) => {
       if (fields.includes('damage_total')) throw new Error('Native property unsupported');
-      return [
+      return columnsOf([
         {
           ...row(100),
           ...(fields.includes('balance') ? { balance: 800 } : {}),
           ...(fields.includes('kills_total') ? { kills_total: 12 } : {}),
         },
-      ];
+      ]);
     },
     ['X', 'Y', 'Z'],
     [['balance'], ['kills_total', 'damage_total']],
   );
-  const player = collectFrameState(rows).frames[0].players[0];
+  const player = collectColumnFrameState(columns).frames[0].players[0];
   assert.equal(player.money, 800);
   assert.deepEqual(player.stats, { kills: 12 });
 });

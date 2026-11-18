@@ -37,3 +37,21 @@ The native `buttons` alias maps to the previous network button mask, as document
 The index is bounded to 10,000 entries; truncation adds a warning. Artifact validation rejects unknown actors, non-throw events, mismatched ticks, duplicate event bindings, invalid 64-bit masks, inconsistent provenance and unbounded sample offsets. Event input extras are removed from individual bullet events after the global index is built.
 
 These additions inherit the manifest’s 16 MiB decoded limit, bounded total replay output, private demo access rules and disposable parser confinement. No provider credentials, network access, new filesystem grants or native execution paths are introduced.
+
+## Recorded crosshairs and spatial context
+
+`CrosshairData` is an optional, bounded global timeline of exact controller share-code changes by string Steam ID. A `null` code clears evidence. Publication validates declared actors, nondecreasing ticks, code syntax and the 10,000-snapshot limit. Static geometry is decoded locally. Missing or incomplete evidence never becomes a copied player setting, and unsupported native dynamic styles remain unavailable.
+
+Byte-adaptive chunks keep full recorded player metadata from `startTick` through their shared final boundary. The preceding five-second context contains only spatial position/pose/status fields for trails. A review tool seeking historical equipment, inputs or statistics must request the chunk whose descriptor owns that tick. It must not treat an optional field absent from trail context as proof of an unknown canonical state. This removes repeated HUD data while preserving every authoritative sample and the 4 MiB/512 MiB/160 MiB bounds.
+
+Native unfinished rounds can have no winner. Only actual numeric CT/T team IDs become an optional round winner. Null, strings and other values remain unknown, and no winner establishes cumulative match scores.
+
+## Recorded world equipment
+
+Optional `itemState` metadata describes coverage independently for `dropped`, `planted` and `projectile` entities. `complete` is the conjunction of those category flags. Legacy metadata without category flags retains its earlier global meaning. Missing metadata remains unavailable. The existing streaming entity pass supplies changed `itemSamples` rather than another native whole-match object graph.
+
+Entity identities include the recorded index, 17-bit serial and creation tick. Item definition indices supply equipment identity. Explicit owner and root-parent handles, complete cell/offset origins and recorded angle tuples supply placement. Parent-local coordinates are not interpreted as world coordinates. Molotov versus incendiary uses the recorded native flag, never the thrower's team. Unknown required fields hide the item and mark its category incomplete.
+
+The collector bounds 128 tracked entities and 250,000 changed samples, reserving space for final removals. Per-tick coalescing removes states that were born and deleted within the same tick. Each streamed chunk carries the last live state into its start and includes subsequent changes/removals under the existing 4 MiB decoded limit. Seeking never resurrects a removed serial or interpolates through a tombstone. There is no inference of a dropped weapon from a death, inventory change or nickname.
+
+The renderer uses authoritative projectile bodies only when projectile coverage is complete. Otherwise it preserves legacy recorded trajectories and bodies without attempting a positional identity match. This avoids duplicates while retaining low-quality and older-replay visibility. Recorded world transforms are distinct from the explicitly approximate static hold/POV model presets. Native hand poses, recoil and first-person animation are not implied.

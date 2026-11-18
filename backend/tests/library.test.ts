@@ -1,3 +1,4 @@
+import { initializeFixture } from './fixtures/initialized.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
@@ -14,6 +15,7 @@ import { sample } from '../../frontend/src/sample.js';
 test('library search spans pages, treats wildcards literally, and respects ownership and sharing', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'cswatch-library-'));
   const db = new Store(dir);
+  initializeFixture(db);
   const app = await createApp(
     loadConfig({ APP_URL: 'http://localhost:8000', COOKIE_SECURE: 'false', DATA_DIR: dir }),
     db,
@@ -77,8 +79,8 @@ test('library search spans pages, treats wildcards literally, and respects owner
     const injection = await get('/api/demos?q=' + encodeURIComponent("' OR 1=1 --"));
     assert.equal(injection.json().total, 0);
     const publicList = await get('/api/demos?scope=public&q=final', false);
-    assert.equal(publicList.json().total, 1);
-    assert.equal(publicList.json().demos[0].id, 'shared');
+    assert.equal(publicList.statusCode, 400);
+    assert.equal((await get('/api/demos/shared', false)).statusCode, 200);
     assert.equal((await get('/api/demos', false)).statusCode, 401);
   } finally {
     await app.close();
@@ -89,6 +91,7 @@ test('library search spans pages, treats wildcards literally, and respects owner
 test('every replay slice enforces demo access, readiness, strict indices and private instance policy', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'cswatch-slices-'));
   const db = new Store(dir);
+  initializeFixture(db);
   const config = loadConfig({
     APP_URL: 'http://localhost:8000',
     COOKIE_SECURE: 'false',

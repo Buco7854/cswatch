@@ -1,16 +1,18 @@
 import type { DeadTime, Frame, Player, Position } from '../../shared/playback.js';
 import { hasNetworkAliasEvidence, recordedInput } from './player-input.js';
+import { playerColumns, type PlayerColumns } from './parser-fields.js';
 
 const finite = (value: unknown, fallback = 0) =>
   typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 const rounded = (value: unknown) => Math.round(finite(value) * 100) / 100;
 
 /** Native row order is not a contract. Group ticks before deriving timeout boundaries. */
-export function collectFrameState(rows: Record<string, unknown>[]): {
+type FrameState = {
   frames: Frame[];
   players: Player[];
   deadTimes: DeadTime[];
-} {
+};
+export function collectFrameState(rows: Record<string, unknown>[]): FrameState {
   const sorted = rows
     .filter(
       (row) =>
@@ -19,12 +21,48 @@ export function collectFrameState(rows: Record<string, unknown>[]): {
         Number(row.tick) <= 64 * 60 * 180,
     )
     .sort((a, b) => Number(a.tick) - Number(b.tick));
+  return collectOrderedFrameState(sorted, hasNetworkAliasEvidence(sorted));
+}
+
+/** Sort small row indices, retaining native columns rather than a second full
+ * raw object graph. The reusable row is consumed synchronously by projection. */
+export function collectColumnFrameState(value: PlayerColumns): FrameState {
+  const columns = playerColumns(value);
+  const indices = new Uint32Array(columns.tick.length);
+  let count = 0;
+  for (let index = 0; index < columns.tick.length; index++) {
+    const tick = columns.tick[index];
+    if (
+      typeof tick === 'number' &&
+      Number.isSafeInteger(tick) &&
+      tick >= 0 &&
+      tick <= 64 * 60 * 180
+    )
+      indices[count++] = index;
+  }
+  const order = indices
+    .subarray(0, count)
+    .sort((a, b) => Number(columns.tick[a]) - Number(columns.tick[b]));
+  const fields = Object.entries(columns);
+  function* rows() {
+    const row: Record<string, unknown> = Object.create(null);
+    for (const index of order) {
+      for (const [field, values] of fields) row[field] = values[index];
+      yield row;
+    }
+  }
+  return collectOrderedFrameState(rows(), hasNetworkAliasEvidence(rows()));
+}
+
+function collectOrderedFrameState(
+  rows: Iterable<Record<string, unknown>>,
+  aliasesAvailable: boolean,
+): FrameState {
   const roster = new Map<string, Player>(),
     frames: Frame[] = [],
     deadTimes: DeadTime[] = [];
   let frame: Frame | undefined, segment: DeadTime | undefined;
-  const aliasesAvailable = hasNetworkAliasEvidence(sorted);
-  for (const row of sorted) {
+  for (const row of rows) {
     if (
       ![row.X, row.Y, row.Z].every((value) => typeof value === 'number' && Number.isFinite(value))
     )

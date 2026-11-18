@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { recordedInput, uint64, replayCapabilities } from '../src/player-input.js';
-import { collectFrameState } from '../src/frame-state.js';
-import { readPlayerRows } from '../src/parser-fields.js';
+import { collectColumnFrameState, collectFrameState } from '../src/frame-state.js';
+import { readPlayerColumns } from '../src/parser-fields.js';
+import { columnsOf } from './fixtures/player-columns.js';
 import { chunkSchema } from '../src/replay.js';
 
 const id = '76561198000000001';
@@ -109,17 +110,17 @@ test('optional parser failures preserve unrelated equipment/economy and actual z
     inventory: ['Flashbang', 'Flashbang'],
     usercmd_mouse_dx: 9,
   });
-  const rows = readPlayerRows(
+  const columns = readPlayerColumns(
     (fields) => {
       if (fields.includes('unknown_new_delta_property')) throw new Error('Unsupported property');
-      return [
+      return columnsOf([
         Object.fromEntries(
           ['tick', 'steamid', 'name', ...fields].map((field) => [
             field,
             values[field as keyof typeof values],
           ]),
         ),
-      ];
+      ]);
     },
     ['X', 'Y', 'Z', 'health', 'team_num', 'is_alive'],
     [
@@ -127,7 +128,7 @@ test('optional parser failures preserve unrelated equipment/economy and actual z
       ['unknown_new_delta_property', 'usercmd_mouse_dx'],
     ],
   );
-  const player = collectFrameState(rows).frames[0].players[0];
+  const player = collectColumnFrameState(columns).frames[0].players[0];
   assert.equal(player.money, 0);
   assert.equal(player.armor, 70);
   assert.deepEqual(player.inventory, ['Flashbang', 'Flashbang']);

@@ -39,7 +39,7 @@ export default function MatchScore({
       : view.phase === 'technical'
         ? t('Technical pause')
         : phase;
-  const number = (value: number | undefined) => value?.toLocaleString(locale()) ?? '—';
+  const number = (value: number | undefined) => value?.toLocaleString(locale()) ?? '-';
   const clock = matchClock(view.remaining);
   const hasObjective = objective !== undefined && objective !== null && objective !== false;
   const hasCaption =
@@ -48,7 +48,7 @@ export default function MatchScore({
     `${t('Counter-terrorists')}: ${number(view.ctScore)}`,
     `${t('Terrorists')}: ${number(view.tScore)}`,
     phase,
-    t('Round {{round}}', { round: view.roundNumber ?? '—' }),
+    t('Round {{round}}', { round: view.roundNumber ?? '-' }),
     objectiveDescription,
   ]
     .filter(Boolean)
@@ -83,10 +83,10 @@ export default function MatchScore({
                 className="num"
                 title={clock === undefined ? t('Clock not recorded') : undefined}
               >
-                {clock ?? '—'}
+                {clock ?? '-'}
               </strong>
               <span className="match-score-round">
-                {t('Round {{round}}', { round: view.roundNumber ?? '—' })}
+                {t('Round {{round}}', { round: view.roundNumber ?? '-' })}
               </span>
             </>
           )}

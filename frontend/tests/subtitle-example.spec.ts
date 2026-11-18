@@ -18,14 +18,16 @@ for (const language of ['en', 'fr'] as const)
       ({ language, theme }) => {
         localStorage.setItem('cswatch.language', language);
         localStorage.setItem('theme', theme);
-        localStorage.setItem(
-          'viewer-settings',
-          JSON.stringify({
-            subtitles: false,
-            voice: false,
-            autoHideControls: false,
-            quality: 'low',
-          }),
+        ['viewer-settings', 'viewer-settings-mobile'].forEach((key) =>
+          localStorage.setItem(
+            key,
+            JSON.stringify({
+              subtitles: false,
+              voice: false,
+              autoHideControls: false,
+              quality: 'low',
+            }),
+          ),
         );
       },
       { language, theme },
@@ -63,7 +65,13 @@ for (const language of ['en', 'fr'] as const)
     await expect(subtitle).toContainText(t('Smoke is down. Cross now.'));
     expect(
       await page.evaluate(() => {
-        const settings = JSON.parse(localStorage.getItem('viewer-settings') || '{}');
+        const settings = JSON.parse(
+          localStorage.getItem(
+            window.matchMedia('(max-width:760px),(pointer:coarse) and (max-height:560px)').matches
+              ? 'viewer-settings-mobile'
+              : 'viewer-settings',
+          ) || '{}',
+        );
         return settings.subtitles === true && settings.voice === false;
       }),
     ).toBe(true);
@@ -74,6 +82,18 @@ for (const language of ['en', 'fr'] as const)
       [320, 740],
     ]) {
       await page.setViewportSize({ width, height });
+      if (width <= 760) {
+        // Phone preferences do not inherit a desktop opt-in. Enable the same
+        // authored example through the real phone controls before measuring it.
+        await expect(subtitle).toHaveCount(0);
+        await page.getByRole('button', { name: t('Options'), exact: true }).click();
+        await page.getByRole('button', { name: t('Review communications'), exact: true }).click();
+        await dialog.getByRole('button', { name: t('Subtitles'), exact: true }).click();
+        await dialog
+          .getByRole('button', { name: t('Preview subtitle example'), exact: true })
+          .click();
+        await expect(subtitle).toContainText(t('Smoke is down. Cross now.'));
+      }
       expect(
         await subtitle.evaluate((element) => {
           const box = element.getBoundingClientRect();

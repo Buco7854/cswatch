@@ -25,9 +25,18 @@ import { providerRoutes } from './providers.js';
 import { captionArtifactName } from './captions.js';
 import { requeueTranscription } from './transcription-worker.js';
 import { equipmentAssetRoutes } from './equipment-assets.js';
+import { equipmentModelAssetRoutes } from './equipment-model-assets.js';
+import { mapAssetRoutes } from './map-assets.js';
+import { mapModelFileRoutes } from './map-model-files.js';
+import { currentGuest, guestRoutes, guestUploadsEnabled } from './guest.js';
+import { prepareSetup, provisionAdmin, setupRequired, setupRoutes } from './setup.js';
 
 export async function createApp(c: Config, db = new Store(c.dataDir)) {
   process.umask(0o077);
+  if (Boolean(c.adminUsername) !== Boolean(c.adminPassword))
+    throw new Error('ADMIN_USERNAME and ADMIN_PASSWORD must be configured together.');
+  await provisionAdmin(db, c);
+  prepareSetup(db);
   const app = Fastify({
     logger: {
       level: process.env.LOG_LEVEL || 'info',
@@ -47,6 +56,7 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
     trustProxy: c.trustProxy,
   });
   app.decorateRequest('user', null);
+  app.decorateRequest('guest', null);
   await app.register(cookie);
   await app.register(helmet, {
     contentSecurityPolicy: {
@@ -56,7 +66,9 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
         styleSrc: ["'self'", "'unsafe-inline'"],
         imgSrc: ["'self'", 'data:', 'blob:'],
         fontSrc: ["'self'"],
-        connectSrc: ["'self'"],
+        // Embedded glTF textures use ImageBitmapLoader.fetch(blob:). These
+        // browser-local objects do not authorize any additional network host.
+        connectSrc: ["'self'", 'blob:'],
         workerSrc: ["'self'", 'blob:'],
         objectSrc: ["'none'"],
         baseUri: ["'none'"],
@@ -78,7 +90,14 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
       .header('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
     if (r.headers.host !== c.host) throw new HttpError(400, 'Invalid host.');
     r.user = currentUser(db, r, c);
+    r.guest = currentGuest(db, r, c);
     const path = r.url.split('?')[0];
+    if (
+      setupRequired(db) &&
+      path.startsWith('/api/') &&
+      !['/api/health', '/api/config', '/api/auth/me', '/api/setup'].includes(path)
+    )
+      throw new HttpError(503, 'Instance setup is required.');
     if (!db.flag(c, 'public_access') && !r.user) {
       const allowed =
         [
@@ -86,6 +105,8 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
           '/api/config',
           '/api/health',
           '/api/auth/me',
+          '/api/setup',
+          '/setup',
           '/api/auth/login',
           '/api/auth/register',
           '/api/auth/steam',
@@ -111,14 +132,28 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
       if (r.headers.origin !== c.appUrl) throw new HttpError(403, 'Request origin was rejected.');
       if (
         r.user &&
-        !['/api/auth/login', '/api/auth/register'].includes(path) &&
+        !['/api/auth/login', '/api/auth/register', '/api/setup'].includes(path) &&
         !equal(String(r.headers['x-csrf-token'] || ''), r.user.csrf)
+      )
+        throw new HttpError(403, 'Session expired. Refresh the page and try again.');
+      if (
+        !r.user &&
+        r.guest &&
+        !['/api/guest/session', '/api/auth/login', '/api/auth/register', '/api/setup'].includes(
+          path,
+        ) &&
+        !equal(String(r.headers['x-csrf-token'] || ''), r.guest.csrf)
       )
         throw new HttpError(403, 'Session expired. Refresh the page and try again.');
     }
     if (path === '/api/demos' && r.method === 'POST') {
-      requireUser(r);
-      rateLimit(db, r, 'upload', 15, 3600, r.user!.id);
+      if (r.user) rateLimit(db, r, 'upload', 15, 3600, r.user.id);
+      else {
+        if (!r.guest || !guestUploadsEnabled(db, c))
+          throw new HttpError(401, 'Sign in to continue.');
+        rateLimit(db, r, 'guest-upload-ip', 6, 3600);
+        rateLimit(db, r, 'guest-upload', c.guestDemoLimit, 86400, r.guest.id);
+      }
     }
   });
   app.setErrorHandler((error, r, reply) => {
@@ -140,9 +175,14 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
     });
   });
   await authRoutes(app, db, c);
+  await setupRoutes(app, db, c);
+  await guestRoutes(app, db, c);
   await providerRoutes(app, db, c);
   await equipmentAssetRoutes(app, db.root);
-  const visible = (row: Record<string, any>, uid?: string) => ({
+  await equipmentModelAssetRoutes(app, db.root);
+  await mapAssetRoutes(app, db.root);
+  await mapModelFileRoutes(app, db.root);
+  const visible = (row: Record<string, any>, uid?: string, guestId?: string) => ({
     ...Object.fromEntries(
       [
         'id',
@@ -159,14 +199,24 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
       ].map((k) => [k, row[k]]),
     ),
     owned: row.owner_id === uid,
+    guest_owned: row.owner_id === guestId,
+    expires_at:
+      db.one('SELECT expires_at FROM guest_sessions WHERE owner_id=?', row.owner_id)?.expires_at ??
+      null,
   });
   app.get('/api/health', async () => {
     db.one('SELECT 1');
     return { status: 'ok' };
   });
-  app.get('/api/config', async () => ({
+  app.get('/api/config', async (r) => ({
     ...Object.fromEntries(Object.keys(flagDefaults).map((k) => [k, db.flag(c, k as Flag)])),
-    max_upload_mb: c.maxUploadMb,
+    guest_uploads_enabled: guestUploadsEnabled(db, c),
+    guest_retention_hours: c.guestRetentionHours,
+    setup_required: setupRequired(db),
+    max_upload_mb:
+      !r.user && guestUploadsEnabled(db, c)
+        ? Math.min(c.maxUploadMb, c.guestStorageMb)
+        : c.maxUploadMb,
     retention_days: c.retentionDays,
     steam_discovery: Boolean(c.steamApiKey),
     faceit_configured: Boolean(c.faceitApiKey),
@@ -176,13 +226,13 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
   app.get('/api/demos', async (r) => {
     const q = z
       .object({
-        scope: z.enum(['mine', 'public']).default('mine'),
+        scope: z.literal('mine').default('mine'),
         offset: z.coerce.number().int().min(0).max(100000).default(0),
         q: z.string().trim().max(120).default(''),
       })
       .parse(r.query);
-    const filter = q.scope === 'public' ? "public=1 AND status='ready'" : 'owner_id=?';
-    const args: (string | number)[] = q.scope === 'public' ? [] : [requireUser(r).id];
+    const filter = 'owner_id=?';
+    const args: (string | number)[] = [requireUser(r).id];
     const search = q.q
       ? " AND (name LIKE ? ESCAPE '\\' OR coalesce(map,'') LIKE ? ESCAPE '\\')"
       : '';
@@ -200,8 +250,9 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
     return { demos: rows.map((row) => visible(row, r.user?.id)), total };
   });
   app.post('/api/demos', async (r, reply) => {
-    const u = requireUser(r),
-      file = await r.file();
+    const u = r.user || r.guest || requireUser(r),
+      uploadMb = r.user ? c.maxUploadMb : Math.min(c.maxUploadMb, c.guestStorageMb),
+      file = await r.file({ limits: { fileSize: uploadMb * 1024 ** 2 } });
     if (!file) throw new HttpError(400, 'Choose a .dem or .dem.zst file.');
     const name = basename(file.filename).slice(0, 120),
       lower = name.toLowerCase(),
@@ -210,7 +261,15 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
       file.file.resume();
       throw new HttpError(400, 'Only .dem and .dem.zst files are supported.');
     }
-    const { id, folder } = reserve(db, c, u.id, name, 'upload');
+    const quota = r.user
+      ? c
+      : {
+          ...c,
+          maxUploadMb: uploadMb,
+          userDemoLimit: c.guestDemoLimit,
+          userStorageMb: c.guestStorageMb,
+        };
+    const { id, folder } = reserve(db, quota, u.id, name, r.user ? 'upload' : 'guest');
     let size = 0;
     file.file.on('data', (chunk) => {
       size += chunk.length;
@@ -229,10 +288,10 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
     return { id };
   });
   app.get<{ Params: { id: string } }>('/api/demos/:id', async (r) =>
-    visible(accessDemo(db, r.params.id, r.user), r.user?.id),
+    visible(accessDemo(db, r.params.id, r.user, false, r.guest), r.user?.id, r.guest?.id),
   );
   app.get<{ Params: { id: string } }>('/api/demos/:id/playback', async (r, reply) => {
-    const d = accessDemo(db, r.params.id, r.user);
+    const d = accessDemo(db, r.params.id, r.user, false, r.guest);
     if (d.status !== 'ready') throw new HttpError(409, 'This demo is not ready.');
     reply.type('application/json').header('Content-Encoding', 'gzip');
     const folder = join(db.root, 'demos', d.id);
@@ -242,7 +301,7 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
     return reply.send(createReadStream(join(folder, file)));
   });
   app.get<{ Params: { id: string } }>('/api/demos/:id/captions', async (r, reply) => {
-    const demo = accessDemo(db, r.params.id, r.user);
+    const demo = accessDemo(db, r.params.id, r.user, false, r.guest);
     if (demo.status !== 'ready') throw new HttpError(409, 'This demo is not ready.');
     const status = demo.transcription_status || 'disabled';
     if (status === 'ready' && demo.transcription_artifact) {
@@ -274,7 +333,7 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
   app.get<{ Params: { id: string; index: string } }>(
     '/api/demos/:id/playback/chunks/:index',
     async (r, reply) => {
-      const d = accessDemo(db, r.params.id, r.user);
+      const d = accessDemo(db, r.params.id, r.user, false, r.guest);
       if (d.status !== 'ready') throw new HttpError(409, 'This demo is not ready.');
       if (!/^(0|[1-9]\d{0,2})$/.test(r.params.index) || Number(r.params.index) >= 512)
         throw new HttpError(404, 'Replay chunk not found.');
@@ -304,8 +363,8 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
     return { ok: true };
   });
   app.delete<{ Params: { id: string } }>('/api/demos/:id', async (r) => {
-    const u = requireUser(r),
-      d = accessDemo(db, r.params.id, u, true);
+    const u = r.user || r.guest || requireUser(r),
+      d = accessDemo(db, r.params.id, r.user, true, r.guest);
     if (['uploading', 'processing'].includes(d.status))
       throw new HttpError(409, 'Wait for processing to finish before deleting.');
     abandon(db, d.id);
@@ -344,26 +403,6 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
     db.run('DELETE FROM bookmarks WHERE id=? AND user_id=?', r.params.id, u.id);
     return { ok: true };
   });
-  app.get<{ Params: { name: string } }>('/api/maps/:name', async (r) => {
-    const name = z
-      .string()
-      .regex(/^[a-zA-Z0-9_-]{1,80}$/)
-      .parse(r.params.name);
-    return {
-      model: existsSync(join(db.root, 'maps', name, 'desktop', 'scene.glb'))
-        ? `/map-assets/${name}/desktop/scene.glb`
-        : existsSync(join(db.root, 'maps', name + '.glb'))
-          ? `/map-assets/${name}.glb`
-          : null,
-      mobile: existsSync(join(db.root, 'maps', name, 'mobile', 'scene.glb'))
-        ? `/map-assets/${name}/mobile/scene.glb`
-        : null,
-    };
-  });
-  app.get('/api/assets/agents', async () => ({
-    ct: existsSync(join(db.root, 'maps', 'agents', 'ct.glb')) ? '/map-assets/agents/ct.glb' : null,
-    t: existsSync(join(db.root, 'maps', 'agents', 't.glb')) ? '/map-assets/agents/t.glb' : null,
-  }));
   app.get('/api/admin', async (r) => {
     requireAdmin(r);
     return {
@@ -374,7 +413,7 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
         ]),
       ),
       users: db.all(
-        'SELECT id,username,is_admin,created_at FROM users ORDER BY created_at DESC LIMIT 100',
+        'SELECT id,username,is_admin,created_at FROM users u WHERE NOT EXISTS(SELECT 1 FROM guest_sessions g WHERE g.owner_id=u.id) ORDER BY created_at DESC LIMIT 100',
       ),
       queue: db.all('SELECT status,count(*) AS count FROM demos GROUP BY status'),
       audit: db.all('SELECT action,created_at FROM audit ORDER BY id DESC LIMIT 20'),
@@ -406,15 +445,6 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
       dotfiles: 'deny',
       cacheControl: false,
     });
-  await app.register(staticFiles, {
-    root: join(db.root, 'maps'),
-    prefix: '/map-assets/',
-    decorateReply: false,
-    dotfiles: 'deny',
-    cacheControl: false,
-    allowedPath: (p) =>
-      !/^\/?equipment(?:\/|$)/i.test(p) && /\.(glb|gltf|bin|png|jpe?g|webp|ktx2)$/i.test(p),
-  });
   app.setNotFoundHandler(async (r, reply) => {
     if (
       r.url.startsWith('/api/') ||

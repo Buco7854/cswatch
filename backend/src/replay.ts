@@ -2,9 +2,22 @@ import { lstatSync, readFileSync, opendirSync, writeFileSync, mkdirSync } from '
 import { join } from 'node:path';
 import { gzipSync, gunzipSync } from 'node:zlib';
 import { z } from 'zod';
-import type { Playback, PlaybackManifest, PlaybackChunk, Grenade } from '../../shared/playback.js';
+import type {
+  Playback,
+  PlaybackManifest,
+  PlaybackChunk,
+  Grenade,
+  Frame,
+} from '../../shared/playback.js';
 import { opusDuration } from './voice-packets.js';
 import { isRecordedUtilityThrow } from './player-input.js';
+import { crosshairCodePattern } from './crosshairs.js';
+import {
+  ItemArtifactValidator,
+  ItemSliceIndex,
+  itemSampleSchema,
+  itemChunkSampleLimit,
+} from './item-state-replay.js';
 
 export const replayLimits = {
   chunkFrames: 480,
@@ -317,6 +330,36 @@ export const manifestSchema = z
       .object({ complete: z.boolean(), samples: z.array(matchStateSampleSchema).max(10000) })
       .strict()
       .optional(),
+    crosshairs: z
+      .object({
+        samples: z
+          .array(
+            z
+              .object({
+                tick,
+                actor: z.string().regex(/^\d{1,20}$/),
+                code: z.string().max(64).regex(crosshairCodePattern).nullable(),
+              })
+              .strict(),
+          )
+          .max(10000),
+        complete: z.boolean(),
+      })
+      .strict()
+      .optional(),
+    itemState: z
+      .object({
+        complete: z.boolean(),
+        coverage: z
+          .object({ dropped: z.boolean(), planted: z.boolean(), projectile: z.boolean() })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .refine(
+        (info) => !info.coverage || info.complete === Object.values(info.coverage).every(Boolean),
+      )
+      .optional(),
     eventAvailability: z
       .object({ player_death: z.boolean(), player_hurt: z.boolean() })
       .strict()
@@ -363,28 +406,65 @@ export const chunkSchema = z
       .max(replayLimits.chunkFrames + replayLimits.contextFrames + 1),
     grenades: z.array(grenade).max(20000),
     voice: z.array(voicePacketSchema).max(50000).optional(),
+    itemSamples: z.array(itemSampleSchema).max(itemChunkSampleLimit).optional(),
   })
   .strict();
 
-function grenadeSlice(paths: Grenade[], start: number, end: number): Grenade[] {
-  return paths.flatMap((path) => {
+function* grenadeSlice(paths: Grenade[], start: number, end: number): Generator<Grenade> {
+  for (const path of paths) {
     if (!path.points.length || path.points[0].tick > end || path.points.at(-1)!.tick < start)
-      return [];
+      continue;
     const first = path.points.findIndex((p) => p.tick >= start);
     const after = path.points.findIndex((p) => p.tick > end);
-    return [
-      {
-        ...path,
-        points: path.points.slice(Math.max(0, first - 1), after < 0 ? undefined : after + 1),
-      },
-    ];
-  });
+    yield {
+      ...path,
+      points: path.points.slice(Math.max(0, first - 1), after < 0 ? undefined : after + 1),
+    };
+  }
+}
+
+const replayJSON = (value: unknown) =>
+  JSON.stringify(value, (_, item) => (typeof item === 'bigint' ? String(item) : item));
+
+/** Preceding samples support movement trails only. Their canonical chunk keeps
+ * all metadata and is loaded whenever playback seeks into that earlier time. */
+function trailFrame(frame: Frame): Frame {
+  return {
+    tick: frame.tick,
+    players: frame.players.map(({ id, x, y, z, yaw, pitch, health, team, alive, weapon }) => ({
+      id,
+      x,
+      y,
+      z,
+      yaw,
+      pitch,
+      health,
+      team,
+      alive,
+      weapon,
+    })),
+  };
 }
 
 /** Each adjacent chunk shares its boundary frame, preserving interpolation across seeks. */
 export async function writeReplay(folder: string, data: Playback): Promise<void> {
   if (!data.frames.length) throw new Error('No replay frames');
-  const { version: _version, frames, grenades, voice, ...metadata } = data;
+  const { version: _version, frames, grenades, voice, itemSamples, ...metadata } = data;
+  const items = new ItemSliceIndex(itemSamples || []);
+  if (frames.length > replayLimits.chunks * replayLimits.chunkFrames + 1)
+    throw new Error('Replay has too many chunks');
+  // Count one frame at a time, retaining only small numeric prefix sums. A rich
+  // frame must not force a speculative many-megabyte chunk string allocation.
+  const frameBytes = new Float64Array(frames.length + 1);
+  const trailBytes = new Float64Array(frames.length + 1);
+  for (let index = 0; index < frames.length; index++) {
+    const bytes = Buffer.byteLength(replayJSON(frames[index]));
+    if (bytes > replayLimits.chunkBytes) throw new Error('Replay output limit');
+    frameBytes[index + 1] = frameBytes[index] + bytes + 1;
+    trailBytes[index + 1] =
+      trailBytes[index] + Buffer.byteLength(replayJSON(trailFrame(frames[index]))) + 1;
+    if (frameBytes[index + 1] - 1 > replayLimits.totalBytes) throw new Error('Replay output limit');
+  }
   const manifest: PlaybackManifest = {
     ...metadata,
     version: 2,
@@ -413,37 +493,94 @@ export async function writeReplay(folder: string, data: Playback): Promise<void>
   mkdirSync(join(folder, 'chunks'), { recursive: true, mode: 0o700 });
   let rawTotal = 0,
     storedTotal = 0;
-  for (
-    let offset = 0, index = 0;
-    offset < frames.length;
-    offset += replayLimits.chunkFrames, index++
-  ) {
-    // A boundary frame already included as the previous chunk's final frame needs no singleton tail.
-    if (offset === frames.length - 1 && index > 0) break;
+  for (let offset = 0, index = 0; offset < frames.length; index++) {
     if (index >= replayLimits.chunks) throw new Error('Replay has too many chunks');
-    const part = frames.slice(
-      Math.max(0, offset - replayLimits.contextFrames),
-      offset + replayLimits.chunkFrames + 1,
+    const contextStart = Math.max(0, offset - replayLimits.contextFrames);
+    const context = frames.slice(contextStart, offset).map(trailFrame);
+    const hasVoice = Boolean(voice?.length);
+    const hasItems = itemSamples !== undefined;
+    const itemsAt = items.from(frames[contextStart].tick);
+    const overhead = Buffer.byteLength(
+      replayJSON({
+        version: 2,
+        index,
+        frames: [],
+        grenades: [],
+        ...(hasVoice ? { voice: [] } : {}),
+        ...(hasItems ? { itemSamples: [] } : {}),
+      }),
     );
-    const payload: PlaybackChunk = {
-      version: 2,
-      index,
-      frames: part,
-      grenades: grenadeSlice(grenades || [], part[0].tick, part.at(-1)!.tick),
-      ...(voice?.length
-        ? {
-            voice: voice.filter(
-              (packet) =>
-                packet.tick >= Math.max(0, part[0].tick - 128) &&
-                packet.tick <= part.at(-1)!.tick + 64,
-            ),
-          }
-        : {}),
+    const candidate = (end: number) => {
+      let bytes =
+        overhead +
+        trailBytes[offset] -
+        trailBytes[contextStart] +
+        frameBytes[end + 1] -
+        frameBytes[offset] -
+        1;
+      if (bytes > replayLimits.chunkBytes) return null;
+      const startTick = frames[contextStart].tick,
+        endTick = frames[end].tick;
+      const paths: Grenade[] = [];
+      for (const path of grenadeSlice(grenades || [], startTick, endTick)) {
+        bytes += Buffer.byteLength(replayJSON(path)) + (paths.length ? 1 : 0);
+        if (bytes > replayLimits.chunkBytes) return null;
+        paths.push(path);
+      }
+      const packets: NonNullable<Playback['voice']> = [];
+      for (const packet of voice || []) {
+        if (packet.tick < Math.max(0, startTick - 128) || packet.tick > endTick + 64) continue;
+        bytes += Buffer.byteLength(replayJSON(packet)) + (packets.length ? 1 : 0);
+        if (bytes > replayLimits.chunkBytes) return null;
+        packets.push(packet);
+      }
+      const itemSlice = itemsAt(endTick);
+      if (itemSlice.length > itemChunkSampleLimit) return null;
+      for (const [itemIndex, sample] of itemSlice.entries()) {
+        bytes += Buffer.byteLength(replayJSON(sample)) + (itemIndex ? 1 : 0);
+        if (bytes > replayLimits.chunkBytes) return null;
+      }
+      return {
+        end,
+        bytes,
+        payload: {
+          version: 2 as const,
+          index,
+          frames: [...context, ...frames.slice(offset, end + 1)],
+          grenades: paths,
+          ...(hasVoice ? { voice: packets } : {}),
+          ...(hasItems ? { itemSamples: itemSlice } : {}),
+        },
+      };
     };
-    const json = JSON.stringify(payload, (_, v) => (typeof v === 'bigint' ? String(v) : v));
+    const maximum = Math.min(frames.length - 1, offset + replayLimits.chunkFrames);
+    let selected = candidate(maximum);
+    if (!selected) {
+      // For a fixed context, frame/trajectory/voice bytes grow with the end tick.
+      // Keep the complete context and choose the largest bounded forward slice.
+      let low = Math.min(offset + 1, maximum),
+        high = maximum - 1;
+      while (low <= high) {
+        const middle = Math.floor((low + high) / 2),
+          part = candidate(middle);
+        if (part) {
+          selected = part;
+          low = middle + 1;
+        } else high = middle - 1;
+      }
+    }
+    // Never shrink trail history or omit primary-frame metadata, media or trajectories.
+    if (!selected) throw new Error('Replay output limit');
+    const { payload, end } = selected;
+    const part = payload.frames;
+    const json = replayJSON(payload);
     const bytes = Buffer.byteLength(json);
     rawTotal += bytes;
-    if (bytes > replayLimits.chunkBytes || rawTotal > replayLimits.totalBytes)
+    if (
+      bytes !== selected.bytes ||
+      bytes > replayLimits.chunkBytes ||
+      rawTotal > replayLimits.totalBytes
+    )
       throw new Error('Replay output limit');
     const compressed = gzipSync(json);
     storedTotal += compressed.length;
@@ -460,6 +597,10 @@ export async function writeReplay(folder: string, data: Playback): Promise<void>
       frames: part.length,
       bytes,
     });
+    // The shared boundary becomes the next start; the final boundary needs no
+    // singleton tail chunk, including when the complete replay has one frame.
+    if (end === frames.length - 1) break;
+    offset = end;
   }
   const json = JSON.stringify(manifest, (_, v) => (typeof v === 'bigint' ? String(v) : v));
   if (Buffer.byteLength(json) > replayLimits.manifestBytes)
@@ -493,6 +634,15 @@ export function validateReplayArtifacts(folder: string): {
   )
     throw new Error('Invalid replay bounds');
   const actors = new Set(manifest.players.map((player) => player.id));
+  const itemValidator = new ItemArtifactValidator();
+  for (const [index, sample] of (manifest.crosshairs?.samples || []).entries()) {
+    if (
+      sample.tick > manifest.lastTick ||
+      !actors.has(sample.actor) ||
+      (index > 0 && sample.tick < manifest.crosshairs!.samples[index - 1].tick)
+    )
+      throw new Error('Invalid recorded crosshair identity or time');
+  }
   for (const [index, sample] of (manifest.matchState?.samples || []).entries()) {
     const clock = sample.clock;
     if (
@@ -572,6 +722,15 @@ export function validateReplayArtifacts(folder: string): {
     if (rawTotal > replayLimits.totalBytes || json.byteLength !== info.bytes)
       throw new Error('Replay size mismatch');
     const chunk = chunkSchema.parse(JSON.parse(json.toString('utf8')));
+    if (Boolean(manifest.itemState) !== (chunk.itemSamples !== undefined))
+      throw new Error('Recorded item capability mismatch');
+    if (chunk.itemSamples)
+      itemValidator.validate(
+        chunk.itemSamples,
+        info.firstFrameTick,
+        info.endTick,
+        manifest.lastTick,
+      );
     if (
       chunk.index !== i ||
       chunk.frames.length !== info.frames ||

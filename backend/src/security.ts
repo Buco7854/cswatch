@@ -46,7 +46,7 @@ export function currentUser(
   if (!raw || raw.length > 100) return null;
   return (
     (db.one(
-      'SELECT u.id,u.username,u.is_admin,s.csrf FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?',
+      'SELECT u.id,u.username,u.is_admin,s.csrf FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND NOT EXISTS(SELECT 1 FROM guest_sessions g WHERE g.owner_id=u.id)',
       digest(raw),
       now(),
     ) as SessionUser) ?? null

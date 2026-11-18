@@ -58,6 +58,7 @@ export type ViewerSettings = {
   xray: boolean;
   crosshair: boolean;
   crosshairStyle: CrosshairStyle;
+  crosshairSource: 'custom' | 'player';
   cameraFov: number;
   teamLayout: 'split' | 'right';
   matchScore: boolean;
@@ -88,6 +89,7 @@ export const defaultSettings: ViewerSettings = {
   xray: true,
   crosshair: true,
   crosshairStyle: defaultCrosshairStyle,
+  crosshairSource: 'custom',
   cameraFov: 48,
   teamLayout: 'split',
   matchScore: true,
@@ -114,9 +116,9 @@ export const defaultSettings: ViewerSettings = {
   voiceVolume: 0.7,
   quality: 'auto',
 };
-export function readSettings(): ViewerSettings {
+export function readSettings(key = 'viewer-settings'): ViewerSettings {
   try {
-    const saved = JSON.parse(localStorage.getItem('viewer-settings') || '{}');
+    const saved = JSON.parse(localStorage.getItem(key) || '{}');
     const settings = { ...defaultSettings };
     for (const k of Object.keys(defaultSettings) as (keyof ViewerSettings)[]) {
       if (
@@ -127,7 +129,8 @@ export function readSettings(): ViewerSettings {
         (k !== 'voiceVolume' || (Number.isFinite(saved[k]) && saved[k] >= 0 && saved[k] <= 1)) &&
         (k !== 'quality' || ['auto', 'low', 'high'].includes(saved[k])) &&
         (k !== 'cameraFov' || (Number.isFinite(saved[k]) && saved[k] >= 40 && saved[k] <= 110)) &&
-        (k !== 'teamLayout' || ['split', 'right'].includes(saved[k]))
+        (k !== 'teamLayout' || ['split', 'right'].includes(saved[k])) &&
+        (k !== 'crosshairSource' || ['custom', 'player'].includes(saved[k]))
       )
         (settings as any)[k] = saved[k];
     }

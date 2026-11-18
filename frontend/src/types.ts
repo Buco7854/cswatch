@@ -6,6 +6,9 @@ export type User = {
   identities?: { provider: string; subject: string }[];
 };
 export type Config = {
+  setup_required: boolean;
+  guest_uploads_enabled: boolean;
+  guest_retention_hours: number;
   public_access: boolean;
   registrations_enabled: boolean;
   steam_enabled: boolean;
@@ -31,6 +34,8 @@ export type Demo = {
   duration: number | null;
   rounds: number | null;
   error: string | null;
+  guest_owned?: boolean;
+  expires_at?: number | null;
 };
 export type {
   Player,

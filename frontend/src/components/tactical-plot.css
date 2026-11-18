@@ -1,0 +1,19 @@
+.tactical-item {
+  pointer-events: none;
+}
+.tactical-item-symbol {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: #f3f4f5;
+}
+.tactical-item-symbol > .equipment-glyph,
+.tactical-item-symbol > .equipment-glyph.is-weapon {
+  width: 100%;
+  height: 100%;
+}
+.tactical-item[data-kind='planted'] .tactical-item-symbol {
+  color: #f0a070;
+}

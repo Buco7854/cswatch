@@ -341,7 +341,7 @@
 [data-theme='light'] :is(.app-shell, .viewer-shell, .member-dialog) .error {
   color: #a12c36 !important;
 }
-/* Match library: one working list; imports and the sample are secondary entry points. */
+/* Match library: one working list with a direct import action. */
 .app-shell .library-workspace {
   display: block;
 }
@@ -390,6 +390,12 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
+  flex: 0 1 340px;
+}
+.app-shell .section-heading > h2 {
+  margin-block: 18px;
+  font-size: 15px;
+  font-weight: 500;
 }
 .app-shell .search {
   display: flex;
@@ -397,7 +403,8 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
-  width: min(245px, 100%);
+  flex: 1;
+  width: 100%;
 }
 .app-shell .search svg {
   color: var(--faint);
@@ -1040,6 +1047,7 @@
     padding: 8px 0 10px;
     border-top: 1px solid var(--border);
     gap: 12px;
+    flex-basis: auto;
   }
   .app-shell .search {
     width: 100%;

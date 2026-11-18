@@ -21,6 +21,9 @@ export class Store {
   CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,username TEXT COLLATE NOCASE UNIQUE NOT NULL,password_hash TEXT,is_admin INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL);
   CREATE TABLE IF NOT EXISTS identities(provider TEXT NOT NULL,subject TEXT NOT NULL,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,PRIMARY KEY(provider,subject),UNIQUE(provider,user_id));
   CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,csrf TEXT NOT NULL,expires_at INTEGER NOT NULL);
+  CREATE TABLE IF NOT EXISTS guest_sessions(owner_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,token_hash TEXT UNIQUE NOT NULL,csrf TEXT NOT NULL,expires_at INTEGER NOT NULL);
+  CREATE INDEX IF NOT EXISTS guest_sessions_expiry ON guest_sessions(expires_at);
+  CREATE TABLE IF NOT EXISTS instance_setup(id INTEGER PRIMARY KEY CHECK(id=1),token_hash TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS auth_states(token_hash TEXT PRIMARY KEY,user_id TEXT REFERENCES users(id) ON DELETE CASCADE,expires_at INTEGER NOT NULL,return_to TEXT NOT NULL DEFAULT '/library');
   CREATE TABLE IF NOT EXISTS demos(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,name TEXT NOT NULL,source TEXT NOT NULL,status TEXT NOT NULL,size INTEGER NOT NULL,created_at INTEGER NOT NULL,started_at INTEGER,public INTEGER NOT NULL DEFAULT 0,map TEXT,duration REAL,rounds INTEGER,error TEXT,metadata TEXT,faceit_match_id TEXT);
   CREATE INDEX IF NOT EXISTS demos_queue ON demos(status,created_at);
@@ -52,7 +55,7 @@ export class Store {
         'CREATE INDEX IF NOT EXISTS demos_transcription_queue ON demos(transcription_status,created_at)',
       );
       this.db.exec(
-        'DELETE FROM schema_version WHERE version<4; INSERT OR IGNORE INTO schema_version VALUES(4);',
+        'DELETE FROM schema_version WHERE version<5; INSERT OR IGNORE INTO schema_version VALUES(5);',
       );
     });
   }

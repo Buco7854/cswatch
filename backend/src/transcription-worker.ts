@@ -182,9 +182,12 @@ export async function processTranscriptionOne(db: Store, c: Config, signal?: Abo
         row.owner_id,
       )!;
       const global = db.one('SELECT coalesce(sum(size),0) AS bytes FROM demos')!;
+      const storageMb = db.one('SELECT owner_id FROM guest_sessions WHERE owner_id=?', row.owner_id)
+        ? c.guestStorageMb
+        : c.userStorageMb;
       if (
         delta > 0 &&
-        (user.bytes + delta > c.userStorageMb * 1024 ** 2 ||
+        (user.bytes + delta > storageMb * 1024 ** 2 ||
           global.bytes + delta > c.globalStorageMb * 1024 ** 2)
       )
         throw new Error('Caption storage quota');

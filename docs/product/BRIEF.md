@@ -19,11 +19,11 @@ cswatch is a public-capable, self-hostable review product with private-by-defaul
 
 ## Product surfaces
 
-**Public site:** establish what cswatch does, show honest proof, let a visitor try the viewer without creating an account, explain imports/privacy/self-hosting, and offer an informed account action. Include a landing page and dedicated feature pages.
+**Public entry:** one compact page for logged-out visitors, centred on uploading their own demo when guest uploads are enabled. Include a GitHub link, shared language dropdown and short account/privacy information. No separate marketing pages, community catalogue or example-demo call to action. Signed-in users go directly to their library.
 
 **Member workspace:** own demos first, upload/import as a clear primary task, processing state and recovery, private sharing, connections/account. Never fill it with fictional personal statistics.
 
-**Viewer:** the scene occupies the whole tab; a compact overlay interface fades on scene taps or playback idleness, with keyboard recovery and independent subtitles; playback/round/player controls are available when shown; advanced overlays and tuning live in a coherent options surface. Keep a route back to the originating library/explore context. A guest may view public demos but must sign in to save personal notes or upload.
+**Viewer:** the scene occupies the whole tab with progressive controls and independent subtitles. Keep a route back to the library or public entry. Guests can upload and view their own private, temporary demos when policy permits, without creating an account. Saving notes requires an account. Explicit shared links remain separate from a removed community catalogue.
 
 **Private instance:** a branded, useful sign-in entry, with no anonymous access to demos, asset files or community listing. New-account actions follow the independent registrations policy. Do not leak demo metadata through navigation/previews while gated.
 
@@ -36,7 +36,7 @@ The next design must resolve positioning, navigation, imagery, typography, shape
 
 ## Latest accepted direction — member workspace pass
 
-The user likes the current public landing page. Preserve its composition, colors, typography, content and interactions. Rework the other screens: the previous member palette felt too green, the interface too cluttered, and some controls overflowed. Their supplied Refrag member screenshot is an inspiration for restrained charcoal surfaces, clear navigation and readable control grouping, not permission to copy its branding or content.
+The current user direction replaces the old marketing site with a single smaller upload entry. Keep the restrained charcoal/paper member palette and existing brand. Their Refrag reference remains an inspiration for clear grouping, not permission to copy branding or content. Use reusable dropdowns/dialogs, restrained keyboard focus indicators, stable button geometry and consistent scrollbars.
 
 The viewer must occupy the **whole browser tab**. Render the match in a dedicated viewport with the playback/round dock inside it. Players, events, notes and advanced settings open over the scene. Browser fullscreen is additional, not the only way to get a full-sized viewer. No workspace sidebar or page footer should consume the viewing area. Test both portrait and landscape, as well as TV-sized viewports.
 

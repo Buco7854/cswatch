@@ -1,3 +1,4 @@
+import { initializeFixture } from './fixtures/initialized.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -33,7 +34,7 @@ function chunk(kind: string, content: Buffer) {
   checksum.writeUInt32BE(crc32(body));
   return Buffer.concat([length, body, checksum]);
 }
-function png(width = 1, height = 1) {
+function png(width = 1, height = 1, value = 255) {
   const header = Buffer.alloc(13);
   header.writeUInt32BE(width);
   header.writeUInt32BE(height, 4);
@@ -42,10 +43,33 @@ function png(width = 1, height = 1) {
   return Buffer.concat([
     Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
     chunk('IHDR', header),
-    chunk('IDAT', deflateSync(Buffer.from([0, 255, 255, 255, 255]))),
+    chunk('IDAT', deflateSync(Buffer.from([0, value, value, value, value]))),
     chunk('IEND', Buffer.alloc(0)),
   ]);
 }
+
+test('equipment cache verifies bytes after rapid same-size replacement and never returns stale or corrupt artwork', async () => {
+  const s = await setup();
+  try {
+    mkdirSync(s.pack);
+    const path = join(s.pack, 'ak47.png'),
+      first = png(1, 1, 1),
+      second = png(1, 1, 2);
+    assert.equal(first.length, second.length);
+    writeFileSync(path, first);
+    assert.deepEqual((await s.get('/api/assets/equipment/ak47.png')).rawPayload, first);
+    writeFileSync(path, second);
+    assert.deepEqual((await s.get('/api/assets/equipment/ak47.png')).rawPayload, second);
+    const corrupt = Buffer.from(second);
+    corrupt[40] ^= 1;
+    writeFileSync(path, corrupt);
+    assert.equal((await s.get('/api/assets/equipment/ak47.png')).statusCode, 404);
+    writeFileSync(path, first);
+    assert.deepEqual((await s.get('/api/assets/equipment/ak47.png')).rawPayload, first);
+  } finally {
+    await s.close();
+  }
+});
 async function setup() {
   const folder = mkdtempSync(join(tmpdir(), 'cswatch-equipment-')),
     root = join(folder, 'data'),
@@ -57,6 +81,7 @@ async function setup() {
     PUBLIC_ACCESS: '',
   });
   const db = new Store(root);
+  initializeFixture(db);
   db.run('INSERT INTO users VALUES(?,?,?,?,?)', 'member', 'member', null, 0, now());
   db.run(
     'INSERT INTO sessions VALUES(?,?,?,?)',

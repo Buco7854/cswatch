@@ -39,12 +39,34 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
         .filter(Boolean) ?? false,
     flags: {
       public_access: boolean(env.PUBLIC_ACCESS),
+      guest_uploads_enabled: boolean(env.GUEST_UPLOADS_ENABLED),
       registrations_enabled: boolean(env.REGISTRATIONS_ENABLED),
       steam_enabled: boolean(env.STEAM_ENABLED),
       faceit_enabled: boolean(env.FACEIT_ENABLED),
       transcription_enabled: boolean(env.TRANSCRIPTION_ENABLED),
     },
     steamApiKey: env.STEAM_API_KEY || '',
+    adminUsername:
+      z
+        .string()
+        .regex(/^[A-Za-z0-9_-]{3,32}$/)
+        .optional()
+        .parse(env.ADMIN_USERNAME || undefined) || '',
+    adminPassword:
+      z
+        .string()
+        .min(12)
+        .max(128)
+        .optional()
+        .parse(env.ADMIN_PASSWORD || undefined) || '',
+    guestRetentionHours: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(168)
+      .parse(env.GUEST_RETENTION_HOURS || 24),
+    guestDemoLimit: integer(env.GUEST_DEMO_LIMIT, 3),
+    guestStorageMb: integer(env.GUEST_STORAGE_MB, 512),
     faceitApiKey: env.FACEIT_API_KEY || '',
     faceitDownloadToken: env.FACEIT_DOWNLOAD_TOKEN || '',
     maxUploadMb: integer(env.MAX_UPLOAD_MB, 512),
@@ -80,6 +102,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
 export type Config = ReturnType<typeof loadConfig>;
 export const flagDefaults = {
   public_access: true,
+  guest_uploads_enabled: true,
   registrations_enabled: true,
   steam_enabled: false,
   faceit_enabled: false,

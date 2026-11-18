@@ -2,14 +2,16 @@
 /** Trusted operator-only S2V pipeline. Never runs on uploaded demos or public requests. */
 import { parseArgs } from 'node:util';
 import { resolve, join, dirname, basename } from 'node:path';
-import { mkdir, readFile, writeFile, stat, access } from 'node:fs/promises';
+import { mkdir, access } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
-import { dedup, prune, weld, resample, textureCompress, simplify } from '@gltf-transform/functions';
+import { dedup, prune, weld, resample, simplify } from '@gltf-transform/functions';
 import { MeshoptSimplifier } from 'meshoptimizer';
-import sharp from 'sharp';
+import { fileHash } from './toolchain-security.mjs';
+import { writeMapTier } from './map-tier-output.mjs';
+import { steamAssetLimits } from './steam-assets-plan.mjs';
+import { MeshoptDecoder } from './meshopt-glb.mjs';
 const { values: v } = parseArgs({
   options: {
     s2v: { type: 'string' },
@@ -60,52 +62,38 @@ if (!v.input) {
       'S2V export failed. Check your S2V version, installed map, and game search paths.',
     );
 }
-const inputBytes = await readFile(input);
-const hash = createHash('sha256').update(inputBytes).digest('hex');
-const io = new NodeIO().registerExtensions(ALL_EXTENSIONS);
+const source = await fileHash(input, steamAssetLimits.modelBytes);
+await MeshoptDecoder.ready;
+const io = new NodeIO()
+  .registerExtensions(ALL_EXTENSIONS)
+  .registerDependencies({ 'meshopt.decoder': MeshoptDecoder })
+  .setAllowNetwork(false);
 await MeshoptSimplifier.ready;
 for (const tier of ['desktop', 'mobile']) {
   const target = join(root, tier);
-  await mkdir(target, { recursive: true });
-  if (await stat(join(target, 'scene.glb')).catch(() => false))
-    throw new Error(
-      `Output already exists: ${target}. Use a new asset directory/version; do not overwrite live assets.`,
-    );
   const document = await io.read(input);
   await document.transform(dedup(), prune(), resample(), weld());
   if (tier === 'mobile')
     await document.transform(
       simplify({ simplifier: MeshoptSimplifier, ratio: 0.65, error: 0.005 }),
     );
-  await document.transform(
-    textureCompress({
-      encoder: sharp,
-      targetFormat: 'webp',
-      resize: tier === 'mobile' ? [1024, 1024] : [2048, 2048],
-    }),
+  const packed = await writeMapTier({
+    document,
+    io,
+    target,
+    map: v.map,
+    tier,
+    assetVersion: v['asset-version'] || 'unspecified',
+    source: { file: basename(input), sha256: source.sha256, bytes: source.bytes },
+    s2v: toolVersion,
+    geometry:
+      tier === 'mobile'
+        ? 'Source geometry simplified once for mobile'
+        : 'Source geometry optimized',
+  });
+  console.log(
+    `${tier}: ${(packed.manifest.bytes / 1024 ** 2).toFixed(1)} MB, ${(packed.manifest.textureBudget.decodedRGBABytes / 1024 ** 2).toFixed(1)} MiB decoded RGBA`,
   );
-  await io.write(join(target, 'scene.glb'), document);
-  const size = (await stat(join(target, 'scene.glb'))).size;
-  await writeFile(
-    join(target, 'manifest.json'),
-    JSON.stringify(
-      {
-        schemaVersion: 1,
-        map: v.map,
-        tier,
-        bytes: size,
-        sourceFile: basename(input),
-        sourceSha256: hash,
-        s2v: toolVersion,
-        assetVersion: v['asset-version'] || 'unspecified',
-        coordinateSystem: 'S2V glTF meters Y-up; viewer rotates +90deg about Y',
-        preparedAt: new Date().toISOString(),
-      },
-      null,
-      2,
-    ),
-  );
-  console.log(`${tier}: ${(size / 1024 ** 2).toFixed(1)} MB`);
 }
 console.log(
   'Prepared map. Install the resulting map directory into DATA_DIR/maps. Source exports may be removed after archiving.',

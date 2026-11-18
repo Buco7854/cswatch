@@ -18,17 +18,25 @@ async function openFixture(page: Page, current: () => Playback, language: 'en' |
   await page.addInitScript((language) => {
     localStorage.setItem('theme', 'dark');
     localStorage.setItem('cswatch.language', language);
-    if (!localStorage.getItem('viewer-settings'))
-      localStorage.setItem(
-        'viewer-settings',
-        JSON.stringify({
-          quality: 'low',
-          trajectories: false,
-          utilities: false,
-          radar: false,
-          killfeed: false,
-          autoHideControls: false,
-        }),
+    if (
+      !localStorage.getItem(
+        window.matchMedia('(max-width:760px),(pointer:coarse) and (max-height:560px)').matches
+          ? 'viewer-settings-mobile'
+          : 'viewer-settings',
+      )
+    )
+      ['viewer-settings', 'viewer-settings-mobile'].forEach((key) =>
+        localStorage.setItem(
+          key,
+          JSON.stringify({
+            quality: 'low',
+            trajectories: false,
+            utilities: false,
+            radar: false,
+            killfeed: false,
+            autoHideControls: false,
+          }),
+        ),
       );
   }, language);
   await page.route('**/api/demos/review-prompts-fixture', (route) =>
@@ -60,7 +68,9 @@ async function openFixture(page: Page, current: () => Playback, language: 'en' |
   );
   await page.goto('/watch/review-prompts-fixture');
   await expect(page.locator('.viewer-stage canvas')).toBeVisible();
-  await expect(page.locator('.viewer-map-status')).toHaveText(message(language, 'Position view'));
+  await expect(page.locator('.viewer-map-status')).toHaveText(
+    message(language, 'No 3D map installed'),
+  );
 }
 const seek = (page: Page, tick: number) =>
   page.getByRole('slider', { name: 'Playback position', exact: true }).fill(String(tick));
@@ -164,9 +174,8 @@ test('automatic quality responds to viewport changes and keeps a coarse-pointer 
   const autoQuality = async (targetPage: Page) =>
     targetPage.addInitScript(() => {
       Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8, configurable: true });
-      localStorage.setItem(
-        'viewer-settings',
-        JSON.stringify({ quality: 'auto', autoHideControls: false }),
+      ['viewer-settings', 'viewer-settings-mobile'].forEach((key) =>
+        localStorage.setItem(key, JSON.stringify({ quality: 'auto', autoHideControls: false })),
       );
     });
   await page.setViewportSize({ width: 1440, height: 900 });

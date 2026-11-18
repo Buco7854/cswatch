@@ -120,7 +120,7 @@ export default function PlayerInputs({
     );
   const mouse = typeof input.mouseDx === 'number' || typeof input.mouseDy === 'number';
   const number = (value: number | undefined) =>
-    typeof value === 'number' && Number.isFinite(value) ? value.toLocaleString(locale()) : '—';
+    typeof value === 'number' && Number.isFinite(value) ? value.toLocaleString(locale()) : '-';
   const details = (
     <>
       <p className="input-visual-source">

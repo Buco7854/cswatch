@@ -54,6 +54,10 @@ jobs:
         env:
           E2E_PRIVATE: '1'
           E2E_REGISTRATIONS: 'true'
+      - name: First administrator enrollment
+        run: npm --prefix frontend run test:e2e -- tests/setup.spec.ts
+        env:
+          E2E_SETUP: '1'
       - name: Validate published-image Compose deployment
         run: docker compose --env-file .env.example --profile transcription config --no-env-resolution --quiet
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1

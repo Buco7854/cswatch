@@ -105,8 +105,16 @@ async function fixture(
       localStorage.setItem('cswatch.language', language);
       localStorage.setItem('theme', theme);
       // Preserve saved visibility on reload; only choose low rendering cost for a fresh context.
-      if (!localStorage.getItem('viewer-settings'))
-        localStorage.setItem('viewer-settings', JSON.stringify({ quality: 'low' }));
+      if (
+        !localStorage.getItem(
+          window.matchMedia('(max-width:760px),(pointer:coarse) and (max-height:560px)').matches
+            ? 'viewer-settings-mobile'
+            : 'viewer-settings',
+        )
+      )
+        ['viewer-settings', 'viewer-settings-mobile'].forEach((key) =>
+          localStorage.setItem(key, JSON.stringify({ quality: 'low' })),
+        );
     },
     { language, theme },
   );
@@ -157,7 +165,15 @@ async function fixture(
 const optionSwitch = (page: Page, title: string) =>
   page.getByRole('switch', { name: new RegExp('^' + escape(title)) });
 const settings = (page: Page) =>
-  page.evaluate(() => JSON.parse(localStorage.getItem('viewer-settings') || '{}'));
+  page.evaluate(() =>
+    JSON.parse(
+      localStorage.getItem(
+        window.matchMedia('(max-width:760px),(pointer:coarse) and (max-height:560px)').matches
+          ? 'viewer-settings-mobile'
+          : 'viewer-settings',
+      ) || '{}',
+    ),
+  );
 
 test('recorded movement and mouse visualization require separate opt-ins', async ({ page }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE));
@@ -273,8 +289,10 @@ test('whole viewer controls hide without invisible focus targets and remain reco
   await fixture(page);
   const frame = page.locator('.viewer-frame');
   const stage = page.locator('.viewer-stage');
-  await page.getByRole('button', { name: 'More controls', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Hide viewer controls', exact: true }).click();
+  await page.getByRole('button', { name: 'Options', exact: true }).click();
+  await selectOptionsCategory(page, 'Playback');
+  await optionSwitch(page, 'Hide viewer controls').check();
+  await page.getByRole('button', { name: 'Close viewer options', exact: true }).click();
   await hiddenChrome(page);
   // Plain scene Tab is the scoreboard hold gesture; reverse Tab still reveals
   // hidden controls and places focus in the toolbar.
@@ -361,9 +379,8 @@ test.describe('scene touch gestures', () => {
     test.skip(Boolean(process.env.E2E_PRIVATE));
     await page.setViewportSize({ width: 390, height: 844 });
     await page.addInitScript(() =>
-      localStorage.setItem(
-        'viewer-settings',
-        JSON.stringify({ quality: 'low', inputs: true, economy: true }),
+      ['viewer-settings', 'viewer-settings-mobile'].forEach((key) =>
+        localStorage.setItem(key, JSON.stringify({ quality: 'low', inputs: true, economy: true })),
       ),
     );
     await fixture(page, 'en', 'dark', false);
@@ -478,10 +495,13 @@ test('idle fade follows playback but respects paused state, dialogs, focus, menu
   await expect(page.getByRole('dialog', { name: 'Viewer options', exact: true })).toBeVisible();
   await expect(frame).toHaveAttribute('data-chrome-visible', 'true');
   await page.getByRole('button', { name: 'Close viewer options', exact: true }).click();
-  // Tab from a visible control remains ordinary keyboard navigation. Holding
-  // Tab on the scene opens the recorded scoreboard in its dedicated tests.
+  // Shift+Tab retains ordinary control navigation, while plain held Tab opens
+  // the scoreboard. A visibly keyboard-focused control must prevent idle fade.
   await page.getByRole('button', { name: 'Pause', exact: true }).focus();
-  await page.keyboard.press('Tab');
+  await page.keyboard.press('Shift+Tab');
+  await expect(
+    page.getByRole('button', { name: 'Rewind five seconds', exact: true }),
+  ).toBeFocused();
   expect(
     await page.evaluate(() =>
       Boolean(
@@ -552,11 +572,11 @@ for (const language of ['en', 'fr'] as const)
           ),
         ).toBe(true);
       }
+      await page.getByRole('button', { name: message(language, 'Options'), exact: true }).click();
+      await selectOptionsCategory(page, 'Playback');
+      await optionSwitch(page, message(language, 'Hide viewer controls')).check();
       await page
-        .getByRole('button', { name: message(language, 'More controls'), exact: true })
-        .click();
-      await page
-        .getByRole('menuitem', { name: message(language, 'Hide viewer controls'), exact: true })
+        .getByRole('button', { name: message(language, 'Close viewer options'), exact: true })
         .click();
       await expect(page.locator('.viewer-frame')).toHaveAttribute('data-chrome-visible', 'false');
       await page.locator('.viewer-stage').press('h');

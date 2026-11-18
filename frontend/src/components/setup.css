@@ -1,0 +1,59 @@
+.setup-page {
+  min-height: 100dvh;
+  padding: 28px max(20px, calc((100vw - 1120px) / 2));
+  background: var(--ground);
+}
+.setup-panel {
+  width: min(100%, 440px);
+  margin: 64px auto 40px;
+}
+.setup-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+.setup-panel h1 {
+  font-size: clamp(26px, 4vw, 34px);
+  margin: 0 0 12px;
+}
+.setup-panel > p {
+  margin-bottom: 24px;
+  line-height: 1.6;
+}
+.setup-panel details {
+  margin: 24px 0;
+  font-size: 14px;
+}
+.setup-panel summary {
+  cursor: pointer;
+  padding-block: 10px;
+}
+.setup-panel pre {
+  padding: 12px;
+  background: var(--raised);
+  font-size: 12px;
+  overflow-x: auto;
+}
+.setup-panel form {
+  display: grid;
+  gap: 16px;
+}
+.setup-panel label {
+  display: grid;
+  gap: 8px;
+}
+.setup-panel input,
+.setup-panel button {
+  width: 100%;
+  min-height: 44px;
+}
+.setup-panel form p {
+  margin: 0;
+  font-size: 13px;
+}
+@media (max-width: 480px) {
+  .setup-panel {
+    margin-top: 40px;
+  }
+}

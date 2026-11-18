@@ -55,7 +55,7 @@ export default function ImportGuide({
               <strong>{t('Upload your private copy.')}</strong>
               <p>
                 {t(
-                  'Choose the replay file below. Processing runs on this instance; the match appears in your library when it is ready.',
+                  'Choose the replay file below. Processing runs on this instance. You can watch the demo when it is ready.',
                 )}
               </p>
             </li>
@@ -130,7 +130,7 @@ export default function ImportGuide({
               <strong>{t('Upload your private copy.')}</strong>
               <p>
                 {t(
-                  'Choose the replay file below. Processing runs on this instance; the match appears in your library when it is ready.',
+                  'Choose the replay file below. Processing runs on this instance. You can watch the demo when it is ready.',
                 )}
               </p>
             </li>
@@ -185,7 +185,7 @@ export default function ImportGuide({
               <strong>{t('Upload your private copy.')}</strong>
               <p>
                 {t(
-                  'Choose the replay file below. Processing runs on this instance; the match appears in your library when it is ready.',
+                  'Choose the replay file below. Processing runs on this instance. You can watch the demo when it is ready.',
                 )}
               </p>
             </li>

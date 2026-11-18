@@ -1,60 +1,59 @@
 # Feature status
 
-This file is part of the product contract. Update it when implementation or verification changes.
+Updated 2026-11-18. This file is the capability contract. Implementation and local evidence do not establish release publication. Local verification passed 244 backend tests, 121 asset-tool tests and 122 public browser journeys with two intentional policy skips. Dedicated setup and both private registration policies passed separately. The current commit's Actions workflow records container verification and publication. Cache has no published runtime pack.
 
-## Implemented
+## Access and personal workspace
 
-- Distinct branded public landing, viewer/import feature pages, self-hosting page, public exploration and member library routes. Private-instance sign-in entry, policy-aware calls to action and safe auth return paths.
-- English/French public/app copy, controls, dynamic states/errors, accessibility labels, localized dates/numbers/plurals, and persisted language selection. Shared dark/light identity and original replay mark.
+- One compact logged-out entry for uploading the visitor's own demo when guest policy permits, with GitHub and the shared language dropdown. Signed-in root opens the personal library. No marketing subpages, community catalogue or HLTV wrapper.
+- Private temporary guest capability ownership, separate CSRF, expiring retention, count/storage bounds and cleanup. Environment/admin policy can disable guest uploads independently of registrations. Logging in does not merge guest ownership.
+- Atomic first-admin setup protected by a private operator code, or creation-only `ADMIN_USERNAME`/`ADMIN_PASSWORD` provisioning. Environment flags override unlocked admin policy.
+- Local accounts and Steam OpenID login/linking with separate provider identities, secure sessions, Origin/CSRF/host checks, persistent rate limits and private-by-default demos/notes. FACEIT is a verified linked data source, not a login provider.
+- Account/connections in the user menu and account tabs, paginated full-library search, processing states, rename/delete/explicit sharing and reusable accessible confirmations. Lifecycle guards prevent obsolete auth, upload or mutation responses from changing newer UI/session state. CSRF commits with verified identity, and interrupted setup responses recover through authoritative state checks.
+- EN/FR copy and accessibility labels, localized formatting, persisted language and dark/light themes. Keyboard focus indicators, bounded reusable menus/dialogs, stable controls and consistent scrollbars remain.
 
-- TypeScript Fastify backend, React app, shared replay types, SQLite/WAL durable queue and separate native parser process.
-- Local username/password accounts; Steam OpenID login/linking; future-provider-friendly identity ownership table. Secure session/CSRF/origin/host policy, rate limits, private demos/notes, audited policy changes.
-- `.dem` / `.dem.zst` uploads, magic validation, quotas, bounded decompression, processing status/failure UI, retention, owner rename/delete/share.
-- Real parser adapter exercised on an upstream Mirage demo: players, position/angle/HP/armor/money/ammo/duck/flash state, events, rounds/live starts/ends, freeze/timeout flags, grenade trajectories.
-- Browser orbit, overhead, player perspective, and 2D position modes; interpolation; timeline/seeking/speeds; round jumps; next live round; manual/automatic dead-time skipping; private timestamp notes.
-- Progressive options: x-ray player shapes, custom centered perspective crosshair (color, geometry, opacity, outline/dot/T style, live preview and local preset copying), vertical 3D camera FOV, position radar, elimination feed, movement trails, grenade paths, approximate utility zones, quality selection. Device-local persistence.
-- Light/dark themes; responsive desktop/tablet/mobile layouts; focus-visible controls; keyboard/remote directional focus, shortcuts, touch orbit/zoom, and fullscreen where supported.
-- Clearly labeled original training sample, separate from uploaded/community matches.
-- Operator-installed map assets, desktop/mobile tier discovery, optional generic animated agent GLBs, and CPU S2V glTF packing/optimization/provenance tools.
-- Verified-Steam FACEIT profile association, match history adapter, and approved signed download import adapter. Steam next-match share-code discovery adapter.
-- Admin policy toggles with environment precedence and secret-free configuration; terminal admin creation/password reset.
-- Account/connected services in the user dropdown and account tabs; work-only sidebar; full-library paginated search, preserved loaded pages during processing refresh; accessible menus/selects with fullscreen/modal-aware portals.
-- Whole-tab viewer, progressive mobile controls with 44 px primary touch targets, neutral light playback control, buffering/error retry and keyboard-safe floating menus.
-- Version 2 replay manifest/time slices with global indexes/bounds, five seconds of trail context, at most three cached browser chunks, forward prefetch and cancelled irrelevant requests. Legacy whole-file replays remain readable.
-- Required Linux per-job Landlock/seccomp sandbox; private copied input, stripped environment, process/time/scratch bounds, validated artifacts and publication quota/cancellation checks. Real raw/compressed demo and required sandbox fixtures exercised locally.
-- Manual Steam/Premier/Competitive/Wingman, FACEIT and HLTV file-import guides; ordinary private uploads, without an HLTV wrapper.
-- Time-positioned kill/death, bomb outcome and optional recorded utility-release markers on the seek bar, match/round zoom, accessible dense-event clusters, exact seeking, player filters and progressive event detail. Real players are matched by immutable Steam ID; nickname fallback is restricted to labeled synthetic practice data.
-- Optional edge-based spectator HUD: a proportioned optional mouse beside movement keys with modifiers beneath; split CT/T edge rosters on wide/tall screens, a saved right-only choice and combined narrow-screen fallback, blue/orange-red side colors, selected-row highlight, weapon silhouettes, utilities and health/armor/money/ammo; Settings-owned visibility at every viewport, measured complete-row scrolling boundaries and complete loadout detail in the Players drawer. Recorded uint64 button states, actual mouse commands when present and WASD/ZQSD action labels. Missing data stays unknown; network snapshots are labeled and do not claim every physical key press.
-- Optional recorded-moment toast: symmetric killer/victim POV replays, thrower POV replay and recorded landing/detonation camera. The newest enabled moment gets one compact card; the round list retains every recorded throw/kill. These are normal seeks at the current speed, without clip/return state; 2D remains 2D. Missing endpoints suppress landing only, while known throws remain replayable. Independent utility/combat switches.
-- Quality-independent projectile visibility from the first recorded sample, interpolation without extrapolation, separate flight-path controls and analytical smoke/fire/flash/HE effects in 3D and 2D. Auto quality responds to viewport changes and keeps coarse-pointer landscape devices low. Effects remain approximations.
-- Responsive ZQSD/WASD input block with modifiers below movement and a 64 px optional mouse alongside, retaining real label clearance; default ZQSD, saved WASD choices preserved.
-- Recorded side scores with native artwork and accessible side names, game phase, round provenance and custom server clocks in a viewport-centered header; held Tab with the scene focused or an explicit button opens the scoreboard. K/D/A, HS% and damage use actual controller counters, including pre-recording totals; missing fields remain unknown. Current frame sides/money and buffering state prevent stale/guessed rows.
-- Optional Kills/Utility round panel with native weapon/headshot artwork, two combat perspectives and throw/landing actions. Compact screens use an explicit native modal. Event-bound input marks show dual mouse attacks, movement/jump/crouch/walk when available; network snapshots are distinguished from actual commands/physical bindings.
-- Recorded on-screen planting, planted-fuse and defusing timers/progress, actor/site/kit, interruptions and outcomes. Native bomb/defuse artwork and recorded circular progress occupy the score centre with one shared caption; a standalone instrument remains when scores are disabled. Seek-safe global C4 snapshots use actual server-clock deadlines; missing timing stays elapsed/unavailable, never a guessed 40-second fuse.
-- Local operator equipment icon packs: 73 known equipment names plus 10 native review/HUD symbols, S2V SVG preparation to safe PNG, provenance and private-policy-aware cached delivery. Actual CS2 icon PNGs were exercised locally, kept outside Git/images.
-- Full-viewport scene, small floating identity/action groups, centered transport in a narrower maximum 1000 px / 100 px two-row deck (96 px short landscape), five-category bounded viewer settings and progressive timeline/phone round options. Scene tap/H, mouse/Tab recovery and optional three-second playback idle fade coordinate inert menus/player HUDs. Desktop inputs share the bottom-left lane beside the centered deck; radar sizes are 150/120/80 px. Inputs, mouse and raw details are Settings-owned; captions remain visible when chrome fades. Primary controls/roster rows retain 44 px touch targets.
-- Unified neutral graphite/paper viewer surfaces and an inset playback deck; quieter member controls using neutral surfaces and spacing; preserved focus indicators/form affordances, collapsed optional round strip and persistent action menu.
-- Bounded TypeScript voice/chat extraction in the parser sandbox; Steam/Opus framing/CRC validation, streamed voice packets, local browser WASM decoding, playback speed/volume, speaker scope and mutes, chat overlays and transcript review.
-- Clearly labeled silent EN/FR practice subtitles with clock-based preview. Optional offline CPU multilingual Whisper subtitles in a separate durable stage. Read-only pinned model, actual language identification, English/French speech verification, output/CPU/audio budgets, private caption access, owner-only retry, leases/quota/rollback/crash recovery. Failure preserves the ready replay; partial captions are labeled.
-- Docker/Compose without Caddy, default published `ghcr.io/buco7854/cswatch:latest` image with optional tag/digest override, Monday no-cache image rebuild/publishing workflow, weekly dependency update PRs, architecture/security/agent handoff docs.
+## Ingestion and replay data
 
-## Requires operator resources or external verification
+- `.dem` and `.dem.zst` uploads with magic validation, reservations/quotas, bounded decompression, durable queue, required Linux Landlock/seccomp parser confinement and validated output publication. Owner failures show a safe code/reference and structured server diagnostics.
+- Actual players/positions/angles/status, recorded inventory/economy, native counters/crosshair codes, events/rounds/dead time, grenade trajectories, objectives and world equipment when the recording supplies them. Missing fields remain unavailable.
+- Version 2 byte-adaptive replay chunks with global indexes/bounds, five seconds of spatial trail context, bounded browser caching/prefetch and cancelled irrelevant requests. Context-only samples never establish historical HUD state.
+- Three supplied complete recordings passed actual uploads, confined parsing, private transport and desktop/phone review before authorized deletion. Their position-fallback journeys are separate from game-asset validation.
+- Manual Premier/Competitive/Wingman, FACEIT and HLTV import guidance. Verified-Steam FACEIT association/history and approved-download adapters, plus Steam next-match share-code discovery, are implemented with credential/missing-access states. Live provider flows require external credentials/approval. Steam OpenID alone does not authorize automatic demo downloads.
 
-- CS2 map/agent/weapon assets are not bundled. The S2V export step needs installed CS2 content and the operator's S2V binary. Optimization was tested with a synthetic glTF; a full CS2 export/alignment has not been tested in this environment.
-- Steam/FACEIT end-to-end network flows need real accounts/keys and FACEIT Downloads API approval. Tests cover a successful mocked Steam assertion and adversarial callbacks/access policy, not a live account login or approved partner download.
-- Docker is unavailable locally. The release workflow builds and runs the hardened image with actual parsing/transcription before publication; consult the successful workflow attached to a revision. Operators still need a compatible maintained kernel and deployment preflight.
-- Subtitle generation requires an operator-prepared local model and enabled transcription worker/profile. Models and speech fixtures are not bundled in Git/images. Actual English/French CPU and required-sandbox inference were exercised with public speech; the actual Mirage CS2 fixture has no voice/chat. Full real-world voiced-demo corpus validation remains outstanding.
-- Real-device performance remains unverified. A Galaxy S24 is a target, not a certified benchmark. Browser viewport checks do not measure mobile GPU memory or thermals. TV browser/remote behavior varies by model.
+## Viewer and recorded review
 
-## Not implemented / do not claim
+- Full-tab scene, responsive desktop/tablet/phone controls and optional browser fullscreen. Orbit, overhead, player POV, guarded WASD/ZQSD free camera and calibrated 2D fallback. Third-person follow preserves selected identity, recorded transforms, seek behavior and configured FOV. Genuine CT/T views with recorded AKs passed visual review. The shoulder camera is approximate and has no map collision.
+- Seeking/speeds, match/round timeline range, round jumps, manual/automatic dead-time skipping, exact recorded event markers/clusters/filters and private timestamp notes.
+- Optional edge-based CT/T rosters with independent identity/equipment/health rows, native equipment glyphs, full inventory drawer and selected-player POV feedback. Compact layouts retain complete-row scrolling and primary touch targets. Display options live in Options, and closing an overlay updates its preference.
+- Viewport-centered score/clock, native-counter scoreboard and focus-safe held-Tab access. Bomb planting/fuse/defusing instruments use recorded clocks, actors and outcomes. Unknown deadlines stay elapsed/unavailable, never guessed.
+- Custom local crosshair geometry or supported observed-player static crosshairs decoded from recorded native codes. Dynamic native recoil/spread/scope crosshairs are not reproduced.
+- Compact symmetric kill/death review, round Kills/Utility lists, recorded throw inputs and genuine landing/detonation navigation. Actions use ordinary seek/camera changes at the current speed, with no clip/return flow. Player/event matching uses immutable IDs.
+- Quality-independent recorded projectile visibility, interpolation without extrapolation, independent path controls and analytical utility zones in 3D/2D. Effects are approximations of recorded events, not native smoke/fire physics.
+- Optional compact ZQSD/WASD/modifier and mouse visualization when command evidence exists. Physical bindings cannot be inferred. Phone preferences are separate and optional input/mouse/full round lists default off.
+- Tap/H/idle chrome fading with inert hidden controls, focus/typing/dialog guards and independent captions. A labeled synthetic practice scene remains separate from uploaded history.
 
-- Source 2 engine execution in-browser or exact visual/gameplay parity.
-- Reconstructed baked map lighting/light probes/skyboxes, exact shaders or material blending.
-- Exact character AnimGraph/poses/player-specific skins, weapon/bone attachments or first-person weapon animations. Optional agent clips are generic deterministic approximations.
-- Volumetric smoke simulation, exact fire spread, weapon effects or Source 2 positional gunshot/footstep audio. Recorded VoIP playback is implemented separately.
-- Recovery of missing voice/Discord calls, encrypted team/private chat, or encrypted public chat without its companion key. There is no `.dem.info` key-import workflow yet.
-- Automated Steam Game Coordinator demo resolution/download/sync; Steam login alone cannot provide this.
-- FACEIT as a social login provider. It is a verified linked data source, as requested for current Steam-only social auth.
-- Exact server-rendered CS2 video, GPU streaming, AI coaching, clips/video exports, drawing collaboration, MFA, email recovery, moderation, or multi-host horizontal scaling.
+## Communications
 
-The next high-value work is real CS2 asset validation, exact weapon/animation/effects work, real-device performance testing, live provider validation and independent security review. None should be represented by a decorative UI switch before it works. See the [acceptance matrix](product/ACCEPTANCE.md).
+- Bounded voice/chat extraction, actual Steam/Opus framing, local browser decoding, speaker selection/mutes/volume, playback speed, chat and transcript review.
+- Optional offline multilingual CPU Whisper subtitles in an independent durable stage, with read-only operator models, required confinement, leases/quotas, private delivery and retry. Speech failure preserves replay readiness.
+- Actual English/French inference passed. Two supplied recordings provided locally decoded voice/chat and one supplied chat without voice. Broad subtitle accuracy remains unverified. Missing/encrypted communications are not reconstructed. There is no companion chat-key import workflow.
+
+## Native assets and browser rendering
+
+- Operator-only Linux x64 checksum-pinned S2V/tool bootstrap and anonymous selective Steam acquisition of explicit maps/resources. Pinned manifests, dependency CRCs, shader preflight, staged publication, exclusive outputs and a persistent disk reserve separate this work from public HTTP/demo workers.
+- Complete Mirage, Dust2 and Ancient model/overview/sky/landscape packs passed genuine browser checks. Required image decoding gates readiness. Radar/full 2D share actual overview calibration, and neutral radar/world colors stay independent of the HUD theme. Cache resources/shaders were acquired, but export stopped at the disk reserve and no runtime Cache pack was published.
+- Bounded decoded map texture policies, sequential encoding, lossless local Meshopt, private model pools, cancellation/lease/disposal guards, paused demand rendering and recovery through 2D. These reduce avoidable transfer/memory/work without promising a frame rate or total-memory ceiling.
+- Authored six-face sky cubemaps and separate-depth distant geometry with recorded transforms. Scoped exact-source black-unlit/cubemap-fog compatibility and static alpha masks for three supported dust/cloud materials. Lighting, HDR/fog and unimplemented shader effects remain approximations.
+- Fixed 67-ID native 3D equipment registry and descriptor-anchored local model delivery, streamed digest/range support and disconnect-safe descriptor ownership. Ten IDs are actually prepared and independently decoded: `ak47`, `knife`, `hegrenade`, `flashbang`, `smokegrenade`, `molotov`, `incgrenade`, `decoy`, `c4`, `plantedc4`. Other IDs keep missing-model fallbacks until prepared.
+- Static native weapons for held/POV equipment, all six prepared grenade types and recorded dropped/planted world-item transforms. C4/planted C4 use the actual shared native C4 source, without native countdown/arming animation. Attachment presets are explicit approximations with measured native bounds.
+- Genuine CT/T geometry prepared with one native rifle-idle frame retargeted to 64 matched bones. These are static generic poses, not recorded player animation, crouch/locomotion/recoil, player-specific skins or native first-person arms. Genuine Mirage/AK POV with both agent types passed on desktop dark/phone light.
+- Separate fixed native equipment/review icon registry, safe PNG preparation, hash-bound delivery and actual local artwork checks. No proprietary map/model/icon content is bundled in Git or images.
+
+## Deployment and limits
+
+Docker/Compose runs TypeScript services behind the operator's reverse proxy, without Caddy. The default image is `ghcr.io/buco7854/cswatch:latest` with `CSWATCH_IMAGE` override. Weekly rebuild/publication and dependency-update workflows exist. Docker is unavailable locally, so only the workflow attached to a commit can establish its hardened container verification/publication.
+
+Automatic acquisition of a missing demo map is a [proposal](product/MAP-ACQUISITION.md), not an app feature. Current packs are operator-prepared, identified by map/source version and immutable for an app session. Historical/version/Workshop coverage is incomplete, and map-name equality alone does not prove a matching layout.
+
+Do not claim Source 2 engine execution or exact visual/gameplay parity, full baked lighting/materials/animation/audio, native smoke/fire simulation, automatic Steam demo sync, FACEIT social login, video/clip exports, MFA/recovery, independent security certification or multi-host scaling. Real Galaxy S24/TV performance, live external-provider integration and wider asset/voice quality need separate evidence. CPU-only hosting does not imply low memory use.
+
+See [verification](VERIFICATION.md), [active work](product/WORK.md), [acceptance](product/ACCEPTANCE.md) and [security](../SECURITY.md).

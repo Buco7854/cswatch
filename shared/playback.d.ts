@@ -3,6 +3,8 @@ import type { VoicePacket, ChatMessage, CaptionCue, CommunicationInfo } from './
 import type { ObjectiveData } from './objectives.js';
 import type { MatchStateData, EventAvailability } from './match-state.js';
 import type { ThrowInputSnapshot } from './throw-input.js';
+import type { CrosshairData } from './crosshairs.js';
+import type { ItemSample, ItemStateInfo } from './item-state.js';
 export type Player = { id: string; name: string; team: number };
 /** Recorded actions, independent of the player's physical keyboard layout/binds. */
 export type RecordedInput = {
@@ -110,6 +112,9 @@ export type Playback = {
   matchState?: MatchStateData;
   eventAvailability?: EventAvailability;
   throwInputs?: ThrowInputSnapshot[];
+  crosshairs?: CrosshairData;
+  itemSamples?: ItemSample[];
+  itemState?: ItemStateInfo;
   /** Global Source-coordinate bounds keep cameras and plots stable while time slices change. */
   worldBounds?: {
     minX: number;
@@ -131,7 +136,10 @@ export type ReplayChunkInfo = {
   /** Decoded JSON byte length, bounded independently of compressed transfer size. */
   bytes: number;
 };
-export type PlaybackManifest = Omit<Playback, 'version' | 'frames' | 'grenades' | 'voice'> & {
+export type PlaybackManifest = Omit<
+  Playback,
+  'version' | 'frames' | 'grenades' | 'voice' | 'itemSamples'
+> & {
   version: 2;
   firstTick: number;
   lastTick: number;
@@ -143,4 +151,6 @@ export type PlaybackChunk = {
   frames: Frame[];
   grenades: Grenade[];
   voice?: VoicePacket[];
+  /** First live state before this slice plus changes. Tombstones close entity lifetimes. */
+  itemSamples?: ItemSample[];
 };

@@ -53,9 +53,18 @@ export function abandon(db: Store, id: string) {
   db.run('DELETE FROM demos WHERE id=?', id);
   rmSync(join(db.root, 'demos', id), { recursive: true, force: true });
 }
-export function accessDemo(db: Store, id: string, user: { id: string } | null, ownerOnly = false) {
+export function accessDemo(
+  db: Store,
+  id: string,
+  user: { id: string } | null,
+  ownerOnly = false,
+  guest?: { id: string } | null,
+) {
   const d = db.one('SELECT * FROM demos WHERE id=?', id);
-  if (!d || ((!user || user.id !== d.owner_id) && (ownerOnly || !d.public)))
+  if (
+    !d ||
+    ((!user || user.id !== d.owner_id) && guest?.id !== d.owner_id && (ownerOnly || !d.public))
+  )
     throw new HttpError(404, 'Demo not found.');
   return d;
 }

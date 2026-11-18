@@ -34,7 +34,7 @@ test('recorded Steam voice framing validates CRC/lengths and exposes exact Opus 
   const opus = voiceFrames({
     format: 2,
     voice_data: Buffer.concat([silence, silence]),
-    packet_offsets: [0, 3],
+    packet_offsets: [3, 6],
     num_packets: 2,
     sample_rate: 48000,
   });
@@ -108,6 +108,14 @@ test('the actual TypeScript demo reader extracts voice from explicit synthetic S
       field(2, silence),
       Buffer.from([40]),
       variable(48000),
+      Buffer.from([56]),
+      variable(1),
+      // A real Source 2 message carries packet ENDS in a capacity table.
+      // Only the one declared packet is meaningful, not the trailing slots.
+      field(
+        8,
+        Buffer.concat([variable(silence.length), variable(0), variable(0), variable(123456789)]),
+      ),
     ]);
     const speaker = Buffer.alloc(8);
     speaker.writeBigUInt64LE(76561198000000001n);
@@ -141,7 +149,7 @@ test('the actual TypeScript demo reader extracts voice from explicit synthetic S
         command(0, 128, Buffer.alloc(0)),
       ]),
     );
-    const result = await readCommunications(file, 64, 256);
+    const result = await readCommunications(file, 64, 256, new Set(['76561198000000001']));
     assert.equal(result.communications.voice, 'available', JSON.stringify(result));
     assert.equal(result.voice.length, 1);
     assert.equal(result.voice[0].speaker, '76561198000000001');

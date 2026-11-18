@@ -22,7 +22,7 @@ export default function AccountGate({
       <p>
         {t(
           kind === 'library'
-            ? 'Sign in to upload demos, keep a private library, and save your notes. You will return here after signing in.'
+            ? 'Sign in to keep a private library and save review notes. You will return here after signing in.'
             : kind === 'connections'
               ? 'Sign in to connect Steam and verify your FACEIT profile.'
               : 'Sign in to manage your identity, password, and connected accounts.',

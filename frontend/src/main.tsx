@@ -1,9 +1,12 @@
-import i18n, { t, setLanguage, type Language } from './i18n';
+import { t } from './i18n';
 import { useTranslation } from 'react-i18next';
 import Brand from './components/Brand';
-import { PublicShell, Landing, FeaturePage } from './components/PublicSite';
+import { PublicShell, Landing } from './components/PublicSite';
+import LanguageControl from './components/LanguageControl';
+import Setup from './components/Setup';
+import { ConfirmationProvider } from './components/Confirmation';
 import AccountGate from './components/AccountGate';
-import { Component, StrictMode, useCallback, useEffect, useState } from 'react';
+import { Component, StrictMode, useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
@@ -83,17 +86,31 @@ function App() {
     [toast, setToast] = useState(''),
     [error, setError] = useState('');
   const location = useLocation();
+  const refreshGeneration = useRef(0);
   const refresh = useCallback(async () => {
-    const [c, r] = await Promise.all([
-      api<Config>('/api/config'),
-      api<{ user: User | null }>('/api/auth/me'),
-    ]);
-    setConfig(c);
-    setUser(r.user);
-    setCsrf(r.user?.csrf || '');
+    const generation = ++refreshGeneration.current;
+    try {
+      const [c, r] = await Promise.all([
+        api<Config>('/api/config'),
+        api<{ user: User | null; guest_session?: { csrf: string; expires_at: number } | null }>(
+          '/api/auth/me',
+        ),
+      ]);
+      if (generation !== refreshGeneration.current) return;
+      setConfig(c);
+      setUser(r.user);
+      setCsrf(r.user?.csrf || r.guest_session?.csrf || '');
+    } catch (failure) {
+      // A newer session check owns both identity and connection errors. An older
+      // response cannot restore a previous account or fail the current screen.
+      if (generation === refreshGeneration.current) throw failure;
+    }
   }, []);
   useEffect(() => {
     refresh().catch((e) => setError(e.message));
+    return () => {
+      refreshGeneration.current++;
+    };
   }, [refresh]);
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -115,7 +132,7 @@ function App() {
       if (
         !active ||
         !active.matches('button,a,summary') ||
-        active.closest('[role="menu"],[role="listbox"]')
+        active.closest('.viewer-frame,[role="menu"],[role="listbox"]')
       )
         return;
       const dialog =
@@ -190,9 +207,7 @@ function App() {
       </main>
     );
   const privateGate = !config.public_access && !user;
-  const publicSurface = ['/', '/features/viewer', '/features/imports', '/self-host'].includes(
-    location.pathname,
-  );
+  const publicSurface = location.pathname === '/' && !user;
   const guestPath = location.pathname + location.search;
   const pageTitle = location.pathname.startsWith('/watch')
     ? t('Match review')
@@ -210,19 +225,22 @@ function App() {
       <a className="skip-link" href="#main">
         {t('Skip to content')}
       </a>
-      {privateGate ? (
+      {config.setup_required ? (
+        location.pathname === '/setup' ? (
+          <Setup onComplete={refresh} />
+        ) : (
+          <Navigate replace to="/setup" />
+        )
+      ) : location.pathname === '/setup' ? (
+        <Navigate replace to={user ? '/library' : '/'} />
+      ) : location.pathname === '/' && user ? (
+        <Navigate replace to="/library" />
+      ) : privateGate ? (
         <div className="private-entry">
           <header>
             <Brand />
             <div className="private-entry-tools">
-              <select
-                aria-label={t('Language')}
-                value={i18n.language}
-                onChange={(e) => setLanguage(e.target.value as Language)}
-              >
-                <option value="en">English</option>
-                <option value="fr">Français</option>
-              </select>
+              <LanguageControl />
               <button
                 className="icon-button"
                 aria-label={t(theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme')}
@@ -255,12 +273,7 @@ function App() {
           theme={theme}
           toggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
         >
-          <Routes>
-            <Route path="/" element={<Landing />} />
-            <Route path="/features/viewer" element={<FeaturePage kind="viewer" />} />
-            <Route path="/features/imports" element={<FeaturePage kind="imports" />} />
-            <Route path="/self-host" element={<FeaturePage kind="hosting" />} />
-          </Routes>
+          <Landing />
         </PublicShell>
       ) : location.pathname.startsWith('/watch/') ? (
         <div className="viewer-shell">
@@ -286,7 +299,12 @@ function App() {
         >
           <Routes>
             <Route path="/library" element={user ? <Library /> : <AccountGate />} />
-            <Route path="/explore" element={<Library publicOnly />} />
+            <Route path="/explore" element={<Navigate replace to={user ? '/library' : '/'} />} />
+            <Route
+              path="/features/:kind"
+              element={<Navigate replace to={user ? '/library' : '/'} />}
+            />
+            <Route path="/self-host" element={<Navigate replace to={user ? '/library' : '/'} />} />
             <Route
               path="/connections"
               element={<Navigate replace to={'/account/connections' + location.search} />}
@@ -341,7 +359,9 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <Boundary>
       <BrowserRouter>
-        <App />
+        <ConfirmationProvider>
+          <App />
+        </ConfirmationProvider>
       </BrowserRouter>
     </Boundary>
   </StrictMode>,

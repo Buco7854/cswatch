@@ -1,3 +1,4 @@
+import { enableViewerOverlay } from './fixtures/viewer-options';
 import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { recordedReplay, actor, target } from './fixtures/review-playback';
@@ -54,15 +55,17 @@ async function open(
     ({ language, theme }) => {
       localStorage.setItem('theme', theme);
       localStorage.setItem('cswatch.language', language);
-      localStorage.setItem(
-        'viewer-settings',
-        JSON.stringify({
-          quality: 'low',
-          autoHideControls: false,
-          economy: true,
-          inputLayout: 'zqsd',
-          radar: true,
-        }),
+      ['viewer-settings', 'viewer-settings-mobile'].forEach((key) =>
+        localStorage.setItem(
+          key,
+          JSON.stringify({
+            quality: 'low',
+            autoHideControls: false,
+            economy: true,
+            inputLayout: 'zqsd',
+            radar: true,
+          }),
+        ),
       );
     },
     { language, theme },
@@ -90,10 +93,7 @@ async function open(
   await expect(page.locator('.timeline-slider')).toBeVisible();
 }
 async function showFeed(page: Page, language: 'en' | 'fr' = 'en') {
-  await page.getByRole('button', { name: message(language, 'More controls'), exact: true }).click();
-  await page
-    .getByRole('menuitem', { name: message(language, 'Kills and utility review'), exact: true })
-    .click();
+  await enableViewerOverlay(page, 'Kills and utility review');
   await expect(page.locator('.review-feed')).toBeVisible();
 }
 const seek = (page: Page, tick: number) => page.locator('.timeline-slider').fill(String(tick));
@@ -217,7 +217,7 @@ test('missing landing and input data keep a real throw replay without guessed ta
   const mouse = page.locator('.viewer-context-actions .throw-input-mouse');
   await expect(mouse).toHaveAttribute(
     'aria-label',
-    'Primary attack: Not held; secondary attack: Unavailable',
+    'Primary attack: Not held. Secondary attack: Unavailable',
   );
   await expect(mouse.locator('[data-input-side="primary"]')).toHaveAttribute(
     'data-state',
@@ -273,7 +273,7 @@ for (const language of ['en', 'fr'] as const)
         await page.keyboard.press('Escape');
         await expect(dialog).toHaveCount(0);
         await expect(
-          page.getByRole('button', { name: message(language, 'More controls'), exact: true }),
+          page.getByRole('button', { name: message(language, 'Options'), exact: true }),
         ).toBeFocused();
         expect(
           await page.evaluate(

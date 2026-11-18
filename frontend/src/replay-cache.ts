@@ -1,4 +1,5 @@
 import type { Playback, PlaybackManifest, PlaybackChunk } from '../../shared/playback';
+import { validateItemSamples, validateItemState } from './item-state';
 
 export function validateManifest(value: PlaybackManifest): PlaybackManifest {
   if (
@@ -14,6 +15,7 @@ export function validateManifest(value: PlaybackManifest): PlaybackManifest {
     !Array.isArray(value.events)
   )
     throw new Error('Replay metadata is invalid.');
+  validateItemState(value.itemState);
   for (const [i, part] of value.chunks.entries()) {
     if (
       part.index !== i ||
@@ -104,6 +106,9 @@ export class ReplayCache {
           )
         )
           throw new Error('Replay chunk is invalid.');
+        part.itemSamples = validateItemSamples(part.itemSamples, info.endTick);
+        if (Boolean(this.manifest.itemState) !== (part.itemSamples !== undefined))
+          throw new Error('Replay item metadata is invalid.');
         this.cache.set(index, part);
         while (this.cache.size > 3) {
           const oldest = this.cache.keys().next().value!;
@@ -145,6 +150,7 @@ export class ReplayCache {
       frames: part.frames,
       grenades: part.grenades,
       voice: part.voice,
+      itemSamples: part.itemSamples,
     };
   }
 

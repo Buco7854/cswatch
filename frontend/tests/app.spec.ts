@@ -1,6 +1,7 @@
 import { activateViewerAction } from './fixtures/viewer-actions';
 import { test, expect, type Page } from '@playwright/test';
 import { selectOptionsCategory } from './fixtures/viewer-options';
+import { sample } from '../src/sample';
 const privateInstance = Boolean(process.env.E2E_PRIVATE);
 async function choose(page: Page, label: string, option: string) {
   if (label === 'Language' || label === 'Langue') {
@@ -18,27 +19,71 @@ async function choose(page: Page, label: string, option: string) {
   await page.getByRole('combobox', { name: label, exact: true }).click();
   await page.getByRole('option', { name: option, exact: true }).click();
 }
-test('public landing has working proof, feature navigation, and guest viewer', async ({ page }) => {
+test('the single public page uploads a private guest demo into the whole-tab viewer', async ({
+  page,
+}) => {
   test.skip(privateInstance, 'Private entry has its own assertions.');
   const errors: string[] = [];
-  page.on('pageerror', (e) => errors.push(e.message));
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.route('**/api/guest/session', (route) =>
+    route.fulfill({ json: { csrf: 'synthetic-guest-token', expires_at: 2000000000 } }),
+  );
+  const file = {
+    name: 'guest-fixture.dem',
+    mimeType: 'application/octet-stream',
+    buffer: Buffer.from('PBDEMS2\0synthetic-guest-upload-fixture'),
+  };
+  await page.route('**/api/demos', async (route) => {
+    expect(route.request().method()).toBe('POST');
+    expect(route.request().headers()['x-csrf-token']).toBe('synthetic-guest-token');
+    expect(route.request().postDataBuffer()?.includes(file.buffer)).toBe(true);
+    await route.fulfill({ status: 202, json: { id: 'guest-fixture' } });
+  });
+  await page.route('**/api/demos/guest-fixture', (route) =>
+    route.fulfill({
+      json: {
+        id: 'guest-fixture',
+        name: file.name,
+        source: 'synthetic-qa',
+        status: 'ready',
+        public: false,
+        owned: false,
+        guest_owned: true,
+        expires_at: 2000000000,
+        map: 'de_guest_fixture',
+        size: file.buffer.length,
+        rounds: 3,
+        duration: 60,
+        created_at: 1700000000,
+        error: null,
+      },
+    }),
+  );
+  await page.route('**/api/demos/guest-fixture/playback', (route) =>
+    route.fulfill({ json: { ...sample, sample: false, map: 'de_guest_fixture' } }),
+  );
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Every round. Every angle.' })).toBeVisible();
-  await page.getByRole('button', { name: 'Follow marlow' }).click();
-  await expect(page.getByRole('button', { name: 'Follow marlow' })).toHaveClass('selected');
-  await page.getByRole('slider', { name: 'Practice preview timeline' }).fill('900');
-  await page.getByRole('textbox', { name: 'What would you review?' }).fill('Look at the timing');
-  await page.getByRole('button', { name: 'Try a note', exact: true }).click();
-  await expect(page.getByText('Look at the timing', { exact: true })).toBeVisible();
-  await page.getByRole('link', { name: 'Try the viewer', exact: true }).first().click();
+  await expect(page.getByRole('heading', { name: 'Review your match.' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'GitHub', exact: true })).toHaveAttribute(
+    'href',
+    'https://github.com/Buco7854/cswatch',
+  );
+  await expect(page.locator('select')).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Try the viewer', exact: true })).toHaveCount(0);
   await expect(
-    page.getByRole('heading', { name: 'Training courtyard', exact: true }),
-  ).toBeVisible();
+    page.locator('a[href^="/features"],a[href="/explore"],a[href="/watch/sample"]'),
+  ).toHaveCount(0);
+  const picker = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: /Drop your demo here/ }).click();
+  await (await picker).setFiles(file);
+  await expect(page).toHaveURL(/\/watch\/guest-fixture$/);
+  await expect(page.getByRole('heading', { name: 'guest_fixture', exact: true })).toBeVisible();
+  await expect(page.locator('.auth-dialog')).toHaveCount(0);
   await expect(page.locator('.site-sidebar')).toHaveCount(0);
   expect(
     await page
       .locator('.viewer-frame')
-      .evaluate((el) => Math.abs(el.getBoundingClientRect().height - innerHeight) < 2),
+      .evaluate((element) => Math.abs(element.getBoundingClientRect().height - innerHeight) < 2),
   ).toBe(true);
   await choose(page, 'Camera mode', '2D tactical · low power');
   await expect(
@@ -84,8 +129,7 @@ test('account-required upload preserves route intent, registration and logout wo
 }) => {
   test.skip(privateInstance || process.env.E2E_REGISTRATIONS === 'false');
   const username = 'review_' + Date.now().toString(36);
-  await page.goto('/');
-  await page.getByRole('link', { name: 'Start your review', exact: true }).first().click();
+  await page.goto('/library?upload=1');
   await expect(page).toHaveURL(/\/library\?upload=1/);
   await expect(page.getByRole('heading', { name: 'Your review needs a home.' })).toBeVisible();
   await page.getByRole('button', { name: 'Sign in to continue', exact: true }).click();
@@ -127,12 +171,16 @@ test('French covers public pages, viewer, auth errors and saved language choice'
 }) => {
   test.skip(privateInstance);
   await page.goto('/');
-  await page.getByLabel('Language').selectOption('fr');
+  await page.getByRole('combobox', { name: 'Language', exact: true }).click();
+  await page.getByRole('option', { name: 'Français', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('lang', 'fr');
-  await expect(page.getByRole('heading', { name: 'Chaque round. Chaque angle.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Analysez votre match.' })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'Chaque round. Chaque angle.' })).toBeVisible();
-  await page.getByRole('link', { name: 'Essayer le lecteur', exact: true }).first().click();
+  await expect(page.getByRole('heading', { name: 'Analysez votre match.' })).toBeVisible();
+  await expect(page.locator('a[href^="/features"],a[href="/explore"]')).toHaveCount(0);
+  // The internal practice fixture still exercises French viewer states without
+  // presenting an example demo as the anonymous upload feature.
+  await page.goto('/watch/sample');
   await expect(page.getByRole('heading', { name: 'Cour d’entraînement' })).toBeVisible();
   await choose(page, 'Mode de caméra', 'Vue tactique 2D · économe');
   await page.getByRole('button', { name: 'Options', exact: true }).click();
@@ -176,11 +224,9 @@ test('private entry gates feature and demo routes and respects registrations pol
     await page.getByRole('button', { name: 'Create account', exact: true }).click();
     await expect(page).toHaveURL(/\/library$/);
     await expect(page.getByRole('heading', { name: 'Demo library', exact: true })).toBeVisible();
-    await page.getByRole('link', { name: 'Shared demos', exact: true }).first().click();
-    await expect(page.getByRole('heading', { name: 'Shared demos', exact: true })).toBeVisible();
-    await expect(
-      page.getByText('Matches shared with instance members.', { exact: true }),
-    ).toBeVisible();
+    await expect(page.locator('a[href="/explore"]')).toHaveCount(0);
+    await page.goto('/');
+    await expect(page).toHaveURL(/\/library$/);
   }
 });
 
@@ -227,7 +273,14 @@ test('viewer keeps scene, dock, panels and fullscreen within the browser tab', a
   await page.setViewportSize({ width: 1440, height: 900 });
   await activateViewerAction(page, 'Players');
   await page.getByRole('button', { name: /echo/ }).click();
-  await expect(page.locator('.player-row.selected strong')).toHaveText('echo');
+  await expect(page.locator('.viewer-drawer')).toHaveCount(0);
+  await expect(page.getByRole('combobox', { name: 'Camera mode' })).toContainText(
+    'Player perspective',
+  );
+  await activateViewerAction(page, 'Players');
+  await expect(
+    page.getByRole('button', { name: 'Select player echo', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Close panel' }).click();
   await page.getByRole('button', { name: 'Add note', exact: true }).click();
   await page.getByPlaceholder('What happened here?').fill('Check this timing');
@@ -269,11 +322,10 @@ test('viewer menus support keyboard selection, bounded touch lists and fullscree
     ]) {
       await page.setViewportSize({ width, height });
       const camera = page.getByRole('combobox', { name: 'Camera mode' });
-      await camera.focus();
-      await expect(camera).toBeFocused();
-      await page.keyboard.press('ArrowRight');
+      await page.getByRole('button', { name: 'Viewer menu', exact: true }).focus();
+      await page.keyboard.press('Shift+Tab');
       await expect(page.getByRole('button', { name: 'Options', exact: true })).toBeFocused();
-      await page.keyboard.press('ArrowLeft');
+      await page.keyboard.press('Shift+Tab');
       await expect(camera).toBeFocused();
       await page.keyboard.press('ArrowDown');
       await expect(page.getByRole('listbox')).toBeVisible();
@@ -357,15 +409,29 @@ test('library searches the full collection and keeps loaded pages on refresh', a
     status: 'ready',
     size: 1024,
     created_at: 1700000000 - index,
-    public: true,
-    owned: false,
+    public: false,
+    owned: true,
     map: 'de_mirage',
     duration: 1200,
     rounds: 24,
     error: null,
   }));
+  await page.route('**/api/auth/me', (route) =>
+    route.fulfill({
+      json: {
+        user: {
+          id: 'library-fixture-user',
+          username: 'library_fixture',
+          is_admin: false,
+          csrf: 'library-fixture-csrf',
+          identities: [],
+        },
+      },
+    }),
+  );
   await page.route('**/api/demos?*', async (route) => {
     const url = new URL(route.request().url());
+    expect(url.searchParams.get('scope')).toBe('mine');
     const query = (url.searchParams.get('q') || '').toLowerCase();
     const offset = Number(url.searchParams.get('offset') || 0);
     const matches = rows.filter((row) => (row.name + ' ' + row.map).toLowerCase().includes(query));
@@ -373,7 +439,7 @@ test('library searches the full collection and keeps loaded pages on refresh', a
       json: { demos: matches.slice(offset, offset + 50), total: matches.length },
     });
   });
-  await page.goto('/explore');
+  await page.goto('/library');
   await expect(page.locator('.demo-row:not(.table-head)')).toHaveCount(50);
   await page.getByRole('button', { name: 'Load more demos' }).click();
   await expect(page.locator('.demo-row:not(.table-head)')).toHaveCount(100);
@@ -388,4 +454,112 @@ test('library searches the full collection and keeps loaded pages on refresh', a
   await expect(page.getByRole('heading', { name: 'No matching demos.' })).toBeVisible();
   await page.getByRole('textbox', { name: 'Search demos' }).clear();
   await expect(page.locator('.demo-row:not(.table-head)')).toHaveCount(50);
+});
+
+test('guest upload policy keeps the public entry simple and uses one accessible language menu', async ({
+  page,
+}) => {
+  test.skip(privateInstance);
+  await page.route('**/api/config', async (route) => {
+    const config = await (await route.fetch()).json();
+    await route.fulfill({ json: { ...config, guest_uploads_enabled: false } });
+  });
+  await page.goto('/');
+  await expect(
+    page.getByRole('heading', { name: 'Review your match.', exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Sign in to upload', exact: true })).toBeVisible();
+  await expect(page.locator('input[type="file"],select')).toHaveCount(0);
+  await page.getByRole('combobox', { name: 'Language', exact: true }).click();
+  await page.getByRole('option', { name: 'Français', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Analysez votre match.', exact: true }),
+  ).toBeVisible();
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('lang', 'fr');
+  for (const theme of ['dark', 'light']) {
+    await page.evaluate((theme) => {
+      document.documentElement.dataset.theme = theme;
+    }, theme);
+    for (const width of [320, 768, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+        true,
+      );
+      const headline = await page
+        .locator('#landing-title')
+        .evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
+      expect(headline).toBeLessThanOrEqual(60);
+      const signin = await page
+        .getByRole('button', { name: 'Se connecter', exact: true })
+        .boundingBox();
+      expect(signin!.width).toBeGreaterThanOrEqual(44);
+      expect(signin!.height).toBeGreaterThanOrEqual(44);
+    }
+  }
+  await page.getByRole('button', { name: 'Se connecter pour importer', exact: true }).click();
+  await expect(page.locator('.auth-dialog')).toBeVisible();
+});
+
+test('personal library search keeps the complete placeholder readable and keyboard focus visible', async ({
+  page,
+}) => {
+  test.skip(privateInstance);
+  await page.route('**/api/auth/me', (route) =>
+    route.fulfill({
+      json: {
+        user: {
+          id: 'search-fixture-user',
+          username: 'search_fixture',
+          is_admin: false,
+          csrf: 'search-fixture-csrf',
+          identities: [],
+        },
+      },
+    }),
+  );
+  await page.route('**/api/demos?*', (route) => route.fulfill({ json: { demos: [], total: 0 } }));
+  await page.goto('/library');
+  for (const language of ['en', 'fr']) {
+    await page.getByRole('combobox', { name: /^(Language|Langue)$/, exact: true }).click();
+    await page
+      .getByRole('option', { name: language === 'en' ? 'English' : 'Français', exact: true })
+      .click();
+    for (const theme of ['dark', 'light']) {
+      await page.evaluate((theme) => {
+        document.documentElement.dataset.theme = theme;
+      }, theme);
+      for (const width of [320, 768, 1440]) {
+        await page.setViewportSize({ width, height: 900 });
+        const input = page.getByRole('textbox', {
+          name: language === 'en' ? 'Search demos' : 'Rechercher des démos',
+          exact: true,
+        });
+        await expect(input).toBeVisible();
+        await page.evaluate(() => document.fonts.ready);
+        const clearance = await input.evaluate((element) => {
+          const input = element as HTMLInputElement;
+          const style = getComputedStyle(input);
+          const canvas = document.createElement('canvas');
+          const context = canvas.getContext('2d')!;
+          context.font = style.font;
+          return (
+            input.clientWidth -
+            Number.parseFloat(style.paddingLeft) -
+            Number.parseFloat(style.paddingRight) -
+            context.measureText(input.placeholder).width
+          );
+        });
+        expect(clearance).toBeGreaterThanOrEqual(1);
+        await input.focus();
+        expect(await input.evaluate((element) => getComputedStyle(element).outlineStyle)).not.toBe(
+          'none',
+        );
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+          true,
+        );
+      }
+    }
+  }
+  await expect(page.locator('a[href="/explore"],.workspace-label')).toHaveCount(0);
 });

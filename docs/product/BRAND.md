@@ -16,7 +16,7 @@ A competitive Counter-Strike review brand built around **returning to a moment a
 
 ## Public vs product
 
-The public site can be bold: short condensed headlines, generous editorial spacing, a large real interactive review fragment, and distinct feature narratives. The workspace is denser: match identity, ownership/privacy, readable player/round/event data, and one primary import/review job. The viewer gives the match the room. They share a brand, not the same layout.
+The logged-out entry is now one compact upload instrument: a modest condensed headline, short privacy/expiry copy and the working file input. No separate marketing narratives or sample CTA. The workspace is denser: match identity, ownership/privacy, readable player/round/event data, and one primary import/review job. The viewer gives the match the room. They share a brand, not the same layout.
 
 ## Direction skill record
 
@@ -28,6 +28,6 @@ Cover the wordmark. The short condensed type, replay/cut-frame geometry, ice-tea
 
 ## Member surface refinement — 2026-11-16
 
-The public landing is now user-approved and stays unchanged. Member screens use neutral charcoal elevations (`#101113`, `#17191c`, `#202328`) with neutral text/selection and restrained brand teal for identity/focus/data. Light mode uses neutral grey/white equivalents. Primary workspace actions use inversion, without decorative clipped corners; the public cut-frame identity remains on public pages. UI headings return to readable IBM Plex Sans at 24–26px; the shared wordmark retains Barlow Condensed.
+The older public landing was approved at this checkpoint, then explicitly superseded by the 2026-11-17 one-page guest-upload request. Member screens use neutral charcoal elevations (`#101113`, `#17191c`, `#202328`) with neutral text/selection and restrained brand teal for identity/focus/data. Light mode uses neutral grey/white equivalents. Primary workspace actions use inversion, without decorative clipped corners; the public cut-frame identity remains on public pages. UI headings return to readable IBM Plex Sans at 24–26px; the shared wordmark retains Barlow Condensed.
 
-`member.css` is explicitly scoped to `.app-shell`, `.viewer-shell`, `.member-dialog` and `.member-toast` so these refinements cannot recolor the approved public pages. The member app adopts the app skill's true-black-flat elevation/control principle (seed 1155974105), adapted to charcoal from the user's screenshot; public type/logo remain established brand assets. No competitor image or asset is included.
+`member.css` is explicitly scoped to `.app-shell`, `.viewer-shell`, `.member-dialog` and `.member-toast` so viewer/member refinements do not recolor the independent public upload composition. The member app adopts the app skill's true-black-flat elevation/control principle (seed 1155974105), adapted to charcoal from the user's screenshot; public type/logo remain established brand assets. No competitor image or asset is included.

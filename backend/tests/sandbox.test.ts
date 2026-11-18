@@ -334,6 +334,10 @@ test('required sandbox mode fails a queued job safely when the launcher is missi
     db.run("UPDATE demos SET status='queued' WHERE id=?", demo.id);
     await processOne(db, config);
     assert.equal(db.one('SELECT status FROM demos WHERE id=?', demo.id)?.status, 'failed');
+    assert.match(
+      db.one('SELECT error FROM demos WHERE id=?', demo.id)?.error,
+      /\[sandbox_unavailable\]/,
+    );
     assert.equal(existsSync(join(demo.folder, 'manifest.json.gz')), false);
   } finally {
     db.close();
@@ -528,6 +532,33 @@ test('housekeeping removes stale orphan scratch without following directory syml
     assert.equal(existsSync(live), true);
     assert.equal(existsSync(join(state.demo.folder, 'input.dem')), true);
   } finally {
+    state.close();
+  }
+});
+
+test('worker failures report the sandbox reason and signal without logging raw child output', async () => {
+  const state = workerState(
+    {},
+    `process.stderr.write('cswatch parser sandbox: Landlock ABI 3 or newer required (Function not implemented)\\nprivate-raw-value');process.exit(125);`,
+  );
+  const records: string[] = [];
+  const original = console.error;
+  console.error = (line: string) => {
+    records.push(line);
+  };
+  try {
+    await processOne(state.db, state.config);
+    const row = state.db.one('SELECT status,error FROM demos WHERE id=?', state.demo.id)!;
+    assert.equal(row.status, 'failed');
+    assert.match(row.error, /\[sandbox_unavailable\]/);
+    const event = JSON.parse(records.at(-1)!);
+    assert.equal(event.event, 'demo_processing_failed');
+    assert.equal(event.demoId, state.demo.id);
+    assert.equal(event.exitCode, 125);
+    assert.match(event.sandboxReason, /Landlock ABI 3/);
+    assert.equal(records.join('').includes('private-raw-value'), false);
+  } finally {
+    console.error = original;
     state.close();
   }
 });

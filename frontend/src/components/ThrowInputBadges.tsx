@@ -19,7 +19,7 @@ export default function ThrowInputBadges({
         title={t('Throw inputs are unavailable.')}
         aria-label={t('Throw inputs are unavailable.')}
       >
-        —
+        -
       </span>
     );
   const input = snapshot.input;
@@ -42,7 +42,7 @@ export default function ThrowInputBadges({
   const mouseKnown = typeof input.attack === 'boolean' || typeof input.attack2 === 'boolean';
   const mouseLabel =
     typeof input.attack !== 'boolean' || typeof input.attack2 !== 'boolean'
-      ? t('Primary attack: {{primary}}; secondary attack: {{secondary}}', {
+      ? t('Primary attack: {{primary}}. Secondary attack: {{secondary}}', {
           primary: t(
             input.attack === true ? 'Held' : input.attack === false ? 'Not held' : 'Unavailable',
           ),
@@ -108,7 +108,7 @@ export default function ThrowInputBadges({
       ))}
       {!mouseKnown && !active.length && (
         <span className="throw-input-unavailable" aria-label={t('Throw inputs are unavailable.')}>
-          —
+          -
         </span>
       )}
     </span>

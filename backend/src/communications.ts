@@ -4,13 +4,22 @@ import type { VoicePacket, ChatMessage, CommunicationInfo } from '../../shared/c
 import { voiceFrames } from './voice-packets.js';
 import { observeObjectives } from './objectives.js';
 import { observeMatchState } from './match-state.js';
+import { observeCrosshairs } from './crosshairs.js';
+import { observeItemState } from './item-state.js';
 
-export async function readCommunications(path: string, tickRate: number, lastTick: number) {
+export async function readCommunications(
+  path: string,
+  tickRate: number,
+  lastTick: number,
+  actors: ReadonlySet<string>,
+) {
   const voice: VoicePacket[] = [],
     chat: ChatMessage[] = [];
   const reader = new DemoReader();
   const finishObjectives = observeObjectives(reader, tickRate, lastTick);
   const finishMatchState = observeMatchState(reader, tickRate, lastTick);
+  const finishCrosshairs = observeCrosshairs(reader, lastTick, actors);
+  const finishItems = observeItemState(reader, lastTick);
   let unsupported = 0,
     encrypted = 0,
     bytes = 0,
@@ -109,7 +118,19 @@ export async function readCommunications(path: string, tickRate: number, lastTic
   if (truncated) warnings.push('Communication data reached the processing limit.');
   const objectives = finishObjectives(!failed);
   const matchState = finishMatchState(!failed);
+  const items = finishItems(!failed);
+  if (!items.complete) warnings.push('Some recorded world equipment state could not be read.');
   if (!objectives.complete) warnings.push('Some bomb objective state could not be read.');
   if (!matchState.complete) warnings.push('Some recorded match state could not be read.');
-  return { voice, chat, communications, objectives, matchState, warnings };
+  return {
+    voice,
+    chat,
+    communications,
+    objectives,
+    matchState,
+    crosshairs: finishCrosshairs(!failed),
+    itemSamples: items.samples,
+    itemState: { complete: items.complete, coverage: items.coverage },
+    warnings,
+  };
 }
