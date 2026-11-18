@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "clips": {
+    "idle": "cswatch:idle",
+    "walk": "cswatch:walk",
+    "run": "cswatch:run",
+    "crouch-idle": "cswatch:crouch-idle",
+    "crouch-walk": "cswatch:crouch-walk"
+  }
+}

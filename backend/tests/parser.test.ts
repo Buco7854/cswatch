@@ -84,6 +84,13 @@ for (const compressed of [false, true])
             ),
         );
         assert.equal(data.map, 'de_mirage');
+        assert.deepEqual(data.mapIdentity, {
+          map: 'de_mirage',
+          buildNum: 9842,
+          patchVersion: 13984,
+          demoVersionGuid: '8e9d71ab-04a1-4c01-bb61-acfede27c046',
+          addonPresence: 'none',
+        });
         assert.equal(data.players.length, 10);
         assert.ok(data.frames.length > 1000);
         assert.equal(typeof data.players[0].id, 'string');

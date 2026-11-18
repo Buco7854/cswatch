@@ -1,3 +1,4 @@
+import { installMapFixture } from './fixtures/map-assets';
 import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { selectOptionsCategory } from './fixtures/viewer-options';
@@ -139,6 +140,7 @@ async function fixture(
   await page.route('**/api/demos/viewer-space-fixture/playback', (route) =>
     route.fulfill({ json: replay }),
   );
+  await installMapFixture(page, replay.map, 'viewer-space-fixture');
   await page.goto('/watch/viewer-space-fixture');
   await expect(
     page.getByRole('heading', { name: replay.map.replace('de_', ''), exact: true }),
@@ -157,7 +159,7 @@ async function fixture(
     .click();
   await expect(
     page.getByRole('img', {
-      name: message(language, 'Player position plot. No map geometry.'),
+      name: message(language, 'Map overview with recorded player positions'),
       exact: true,
     }),
   ).toBeVisible();

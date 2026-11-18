@@ -18,7 +18,7 @@ Product decisions and follow-up tasks live in [the product brief](docs/product/B
 
 Requirements: Docker with Compose on Linux with Landlock ABI 3 or newer (kernel 6.2+ with Landlock enabled), a CPU supporting the native parser, storage for demos/assets, and your own HTTPS reverse proxy. Budget approximately 2 CPU cores and 6–8 GB RAM for the two services. Limits are configurable; these are deployment defaults, not benchmark guarantees.
 
-Compose uses the published `ghcr.io/buco7854/cswatch:latest` image for web, parsing and optional transcription. Set `CSWATCH_IMAGE` to pin a different tag or digest. A source checkout/build is not required for deployment; use `compose.yaml` and `.env.example` from this repository.
+Compose uses the published `ghcr.io/buco7854/cswatch:latest` image for web, parsing and optional transcription. Set `CSWATCH_IMAGE` to pin a different tag or digest. The optional map worker uses `ghcr.io/buco7854/cswatch:assets-latest`, independently pinned with `CSWATCH_ASSETS_IMAGE`. A source checkout/build is not required for deployment; use `compose.yaml` and `.env.example` from this repository.
 
 ```sh
 cp .env.example .env
@@ -40,14 +40,15 @@ Each native parser child additionally runs inside a required Landlock/seccomp sa
 
 These variables accept `true`, `false`, or an empty/unset value:
 
-| Variable                | Default when unset | Behavior                                                                                                         |
-| ----------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| `PUBLIC_ACCESS`         | `true`             | Anonymous entry and explicitly shared demo links. `false` gates demo content and assets behind sign-in.          |
-| `GUEST_UPLOADS_ENABLED` | `true`             | Private temporary uploads without an account. Effective only on initialized public instances.                    |
-| `REGISTRATIONS_ENABLED` | `true`             | Local registrations and creation of new accounts through Steam. Existing users can still sign in.                |
-| `STEAM_ENABLED`         | `false`            | Steam OpenID sign-in and account linking.                                                                        |
-| `FACEIT_ENABLED`        | `false`            | Steam-verified FACEIT profile linking, match history, and approved imports. This is not a FACEIT login provider. |
-| `TRANSCRIPTION_ENABLED` | `false`            | Optional offline CPU speech transcription with a prepared local model and the transcription worker.              |
+| Variable                     | Default when unset | Behavior                                                                                                                           |
+| ---------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `PUBLIC_ACCESS`              | `true`             | Anonymous entry and explicitly shared demo links. `false` gates demo content and assets behind sign-in.                            |
+| `GUEST_UPLOADS_ENABLED`      | `true`             | Private temporary uploads without an account. Effective only on initialized public instances.                                      |
+| `REGISTRATIONS_ENABLED`      | `true`             | Local registrations and creation of new accounts through Steam. Existing users can still sign in.                                  |
+| `STEAM_ENABLED`              | `false`            | Steam OpenID sign-in and account linking.                                                                                          |
+| `FACEIT_ENABLED`             | `false`            | Steam-verified FACEIT profile linking, match history, and approved imports. This is not a FACEIT login provider.                   |
+| `TRANSCRIPTION_ENABLED`      | `false`            | Optional offline CPU speech transcription with a prepared local model and the transcription worker.                                |
+| `AUTO_OFFICIAL_MAPS_ENABLED` | `false`            | Queue missing official maps whose recorded identity has one operator-approved source version. Requires the separate asset service. |
 
 Explicit environment values take precedence and lock the corresponding admin controls. Empty variables let the administrator change policy in the UI. API keys are environment-only and are never returned to the browser. To run a closed private instance, disable **both** public access and registrations.
 
@@ -102,15 +103,15 @@ New replays use versioned time slices with five seconds of trail context. The br
 
 Guest uploads expire after `GUEST_RETENTION_HOURS` (default 24), with separate `GUEST_DEMO_LIMIT` (3) and `GUEST_STORAGE_MB` (512) limits. Only the original browser capability cookie grants access, and expired guests are reclaimed by worker maintenance. Account login does not silently transfer guest ownership.
 
-`RETENTION_DAYS=30` deletes old demos and their notes automatically. `0` disables expiry. The UI states the retention policy. Audit events expire after 90 days. Back up the **whole data volume**, including SQLite and its WAL files, originals, prepared playback, and maps. Stop all services, including optional transcription, before a filesystem backup/restore; restart them afterward. A database-only backup will not include demo files. Keep backups outside the live data volume.
+`RETENTION_DAYS=30` deletes old demos and their notes automatically. `0` disables expiry. The UI states the retention policy. Audit events expire after 90 days. Back up the **whole application data volume**, including SQLite/WAL files, originals and prepared playback. Also preserve the separate map-assets, map-jobs and map-catalog volumes. The private map-cache can be rebuilt and need not be backed up. Stop all services, including optional transcription and assets, before a filesystem backup/restore. A database-only backup omits demo files. Keep backups outside live volumes.
 
 ## Map and agent assets
 
-Demos contain recorded match state, not level geometry. Installing cswatch alone provides a position-only fallback. Actual 3D maps require an operator-prepared map pack; a proper 2D map and radar require a calibrated overview image. Game assets are not included in Git or the container image.
+Demos contain recorded match state, not level geometry. Actual 3D maps require a prepared map pack. A calibrated overview provides a useful 2D view and radar when 3D is unavailable. If neither is usable, the viewer explains that the map is unavailable instead of displaying players without a map. Game assets are not included in Git or the container image.
 
 Map names are discovered from the recording rather than a fixed list in the viewer. This does not establish universal map compatibility. The selective installer supports maps present in its pinned official depot. Custom or Workshop content needs a local S2V export and manual preparation with its dependencies. Multi-floor radar layers are not supported yet. Verify each prepared map's alignment and rendering before enabling it for viewers.
 
-[S2V / Source 2 Viewer](https://s2v.app/) exports a local CS2 installation's content to glTF. The [asset preparation tools](tools/assets/README.md) run offline on a CPU, pack self-contained GLBs, create desktop/mobile map tiers, and record provenance. Install results into `/data/maps`. S2V is a converter, not a map-download service. No .NET runtime, CS2 installation or server GPU is needed by the web service itself. The browser renders installed geometry.
+[S2V / Source 2 Viewer](https://s2v.app/) exports CS2 content to glTF. The [asset preparation tools](tools/assets/README.md) run on a CPU, pack self-contained GLBs, create desktop/mobile map tiers, and record provenance. Compose mounts prepared output at `/map-assets`; standalone deployments default to `DATA_DIR/maps`. No .NET runtime, CS2 installation or server GPU is needed by the web service itself. The browser renders installed geometry.
 
 The optional Linux x64 operator installer downloads explicit maps and their dependency chunks from Steam, prepares the verified tools, then exports both model tiers, a calibrated radar and the authored sky/distant landscape. It does not install the whole game or require a Steam user login. Run it separately from the web/worker services:
 
@@ -121,9 +122,11 @@ npm --prefix tools/assets run install-steam -- \
   --output /srv/cswatch/maps --cache /srv/cswatch-asset-cache
 ```
 
-See the [operator guide](tools/assets/README.md) for tool pins, storage requirements and installation paths. Maps can still require several gigabytes of temporary space. The installer refuses to overwrite installed maps, processes them serially and stops if its free-space reserve is crossed. Keep the private source/tool cache outside the served map directory. Mount only the prepared output at `/data/maps`, or copy it into the persistent data volume.
+See the [operator guide](tools/assets/README.md) for tool pins, storage requirements and installation paths. Maps can still require several gigabytes of temporary space. The installer refuses to overwrite installed maps, processes them serially and stops if its free-space reserve is crossed. Keep the private source/tool cache outside the served map directory. Mount only the prepared output at `MAP_ASSETS_DIR`: `/map-assets` in Compose or `DATA_DIR/maps` by default in standalone deployments.
 
-The browser discovers installed map assets by demo map name. Automatic acquisition for an unknown uploaded map is a [proposed separate service](docs/product/MAP-ACQUISITION.md), not an enabled upload feature. The same operator workflow can prepare the actual CS2 weapon, utility, knife and kit icons: see [equipment artwork preparation](tools/assets/README.md#exact-equipment-silhouettes). Install that PNG pack under `/data/maps/equipment`; the HUD loads it locally and uses a labeled equipment fallback when absent. Game artwork is not bundled in Git or Docker. Without a matching model it displays an explicitly labeled position view. Prepared native weapon, grenade and C4 GLBs support static held/POV models and recorded world placements. The optional [model installer](tools/assets/README.md#static-weapon-grenade-and-c4-models) prepares fixed equipment selections and bounded CT/T agents from one native idle pose. Options → Performance reports ready, loading, unavailable and failed models. Hold/POV attachment presets remain approximate, without native arms, recoil or first-person animation. Other operator agent exports can use deterministic generic idle/movement/crouch clips. Source 2 lighting and volumetric effects are not preserved automatically by glTF export. No Valve content is bundled or redistributed by this repository.
+The optional [automatic map preparation service](docs/MAP-ASSETS.md) matches a recording against a bounded operator-approved catalog, downloads only selected official Steam resources and converts one immutable shared pack. It has separate network access, storage and resource limits. Conversion has no network and can write only its staging directory. The parser stays networkless and receives no asset-service volumes or credentials. Enable the `assets` Compose profile and `AUTO_OFFICIAL_MAPS_ENABLED` only after configuring approvals. New official map names require no application code change, but recordings without sufficient identity or with conflicting approved versions stay unavailable. Demo metadata does not guarantee an exact historical map revision. Manual map-name packs are explicitly version-unverified and are used only while automatic preparation is disabled.
+
+The same operator workflow prepares actual CS2 weapon, utility, knife and kit icons: see [equipment artwork preparation](tools/assets/README.md#exact-equipment-silhouettes). Install PNGs under `MAP_ASSETS_DIR/equipment`. The HUD uses local assets and a labeled fallback when absent. Native weapon, grenade and C4 GLBs support held/POV models and recorded world placements. The optional [model installer](tools/assets/README.md#static-weapon-grenade-and-c4-models) prepares fixed equipment selections and bounded CT/T agents with five genuine idle, walk, run and crouch cycles. Recorded speed and crouch blend those cycles at absolute demo time, including on low quality. Held equipment follows the native weapon bone when available. These are approximate locomotion and attachments, without the recorded animation graph, first-person arms, recoil, firing or reload animation. Options → Performance reports asset availability and provenance. Source 2 lighting, materials and volumetric effects remain approximations. No Valve content is bundled or redistributed by this repository.
 
 ## Development
 

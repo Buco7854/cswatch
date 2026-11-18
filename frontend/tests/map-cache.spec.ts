@@ -1,3 +1,4 @@
+import { manualMapAssets } from './fixtures/map-assets';
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { originalMapGLB, originalMapReplay } from './fixtures/original-map';
 import { meshoptMapFixture } from '../../tools/assets/fixtures/meshopt-map.mjs';
@@ -56,9 +57,13 @@ async function install(
     await page.route(`**/api/demos/${demo}/playback`, (route) =>
       route.fulfill({ json: originalMapReplay(map) }),
     );
-    await page.route(`**/api/maps/${map}`, (route) =>
+    await page.route(`**/api/demos/${demo}/map-assets`, (route) =>
       route.fulfill({
-        json: { model: `/map-assets/${map}/desktop/scene.glb`, mobile: null, overview: null },
+        json: manualMapAssets({
+          model: `/map-assets/${map}/desktop/scene.glb`,
+          mobile: null,
+          overview: null,
+        }),
       }),
     );
     await page.route(`**/map-assets/${map}/desktop/scene.glb`, async (route) => {
@@ -198,7 +203,10 @@ test('abandoned pending model aborts without poisoning a fresh same-URL navigati
   release();
   await ready(page);
   expect(counts.get('a')).toBe(2);
-  await expect(page.locator('.position-radar')).toBeVisible();
+  await expect(
+    page.locator('.position-radar'),
+    'A3Dmap without a calibratedoverview must omit the radar',
+  ).toHaveCount(0);
 });
 
 test('a native bitmap finishing after cancellation is closed before a fresh same-URL load can reuse the slot', async ({

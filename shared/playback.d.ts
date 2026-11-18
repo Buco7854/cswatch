@@ -5,6 +5,7 @@ import type { MatchStateData, EventAvailability } from './match-state.js';
 import type { ThrowInputSnapshot } from './throw-input.js';
 import type { CrosshairData } from './crosshairs.js';
 import type { ItemSample, ItemStateInfo } from './item-state.js';
+import type { MapIdentity } from './map-acquisition.js';
 export type Player = { id: string; name: string; team: number };
 /** Recorded actions, independent of the player's physical keyboard layout/binds. */
 export type RecordedInput = {
@@ -94,6 +95,7 @@ export type Grenade = { id: string; kind: string; points: GrenadePoint[] };
 export type Playback = {
   version: 1;
   map: string;
+  mapIdentity?: MapIdentity;
   tickRate: number;
   sample: boolean;
   players: Player[];

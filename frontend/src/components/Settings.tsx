@@ -9,6 +9,7 @@ const names: Record<string, string> = {
   public_access: 'Public access',
   registrations_enabled: 'New registrations',
   guest_uploads_enabled: 'Guest demo uploads',
+  auto_official_maps_enabled: 'Automatic official map preparation',
   steam_enabled: 'Steam sign-in',
   faceit_enabled: 'FACEIT integration',
   transcription_enabled: 'Local speech transcription',

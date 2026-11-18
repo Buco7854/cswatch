@@ -1,3 +1,4 @@
+import { installMapFixture } from './fixtures/map-assets';
 import { test, expect, type Page, type TestInfo } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -60,17 +61,13 @@ async function openFixture(page: Page, current: () => Playback, language: 'en' |
   await page.route('**/api/demos/review-prompts-fixture/playback', (route) =>
     route.fulfill({ json: current() }),
   );
-  await page.route('**/api/maps/de_review_prompts_fixture', (route) =>
-    route.fulfill({ json: { model: null, mobile: null } }),
-  );
+  await installMapFixture(page, current().map, 'review-prompts-fixture');
   await page.route('**/api/assets/agents', (route) =>
     route.fulfill({ json: { ct: null, t: null } }),
   );
   await page.goto('/watch/review-prompts-fixture');
   await expect(page.locator('.viewer-stage canvas')).toBeVisible();
-  await expect(page.locator('.viewer-map-status')).toHaveText(
-    message(language, 'No 3D map installed'),
-  );
+  await expect(page.locator('.viewer-map-status')).toHaveText(message(language, '3D map'));
 }
 const seek = (page: Page, tick: number) =>
   page.getByRole('slider', { name: 'Playback position', exact: true }).fill(String(tick));
@@ -278,7 +275,9 @@ test('recorded moment actions seek into ordinary playback without changing speed
   await expect(page.locator('.viewer-stage canvas')).toHaveCount(0);
   const recordedTarget = page.locator('.tactical-review-target');
   await expect(recordedTarget).toBeVisible();
-  await expect(recordedTarget).toHaveAttribute('cx', '92');
+  // Original overview: origin(-1024,1024), scale2, reference1024.
+  // Recorded landing(320,0) projects to10+(1344/2048)*100,10+(1024/2048)*100.
+  await expect(recordedTarget).toHaveAttribute('cx', '75.625');
   await expect(recordedTarget).toHaveAttribute('cy', '60');
   await expect
     .poll(async () => Number(await slider.inputValue()), { timeout: 7000 })

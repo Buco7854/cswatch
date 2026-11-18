@@ -1,11 +1,80 @@
 /* A single upload instrument, with one shared edge through title, file and policy. */
 .public-site {
+  position: relative;
+  isolation: isolate;
+  overflow: clip;
   min-height: 100svh;
   display: flex;
   flex-direction: column;
   background: var(--ground);
   color: var(--text);
   --public-pad: clamp(20px, 5vw, 64px);
+}
+/* The actual map fills the surrounding space; a neutral photographic scrim
+   protects the centered 680px upload column and fades into the page ground.
+   Foreground controls remain opaque, with no blur or additional card shell. */
+.landing-backdrop {
+  position: absolute;
+  inset: 0 0 auto;
+  width: 100%;
+  height: min(100svh, 1040px);
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+  z-index: 0;
+  opacity: 0;
+}
+.landing-backdrop[data-ready='true'] {
+  opacity: 1;
+}
+.landing-backdrop-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 36%;
+  filter: saturate(0.72) brightness(0.84);
+}
+.landing-backdrop::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--ground) 50%, transparent) 0%,
+      color-mix(in srgb, var(--ground) 24%, transparent) 24%,
+      color-mix(in srgb, var(--ground) 72%, transparent) 62%,
+      var(--ground) 96%
+    ),
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--ground) 18%, transparent) 0%,
+      color-mix(in srgb, var(--ground) 62%, transparent) 27%,
+      color-mix(in srgb, var(--ground) 82%, transparent) 50%,
+      color-mix(in srgb, var(--ground) 62%, transparent) 73%,
+      color-mix(in srgb, var(--ground) 18%, transparent) 100%
+    );
+}
+[data-theme='light'] .landing-backdrop-image {
+  filter: saturate(0.7) brightness(1.05);
+}
+[data-theme='light'] .landing-backdrop::after {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--ground) 54%, transparent) 0%,
+      color-mix(in srgb, var(--ground) 38%, transparent) 26%,
+      color-mix(in srgb, var(--ground) 78%, transparent) 65%,
+      var(--ground) 96%
+    ),
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--ground) 20%, transparent) 0%,
+      color-mix(in srgb, var(--ground) 68%, transparent) 27%,
+      color-mix(in srgb, var(--ground) 90%, transparent) 50%,
+      color-mix(in srgb, var(--ground) 68%, transparent) 73%,
+      color-mix(in srgb, var(--ground) 20%, transparent) 100%
+    );
 }
 .public-header,
 .public-footer {
@@ -16,6 +85,8 @@
   margin-inline: auto;
   padding-inline: var(--public-pad);
   gap: 24px;
+  position: relative;
+  z-index: 1;
 }
 .public-header {
   min-height: 88px;
@@ -47,6 +118,8 @@
   padding: 10px 14px;
 }
 .public-site > main {
+  position: relative;
+  z-index: 1;
   flex: 1;
   display: flex;
   align-items: center;
@@ -261,6 +334,12 @@
   white-space: nowrap;
 }
 @media (max-width: 600px) {
+  .landing-backdrop {
+    height: min(88svh, 760px);
+  }
+  .landing-backdrop-image {
+    object-position: 62% 24%;
+  }
   .public-header {
     min-height: 76px;
     padding-block: 16px;

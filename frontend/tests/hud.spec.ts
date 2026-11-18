@@ -1,3 +1,4 @@
+import { installDemoMapDescriptor } from './fixtures/map-assets';
 import { activateViewerAction } from './fixtures/viewer-actions';
 import { test, expect } from '@playwright/test';
 import { selectOptionsForControl } from './fixtures/viewer-options';
@@ -130,6 +131,7 @@ test('broadcast HUD shows recorded loadouts and inputs without inventing missing
     }),
   );
   await page.route('**/api/demos/hud-fixture/playback', (route) => route.fulfill({ json: replay }));
+  await installDemoMapDescriptor(page, 'hud-fixture');
   await page.goto('/watch/hud-fixture');
   const hud = page.getByRole('complementary', { name: 'Analysis HUD' });
   const ct = hud.locator('.broadcast-bank[data-team="3"]');

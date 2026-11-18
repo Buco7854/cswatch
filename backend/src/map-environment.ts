@@ -13,6 +13,7 @@ import {
 import { validPng } from './png.js';
 import { HttpError } from './security.js';
 import { mapCubeFogSchema } from './map-fog.js';
+import { legacyMapLocation, type MapAssetLocation } from './map-asset-location.js';
 
 /** Prepared offline in viewer Y-up cube order; no runtime Source rotation. */
 export const environmentFaces = ['px', 'nx', 'py', 'ny', 'pz', 'nz'] as const;
@@ -58,36 +59,40 @@ export const validEnvironmentPng = (data: Buffer) => validPng(data, environmentL
 
 /** Pair the environment with both small, prepared tier manifests, without reading
  * or hashing GLBs. An old environment never attaches to a replacement map pack. */
-async function preparedMapPair(root: string, name: string) {
+async function preparedMapPair(location: MapAssetLocation, name: string) {
   const versions: string[] = [];
   let version: string | undefined;
   for (const tier of ['desktop', 'mobile'] as const) {
-    const result = await withDirectory(root, ['maps', name, tier], async (directory) => {
-      const file = await regularFile(
-        directory,
-        'manifest.json',
-        2,
-        environmentLimits.manifestBytes,
-      );
-      if (!file) return;
-      try {
-        const before = await fileVersion(file);
-        const content = await bytesFrom(
-          file,
-          (await file.stat()).size,
+    const result = await withDirectory(
+      location.root,
+      [...location.parts, name, tier],
+      async (directory) => {
+        const file = await regularFile(
+          directory,
+          'manifest.json',
+          2,
           environmentLimits.manifestBytes,
         );
-        const parsed = mapManifestSchema.parse(JSON.parse(content.toString('utf8')));
-        if (parsed.map !== name || parsed.tier !== tier || before !== (await fileVersion(file)))
-          return;
-        return {
-          fingerprint: `${before}:${createHash('sha256').update(content).digest('hex')}`,
-          assetVersion: parsed.assetVersion,
-        };
-      } finally {
-        await file.close();
-      }
-    });
+        if (!file) return;
+        try {
+          const before = await fileVersion(file);
+          const content = await bytesFrom(
+            file,
+            (await file.stat()).size,
+            environmentLimits.manifestBytes,
+          );
+          const parsed = mapManifestSchema.parse(JSON.parse(content.toString('utf8')));
+          if (parsed.map !== name || parsed.tier !== tier || before !== (await fileVersion(file)))
+            return;
+          return {
+            fingerprint: `${before}:${createHash('sha256').update(content).digest('hex')}`,
+            assetVersion: parsed.assetVersion,
+          };
+        } finally {
+          await file.close();
+        }
+      },
+    );
     if (!result || (version !== undefined && result.assetVersion !== version)) return;
     version = result.assetVersion;
     versions.push(result.fingerprint);
@@ -104,7 +109,11 @@ type EnvironmentItem = {
   bytes: number;
 };
 
-export function mapEnvironmentAssets(app: FastifyInstance, dataRoot: string) {
+export function mapEnvironmentAssets(
+  app: FastifyInstance,
+  dataRoot: string,
+  defaultLocation = legacyMapLocation(dataRoot),
+) {
   const cache = new Map<string, EnvironmentItem>();
   const inFlight = new Map<string, Promise<EnvironmentItem | undefined>>();
   let cachedBytes = 0;
@@ -114,15 +123,16 @@ export function mapEnvironmentAssets(app: FastifyInstance, dataRoot: string) {
     if (previous) cachedBytes -= previous.bytes;
     cache.delete(name);
   };
-  const loadNow = async (name: string) => {
-    const pair = await preparedMapPair(dataRoot, name);
+  const loadNow = async (name: string, location: MapAssetLocation) => {
+    const key = `${location.key}:${name}`;
+    const pair = await preparedMapPair(location, name);
     if (!pair) {
-      discard(name);
+      discard(key);
       return;
     }
     const result = await withDirectory(
-      dataRoot,
-      ['maps', 'environments', name],
+      location.root,
+      [...location.parts, 'environments', name],
       async (directory) => {
         const files: FileHandle[] = [];
         try {
@@ -145,7 +155,7 @@ export function mapEnvironmentAssets(app: FastifyInstance, dataRoot: string) {
           const fingerprint = async () =>
             `${pair.fingerprint}:${(await Promise.all(files.map(fileVersion))).join(':')}`;
           const version = await fingerprint();
-          const previous = cache.get(name);
+          const previous = cache.get(key);
           const metadataBytes = await bytesFrom(
             metadata,
             (await metadata.stat()).size,
@@ -165,14 +175,14 @@ export function mapEnvironmentAssets(app: FastifyInstance, dataRoot: string) {
             if (
               unchanged &&
               version === (await fingerprint()) &&
-              (await preparedMapPair(dataRoot, name))?.fingerprint === pair.fingerprint
+              (await preparedMapPair(location, name))?.fingerprint === pair.fingerprint
             ) {
               cache.delete(name);
               cache.set(name, previous);
               return previous;
             }
           }
-          discard(name);
+          discard(key);
           const parsed = metadataSchema.parse(JSON.parse(metadataBytes.toString('utf8')));
           if (parsed.map !== name || parsed.assetVersion !== pair.assetVersion) return;
           const images = {} as Record<Face, Buffer>;
@@ -196,7 +206,7 @@ export function mapEnvironmentAssets(app: FastifyInstance, dataRoot: string) {
           }
           if (
             version !== (await fingerprint()) ||
-            (await preparedMapPair(dataRoot, name))?.fingerprint !== pair.fingerprint
+            (await preparedMapPair(location, name))?.fingerprint !== pair.fingerprint
           )
             return;
           const environment: MapEnvironment = {
@@ -205,7 +215,7 @@ export function mapEnvironmentAssets(app: FastifyInstance, dataRoot: string) {
             sky: {
               brightness: parsed.sky.brightness,
               faces: environmentFaces.map(
-                (face) => `/api/maps/${name}/environment/${face}.png`,
+                (face) => `${location.apiPrefix}/${name}/environment/${face}.png`,
               ) as MapEnvironment['sky']['faces'],
             },
             ...(parsed.fog ? { fog: parsed.fog } : {}),
@@ -218,7 +228,7 @@ export function mapEnvironmentAssets(app: FastifyInstance, dataRoot: string) {
             images,
             bytes: readBytes,
           };
-          cache.set(name, item);
+          cache.set(key, item);
           cachedBytes += item.bytes;
           while (cachedBytes > environmentLimits.cacheBytes) discard(cache.keys().next().value!);
           return item;
@@ -227,19 +237,20 @@ export function mapEnvironmentAssets(app: FastifyInstance, dataRoot: string) {
         }
       },
     );
-    if (!result) discard(name);
+    if (!result) discard(key);
     return result;
   };
-  const load = (name: string): Promise<EnvironmentItem | undefined> => {
-    const pending = inFlight.get(name);
+  const load = (name: string, location = defaultLocation): Promise<EnvironmentItem | undefined> => {
+    const key = `${location.key}:${name}`;
+    const pending = inFlight.get(key);
     if (pending) return pending;
     if (!mapName.safeParse(name).success || inFlight.size >= 32) return Promise.resolve(undefined);
     // Serialize image allocation across maps and coalesce simultaneous six-face
     // requests. At most one bounded pack is decoded/read alongside the cache.
-    const next = queue.then(() => loadNow(name));
+    const next = queue.then(() => loadNow(name, location));
     queue = next.catch(() => undefined);
-    const tracked = next.finally(() => inFlight.delete(name));
-    inFlight.set(name, tracked);
+    const tracked = next.finally(() => inFlight.delete(key));
+    inFlight.set(key, tracked);
     return tracked;
   };
   app.get<{ Params: { name: string; face: string } }>(

@@ -1,3 +1,5 @@
+import { manualMapAssets } from './fixtures/map-assets';
+import { originalOverviewPNG, qaOverview } from './fixtures/original-map';
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { originalMapGLB, qaActor } from './fixtures/original-map';
 import {
@@ -69,13 +71,20 @@ async function install(
   await page.route('**/api/demos/equipment-model-fixture/playback', (route) =>
     route.fulfill({ json: replay }),
   );
-  await page.route(`**/api/maps/${replay.map}`, (route) =>
+  await page.route('**/api/demos/equipment-model-fixture/map-assets', (route) =>
     route.fulfill({
-      json: { model: `/map-assets/${replay.map}/desktop/scene.glb`, mobile: null, overview: null },
+      json: manualMapAssets({
+        model: `/map-assets/${replay.map}/desktop/scene.glb`,
+        mobile: null,
+        overview: { ...qaOverview, image: `/api/maps/${replay.map}/overview.png` },
+      }),
     }),
   );
   await page.route(`**/map-assets/${replay.map}/desktop/scene.glb`, (route) =>
     route.fulfill({ contentType: 'model/gltf-binary', body: originalMapGLB() }),
+  );
+  await page.route(`**/api/maps/${replay.map}/overview.png`, (route) =>
+    route.fulfill({ contentType: 'image/png', body: originalOverviewPNG() }),
   );
   await page.route('**/api/assets/agents', (route) =>
     route.fulfill({ json: { ct: null, t: null } }),
@@ -252,7 +261,7 @@ test('failed equipment is isolated from map and other models, retains low-tier g
   ).toHaveText('1');
   await expect(
     report.getByText(
-      'Equipment uses static spectator attachments, without native arms or recoil animations.',
+      'Held models follow an installed character’s weapon bone when available. POV models use approximate presets without first-person arms or recoil.',
     ),
   ).toBeVisible();
   await page.screenshot({ path: info.outputPath('equipment-status-phone-dark.png') });

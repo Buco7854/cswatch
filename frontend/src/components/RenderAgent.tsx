@@ -9,10 +9,11 @@ import {
   type ReactNode,
 } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import { AnimationMixer } from 'three';
+import { AnimationMixer, Bone, type Object3D } from 'three';
 import { useEquipmentGLTF, useEquipmentScope } from '../equipment-loader';
 import type { ModelScope } from '../model-cache';
-import { prepareAgentModel, genericAgentClip } from '../agent-model';
+import { prepareAgentModel } from '../agent-model';
+import { agentAnimation } from '../agent-animation';
 import { disposeEquipmentInstance } from '../equipment-model';
 import { assertMapBaseColorTextures } from '../map-model';
 
@@ -62,17 +63,19 @@ type AgentProps = {
   id: string;
   tick: number;
   rate: number;
-  moving: boolean;
-  crouched: boolean;
+  speed: number;
+  duck: number;
+  registerWeaponAnchor?: (bone: Object3D) => () => void;
 };
 function LoadedAgent({
   url,
   tick,
   rate,
-  moving,
-  crouched,
+  speed,
+  duck,
   scope,
   ready,
+  registerWeaponAnchor,
 }: AgentProps & { scope: ModelScope; ready: () => void }) {
   const gltf = useEquipmentGLTF(url),
     { invalidate } = useThree();
@@ -84,23 +87,20 @@ function LoadedAgent({
   }, [gltf]);
   const mixer = useMemo(() => new AnimationMixer(prepared.instance), [prepared]);
   const animation = useMemo(
-    () => genericAgentClip(gltf.animations, moving, crouched),
-    [gltf.animations, moving, crouched],
+    () => agentAnimation(mixer, gltf.animations, gltf.parser.json.animations),
+    [mixer, gltf],
   );
   useLayoutEffect(() => {
-    mixer.stopAllAction();
-    if (animation) mixer.clipAction(animation).play();
+    animation.sample(tick / rate, speed, duck);
     invalidate();
-    return () => {
-      mixer.stopAllAction();
-    };
-  }, [mixer, animation, invalidate]);
+  }, [animation, tick, rate, speed, duck, invalidate]);
   useEffect(
     () => () => {
+      animation.stop();
       mixer.uncacheRoot(prepared.instance);
       disposeEquipmentInstance(prepared.root);
     },
-    [mixer, prepared],
+    [mixer, prepared, animation],
   );
   useLayoutEffect(() => {
     if (scope.isCurrent()) {
@@ -108,7 +108,11 @@ function LoadedAgent({
       invalidate();
     }
   }, [scope, ready, invalidate]);
-  useFrame(() => mixer.setTime(tick / rate));
+  useLayoutEffect(() => {
+    const bone = prepared.instance.getObjectByName('wpn');
+    if (animation.native && bone instanceof Bone) return registerWeaponAnchor?.(bone);
+  }, [animation, prepared, registerWeaponAnchor]);
+  useFrame(() => animation.sample(tick / rate, speed, duck), -2);
   return <primitive object={prepared.root} dispose={null} />;
 }
 function PendingAgent({ id, children }: { id: string; children: ReactNode }) {

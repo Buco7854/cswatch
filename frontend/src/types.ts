@@ -8,6 +8,7 @@ export type User = {
 export type Config = {
   setup_required: boolean;
   guest_uploads_enabled: boolean;
+  auto_official_maps_enabled: boolean;
   guest_retention_hours: number;
   public_access: boolean;
   registrations_enabled: boolean;

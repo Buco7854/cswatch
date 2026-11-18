@@ -15,6 +15,7 @@ var/
 test-results/
 playwright-report/
 backend/dist/
+tools/assets/bin/
 .taste-skill/*-inspect/
 core
 core.*

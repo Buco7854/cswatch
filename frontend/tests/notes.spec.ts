@@ -1,3 +1,4 @@
+import { installDemoMapDescriptor } from './fixtures/map-assets';
 import { test, expect } from '@playwright/test';
 import { sample } from '../src/sample';
 import { activateViewerAction } from './fixtures/viewer-actions';
@@ -58,6 +59,8 @@ test('a late private note response cannot reopen review after leaving and revisi
       },
     });
   });
+  await installDemoMapDescriptor(page, 'note-a');
+  await installDemoMapDescriptor(page, 'note-b');
   await page.goto('/watch/note-a');
   await activateViewerAction(page, 'Add note');
   await page.getByPlaceholder('What happened here?').fill('Private pending note from old visit');

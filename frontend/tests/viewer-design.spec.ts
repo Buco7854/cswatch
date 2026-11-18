@@ -1,3 +1,4 @@
+import { installMapFixture } from './fixtures/map-assets';
 import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import type { Playback } from '../../shared/playback';
@@ -215,9 +216,7 @@ async function openFixture(
       },
     }),
   );
-  await page.route('**/api/maps/' + replay.map, (route) =>
-    route.fulfill({ json: { model: null, mobile: null } }),
-  );
+  await installMapFixture(page, replay.map, 'viewer-design-fixture');
   await page.route('**/api/assets/agents', (route) =>
     route.fulfill({ json: { ct: null, t: null } }),
   );

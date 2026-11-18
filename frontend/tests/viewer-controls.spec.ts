@@ -1,3 +1,4 @@
+import { installMapFixture } from './fixtures/map-assets';
 import { test, expect, type Page } from '@playwright/test';
 import { sample } from '../src/sample';
 import { selectOptionsCategory } from './fixtures/viewer-options';
@@ -55,6 +56,7 @@ async function fixture(
   await page.route('**/api/demos/controls-fixture/playback', (route) =>
     route.fulfill({ json: data }),
   );
+  await installMapFixture(page, data.map, 'controls-fixture');
   await page.goto('/watch/controls-fixture');
   await expect(page.locator('.timeline-slider')).toBeVisible();
 }

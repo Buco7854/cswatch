@@ -1,22 +1,22 @@
 # S2V map preparation
 
-This is an **operator-only, CPU pipeline**, separate from the public app. It uses local CS2 content, either selectively downloaded below or provided by an existing installation, and [Source2Viewer-CLI](https://s2v.app/ValveResourceFormat/guides/command-line.html). The runtime does not require .NET or a GPU on the server.
+This is a **trusted operator CPU pipeline**, separate from replay parsing and the HTTP process. The optional isolated asset worker invokes the same map installer only for uniquely approved sources; see [automatic-map deployment](../../docs/MAP-ASSETS.md). It uses local CS2 content, either selectively downloaded below or provided by an existing installation, and [Source2Viewer-CLI](https://s2v.app/ValveResourceFormat/guides/command-line.html). The runtime does not require .NET or a GPU on the server.
 
 ## Install selected official maps from Steam
 
-The operator installer can obtain the selected official map VPKs and their required resources without downloading the whole game. It uses anonymous access to fixed CS2 app `730` and content depot `2347770`. An explicit map list is required. There is no full-game fallback, account login, arbitrary URL option or public HTTP endpoint.
+The operator installer can obtain the selected official map VPKs and their required resources without downloading the whole game. It uses anonymous access to fixed CS2 app `730` and content depot `2347770`. An explicit map list is required. There is no full-game fallback, account login or arbitrary URL option. The public map-request endpoint accepts no source selectors and cannot invoke conversion inside the HTTP or replay worker process.
 
 ```sh
 npm ci --prefix tools/assets
 npm --prefix tools/assets run install-steam -- \
-  --maps de_mirage,de_dust2 \
+  --maps de_mirage,de_dust2 --manifest 807392217824910805 \
   --output /srv/cswatch/maps \
   --cache /srv/cswatch-assets-cache
 ```
 
 Use Node 24 on Linux x64. When executables are not supplied, `prepare-toolchain.mjs` prepares checksum-pinned S2V, SteamFileDownloader and the .NET toolchain in a versioned private cache. It uses the pinned upstream sources and package checksums, and records executable hashes and build provenance. The application image and runtime remain TypeScript and do not acquire .NET or game assets. To use your own trusted installed tools, supply both `--s2v /path/Source2Viewer-CLI` and `--downloader /path/SteamFileDownloader`. Their hashes are recorded instead of claiming they match the bootstrap pins.
 
-The installer first lists exact selected files, checks their sizes and pins one Steam manifest ID. Supply `--manifest PINNED_UINT64` to reuse a known depot version across separate map/equipment runs. The initial listing must match that exact string before any resource download. Without the option, the current official manifest is selected once and pinned for the rest of that run. It then downloads only the selected map VPKs, game search-path files, package directories and the Steam chunks holding needed resources. The package scanner verifies CRCs before traversing resource dependencies. Sparse holes never count as available data. Up to eight dependency waves can reveal materials and then their textures. Before scene export, the actual reference closure's CRC-verified material files are copied in bounded private batches for DATA inspection. Their authored shader names determine the required Vulkan families, highest indexed feature model and exact declared program stages. Only CRC-missing matching programs are selectively fetched. Source proofs, selected families and repairs remain in private installation provenance. Native export failures remain fatal after a complete preflight. Asynchronous progress text is never used to infer which material caused an exception. Unknown materials, models or textures fail installation. Missing baked-cache resources and game scripts remain reported limitations.
+The installer requires `--manifest PINNED_UINT64` and first lists exact selected files against that version. The initial listing must match the explicit string before any resource download. It never guesses the latest manifest or treats a map name as version identity. Historical manifests may become inaccessible: Steam denied a later request for the previously used `6678473446694075055`, while `807392217824910805` was available for new preview/animation preparation. Stop on that failure instead of relabeling old content or silently upgrading it. It then downloads only the selected map VPKs, game search-path files, package directories and the Steam chunks holding needed resources. The package scanner verifies CRCs before traversing resource dependencies. Sparse holes never count as available data. Up to eight dependency waves can reveal materials and then their textures. Before scene export, the actual reference closure's CRC-verified material files are copied in bounded private batches for DATA inspection. Their authored shader names determine the required Vulkan families, highest indexed feature model and exact declared program stages. Only CRC-missing matching programs are selectively fetched. Source proofs, selected families and repairs remain in private installation provenance. Native export failures remain fatal after a complete preflight. Asynchronous progress text is never used to infer which material caused an exception. Unknown materials, models or textures fail installation. Missing baked-cache resources and game scripts remain reported limitations.
 
 Sky preparation inspects the map's actual entity lumps for its enabled `skybox_reference` and `env_sky`. It authorizes one exact prefab VPK inside that selected map's own directory, then lists and downloads it from the same pinned depot manifest. It never guesses the current prefab name when a map references a legacy variant. The same CRC/dependency and shader checks cover that prefab. Its recorded `sky_camera` supplies the landscape origin/scale, and its enabled sky environment takes precedence over the main map's environment when present. The separate sky world is merged offline into the ordinary desktop/mobile GLBs; there is no second runtime map URL. Recorded sky material, exposure, brightness, tint and orientation produce six bounded PNGs prepared in the viewer's Y-up cube-face order. These SDR faces and glTF geometry remain approximations of Source 2 rendering, including clipped HDR range and different lighting/material behavior.
 
@@ -50,7 +50,7 @@ Install `/srv/cswatch/maps` as the web service's `/data/maps` mount or copy the 
 
 `npm --prefix tools/assets run test:installer` exercises synthetic VPK/RERL files, strict selections, pinned prefab acquisition, environment precedence, shader planning, verified map/overview/environment publication, rollback and process cancellation. It does not contact Steam or substitute for a real map export, sky-orientation and alignment check.
 
-Prepared environments live at `environments/<map>/environment.json` alongside `px.png`, `nx.png`, `py.png`, `ny.png`, `pz.png`, `nz.png` and private `provenance.json`. The six equal square PNGs are at most 1024 pixels and 8 MiB each, with a 32 MiB total bound. Runtime discovery checks their hashes, brightness from 0 to 16, and matching map/asset versions in both prepared tier manifests before exposing fixed, instance-policy-protected URLs. Generic static access cannot bypass these checks. Landscape capability reports geometry already merged into the map. The public application never accepts arbitrary sky URLs or performs this conversion on uploaded demos.
+Prepared environments live at `environments/<map>/environment.json` alongside `px.png`, `nx.png`, `py.png`, `ny.png`, `pz.png`, `nz.png` and private `provenance.json`. The six equal square PNGs are at most 1024 pixels and 8 MiB each, with a 32 MiB total bound. Runtime discovery checks their hashes, brightness from 0 to 16, and matching map/asset versions in both prepared tier manifests before exposing fixed, instance-policy-protected URLs. Generic static access cannot bypass these checks. Landscape capability reports geometry already merged into the map. The public application never accepts arbitrary sky URLs. Demo parsing does not convert game assets; optional map acquisition uses the separate approved-source service.
 
 The installer also prepares opacity for explicitly supported atmospheric materials whose native mask channels are absent from S2V's glTF color texture. It validates the full native material/shader identity, selectively acquires only exact local mask/color resources, verifies VPK availability/CRCs and decodes them with their original alpha and linear mask channels. A bounded static phase-zero bake is embedded before tier packing. Its patch preserves the original geometry/binary bytes, changes only the supported material texture binding and records private provenance. It does not infer opacity from tint alpha or apply to unrelated materials. Native panning, Fresnel and depth feather remain explicit approximations; recorded gameplay smoke effects are separate. No extra mask URL or public conversion endpoint is introduced.
 
@@ -128,7 +128,7 @@ Prepare native equipment separately from maps and HUD icons. Use the same explic
 
 ```sh
 npm --prefix tools/assets run install-equipment-models -- \
-  --items all --agents ct,t --manifest 6678473446694075055 \
+  --items all --agents ct,t --manifest 807392217824910805 \
   --output /srv/cswatch/maps --cache /srv/cswatch-asset-cache
 ```
 
@@ -138,14 +138,42 @@ Models are capped at 16 MiB encoded, 16 MiB decoded texture RGBA and 8 MiB decod
 
 Equipment geometry receives one offline +90° Y rotation into viewer meters/Y-up/+X-forward coordinates, with no second Source scale. Static hold/POV presets use measured bounds and keep the model ahead of the camera near plane. They are spectator approximations, without native arms, recoil or first-person animation. Dropped items, grenade rotations and planted C4 use recorded entity transforms when present. C4 and planted C4 share the actual native C4 model, with separate fixed IDs. Native digits and planting animation are not reconstructed.
 
-For agents, the optional installer selects the native third-person body/gloves and one genuine full-pose non-additive rifle-idle clip plus its skeleton. It retargets that single frame into the skin by exact native bone identities. It does not expand the complete animation graph or present a bind T-pose as gameplay. The resulting static rifle-idle pose remains an explicit approximation. Its source S2V axes are preserved for the existing runtime +90° Y correction, unlike equipment's offline correction. Inspect actual prepared characters and weapon placements before public use.
+For agents, the installer selects the native third-person body/gloves and exactly five genuine full-pose rifle clips: idle, walk, run, crouch-idle and crouch-walk. The fixed [native source registry](agent-animation-registry.mjs) excludes the complete animation graph and additive fragments. Exported clips are retargeted by exact bone identities and rigid world transforms, with bounded key/sample counts, source geometry preservation and posed skin-bounds checks before packing. Every pose retains the source S2V axes for the runtime +90° Y correction, unlike equipment's offline correction.
 
-## Other optional agent exports
+Prepared names are exactly `cswatch:idle`, `cswatch:walk`, `cswatch:run`, `cswatch:crouch-idle` and `cswatch:crouch-walk`, with validated `native-locomotion` metadata from the [shared contract](../../shared/agent-animation.d.ts). Recorded world position remains authoritative: the prepared root cannot add travel or yaw a second time. The viewer deterministically samples demo time and blends recorded speed/duck evidence. The verified native loops are in-place, so they do not establish stride matching. These are native cycles with analytical selection, not recorded bone poses, the complete AnimGraph, firing/reload animations or exact weapon grips.
 
-The renderer discovers `DATA_DIR/maps/agents/ct.glb` and `t.glb`. Export chosen agents with S2V using `--gltf_mesh_list` to exclude first-person arms and optional meshes. Export only the idle/walk/run/crouch clips needed; full CS2 animation libraries are very large. Pack an export with:
+The current local proof intentionally combined body rigs from `6678473446694075055` with clips from `807392217824910805`. Provenance records each input and hash separately; this is not one uniform game build. Ordinary installation requests one explicit available manifest for its selected body and clips. Never relabel mixed cached inputs or silently substitute a newer graph when an older manifest is unavailable.
+
+## Prepare existing native agent exports
+
+Agent outputs are `agents/ct.glb` and `t.glb` with bounded manifests/provenance. Use a fresh output directory. Existing local full-pose exports can be packed with:
 
 ```sh
-node prepare-model.mjs --input /tmp/s2v-ct/agent.gltf --output /data/maps/agents/ct.glb
+node tools/assets/prepare-agent-model.mjs \
+  --input /tmp/native-agent/ct.gltf --idle /tmp/native-clips/idle.gltf \
+  --walk /tmp/native-clips/walk.gltf --run /tmp/native-clips/run.gltf \
+  --crouch-idle /tmp/native-clips/crouch-idle.gltf \
+  --crouch-walk /tmp/native-clips/crouch-walk.gltf \
+  --team ct --output /tmp/new-agent-pack/agents --asset-version CS2_BUILD
 ```
 
-Each on-screen agent gets a cloned skeleton. For operator exports that include clips, the renderer selects idle/move/crouch names and samples animation time from the demo clock, so scrubbing is deterministic. This is a generic animation approximation, not CS2's AnimGraph. The simple player body remains the fallback when no model is installed. Player-specific skins, bone-exact poses and first-person weapon animations are not implemented. Validate animation names, runtime size limits and actual rendering before installation.
+All five roles must be supplied together for locomotion. An idle-only input remains an explicitly static prepared pose. Generic arbitrary clip names are not treated as validated native locomotion. Decoded agent geometry, morphs and animation arrays share the 8 MiB model-data bound; encoded GLB and decoded textures each remain capped at 16 MiB. Missing or invalid agents use a visible fallback. Validate genuine map/actor placement and animation in the browser before installation. Player-specific skins and native first-person arms are not implemented.
+
+## Optional landing map preview
+
+A decorative local map screenshot can fade behind the public upload page. Prepare one of the fixed [preview map names](../../shared/map-previews.json) from an operator-provided PNG, outside Git and application images:
+
+```sh
+node tools/assets/prepare-map-preview.mjs \
+  --image /tmp/native-preview/de_mirage.png --map de_mirage \
+  --output /srv/cswatch/maps --version CS2_BUILD \
+  --source 'Local native CS2 map preview, exact source version recorded separately'
+```
+
+The helper fully decodes a bounded single PNG and writes `previews/<map>/{preview.png,preview.json,provenance.json}` without overwriting an existing preview. Runtime delivery binds the image hash and fixed map name under normal setup/private policy. It accepts no external image URL or public image upload and has a quiet no-image fallback. This decorative image is not replay calibration or proof that a matching 3D pack is installed.
+
+## Optional acquisition service and catalog maintenance
+
+The separate assets Docker target supplies tools and the required Linux x86-64 Landlock/seccomp helper without the application database, auth/provider dependencies, account environment or game content. Acquisition alone has network access. S2V and Node conversion subprocesses receive stage-local HOME/TMP, confined byte writes, metadata/process restrictions and no sockets. The trusted supervisor still runs bounded Sharp decoders and publication validation outside that subprocess filter; maintain its memory/container limits and pinned dependencies. This does not make arbitrary native decoders safe or replace host quotas.
+
+The default approval catalog is empty and automatic acquisition is disabled. Operators must review exact identities, manifest pins and map hashes. [Deployment instructions](../../docs/MAP-ASSETS.md) cover read-only application catalog mounts, the isolated one-shot updater, resources, explicit retry and crash recovery. `npm --prefix tools/assets run test:catalog` validates updater bounds, atomic replacement and filesystem protection with original fixtures. No test acquires official game content. Docker/Compose runtime behavior is established by CI, not by the local source tests.

@@ -10,6 +10,8 @@ import { buildUtilityZones, projectilesAt } from '../utility-state';
 import { hasRecordedProjectiles, indexItems, itemsAt } from '../item-state';
 import { equipmentKind, equipmentName } from '../equipment-display';
 import EquipmentGlyph from './EquipmentGlyph';
+import MapUnavailable, { type MapUnavailableAction } from './MapUnavailable';
+import type { MapUnavailableReason } from '../map-availability';
 import './tactical-plot.css';
 export default function TacticalPlot({
   data,
@@ -21,11 +23,17 @@ export default function TacticalPlot({
   overview,
   overviewStatus = 'missing',
   onOverviewState,
+  unavailableReason = 'missing',
+  unavailableNotice,
+  unavailableAction,
 }: {
   data: Playback;
   tick: number;
   selected: string;
   compact?: boolean;
+  unavailableReason?: MapUnavailableReason;
+  unavailableNotice?: { title: string; description: string };
+  unavailableAction?: MapUnavailableAction;
   settings?: ViewerSettings;
   focus?: { x: number; y: number };
   overview?: MapOverview | null;
@@ -74,11 +82,20 @@ export default function TacticalPlot({
     return `${p.x},${p.y}`;
   };
   const { frame } = frameAt(data, tick);
+  if (!calibrated && !data.sample)
+    return compact ? null : (
+      <MapUnavailable
+        notice={unavailableNotice}
+        action={unavailableAction}
+        reason={overview && overviewStatus === 'error' ? 'overview-error' : unavailableReason}
+      />
+    );
+  const painted = Boolean(data.sample) || overviewStatus === 'ready';
   return (
     <svg
       className={compact ? 'position-radar' : 'tactical-plot'}
       viewBox="0 0 120 120"
-      style={{ backgroundColor: tacticalPalette.ground }}
+      style={{ backgroundColor: compact ? 'transparent' : tacticalPalette.ground }}
       role="img"
       aria-label={t(
         calibrated
@@ -104,7 +121,12 @@ export default function TacticalPlot({
           : 0
       }
     >
-      <rect width="120" height="120" rx="2" fill={tacticalPalette.ground} />
+      <rect
+        width="120"
+        height="120"
+        rx="2"
+        fill={compact ? tacticalPalette.radarBackdrop : tacticalPalette.ground}
+      />
       {calibrated ? (
         <>
           <defs>
@@ -131,7 +153,10 @@ export default function TacticalPlot({
           </g>
         ))
       )}
-      <g clipPath={calibrated ? `url(#${clip})` : undefined}>
+      <g
+        visibility={painted ? undefined : 'hidden'}
+        clipPath={calibrated ? `url(#${clip})` : undefined}
+      >
         {settings.utilities &&
           zones
             .filter((zone) => tick >= zone.start && tick < zone.end)

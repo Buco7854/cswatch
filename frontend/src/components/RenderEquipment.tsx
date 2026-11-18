@@ -6,10 +6,13 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
+  type RefObject,
   type ReactNode,
 } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import { Group, MathUtils } from 'three';
+import { Group, MathUtils, Matrix4, type Object3D } from 'three';
+import { nativeWeaponFrame } from '../agent-attachment';
 import {
   prepareEquipmentModel,
   disposeEquipmentInstance,
@@ -146,19 +149,34 @@ function Preset({ value, children }: { value: EquipmentModelTransform; children:
     </group>
   );
 }
-export function HeldEquipment({ position }: { position: Position }) {
+export function HeldEquipment({
+  position,
+  anchor,
+}: {
+  position: Position;
+  anchor?: RefObject<Object3D | null>;
+}) {
   const context = useContext(EquipmentModels),
     key = equipmentIconKey(position.weapon);
   const asset = key && context?.catalog.items[key];
+  const transform = useRef<Group>(null),
+    matrix = useMemo(() => new Matrix4(), []);
+  useFrame(() => {
+    const node = transform.current;
+    if (!node || !asset || !node.parent) return;
+    if (!nativeWeaponFrame(matrix, node.parent, anchor?.current || null)) {
+      const [x, y, z] = asset.attachments.hold.position;
+      matrix.makeTranslation(x, y - (position.duck ?? 0) * 0.7, z);
+    }
+    node.matrix.copy(matrix);
+    node.matrixWorldNeedsUpdate = true;
+  }, -1);
   if (!asset || !position.alive) return null;
   return (
     <group
+      ref={transform}
+      matrixAutoUpdate={false}
       name={'held-equipment:' + position.id + ':' + key}
-      position={[
-        asset.attachments.hold.position[0],
-        asset.attachments.hold.position[1] - (position.duck ?? 0) * 0.7,
-        asset.attachments.hold.position[2],
-      ]}
     >
       <group rotation={[0, 0, -MathUtils.degToRad(position.pitch)]}>
         <group rotation={asset.attachments.hold.rotation} scale={asset.attachments.hold.scale}>

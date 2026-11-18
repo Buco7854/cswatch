@@ -713,8 +713,10 @@ test('synthetic installer run pins every selective fetch and removes only its ow
   try {
     const cache = join(template.root, 'private-cache'),
       output = join(template.root, 'installed'),
-      tool = join(template.root, 'trusted-test-tool');
+      tool = join(template.root, 'trusted-test-tool'),
+      converter = join(template.root, 'trusted-test-converter');
     await writeFile(tool, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    await writeFile(converter, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
     await chmod(tool, 0o755);
     const files = initialSteamFiles([template.map]),
       content = new Map(
@@ -723,7 +725,7 @@ test('synthetic installer run pins every selective fetch and removes only its ow
     const commands = [],
       scratch = [];
     const run = async (command, args, context) => {
-      commands.push({ command, args: [...args] });
+      commands.push({ command, args: [...args], context });
       const argument = (name) => args[args.indexOf(name) + 1];
       if (args[0] === 'ls')
         return {
@@ -776,7 +778,19 @@ test('synthetic installer run pins every selective fetch and removes only its ow
       return { code: 0, stdout: '', stderr: '' };
     };
     const result = await installSteamAssets(
-      { maps: [template.map], manifest: '42', cache, output, s2v: tool, downloader: tool },
+      {
+        maps: [template.map],
+        manifest: '42',
+        cache,
+        output,
+        s2v: converter,
+        downloader: tool,
+        expectedMapHashes: {
+          [template.map]: createHash('sha256')
+            .update(content.get(`game/csgo/maps/${template.map}.vpk`))
+            .digest('hex'),
+        },
+      },
       {
         run,
         index: async () => ({ entries: new Map() }),
@@ -820,12 +834,44 @@ test('synthetic installer run pins every selective fetch and removes only its ow
     assert.ok(
       commands.every((entry) => entry.args[0] !== 'download' && !entry.args.includes('--username')),
     );
+    for (const { command, context } of commands) {
+      if (command === tool) {
+        assert.equal(context.conversionWriteRoots, undefined);
+        continue;
+      }
+      assert.equal(context.conversionWriteRoots.length, 1);
+      const [stage] = context.conversionWriteRoots;
+      assert.ok(stage.startsWith(context.cwd + '/'));
+      assert.notEqual(stage, context.cwd);
+      assert.equal(context.home, join(stage, '.home'));
+      assert.equal(context.temporary, join(stage, '.tmp'));
+      assert.ok(!context.cwd.startsWith(stage + '/'));
+    }
     for (const source of scratch) await assert.rejects(readFile(source));
     assert.deepEqual(
       await readFile(join(cache, 'steam/game/csgo/maps', `${template.map}.vpk`)),
       content.get(`game/csgo/maps/${template.map}.vpk`),
     );
     assert.ok((await readFile(result.report)).length > 0);
+    await assert.rejects(
+      installSteamAssets(
+        {
+          maps: [template.map],
+          manifest: '42',
+          cache: join(template.root, 'mismatch-cache'),
+          output: join(template.root, 'mismatch-output'),
+          s2v: converter,
+          downloader: tool,
+          expectedMapHashes: { [template.map]: '0'.repeat(64) },
+        },
+        {
+          run,
+          index: async () =>
+            assert.fail('A mismatched source must stop before native metadata or geometry work.'),
+        },
+      ),
+      (error) => error.code === 'SOURCE_MAP_MISMATCH',
+    );
   } finally {
     await template.close();
   }

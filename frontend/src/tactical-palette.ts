@@ -1,6 +1,7 @@
 /** Map content keeps its contrast and team meaning independently of the interface theme. */
 export const tacticalPalette = Object.freeze({
   ground: '#525252',
+  radarBackdrop: 'rgba(0, 0, 0, 0.38)',
   grid: '#8c8c8c',
   ct: '#89c8ee',
   t: '#f0a070',

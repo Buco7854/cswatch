@@ -1,3 +1,4 @@
+import { installDemoMapDescriptor } from './fixtures/map-assets';
 import { test, expect } from '@playwright/test';
 
 test('timeline markers use recorded time positions, clustered events seek exactly and round zoom retains review filters', async ({
@@ -96,6 +97,7 @@ test('event stems and native scrubber share endpoint and midpoint coordinates', 
     route.fulfill({ json: replay }),
   );
   await page.setViewportSize({ width: 768, height: 1024 });
+  await installDemoMapDescriptor(page, 'timeline-fixture');
   await page.goto('/watch/timeline-fixture');
   const slider = page.getByRole('slider', { name: 'Playback position' });
   await expect(page.locator('.timeline-event-marker')).toHaveCount(3);

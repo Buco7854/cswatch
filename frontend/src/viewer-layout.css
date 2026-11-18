@@ -176,6 +176,17 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.map-verification-short {
+  display: none;
+}
+@media (max-width: 600px) {
+  .map-verification-full {
+    display: none;
+  }
+  .map-verification-short {
+    display: inline;
+  }
+}
 .viewer-context > span + span::before {
   content: '·';
   margin-inline: 8px;

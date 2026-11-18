@@ -5,18 +5,8 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 mkdirSync(resolve(root, 'dist'), { recursive: true });
-copyFileSync(
-  resolve(root, '../shared/equipment-icons.json'),
-  resolve(root, 'dist/equipment-icons.json'),
-);
-copyFileSync(
-  resolve(root, '../shared/recorded-equipment.json'),
-  resolve(root, 'dist/recorded-equipment.json'),
-);
-copyFileSync(
-  resolve(root, '../shared/equipment-models.json'),
-  resolve(root, 'dist/equipment-models.json'),
-);
+for (const name of ['equipment-icons', 'recorded-equipment', 'equipment-models', 'map-previews'])
+  copyFileSync(resolve(root, `../shared/${name}.json`), resolve(root, `dist/${name}.json`));
 if (process.platform !== 'linux') {
   console.warn('Parser sandbox requires Linux. Use Docker for untrusted demos.');
   process.exit(0);

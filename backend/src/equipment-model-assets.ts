@@ -3,6 +3,7 @@ import type { FileHandle } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
+import { join } from 'node:path';
 import type { EquipmentModel, EquipmentModelCatalog } from '../../shared/equipment-models.js';
 import {
   bytesFrom,
@@ -132,7 +133,11 @@ export function validEquipmentGlb(bytes: Buffer): boolean {
   }
 }
 
-export async function equipmentModelAssetRoutes(app: FastifyInstance, root: string) {
+export async function equipmentModelAssetRoutes(
+  app: FastifyInstance,
+  root: string,
+  mapsRoot = join(root, 'maps'),
+) {
   const cache = new Map<string, { manifestDigest: string; sha256: string; data: Buffer }>();
   let cachedBytes = 0;
   const discard = (id: string) => {
@@ -141,7 +146,7 @@ export async function equipmentModelAssetRoutes(app: FastifyInstance, root: stri
     cache.delete(id);
   };
   const withPack = <T>(id: string, read: (directory: FileHandle) => Promise<T>) =>
-    withDirectory(root, ['maps', 'equipment-models', id], read);
+    withDirectory(mapsRoot, ['equipment-models', id], read);
   const descriptor = async (id: string, directory: FileHandle) => {
     let file: FileHandle | undefined, model: FileHandle | undefined;
     try {

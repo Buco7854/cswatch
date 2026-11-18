@@ -22,7 +22,7 @@ const sha = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const identity = (stat) => `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}`;
 const rootIdentity = (stat) => `${stat.dev}:${stat.ino}`;
 const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
-function completePng(bytes) {
+export function completePng(bytes) {
   if (
     bytes.length < 57 ||
     bytes.length > sourceImageLimits.bytes ||

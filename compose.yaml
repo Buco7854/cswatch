@@ -1,7 +1,5 @@
 name: cswatch
-x-app: &app
-  image: ${CSWATCH_IMAGE:-ghcr.io/buco7854/cswatch:latest}
-  env_file: .env
+x-isolated: &isolated
   restart: unless-stopped
   read_only: true
   user: '1000:1000'
@@ -10,14 +8,27 @@ x-app: &app
   pids_limit: 128
   tmpfs:
     - /tmp:size=768m,mode=1777
+  stop_grace_period: 20s
+x-app: &app
+  <<: *isolated
+  image: ${CSWATCH_IMAGE:-ghcr.io/buco7854/cswatch:latest}
+  env_file: .env
   volumes:
     - cswatch-data:/data
-  stop_grace_period: 20s
 services:
   web:
     <<: *app
     ports:
       - '127.0.0.1:${HOST_PORT:-8000}:8000'
+    environment:
+      MAP_ASSETS_DIR: /map-assets
+      MAP_JOBS_DIR: /map-jobs
+      MAP_CATALOG_FILE: /map-catalog/catalog.json
+    volumes:
+      - cswatch-data:/data
+      - cswatch-map-assets:/map-assets:ro
+      - cswatch-map-jobs:/map-jobs
+      - cswatch-map-catalog:/map-catalog:ro
     mem_limit: 1536m
     cpus: 2
   worker:
@@ -43,5 +54,47 @@ services:
     healthcheck:
       disable: true
     stop_grace_period: 20s
+  assets:
+    <<: *isolated
+    init: true
+    image: ${CSWATCH_ASSETS_IMAGE:-ghcr.io/buco7854/cswatch:assets-latest}
+    profiles: [assets]
+    environment:
+      MAP_ASSETS_DIR: /map-assets
+      MAP_JOBS_DIR: /map-jobs
+      MAP_CACHE_DIR: /map-cache
+      MAP_CATALOG_FILE: /map-catalog/catalog.json
+    networks: [asset-egress]
+    volumes:
+      - cswatch-map-assets:/map-assets
+      - cswatch-map-jobs:/map-jobs
+      - cswatch-map-catalog:/map-catalog:ro
+      - cswatch-map-cache:/map-cache
+    mem_limit: 8g
+    cpus: 2
+    stop_grace_period: 30s
+  catalog:
+    <<: *isolated
+    image: ${CSWATCH_ASSETS_IMAGE:-ghcr.io/buco7854/cswatch:assets-latest}
+    profiles: [maintenance]
+    restart: 'no'
+    network_mode: none
+    command: [node, tools/assets/update-map-catalog.mjs]
+    environment:
+      MAP_CATALOG_FILE: /map-catalog/catalog.json
+    volumes:
+      - cswatch-map-catalog:/map-catalog
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    mem_limit: 256m
+    cpus: 1
+    healthcheck:
+      disable: true
 volumes:
   cswatch-data:
+  cswatch-map-assets:
+  cswatch-map-jobs:
+  cswatch-map-catalog:
+  cswatch-map-cache:
+networks:
+  asset-egress:

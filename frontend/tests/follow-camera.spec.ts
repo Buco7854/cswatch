@@ -1,3 +1,4 @@
+import { manualMapAssets } from './fixtures/map-assets';
 import { expect, test, type Page } from '@playwright/test';
 import { originalMapGLB, originalMapReplay, qaActor } from './fixtures/original-map';
 import { originalAgentGLB } from './fixtures/original-agent';
@@ -124,9 +125,13 @@ test('third-person follow renders the selected actor, follows real recorded tran
   await page.route('**/api/demos/follow-fixture/playback', (route) =>
     route.fulfill({ json: replay }),
   );
-  await page.route(`**/api/maps/${replay.map}`, (route) =>
+  await page.route('**/api/demos/follow-fixture/map-assets', (route) =>
     route.fulfill({
-      json: { model: `/map-assets/${replay.map}/desktop/scene.glb`, mobile: null, overview: null },
+      json: manualMapAssets({
+        model: `/map-assets/${replay.map}/desktop/scene.glb`,
+        mobile: null,
+        overview: null,
+      }),
     }),
   );
   await page.route(`**/map-assets/${replay.map}/desktop/scene.glb`, (route) =>

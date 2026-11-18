@@ -1,0 +1,52 @@
+.map-unavailable {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 96px 24px 144px;
+  background: #303638;
+  color: #f3f4f5;
+  text-align: center;
+}
+.map-unavailable > div {
+  max-width: 380px;
+  min-height: 0;
+  max-height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.map-unavailable h2 {
+  margin: 0 0 10px;
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+.map-unavailable p {
+  margin: 0;
+  color: #d4d8db;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.map-loading-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  color: #f3f4f5;
+  font-size: 14px;
+}
+.map-loading-overlay span {
+  background: #1b2023e6;
+  padding: 10px 14px;
+  border-radius: 6px;
+}
+
+.map-unavailable-action {
+  margin-top: 20px;
+  min-height: 44px;
+  max-width: 100%;
+  white-space: normal;
+}

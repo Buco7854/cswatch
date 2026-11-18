@@ -66,6 +66,7 @@ export async function processOne(db: Store, c: Config) {
     if (m.sample) throw new Error('Uploaded demos cannot publish synthetic sample data');
     const summary = {
       map: m.map,
+      mapIdentity: m.mapIdentity,
       duration: (m.lastTick - m.firstTick) / m.tickRate,
       rounds: m.rounds.length,
       players: m.players,

@@ -3,8 +3,9 @@ import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { readVpkDirectory, resourcePath, source2References } from './source2-dependencies.mjs';
 import { staticModelDependency } from './equipment-source-model.mjs';
-export const agentIdleResource =
-  'animation/anims/world/rifle/rifle_m4a4/idle_m4a4.vnmclip+non_additive.vnmclip_c';
+import { agentAnimationRegistry } from './agent-animation-registry.mjs';
+export const agentIdleResource = agentAnimationRegistry.idle;
+const fixedAnimationResources = new Set(Object.values(agentAnimationRegistry));
 export async function scanEquipmentDependencies({ game, seeds, index = readVpkDirectory }) {
   if (
     !Array.isArray(seeds) ||
@@ -12,7 +13,8 @@ export async function scanEquipmentDependencies({ game, seeds, index = readVpkDi
     seeds.length > 96 ||
     seeds.some(
       (x) =>
-        !/^((weapons|agents)\/models\/[a-z0-9_/-]+\.vmdl_c)$/.test(x) && x !== agentIdleResource,
+        !/^((weapons|agents)\/models\/[a-z0-9_/-]+\.vmdl_c)$/.test(x) &&
+        !fixedAnimationResources.has(x),
     )
   )
     throw Error('Equipment closure requires fixed selected model seeds.');
@@ -31,7 +33,7 @@ export async function scanEquipmentDependencies({ game, seeds, index = readVpkDi
     const resource = queue[cursor];
     if (
       !staticModelDependency(resource) &&
-      !(resource === agentIdleResource && seeds.includes(resource))
+      !(fixedAnimationResources.has(resource) && seeds.includes(resource))
     ) {
       skipped.push(resource);
       continue;

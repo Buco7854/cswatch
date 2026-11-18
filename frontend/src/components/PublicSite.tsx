@@ -4,6 +4,7 @@ import { t } from '../i18n';
 import { useApp } from '../context';
 import Brand from './Brand';
 import LanguageControl from './LanguageControl';
+import LandingBackdrop from './LandingBackdrop';
 import Upload from './Upload';
 
 const repository = 'https://github.com/Buco7854/cswatch';
@@ -17,9 +18,10 @@ export function PublicShell({
   theme: string;
   toggleTheme: () => void;
 }) {
-  const { signIn } = useApp();
+  const { config, signIn } = useApp();
   return (
     <div className="public-site">
+      <LandingBackdrop enabled={config.public_access && !config.setup_required} />
       <header className="public-header">
         <Brand />
         <div className="public-utilities">
