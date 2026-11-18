@@ -496,11 +496,48 @@ test('idle fade follows playback but respects paused state, dialogs, focus, menu
   await page.waitForTimeout(3300);
   await expect(page.getByRole('dialog', { name: 'Viewer options', exact: true })).toBeVisible();
   await expect(frame).toHaveAttribute('data-chrome-visible', 'true');
+  // A slow render frame must not let deferred dialog focus restoration replace
+  // a keyboard destination chosen after the dialog closes.
+  await page.evaluate(() => {
+    const request = window.requestAnimationFrame.bind(window);
+    const cancel = window.cancelAnimationFrame.bind(window);
+    const callbacks = new Map<number, FrameRequestCallback>();
+    let sequence = 0;
+    window.requestAnimationFrame = (callback) => {
+      const id = --sequence;
+      callbacks.set(id, callback);
+      return id;
+    };
+    window.cancelAnimationFrame = (id) => {
+      if (!callbacks.delete(id)) cancel(id);
+    };
+    (window as unknown as { releaseDialogFrame: () => Promise<number> }).releaseDialogFrame =
+      () => {
+        window.requestAnimationFrame = request;
+        window.cancelAnimationFrame = cancel;
+        const pending = [...callbacks.values()];
+        callbacks.clear();
+        return new Promise((resolve) =>
+          request((time) => {
+            for (const callback of pending) callback(time);
+            request(() => resolve(pending.length));
+          }),
+        );
+      };
+  });
   await page.getByRole('button', { name: 'Close viewer options', exact: true }).click();
   // Shift+Tab retains ordinary control navigation, while plain held Tab opens
   // the scoreboard. A visibly keyboard-focused control must prevent idle fade.
   await page.getByRole('button', { name: 'Pause', exact: true }).focus();
   await page.keyboard.press('Shift+Tab');
+  await expect(
+    page.getByRole('button', { name: 'Rewind five seconds', exact: true }),
+  ).toBeFocused();
+  expect(
+    await page.evaluate(() =>
+      (window as unknown as { releaseDialogFrame: () => Promise<number> }).releaseDialogFrame(),
+    ),
+  ).toBeGreaterThan(0);
   await expect(
     page.getByRole('button', { name: 'Rewind five seconds', exact: true }),
   ).toBeFocused();
