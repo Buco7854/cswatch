@@ -2,7 +2,7 @@
 
 Updated 2026-11-18. Use Node 24, a Linux kernel supporting required Landlock/seccomp confinement and the Playwright lockfile's Chromium. The current environment uses Node 24.22.3, Linux 6.12/Landlock ABI 6 and Chromium build 1255. Tests use disposable accounts and original synthetic or checksum-pinned public fixtures. The three authorized supplied recordings were separately verified and deleted.
 
-These are local results. The current animation/map-acquisition revision passes its local aggregate checks. Docker is unavailable locally. Consult the commit-specific [Actions workflow](https://github.com/Buco7854/cswatch/actions/workflows/ci.yaml) for hardened container verification and image publication.
+The [verified runtime release `3d8c2ee`](https://github.com/Buco7854/cswatch/actions/runs/44226669557) passed both local and CI integration checks. Hardened application and asset-worker containers passed CI, and both images published. Anonymous manifest requests returned HTTP 200 for both tags. Docker remained unavailable locally. Newer documentation-only signoff changes do not alter that verified runtime.
 
 ## Current animation and map-acquisition revision
 
@@ -134,6 +134,21 @@ Final genuine third-person follow checks passed with a CT recorded AK at tick 12
 
 Compose uses `ghcr.io/buco7854/cswatch:latest`, with optional `CSWATCH_IMAGE` override and no bundled reverse proxy. Local Compose validation previously passed the read-only/non-root/networkless configuration. Docker is unavailable here. The [release workflow](https://github.com/Buco7854/cswatch/actions/workflows/ci.yaml) must build and exercise actual parsing/private uploads/offline speech in the hardened image before publishing the final commit. Earlier workflows do not establish this revision's result.
 
-The final build, EN/FR coverage, formatting and four production dependency audits passed. The auth/setup focused run passed nine cases with one intentional setup-policy skip. Dedicated setup passed four cases with one environment-policy skip. Staged source review excludes recordings, extracted audio, game artwork, generated caches and private runtime credentials. Prepared packs remain local at ignored `var/maps-final` and are installed as `DATA_DIR/maps` separately from the code/image. No image publication is claimed until that revision's workflow succeeds. Cache remains unavailable unless a later run obtains enough storage and completes publication.
+The final build, EN/FR coverage, formatting and four production dependency audits passed. The auth/setup focused run passed nine cases with one intentional setup-policy skip. Dedicated setup passed four cases with one environment-policy skip. Staged source review excludes recordings, extracted audio, game artwork, generated caches and private runtime credentials. Prepared packs remain local at ignored `var/maps-final` and are installed as `DATA_DIR/maps` separately from the code/image. No image publication is claimed until that revision's workflow succeeds. Cache 3D remains unavailable unless a later run obtains enough storage and completes publication.
 
 Live Steam/FACEIT credentials and approved partner downloads, broader map/version coverage, representative subtitle quality, physical S24/TV performance and independent security review remain external evidence. All QA artifacts above are local ignored output, not bundled game content or user data.
+
+## Released images and final Cache coverage
+
+Runtime commit `3d8c2eeef89a8fca172cb04850a0f578910f7e36`, [Actions run 44226669557](https://github.com/Buco7854/cswatch/actions/runs/44226669557): verify job `134541392595` and publish job `134544868526` both succeeded. CI confirms 283 backend/178 asset passes without skips, 135 public journeys, private closed/open and first-admin setup. The hardened app smoke reports required sandbox, private guest/ownership/sharing and actual offline transcription. Asset smoke reports `containerBoundary: true`, kernel confinement, publication and corrupt-output rejection with zero official downloads.
+
+Anonymous registry HEAD checks returned HTTP 200:
+
+- `ghcr.io/buco7854/cswatch:latest`, digest `sha256:6aea6fbc1116ecfe104ea7fd4e25064b04dbf42a57a1a91256c327b6a53ee425`.
+- `ghcr.io/buco7854/cswatch:assets-latest`, digest `sha256:a349e308a1be3aae0ce16d0223a542225f42287722712b12ac7aa41bf2f1164d`.
+
+Cache-only raw-cache reclamation removed 323,903,488 bytes of unused page-aligned gaps while preserving all 2,164 required CRC resources and 182 prepared-file hashes. The subsequent explicitly pinned `807392217824910805` attempt stopped at Steam manifest preflight with exit 5 and no access code. No newer source was substituted and no Cache 3D output was published. Evidence: `/tmp/cswatch-cache-final-attempt-proof.json`.
+
+The cached native overview resources remained valid and were prepared offline: PNG 1024×1024, 108,097 encoded bytes, 4,194,304 decoded bytes, SHA-256 `6b6bf1597ddcceb834e0859e7b18299ff37a86facf130ac01de285c835451e74`, origin `(-2000,3250)`, scale `5.5`, reference 1024. It is installed at ignored `var/maps-final/overviews/de_cache`. Source/header/hash proof: `/tmp/cswatch-cache-overview-final-proof.json`.
+
+Four original-QA browser profiles (1440 desktop/390 phone, dark/light) loaded that actual HTTP PNG and checked exact calibrated marker projection before/after seeking, with deliberately misleading world bounds and forced no-WebGL. All passed, with no GLB request, duplicate compact radar, errors or overflow. Screenshots explicitly label synthetic positions and are not evidence of a real Cache recording or 3D rendering. All four captures were inspected. Evidence: `.design/cache-overview-validation/report.json`.
