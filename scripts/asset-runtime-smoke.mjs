@@ -137,6 +137,9 @@ if (inContainer) {
     'map-catalog.js',
     'map-identity.js',
     'map-jobs.js',
+    'map-removals.js',
+    'png.js',
+    'presentation-assets.js',
   ]);
   const requireBackend = createRequire(join(root, 'backend/package.json'));
   for (const name of [
