@@ -12,7 +12,7 @@ import {
 import type { ReactNode } from 'react';
 import type { ListenerPose } from '../viewer-audio';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { OrbitControls } from '@react-three/drei';
+import { Html, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import type { Playback, Position } from '../types';
 import TacticalPlot from './TacticalPlot';
@@ -33,7 +33,9 @@ export type SceneFocus = {
 import { frameAt, playbackBounds, defaultSettings, type ViewerSettings } from '../playback';
 import { Line } from '@react-three/drei';
 import { freeCameraAction, typingOrDialog } from '../free-camera';
+import { installFreeCameraLook } from '../free-camera-look';
 import { thirdPersonFollow } from '../follow-camera';
+import { firstPersonView, overheadDistance } from '../pov-camera';
 import { mapSurface, type MapUnavailableReason } from '../map-availability';
 import MapUnavailable from './MapUnavailable';
 import { mapAcquisitionMessage, type DemoMapState } from '../demo-map-assets';
@@ -49,6 +51,7 @@ import { useAgentAssets } from '../agent-assets';
 import { useModelLeases } from '../equipment-loader';
 import { playerPose, type PoseTiming } from '../player-pose';
 import { recordedLocomotion } from '../agent-locomotion';
+import './spectator-hud.css';
 import RenderAgent, {
   GenericAgentBody,
   AgentModels,
@@ -304,6 +307,9 @@ function Agent({
   alpha,
   selected,
   xray,
+  name,
+  labels,
+  hideNearCamera,
   showMarkers,
   model,
   tick,
@@ -317,6 +323,9 @@ function Agent({
   alpha: number;
   selected: boolean;
   xray: boolean;
+  name?: string;
+  labels: boolean;
+  hideNearCamera: boolean;
   showMarkers: boolean;
   model: string | null;
   tick: number;
@@ -340,10 +349,21 @@ function Agent({
     };
   }, []);
   const ref = useRef<THREE.Group>(null);
+  const { camera } = useThree();
+  const eye = useRef(new THREE.Vector3());
+  const [nearCamera, setNearCamera] = useState(false);
+  const priorNearCamera = useRef(false);
   useFrame(() => {
     if (!ref.current) return;
     ref.current.position.set(pose.x * UNIT, pose.z * UNIT, -pose.y * UNIT);
     ref.current.rotation.y = THREE.MathUtils.degToRad(pose.yaw);
+    eye.current.set(pose.x * UNIT, pose.z * UNIT + 1.65 - (pose.duck ?? 0) * 0.7, -pose.y * UNIT);
+    const near = hideNearCamera && camera.position.distanceToSquared(eye.current) < 0.25;
+    ref.current.visible = !near;
+    if (near !== priorNearCamera.current) {
+      priorNearCamera.current = near;
+      setNearCamera(near);
+    }
   }, -3);
   const color = position.team === 3 ? '#9ec7da' : '#e7ba73';
   if (!position.alive) return null;
@@ -356,7 +376,8 @@ function Agent({
             color={color}
             transparent
             opacity={0.27}
-            depthTest={false}
+            depthTest
+            depthFunc={THREE.GreaterDepth}
             depthWrite={false}
           />
         </mesh>
@@ -376,7 +397,35 @@ function Agent({
         <GenericAgentBody team={position.team} id={position.id} />
       )}
       <HeldEquipment position={pose} anchor={weaponAnchor} />
-      {showMarkers && (
+      {showMarkers && labels && name && !nearCamera && (
+        <Html
+          key={xray ? 'through-walls' : 'visible-only'}
+          center
+          position={[0, 2.08 - (pose.duck ?? 0) * 0.65, 0]}
+          occlude={!xray}
+          zIndexRange={[2, 0]}
+          style={{ pointerEvents: 'none' }}
+        >
+          <div
+            className="actor-label"
+            data-team={position.team}
+            data-player={position.id}
+            role="img"
+            aria-label={t('{{name}}, {{health}} health', { name, health: position.health })}
+          >
+            <span className="actor-label-name">{name}</span>
+            {Number.isFinite(position.health) && position.health >= 0 && (
+              <span className="actor-label-health">
+                <span className="actor-label-track" aria-hidden="true">
+                  <span style={{ width: Math.min(100, position.health) + '%' }} />
+                </span>
+                <span>{position.health}</span>
+              </span>
+            )}
+          </div>
+        </Html>
+      )}
+      {showMarkers && !labels && (
         <mesh position={[0, 2, 0]}>
           <sphereGeometry args={[selected ? 0.15 : 0.09, 8, 8]} />
           <meshBasicMaterial color={selected ? '#ffffff' : color} />
@@ -465,6 +514,11 @@ function World({
   );
   const orbit = useRef<React.ComponentRef<typeof OrbitControls>>(null);
   useEffect(() => {
+    if (mode !== 'orbit' || preview || data.sample || !(camera instanceof THREE.PerspectiveCamera))
+      return;
+    return installFreeCameraLook(gl.domElement, camera, invalidate);
+  }, [mode, preview, data.sample, camera, gl, invalidate]);
+  useEffect(() => {
     if (mode !== 'orbit' || preview) return;
     const root = gl.domElement.closest('.viewer-frame');
     if (!root) return;
@@ -530,6 +584,7 @@ function World({
     };
   }, [mode, preview, gl, invalidate]);
   const freeView = useRef<{ position: THREE.Vector3; target: THREE.Vector3 } | null>(null);
+  const previousMode = useRef<string | undefined>(undefined);
   const { frame, next, alpha } = frameAt(data, tick);
   const viewedPlayer = frame.players.find((player) => player.id === selected);
   const poseTiming: PoseTiming = {
@@ -550,6 +605,8 @@ function World({
     return { center: box.getCenter(new THREE.Vector3()), extent: Math.max(size.x, size.z, 20) };
   }, [data.sample, data.worldBounds, data.worldBounds ? null : data.frames]);
   useEffect(() => {
+    const priorMode = previousMode.current;
+    previousMode.current = mode;
     if (mode === 'orbit' && focus) {
       const target = new THREE.Vector3(
         focus.target.x * UNIT,
@@ -567,15 +624,35 @@ function World({
       orbit.current?.target.copy(target);
       orbit.current?.update();
     } else if (mode === 'orbit') {
+      let initial = freeView.current;
+      if (!initial && !data.sample) {
+        if (priorMode === 'pov' || priorMode === 'follow') {
+          initial = {
+            position: camera.position.clone(),
+            target: camera.position
+              .clone()
+              .add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(8)),
+          };
+        } else {
+          const observed = viewedPlayer || frame.players.find((player) => player.alive);
+          if (observed) {
+            const view = firstPersonView(observed);
+            initial = {
+              position: new THREE.Vector3(...view.position),
+              target: new THREE.Vector3(...view.target),
+            };
+          }
+        }
+      }
       camera.position.copy(
-        freeView.current?.position ||
+        initial?.position ||
           bounds.center
             .clone()
             .add(
               new THREE.Vector3(bounds.extent * 0.57, bounds.extent * 0.65, bounds.extent * 0.62),
             ),
       );
-      const target = freeView.current?.target || bounds.center;
+      const target = initial?.target || bounds.center;
       camera.lookAt(target);
       orbit.current?.target.copy(target);
       orbit.current?.update();
@@ -585,7 +662,11 @@ function World({
       if (mode === 'orbit')
         freeView.current = {
           position: camera.position.clone(),
-          target: orbit.current?.target.clone() || bounds.center.clone(),
+          target: data.sample
+            ? orbit.current?.target.clone() || bounds.center.clone()
+            : camera.position
+                .clone()
+                .add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(8)),
         };
     };
   }, [mode, bounds, camera, focus?.id, invalidate]);
@@ -618,7 +699,11 @@ function World({
       return;
     }
     if (mode === 'tactical') {
-      camera.position.copy(bounds.center).add(new THREE.Vector3(0, bounds.extent * 1.15, 0.01));
+      const distance =
+        camera instanceof THREE.PerspectiveCamera
+          ? overheadDistance(bounds.extent, camera.fov, camera.aspect)
+          : bounds.extent * 1.15;
+      camera.position.copy(bounds.center).add(new THREE.Vector3(0, distance, 0.01));
       camera.lookAt(bounds.center);
       return;
     }
@@ -626,7 +711,6 @@ function World({
     if (!p) return;
     const n = next.players.find((n) => n.id === p.id),
       pose = playerPose(p, n, alpha, poseTiming);
-    const pos = vector(pose);
     if (mode === 'follow') {
       const follow = thirdPersonFollow(p, n, alpha, poseTiming);
       if (follow) {
@@ -634,20 +718,9 @@ function World({
         camera.lookAt(...follow.target);
       }
     } else {
-      const yaw = THREE.MathUtils.degToRad(pose.yaw),
-        pitch = THREE.MathUtils.degToRad(pose.pitch);
-      camera.position.copy(pos).add(new THREE.Vector3(0, 1.65 - (pose.duck ?? 0) * 0.7, 0));
-      camera.lookAt(
-        camera.position
-          .clone()
-          .add(
-            new THREE.Vector3(
-              Math.cos(yaw) * Math.cos(pitch),
-              -Math.sin(pitch),
-              -Math.sin(yaw) * Math.cos(pitch),
-            ),
-          ),
-      );
+      const view = firstPersonView(pose);
+      camera.position.set(...view.position);
+      camera.lookAt(...view.target);
     }
   });
   const audioForward = useRef(new THREE.Vector3());
@@ -714,6 +787,9 @@ function World({
               alpha={alpha}
               selected={p.id === selected && !preview}
               xray={settings.xray && !preview}
+              name={data.players.find((player) => player.id === p.id)?.name}
+              labels={settings.playerLabels && !preview && (Boolean(data.sample) || modelReady)}
+              hideNearCamera={mode === 'orbit' && !preview && !data.sample}
               showMarkers={!(mode === 'follow' && p.id === selected)}
               model={!preview ? (p.team === 3 ? agents.ct : agents.t) : null}
               tick={tick}
@@ -760,14 +836,17 @@ function World({
             </mesh>
           )}
       </group>
-      <OrbitControls
-        ref={orbit}
-        enabled={mode === 'orbit' && !preview}
-        enableDamping
-        maxPolarAngle={Math.PI / 2 - 0.05}
-        minDistance={3}
-        maxDistance={bounds.extent * 3}
-      />
+      {data.sample && (
+        <OrbitControls
+          ref={orbit}
+          enabled={mode === 'orbit' && !preview}
+          enableDamping
+          minPolarAngle={0.02}
+          maxPolarAngle={Math.PI - 0.02}
+          minDistance={3}
+          maxDistance={bounds.extent * 3}
+        />
+      )}
     </>
   );
 }

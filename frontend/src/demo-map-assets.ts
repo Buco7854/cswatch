@@ -58,6 +58,7 @@ export const retryableMapFailures = new Set([
   'storage_limit',
   'preparation_failed',
   'worker_interrupted',
+  'removed_by_admin',
 ]);
 const codes = new Set([
   'source_unavailable',
@@ -66,6 +67,7 @@ const codes = new Set([
   'preparation_failed',
   'approval_removed',
   'worker_interrupted',
+  'removed_by_admin',
   'queue_full',
 ]);
 const readinessReasons = new Set([
@@ -331,23 +333,25 @@ export function mapAcquisitionMessage(
     };
   if (info.acquisition === 'failed')
     return {
-      title: 'Map preparation failed',
+      title: info.code === 'removed_by_admin' ? 'Map deleted' : 'Map preparation failed',
       description:
-        info.code === 'source_mismatch'
-          ? info.resolution === 'latest'
-            ? 'The downloaded files do not match the selected official map source. No substitute source will be used.'
-            : 'The source files do not match the approved map version. No different version will be substituted.'
-          : info.code === 'source_unavailable'
+        info.code === 'removed_by_admin'
+          ? 'The administrator deleted this map. Preparing it again requires an explicit retry after the cooldown.'
+          : info.code === 'source_mismatch'
             ? info.resolution === 'latest'
-              ? 'The selected official Steam source is unavailable. The administrator needs to check the preparation worker.'
-              : 'The approved Steam source is unavailable. The administrator needs to check its source configuration.'
-            : info.code === 'storage_limit'
-              ? 'Map preparation stopped at the configured storage limit. The administrator needs to free space.'
-              : info.code === 'approval_removed'
-                ? 'The map approval was removed or changed. Assets from that approval will not be loaded.'
-                : info.code === 'worker_interrupted'
-                  ? 'The preparation worker stopped before completing this map. The administrator needs to check the job.'
-                  : 'The instance administrator needs to check the preparation worker. No different map version will be substituted.',
+              ? 'The downloaded files do not match the selected official map source. No substitute source will be used.'
+              : 'The source files do not match the approved map version. No different version will be substituted.'
+            : info.code === 'source_unavailable'
+              ? info.resolution === 'latest'
+                ? 'The selected official Steam source is unavailable. The administrator needs to check the preparation worker.'
+                : 'The approved Steam source is unavailable. The administrator needs to check its source configuration.'
+              : info.code === 'storage_limit'
+                ? 'Map preparation stopped at the configured storage limit. The administrator needs to free space.'
+                : info.code === 'approval_removed'
+                  ? 'The map approval was removed or changed. Assets from that approval will not be loaded.'
+                  : info.code === 'worker_interrupted'
+                    ? 'The preparation worker stopped before completing this map. The administrator needs to check the job.'
+                    : 'The instance administrator needs to check the preparation worker. No different map version will be substituted.',
     };
   if (info.readinessReason) {
     const explanations: Record<

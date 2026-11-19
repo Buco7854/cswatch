@@ -37,6 +37,10 @@ The private `/map-cache` tool volume must permit execution of checksum-verified 
 
 ## Readiness and troubleshooting
 
+Administration lists worker-prepared snapshots with a reusable deletion confirmation. Deletion removes the selected map/radar/landscape snapshot for all demos using it while retaining recordings. The HTTP service queues an exact reviewed marker/version, and the asset worker performs retirement and bounded cleanup. Operator-managed directories are listed read-only. A deleted snapshot is not downloaded again automatically. Its demo owner can explicitly request preparation again after cleanup. The assets service must be running for deletion.
+
+The same page shows fixed native-player, HUD-artwork and equipment preparation. Fresh installations obtain these shared banks automatically after successful official inventory discovery. Core player models and HUD icons come first, then idle preview/audio and one equipment model at a time. Unsupported fixed resources remain unavailable rather than being replaced with another weapon. Safe progress and a bounded retry action diagnose failed preparation. This does not provide arbitrary asset downloads or choose historical game versions. Existing operator banks are preserved.
+
 Administration separates automatic-policy state, the worker heartbeat, the official-list freshness and the optional historical catalog. The administrator-only diagnostic response contains bounded status/count/version fields, without host paths, credentials or Steam requests. Viewer explanations distinguish automatic preparation disabled, worker unavailable, official list missing/stale, unknown official map, invalid recording identity and lack of owner authorization. An empty catalog is not itself an error for latest-official preparation.
 
 For a newly uploaded Ancient recording, enable automatic maps and confirm that the assets service is running and has a fresh official list containing `de_ancient`. No historical Ancient approval is required for the clearly labeled latest mode. Inspect the service with:

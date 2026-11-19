@@ -3,6 +3,7 @@
 import { access, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
@@ -25,9 +26,19 @@ import {
 import { prepareToolchain } from './prepare-toolchain.mjs';
 import { localDirectory } from './toolchain-security.mjs';
 import { agentSourceRegistry } from './prepare-agent-model.mjs';
+import { markSteamRateLimit } from './official-map-inventory.mjs';
 const MiB = 1024 ** 2;
 const agentScript = fileURLToPath(new URL('./prepare-agent-model.mjs', import.meta.url));
 const prepareScript = fileURLToPath(new URL('./prepare-equipment-model.mjs', import.meta.url));
+export function agentRolesForIndex(index, allowIdleFallback = false) {
+  const roles = [...agentAnimationRoles];
+  if (allowIdleFallback && roles.some((role) => !index.entries.has(agentAnimationRegistry[role]))) {
+    if (!index.entries.has(agentAnimationRegistry.idle))
+      throw Error('The fixed native idle clip is unavailable.');
+    return ['idle'];
+  }
+  return roles;
+}
 export async function installEquipmentModels(options, adapters = {}) {
   const agents =
     options.agents === undefined
@@ -43,7 +54,7 @@ export async function installEquipmentModels(options, adapters = {}) {
     agents.some((team) => !Object.hasOwn(agentSourceRegistry, team))
   )
     throw Error('Select agent teams ct,t explicitly.');
-  const ids = options.items === undefined ? [] : selectedEquipmentModels(options.items);
+  let ids = options.items === undefined ? [] : selectedEquipmentModels(options.items);
   if (!ids.length && !agents.length)
     throw Error('Select explicit equipment items and/or agent teams.');
   if (
@@ -64,6 +75,12 @@ export async function installEquipmentModels(options, adapters = {}) {
   await readableDirectory(output);
   await localDirectory(output);
   await localDirectory(cache, true);
+  if (options.networkDeny) {
+    await regular(options.networkDeny, MiB);
+    const probe = spawnSync(options.networkDeny, ['--check'], { stdio: 'ignore', timeout: 5000 });
+    if (probe.error || probe.status !== 0)
+      throw Error('Required equipment conversion confinement is unavailable.');
+  }
   const game = join(cache, 'steam');
   await localDirectory(game, true);
   if (await exists(target)) await localDirectory(target);
@@ -78,6 +95,10 @@ export async function installEquipmentModels(options, adapters = {}) {
       throw Error(
         'Equipment already installed; use a new output root rather than replacing live assets.',
       );
+  if (options.networkDeny) {
+    if (ids.length) await readableDirectory(target);
+    if (agents.length) await readableDirectory(agentOutput);
+  }
   const tools = options.s2v
     ? {
         s2v: resolve(options.s2v),
@@ -85,7 +106,7 @@ export async function installEquipmentModels(options, adapters = {}) {
         provenance: { mode: 'operator-supplied executables' },
       }
     : await (adapters.prepareToolchain ?? prepareToolchain)({
-        cache: join(cache, 'tools'),
+        cache: options.toolchainCache ? resolve(options.toolchainCache) : join(cache, 'tools'),
         signal: options.signal,
         onProgress: options.onProgress,
       });
@@ -102,8 +123,12 @@ export async function installEquipmentModels(options, adapters = {}) {
   const root = await mkdtemp(join(cache, 'equipment-install-')),
     home = join(root, 'home'),
     temporary = join(root, 'tmp'),
-    pins = join(root, 'manifests');
-  for (const path of [home, temporary, pins, game])
+    pins = join(root, 'manifests'),
+    conversion = join(root, 'conversion'),
+    nativeHome = join(conversion, 'home'),
+    nativeTmp = join(conversion, 'tmp');
+  await options.registerStage?.(root);
+  for (const path of [home, temporary, pins, game, conversion, nativeHome, nativeTmp])
     await mkdir(path, { recursive: true, mode: 0o700 });
   await writeFile(
     join(pins, `manifest_${STEAM_DEPOT}.txt`),
@@ -111,22 +136,40 @@ export async function installEquipmentModels(options, adapters = {}) {
     { flag: 'wx', mode: 0o600 },
   );
   let sequence = 0;
+  let conversionStarted = false;
   const selection = new Map(),
     downloads = [],
     installed = [],
     installedAgents = [];
   const progress = (stage, details = {}) => options.onProgress?.({ stage, ...details });
-  const execute = (command, args, stage, extra = {}) => {
+  const execute = async (command, args, stage, extra = {}) => {
     progress(stage);
-    return (adapters.run ?? runAssetProcess)(command, args, {
-      cwd: root,
-      home,
-      temporary,
-      signal: options.signal,
-      log: join(root, `${String(++sequence).padStart(3, '0')}-${stage}.log`),
-      storageGuard: () => checkFreeReserve(cache, output),
-      ...extra,
-    });
+    const native = command !== tools.downloader && Boolean(options.networkDeny);
+    if (native && !conversionStarted) {
+      conversionStarted = true;
+      await options.onConverting?.();
+    }
+    try {
+      return await (adapters.run ?? runAssetProcess)(
+        native ? options.networkDeny : command,
+        native
+          ? ['--write-root', conversion, '--write-root', output, '--', command, ...args]
+          : args,
+        {
+          cwd: root,
+          home: native ? nativeHome : home,
+          temporary: native ? nativeTmp : temporary,
+          conversionWriteRoots: native ? [conversion, output] : undefined,
+          signal: options.signal,
+          log: join(root, `${String(++sequence).padStart(3, '0')}-${stage}.log`),
+          storageGuard: () => checkFreeReserve(cache, output),
+          ...extra,
+        },
+      );
+    } catch (error) {
+      if (command === tools.downloader) markSteamRateLimit(error);
+      throw error;
+    }
   };
   const download = async (records, label) => {
     records = checkedBatch(records);
@@ -167,25 +210,43 @@ export async function installEquipmentModels(options, adapters = {}) {
       { timeoutMs: 120000 },
     );
     const plan = parseSteamListing(listing.stdout, initial);
-    if (plan.manifest !== options.manifest) throw Error('Equipment depot manifest mismatch.');
+    if (plan.manifest !== options.manifest)
+      throw Object.assign(Error('Equipment depot manifest mismatch.'), {
+        code: 'SOURCE_MAP_MISMATCH',
+      });
     await download(
       plan.files.map((file) => ({ selector: file.file, bytes: file.bytes })),
       'equipment-indexes',
     );
     for (const file of plan.files)
       if ((await fileHash(join(game, file.file), 'sha1', file.bytes)) !== file.sha1)
-        throw Error('Equipment source index hash mismatch.');
+        throw Object.assign(Error('Equipment source index hash mismatch.'), {
+          code: 'SOURCE_MAP_MISMATCH',
+        });
     const index = adapters.index ?? readVpkDirectory,
       csgo = await index(join(game, 'game/csgo/pak01_dir.vpk'));
+    const unsupported = ids.filter((id) => !csgo.entries.has(equipmentModelRegistry[id].resource));
+    if (options.allowMissing) ids = ids.filter((id) => !unsupported.includes(id));
+    if (!ids.length && !agents.length) {
+      if (options.allowMissing)
+        return {
+          installed: [],
+          unsupported,
+          assetVersion: `steam-${STEAM_DEPOT}-${options.manifest}`,
+        };
+      throw Error('No fixed native models are available.');
+    }
+    if (options.firstItemOnly) ids = ids.slice(0, 1);
     const resources = [
       ...new Set([
         ...ids.map((id) => equipmentModelRegistry[id].resource),
         ...agents.map((team) => agentSourceRegistry[team]),
       ]),
     ];
+    let animationRoles = agents.length ? agentRolesForIndex(csgo, options.allowIdleFallback) : [];
     const closureSeeds = [
       ...resources,
-      ...(agents.length ? Object.values(agentAnimationRegistry) : []),
+      ...(agents.length ? animationRoles.map((role) => agentAnimationRegistry[role]) : []),
     ];
     await download(
       closureSeeds.map((resource) => {
@@ -201,8 +262,11 @@ export async function installEquipmentModels(options, adapters = {}) {
     const modelSelections = new Map();
     for (const [i, resource] of resources.entries()) {
       const bytes = await csgo.readEntry(resource);
-      if (!bytes) throw Error('Selected native model failed CRC.');
-      const path = join(root, `model-${i}.vmdl_c`);
+      if (!bytes)
+        throw Object.assign(Error('Selected native model failed CRC.'), {
+          code: 'SOURCE_MAP_MISMATCH',
+        });
+      const path = join(conversion, `model-${i}.vmdl_c`);
       await writeFile(path, bytes, { flag: 'wx', mode: 0o600 });
       const data = await execute(tools.s2v, ['-i', path, '--block', 'DATA'], `model-${i}-data`),
         control = await execute(tools.s2v, ['-i', path, '--block', 'CTRL'], `model-${i}-ctrl`);
@@ -254,7 +318,7 @@ export async function installEquipmentModels(options, adapters = {}) {
     for (const [i, id] of ids.entries()) {
       const resource = equipmentModelRegistry[id].resource,
         selected = modelSelections.get(resource),
-        exportRoot = join(root, `export-${i}`);
+        exportRoot = join(conversion, `export-${i}`);
       await mkdir(exportRoot);
       const input = join(exportRoot, 'model.gltf');
       const result = await execute(
@@ -303,6 +367,7 @@ export async function installEquipmentModels(options, adapters = {}) {
           selected.meshes.join(','),
           '--manifest',
           options.manifest,
+          ...(options.networkDeny ? ['--confined'] : []),
         ],
         `equipment-${i}-pack`,
       );
@@ -310,10 +375,10 @@ export async function installEquipmentModels(options, adapters = {}) {
       await rm(exportRoot, { recursive: true, force: true });
     }
     if (agents.length) {
-      const animationRoot = join(root, 'native-locomotion');
+      const animationRoot = join(conversion, 'native-locomotion');
       await mkdir(animationRoot);
       const animations = {};
-      for (const role of agentAnimationRoles) {
+      for (const role of animationRoles) {
         const path = join(animationRoot, `${role}.gltf`);
         const result = await execute(
           tools.s2v,
@@ -338,16 +403,21 @@ export async function installEquipmentModels(options, adapters = {}) {
           result.code !== 0 ||
           !(await exists(path)) ||
           /(?:Failed to|Could not|Unable to|Exception|Error:)/i.test(result.stdout + result.stderr)
-        )
+        ) {
+          if (role !== 'idle' && options.allowIdleFallback && animations.idle) {
+            animationRoles = ['idle'];
+            break;
+          }
           throw Error(
             'The selected native locomotion clip could not be exported without a full graph.',
           );
+        }
         animations[role] = path;
       }
       for (const team of agents) {
         const resource = agentSourceRegistry[team],
           selection = modelSelections.get(resource),
-          exportRoot = join(root, `agent-${team}-export`);
+          exportRoot = join(conversion, `agent-${team}-export`);
         await mkdir(exportRoot);
         const input = join(exportRoot, 'agent.gltf');
         const result = await execute(
@@ -382,7 +452,7 @@ export async function installEquipmentModels(options, adapters = {}) {
             agentScript,
             '--input',
             input,
-            ...agentAnimationRoles.flatMap((role) => [`--${role}`, animations[role]]),
+            ...animationRoles.flatMap((role) => [`--${role}`, animations[role]]),
             '--output',
             agentOutput,
             '--team',
@@ -402,13 +472,19 @@ export async function installEquipmentModels(options, adapters = {}) {
       assetVersion,
       items: ids,
       agents,
+      unsupported,
+      ...(agents.length
+        ? { animation: animationRoles.length === 5 ? 'native-locomotion' : 'native-idle' }
+        : {}),
       modelSelections: Object.fromEntries(modelSelections),
       closure,
       shaders,
       downloads,
       tools: tools.provenance,
       limitations: [
-        'Weapons are static; agent locomotion uses five native rifle cycles, not the native animation graph',
+        agents.length && animationRoles.length === 1
+          ? 'Weapons are static; agents use a prepared native rifle idle pose because locomotion clips are unavailable'
+          : 'Weapons are static; agent locomotion uses five native rifle cycles, not the native animation graph',
         'C4 planted state uses the static C4 model; no native digits or arming animation',
       ],
     };
@@ -419,19 +495,39 @@ export async function installEquipmentModels(options, adapters = {}) {
       flag: 'wx',
       mode: 0o600,
     });
+    if (options.cleanup)
+      await writeFile(
+        join(
+          output,
+          agents.length ? 'agents' : 'equipment-models',
+          ...(options.firstItemOnly && ids.length ? [ids[0]] : []),
+          'installation.json',
+        ),
+        reportBytes,
+        { flag: 'wx', mode: 0o644 },
+      );
     return {
       output: target,
       installed,
       agents,
       assetVersion,
+      unsupported,
+      ...(agents.length
+        ? { animation: animationRoles.length === 5 ? 'native-locomotion' : 'native-idle' }
+        : {}),
       report: join(root, 'installation.json'),
     };
   } catch (error) {
     // Individual completed IDs remain valid immutable assets; never remove a pre-existing pack.
-    throw new Error(
-      `Equipment installation stopped. Completed ${installed.length} equipment models and ${installedAgents.length} agents; private logs: ${root}`,
-      { cause: error },
+    throw Object.assign(
+      new Error(
+        `Equipment installation stopped. Completed ${installed.length} equipment models and ${installedAgents.length} agents; private logs: ${root}`,
+        { cause: error },
+      ),
+      ['STEAM_RATE_LIMIT', 'SOURCE_MAP_MISMATCH'].includes(error?.code) ? { code: error.code } : {},
     );
+  } finally {
+    if (options.cleanup) await rm(root, { recursive: true, force: true });
   }
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

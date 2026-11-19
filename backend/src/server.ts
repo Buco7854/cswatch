@@ -32,8 +32,11 @@ import { equipmentModelAssetRoutes } from './equipment-model-assets.js';
 import { mapAssetRoutes } from './map-assets.js';
 import { mapModelFileRoutes } from './map-model-files.js';
 import { mapPreviewRoutes } from './map-preview.js';
+import { mapManagementRoutes } from './map-management.js';
+import { readPresentationStatus } from './presentation-assets.js';
 import { demoMapAssetRoutes } from './demo-map-assets.js';
 import { cleanupMapRequestTemps } from './map-jobs.js';
+import { cleanupPresentationRetryTemps } from './presentation-assets.js';
 import { currentGuest, guestRoutes, guestUploadsEnabled } from './guest.js';
 import { prepareSetup, provisionAdmin, setupRequired, setupRoutes } from './setup.js';
 
@@ -46,6 +49,7 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
   // One web process owns request publication. Reclaim only its recognized
   // orphan temporary files before any HTTP request can begin a live write.
   await cleanupMapRequestTemps(c.mapJobsDir);
+  await cleanupPresentationRetryTemps(c.mapJobsDir);
   const app = Fastify({
     logger: {
       level: process.env.LOG_LEVEL || 'info',
@@ -190,9 +194,9 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
   await setupRoutes(app, db, c);
   await guestRoutes(app, db, c);
   await providerRoutes(app, db, c);
-  await equipmentAssetRoutes(app, db.root, c.mapAssetsDir);
+  await equipmentAssetRoutes(app, db.root, c.mapAssetsDir, c.mapJobsDir);
   await gameplaySoundAssetRoutes(app, db.root, c.mapAssetsDir);
-  await equipmentModelAssetRoutes(app, db.root, c.mapAssetsDir);
+  await equipmentModelAssetRoutes(app, db.root, c.mapAssetsDir, c.mapJobsDir);
   const manualMapLocation = {
     root: c.mapAssetsDir,
     parts: [],
@@ -203,6 +207,7 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
   const maps = await mapAssetRoutes(app, db.root, manualMapLocation);
   await mapModelFileRoutes(app, db.root, { resolveLocation: async () => manualMapLocation });
   await demoMapAssetRoutes(app, db, c, maps);
+  await mapManagementRoutes(app, db, c, maps);
   await mapPreviewRoutes(app, db.root, c.mapAssetsDir);
   const visible = (row: Record<string, any>, uid?: string, guestId?: string) => ({
     ...Object.fromEntries(
@@ -437,6 +442,7 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
     );
     return {
       mapReadiness,
+      presentationAssets: await readPresentationStatus(c.mapJobsDir),
       flags: Object.fromEntries(
         Object.keys(flagDefaults).map((k) => [
           k,

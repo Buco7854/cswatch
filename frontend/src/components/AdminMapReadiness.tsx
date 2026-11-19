@@ -1,9 +1,11 @@
 import { RefreshCw } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import type {
   MapPreparationDiagnostics,
   MapInventoryFailure,
 } from '../../../shared/map-acquisition';
 import { t, locale } from '../i18n';
+import type { PresentationKind, PresentationStatus } from '../../../shared/presentation-assets';
 
 const inventoryHelp: Record<MapInventoryFailure['code'], string> = {
   storage_limit: 'Free space or increase the asset storage quota.',
@@ -21,13 +23,33 @@ const inventoryHelp: Record<MapInventoryFailure['code'], string> = {
 
 export default function AdminMapReadiness({
   data,
+  presentation,
+  retryingAsset,
+  retryAsset,
   refreshing,
   refresh,
 }: {
   data?: MapPreparationDiagnostics;
+  presentation?: PresentationStatus;
+  retryingAsset?: PresentationKind;
+  retryAsset?: (kind: PresentationKind) => void;
   refreshing: boolean;
   refresh: () => void;
 }) {
+  const [clock, advanceClock] = useState(0);
+  const currentTime = Date.now() / 1000;
+  useEffect(() => {
+    const now = Date.now() / 1000;
+    const deadlines = Object.values(presentation?.categories || {}).flatMap((category) =>
+      category?.retryAt && category.retryAt > now ? [category.retryAt] : [],
+    );
+    if (!deadlines.length) return;
+    const timer = setTimeout(
+      () => advanceClock((value) => value + 1),
+      Math.min(60000, (Math.min(...deadlines) - now) * 1000 + 25),
+    );
+    return () => clearTimeout(timer);
+  }, [presentation, clock]);
   const timestamp = data?.inventory.updatedAt;
   const failure = data?.worker.inventoryFailure;
   const retryDate = failure ? new Date(failure.retryAt * 1000) : null;
@@ -138,6 +160,96 @@ export default function AdminMapReadiness({
             <code>{'docker compose pull assets\ndocker compose up -d assets'}</code>
           </div>
         )}
+        <div className="shared-artwork-status">
+          <h3>{t('Shared viewer assets')}</h3>
+          <dl className="readiness-details">
+            {(
+              [
+                ['agents', 'Player models'],
+                ['equipment', 'Weapon icons'],
+                ['equipment-models', 'Weapon models'],
+              ] as [PresentationKind, string][]
+            ).map(([kind, label]) => {
+              const category = presentation?.categories[kind];
+              const state = category?.status;
+              return (
+                <div key={kind}>
+                  <dt>{t(label)}</dt>
+                  <dd>
+                    {t(
+                      state === 'ready'
+                        ? 'Ready'
+                        : state === 'preserved'
+                          ? 'Operator assets kept'
+                          : state === 'failed'
+                            ? 'Failed'
+                            : state === 'preparing'
+                              ? category?.stage === 'acquiring'
+                                ? 'Downloading'
+                                : category?.stage === 'converting'
+                                  ? 'Converting'
+                                  : category?.stage === 'publishing'
+                                    ? 'Publishing'
+                                    : 'Preparing'
+                              : 'Not prepared',
+                    )}
+                    {state === 'failed' && category?.code && (
+                      <small>{t('Diagnostic code: {{code}}', { code: category.code })}</small>
+                    )}
+                    {state === 'failed' && category?.code === 'source_mismatch' && (
+                      <small>{t('Integrity failed. Review the source.')}</small>
+                    )}
+                    {state === 'failed' && category?.retryAt && category.retryAt > currentTime && (
+                      <small>
+                        {t('Retry after {{date}}', {
+                          date: new Date(category.retryAt * 1000).toLocaleString(locale(), {
+                            dateStyle: 'short',
+                            timeStyle: 'short',
+                          }),
+                        })}
+                      </small>
+                    )}
+                    {state === 'preparing' && category?.item && <small>{category.item}</small>}
+                    {category?.counts && (
+                      <small>
+                        {t('{{ready}} / {{total}} prepared', {
+                          ready: category.counts.ready.toLocaleString(locale()),
+                          total: category.counts.total.toLocaleString(locale()),
+                        })}
+                      </small>
+                    )}
+                    {Boolean(category?.unsupported?.length) && (
+                      <details className="shared-assets-unavailable">
+                        <summary>{t('Unavailable models')}</summary>
+                        <p>{category!.unsupported!.join(', ')}</p>
+                      </details>
+                    )}
+                    {state === 'failed' && category?.code !== 'source_mismatch' && retryAsset && (
+                      <button
+                        type="button"
+                        className="button shared-artwork-retry"
+                        disabled={
+                          refreshing ||
+                          !data?.worker.available ||
+                          Boolean(category?.retryAt && category.retryAt > currentTime)
+                        }
+                        aria-label={t('Retry {{asset}}', { asset: t(label) })}
+                        onClick={() => retryAsset(kind)}
+                      >
+                        {t(retryingAsset === kind ? 'Queuing…' : 'Try again')}
+                      </button>
+                    )}
+                  </dd>
+                </div>
+              );
+            })}
+          </dl>
+          <p className="readiness-timestamp">
+            {t(
+              'Existing operator assets are kept. Shared asset preparation does not block map playback.',
+            )}
+          </p>
+        </div>
       </div>
     </section>
   );

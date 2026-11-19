@@ -69,6 +69,7 @@ export const mapJobResultSchema = z
         'preparation_failed',
         'approval_removed',
         'worker_interrupted',
+        'removed_by_admin',
       ])
       .optional(),
   })
@@ -184,7 +185,7 @@ async function openQueueRoot(root: string, create: boolean): Promise<FileHandle>
 export async function prepareMapJobs(root: string) {
   const directory = await openQueueRoot(root, true);
   try {
-    for (const name of ['requests', 'results', 'locks']) {
+    for (const name of ['requests', 'results', 'locks', 'removals', 'removal-results']) {
       const path = `/proc/self/fd/${directory.fd}/${name}`;
       await mkdir(path, { mode: 0o750 }).catch((error) => {
         if (error.code !== 'EEXIST') throw error;
@@ -299,28 +300,40 @@ export async function cleanupMapRequestTemps(root: string): Promise<number> {
   let queue: FileHandle | undefined, directory: FileHandle | undefined;
   try {
     queue = await openQueueRoot(root, false);
-    directory = await open(
-      `/proc/self/fd/${queue.fd}/requests`,
-      constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
-    );
-    const entries = await opendir(`/proc/self/fd/${directory.fd}`);
-    let scanned = 0,
-      removed = 0;
-    for await (const entry of entries) {
-      if (++scanned > mapJobLimits.scanned) throw new Error('Map queue startup scan limit');
-      if (!entry.isFile() || !mapJobTemporaryName.test(entry.name)) continue;
-      const file = await regularFile(directory, entry.name, 0, mapJobLimits.bytes);
-      if (!file) continue;
-      try {
-        const info = await file.stat();
-        if ((process.getuid && info.uid !== process.getuid?.()) || info.mode & 0o022) continue;
-        await unlink(`/proc/self/fd/${directory.fd}/${entry.name}`);
-        removed++;
-      } finally {
-        await file.close();
+    let removed = 0;
+    // Both folders contain only web-authored intents. Never clean worker result
+    // temporaries here: an independently running worker may still own them.
+    for (const folder of ['requests', 'removals']) {
+      directory = await open(
+        `/proc/self/fd/${queue.fd}/${folder}`,
+        constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+      ).catch((error) => {
+        if (error.code === 'ENOENT') return undefined;
+        throw error;
+      });
+      if (!directory) continue;
+      const entries = await opendir(`/proc/self/fd/${directory.fd}`);
+      let scanned = 0,
+        folderRemoved = 0;
+      for await (const entry of entries) {
+        if (++scanned > mapJobLimits.scanned) throw new Error('Map queue startup scan limit');
+        if (!entry.isFile() || !mapJobTemporaryName.test(entry.name)) continue;
+        const file = await regularFile(directory, entry.name, 0, mapJobLimits.bytes);
+        if (!file) continue;
+        try {
+          const info = await file.stat();
+          if ((process.getuid && info.uid !== process.getuid?.()) || info.mode & 0o022) continue;
+          await unlink(`/proc/self/fd/${directory.fd}/${entry.name}`);
+          folderRemoved++;
+        } finally {
+          await file.close();
+        }
       }
+      if (folderRemoved) await directory.sync();
+      removed += folderRemoved;
+      await directory.close();
+      directory = undefined;
     }
-    if (removed) await directory.sync();
     return removed;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return 0;
@@ -404,9 +417,13 @@ export const mapJobRetrySeconds = 300;
 export function canRetryMapResult(result: MapJobResult, at = Math.floor(Date.now() / 1000)) {
   return (
     result.status === 'failed' &&
-    ['source_unavailable', 'storage_limit', 'preparation_failed', 'worker_interrupted'].includes(
-      result.code || '',
-    ) &&
+    [
+      'source_unavailable',
+      'storage_limit',
+      'preparation_failed',
+      'worker_interrupted',
+      'removed_by_admin',
+    ].includes(result.code || '') &&
     Number.isSafeInteger(at) &&
     at >= 0 &&
     result.updatedAt <= at - mapJobRetrySeconds

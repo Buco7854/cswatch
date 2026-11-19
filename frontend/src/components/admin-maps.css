@@ -1,0 +1,133 @@
+.app-shell .managed-maps-panel .panel-heading {
+  gap: 16px;
+  margin-bottom: 6px;
+}
+.app-shell .managed-maps-panel h3 {
+  margin: 0;
+}
+.app-shell .managed-maps-panel .panel-heading > .icon-button {
+  width: 44px;
+  height: 44px;
+}
+.app-shell .managed-map-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.app-shell .managed-map-list > li {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 0;
+}
+.app-shell .managed-map-identity {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+.app-shell .managed-map-identity strong {
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.app-shell .managed-map-manifest {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.app-shell .managed-map-identity > span,
+.app-shell .managed-map-identity > small {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}
+.app-shell .managed-map-identity > .error {
+  color: #f09595;
+}
+[data-theme='light'] .app-shell .managed-map-identity > .error {
+  color: #a42d2d;
+}
+.app-shell .shared-artwork-status {
+  margin-top: 24px;
+}
+.app-shell .shared-artwork-retry {
+  min-height: 44px;
+  margin-top: 8px;
+}
+.app-shell .shared-assets-unavailable {
+  font-size: 12px;
+  margin-top: 6px;
+  border: 0;
+  padding: 0;
+}
+.app-shell .shared-assets-unavailable summary {
+  cursor: pointer;
+  min-height: 44px;
+  font-size: 12px;
+  padding-top: 8px;
+}
+.app-shell .shared-assets-unavailable p {
+  overflow-wrap: anywhere;
+  text-align: left;
+  line-height: 1.6;
+  margin: 4px 0;
+}
+.app-shell .operator-map-list {
+  margin-top: 20px;
+}
+.app-shell .operator-map-list h4 {
+  font-size: 14px;
+  margin: 0 0 8px;
+}
+.app-shell .operator-map-list > p {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0 0 12px;
+}
+.app-shell .operator-map-list ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.app-shell .operator-map-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  justify-content: space-between;
+  padding: 10px 0;
+}
+.app-shell .operator-map-list li strong {
+  overflow-wrap: anywhere;
+}
+.app-shell .operator-map-list li span {
+  color: var(--muted);
+  font-size: 13px;
+}
+.app-shell .managed-map-delete {
+  flex: 0 0 auto;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.app-shell .managed-map-delete > svg {
+  flex: 0 0 16px;
+}
+.app-shell .managed-map-worker-note {
+  margin-top: 16px;
+  font-size: 13px;
+}
+@media (max-width: 480px) {
+  .app-shell .managed-map-list > li {
+    gap: 12px;
+  }
+  .app-shell .managed-map-delete {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    justify-content: center;
+    gap: 0;
+  }
+  .app-shell .managed-map-delete-label {
+    display: none;
+  }
+}

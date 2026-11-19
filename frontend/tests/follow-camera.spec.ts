@@ -25,6 +25,9 @@ test('third-person follow renders the selected actor, follows real recorded tran
         autoHideControls: false,
         matchScore: false,
         xray: false,
+        // This pixel assertion isolates the legacy selected head/feet marker.
+        // Other players' new health text is independently covered by spectator HUD tests.
+        playerLabels: false,
         crosshair: false,
         killReplay: false,
         grenadeLanding: false,

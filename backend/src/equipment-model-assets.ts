@@ -13,6 +13,7 @@ import {
   withDirectory,
 } from './map-asset-files.js';
 import { HttpError } from './security.js';
+import { presentationCatalogComplete } from './presentation-assets.js';
 
 const registry = JSON.parse(
   readFileSync(
@@ -137,6 +138,7 @@ export async function equipmentModelAssetRoutes(
   app: FastifyInstance,
   root: string,
   mapsRoot = join(root, 'maps'),
+  jobsRoot?: string,
 ) {
   const cache = new Map<string, { manifestDigest: string; sha256: string; data: Buffer }>();
   let cachedBytes = 0;
@@ -257,7 +259,12 @@ export async function equipmentModelAssetRoutes(
         const value = await withPack(id, (directory) => descriptor(id, directory));
         if (value) items[id] = value.model;
       }
-      return { schemaVersion: 1, items };
+      const complete = await presentationCatalogComplete(
+        jobsRoot,
+        'equipment-models',
+        Object.keys(items).length,
+      );
+      return { schemaVersion: 1, items, ...(complete === undefined ? {} : { complete }) };
     },
   );
   app.get<{ Params: { id: string } }>(

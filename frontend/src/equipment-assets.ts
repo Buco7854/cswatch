@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { EquipmentModelCatalog, EquipmentModel } from '../../shared/equipment-models';
 import equipment from '../../shared/equipment-models.json';
 import type { AssetStatus } from './map-assets';
+import { observeAssets, readAssetJSON } from './asset-discovery';
 
 const empty: EquipmentModelCatalog = Object.freeze({
   schemaVersion: 1 as const,
@@ -35,6 +36,7 @@ export function validateEquipmentAssets(value: unknown): EquipmentModelCatalog {
   const input = value as Record<string, unknown>;
   if (
     input.schemaVersion !== 1 ||
+    (input.complete !== undefined && typeof input.complete !== 'boolean') ||
     !input.items ||
     typeof input.items !== 'object' ||
     Array.isArray(input.items) ||
@@ -106,7 +108,11 @@ export function validateEquipmentAssets(value: unknown): EquipmentModelCatalog {
       },
     };
   }
-  return { schemaVersion: 1, items };
+  return {
+    schemaVersion: 1,
+    items,
+    ...(input.complete === undefined ? {} : { complete: input.complete as boolean }),
+  };
 }
 
 /** The descriptor is scoped to the current viewer identity and never survives logout or remount. */
@@ -117,37 +123,27 @@ export function useEquipmentAssets(identity: string, enabled: boolean) {
   });
   useEffect(() => {
     if (!enabled) return;
-    const controller = new AbortController();
-    let active = true;
-    const timeout = window.setTimeout(() => controller.abort(), 10000);
     setState({ identity, value: pending });
-    void (async () => {
-      try {
-        const response = await fetch('/api/assets/equipment-models', {
-          signal: controller.signal,
-          credentials: 'same-origin',
-          headers: { Accept: 'application/json' },
-        });
-        if (!response.ok) throw new Error('Equipment discovery failed');
-        const text = await response.text();
-        if (text.length > 128 * 1024) throw new Error('Equipment discovery exceeded its bound');
-        const catalog = validateEquipmentAssets(JSON.parse(text));
-        if (!controller.signal.aborted)
-          setState({
-            identity,
-            value: { status: Object.keys(catalog.items).length ? 'ready' : 'missing', catalog },
-          });
-      } catch {
-        if (active) setState({ identity, value: { status: 'error', catalog: empty } });
-      } finally {
-        window.clearTimeout(timeout);
-      }
-    })();
-    return () => {
-      active = false;
-      controller.abort();
-      window.clearTimeout(timeout);
-    };
+    return observeAssets({
+      read: async (signal) =>
+        validateEquipmentAssets(
+          await readAssetJSON('/api/assets/equipment-models', 128 * 1024, signal),
+        ),
+      complete: (catalog) =>
+        catalog.complete === true ||
+        Object.keys(equipment.items).every((id) => Boolean(catalog.items[id])),
+      changed: (catalog) =>
+        setState({
+          identity,
+          value: { status: Object.keys(catalog.items).length ? 'ready' : 'missing', catalog },
+        }),
+      failed: () =>
+        setState((previous) =>
+          previous.identity === identity && Object.keys(previous.value.catalog.items).length
+            ? previous
+            : { identity, value: { status: 'error', catalog: empty } },
+        ),
+    });
   }, [identity, enabled]);
   return !enabled
     ? { status: 'missing' as const, catalog: empty }

@@ -239,6 +239,14 @@ static int preview_name(const char *name) {
     for(size_t i=0;i<sizeof(names)/sizeof(names[0]);i++) if(!strcmp(name,names[i])) return 1;
     return 0;
 }
+#ifndef CSWATCH_EQUIPMENT_NAMES
+#error Build the asset boundary with the fixed shared equipment registry.
+#endif
+static int equipment_name(const char *name) {
+    static const char *names[] = { CSWATCH_EQUIPMENT_NAMES };
+    for(size_t i=0;i<sizeof(names)/sizeof(names[0]);i++) if(!strcmp(name,names[i])) return 1;
+    return 0;
+}
 static void publish(const char *source,const char *target,int kind) {
     char from[PATH_MAX],to[PATH_MAX];
     if(!source || !target || strlen(source) >= sizeof(from) || strlen(target) >= sizeof(to)) {
@@ -248,7 +256,7 @@ static void publish(const char *source,const char *target,int kind) {
     char *from_name = strrchr(from,'/'),*to_name = strrchr(to,'/');
     if(!from_name || !to_name || from_name==from || to_name==to) { errno=EINVAL;fail("absolute same-parent publication required"); }
     *from_name++='\0';*to_name++='\0';
-    int suffix_start;
+    int suffix_start=0;
     if(kind==1) {
         if(strcmp(from,to) || strcmp(to_name,"sounds") || strlen(from_name)!=14 || strncmp(from_name,".sounds-",8)) {
             errno=EINVAL;fail("approved same-parent sound bank names required");
@@ -259,6 +267,26 @@ static void publish(const char *source,const char *target,int kind) {
             errno=EINVAL;fail("approved same-parent preview names required");
         }
         suffix_start=9;
+    } else if(kind==3) {
+        if(strcmp(from,to) || (strcmp(to_name,"agents") && strcmp(to_name,"equipment") && strcmp(to_name,"equipment-models")) ||
+            strlen(from_name)!=20 || strncmp(from_name,".presentation-",14)) {
+            errno=EINVAL;fail("approved same-parent presentation bank names required");
+        }
+        suffix_start=14;
+    } else if(kind==4) {
+        if(strcmp(from,to) || !equipment_name(to_name) || strlen(from_name)!=17 || strncmp(from_name,".equipment-",11)) {
+            errno=EINVAL;fail("approved same-parent equipment model names required");
+        }
+        suffix_start=11;
+    } else if(kind==5) {
+        if(strcmp(from,to) || !hex_id(from_name) || strlen(to_name)!=107 ||
+            strncmp(to_name,".removing-",10) || strncmp(to_name+10,from_name,64) || to_name[74]!='-') {
+            errno=EINVAL;fail("approved same-parent map retirement names required");
+        }
+        for(int i=75;i<107;i++) if(!((to_name[i]>='0' && to_name[i]<='9') ||
+            (to_name[i]>='a' && to_name[i]<='f'))) {
+            errno=EINVAL;fail("invalid private removal identity");
+        }
     } else {
         if(strcmp(from,to) || !hex_id(to_name) || strlen(from_name)!=82 ||
             strncmp(from_name,".preparing-",11) || strncmp(from_name+11,to_name,64) || from_name[75]!='-') {
@@ -266,7 +294,7 @@ static void publish(const char *source,const char *target,int kind) {
         }
         suffix_start=76;
     }
-    for(int i=suffix_start;i<suffix_start+6;i++) if(!((from_name[i]>='a' && from_name[i]<='z') ||
+    for(int i=suffix_start;kind!=5 && i<suffix_start+6;i++) if(!((from_name[i]>='a' && from_name[i]<='z') ||
         (from_name[i]>='A' && from_name[i]<='Z') || (from_name[i]>='0' && from_name[i]<='9'))) {
         errno=EINVAL;fail("invalid private staging suffix");
     }
@@ -290,6 +318,9 @@ int main(int argc,char **argv) {
     if(argc == 4 && !strcmp(argv[1],"--publish")) { publish(argv[2],argv[3],0);return 0; }
     if(argc == 4 && !strcmp(argv[1],"--publish-sounds")) { publish(argv[2],argv[3],1);return 0; }
     if(argc == 4 && !strcmp(argv[1],"--publish-preview")) { publish(argv[2],argv[3],2);return 0; }
+    if(argc == 4 && !strcmp(argv[1],"--publish-presentation")) { publish(argv[2],argv[3],3);return 0; }
+    if(argc == 4 && !strcmp(argv[1],"--publish-equipment")) { publish(argv[2],argv[3],4);return 0; }
+    if(argc == 4 && !strcmp(argv[1],"--retire-map-pack")) { publish(argv[2],argv[3],5);return 0; }
     if(argc == 2 && !strcmp(argv[1],"--check")) {
         const int abi=landlock_abi();restrict_writes(NULL,0);restrict_conversion();
         printf("Linux x86-64 conversion confinement ready, Landlock ABI %d\n",abi);return 0;

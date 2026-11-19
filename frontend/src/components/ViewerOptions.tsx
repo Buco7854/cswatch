@@ -224,6 +224,16 @@ export default function ViewerOptions({
                   t('Show player shapes through map geometry.'),
                 )}
                 {toggle(
+                  'playerLabels',
+                  t('Player names and health'),
+                  t('Show compact player labels. X-ray also makes them visible through walls.'),
+                )}
+                {toggle(
+                  'damageFeedback',
+                  t('Damage feedback'),
+                  t('Show a subtle first-person hurt cue from recorded damage events.'),
+                )}
+                {toggle(
                   'trails',
                   t('Movement trails'),
                   t('Show the selected player’s recent path.'),
@@ -517,6 +527,11 @@ export default function ViewerOptions({
                 'autoSkip',
                 t('Skip dead time automatically'),
                 t('Skip recorded freeze periods and tactical or technical timeouts.'),
+              )}
+              {toggle(
+                'autoFollowDeath',
+                t('Follow another player after death'),
+                t('Switch after three seconds, preferring a living teammate.'),
               )}
               <h3>{t('Viewing interface')}</h3>
               {toggle(

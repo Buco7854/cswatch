@@ -207,6 +207,7 @@ test(
       },
       {
         now: () => clock,
+        preparePresentation: async () => ({ status: 'installed' }),
         refreshInventory: (options) =>
           refreshOfficialMapInventory(options, {
             storage: async () => {},
@@ -267,6 +268,7 @@ test('shared Steam cooldown blocks queued work after inventory rate failure and 
     { ...f.options, signal: controller.signal },
     {
       now: () => clock,
+      preparePresentation: async () => ({ status: 'installed' }),
       refreshInventory: async () => {
         refreshes.push(clock);
         if (refreshes.length === 1)
@@ -317,6 +319,7 @@ test('shared Steam cooldown from a queued job also defers an inventory refresh b
     { ...f.options, signal: controller.signal },
     {
       now: () => clock,
+      preparePresentation: async () => ({ status: 'installed' }),
       refreshInventory: async () => {
         refreshes.push(clock);
         return { manifest: '1', maps: [{}] };

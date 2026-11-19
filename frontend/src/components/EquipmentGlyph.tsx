@@ -1,7 +1,7 @@
-import { equipmentKind, type EquipmentKind } from '../equipment-display';
+import { equipmentKind, equipmentName, type EquipmentKind } from '../equipment-display';
 import { useEquipmentIcon } from '../equipment-icons';
 
-/** Operator-installed artwork when available; original schematic SVG fallback otherwise. */
+/** Exact native artwork; recorded weapon text stays readable while it is preparing. */
 export default function EquipmentGlyph({
   item,
   kind: requested,
@@ -45,6 +45,16 @@ export default function EquipmentGlyph({
         aria-hidden="true"
         style={{ maskImage: `url("${icon}")`, WebkitMaskImage: `url("${icon}")` }}
       />
+    );
+  if (item && weapon)
+    return (
+      <span
+        className={'equipment-glyph is-weapon equipment-text-fallback ' + className}
+        aria-hidden="true"
+        title={equipmentName(item)}
+      >
+        {equipmentName(item)}
+      </span>
     );
   return (
     <svg
