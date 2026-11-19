@@ -1,4 +1,5 @@
 export type PresentationKind = 'agents' | 'equipment' | 'equipment-models';
+export type PresentationRetry = { kind: PresentationKind; manifest: string; generation: string };
 export type PresentationStatus = {
   schemaVersion: 1;
   categories: Partial<

@@ -464,8 +464,10 @@ test('map administration requires current admin, exact Origin, CSRF and reviewed
     202,
   );
   const intent = JSON.parse(await readFile(join(f.jobs, 'presentation-retry-agents.json'), 'utf8'));
-  assert.deepEqual(intent, {
-    schemaVersion: 1,
+  assert.match(intent.expectedFailure, /^[a-f0-9]{64}$/);
+  const { expectedFailure: _failure, ...selection } = intent;
+  assert.deepEqual(selection, {
+    schemaVersion: 2,
     kind: 'agents',
     expectedGeneration: 'a'.repeat(24),
   });
