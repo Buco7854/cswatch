@@ -132,14 +132,20 @@ export async function prepareToolchain({ cache, signal, onProgress } = {}) {
     await mkdir(archives, { mode: 0o700 });
     const tmp = join(staging, 'tmp');
     await mkdir(tmp, { mode: 0o700 });
+    // SDK/NuGet and single-file tools also consult HOME independently of CLI_HOME.
+    // Never let their first-run writes fall back to the image's read-only user home.
+    const toolHome = join(staging, 'dotnet-home');
+    await mkdir(toolHome, { mode: 0o700 });
     const environment = {
       PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin',
       LANG: 'C.UTF-8',
       LC_ALL: 'C',
       TZ: 'UTC',
       TMPDIR: tmp,
+      HOME: toolHome,
       DOTNET_ROOT: join(staging, 'runtime'),
-      DOTNET_CLI_HOME: join(staging, 'dotnet-home'),
+      DOTNET_CLI_HOME: toolHome,
+      DOTNET_BUNDLE_EXTRACT_BASE_DIR: join(toolHome, 'bundles'),
       DOTNET_CLI_TELEMETRY_OPTOUT: '1',
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1',
       DOTNET_NOLOGO: '1',
@@ -180,7 +186,7 @@ export async function prepareToolchain({ cache, signal, onProgress } = {}) {
     const sdk = join(staging, 'runtime/dotnet');
     const source = join(staging, 'source', sourceName);
     const project = join(source, 'SteamFileDownloader.csproj');
-    onProgress?.({ stage: 'build' });
+    onProgress?.({ stage: 'build', artifact: 'restore' });
     await runTool(
       sdk,
       [
@@ -200,6 +206,7 @@ export async function prepareToolchain({ cache, signal, onProgress } = {}) {
     } finally {
       await restored.handle.close();
     }
+    onProgress?.({ stage: 'build', artifact: 'compile' });
     await runTool(
       sdk,
       [
@@ -219,6 +226,7 @@ export async function prepareToolchain({ cache, signal, onProgress } = {}) {
     );
     const wrapper = `#!/bin/sh\nTOOLCHAIN_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)\nexport DOTNET_ROOT="$TOOLCHAIN_DIR/runtime"\nexport DOTNET_CLI_TELEMETRY_OPTOUT=1\nexec "$TOOLCHAIN_DIR/source/${sourceName}/bin/SteamFileDownloader" "$@"\n`;
     await writeFile(join(staging, 'SteamFileDownloader'), wrapper, { mode: 0o700, flag: 'wx' });
+    onProgress?.({ stage: 'build', artifact: 'versions' });
     const versions = {
       s2v: (await runTool(join(staging, required[0]), ['--version'], command)).trim(),
       downloader: (
