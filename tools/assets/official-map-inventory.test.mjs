@@ -9,8 +9,174 @@ import {
   officialInventoryFailure,
 } from './official-map-inventory.mjs';
 import { prepareMapJobs, readOfficialMapInventory } from '../../backend/dist/map-jobs.js';
+import { toolchainPreparationLimits } from './prepare-toolchain.mjs';
 const row = (map = 'de_mirage', manifest = '18446744073709551615') =>
   `2347770\t${manifest}\t${'a'.repeat(40)}\t100\tgame/csgo/maps/${map}.vpk`;
+
+function controlledDeadlines(t) {
+  let clock = 0;
+  const deadlines = [];
+  t.mock.method(AbortSignal, 'timeout', (duration) => {
+    const controller = new AbortController();
+    deadlines.push({ duration, due: clock + duration, controller });
+    return controller.signal;
+  });
+  return {
+    deadlines,
+    advance(milliseconds) {
+      clock += milliseconds;
+      for (const deadline of deadlines)
+        if (deadline.due <= clock && !deadline.controller.signal.aborted)
+          deadline.controller.abort(
+            new DOMException('Controlled bounded deadline.', 'TimeoutError'),
+          );
+    },
+  };
+}
+function deferred() {
+  let resolve;
+  const promise = new Promise((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+async function deadlineFixture(t) {
+  const root = await mkdtemp(join(tmpdir(), 'cswatch-inventory-deadline-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const options = {
+    jobs: join(root, 'jobs'),
+    cache: join(root, 'cache'),
+    assets: join(root, 'assets'),
+  };
+  await mkdir(options.assets);
+  await prepareMapJobs(options.jobs);
+  return {
+    options,
+    adapters: { storage: async () => {}, reserve: async () => {} },
+  };
+}
+
+test('cold tool preparation can cross the old metadata deadline before a separate bounded listing succeeds', async (t) => {
+  const clock = controlledDeadlines(t),
+    f = await deadlineFixture(t),
+    entered = deferred(),
+    tools = deferred();
+  let bootstrapSignal, listingSignal;
+  const work = refreshOfficialMapInventory(f.options, {
+    ...f.adapters,
+    prepareToolchain: async ({ signal }) => {
+      bootstrapSignal = signal;
+      entered.resolve();
+      return tools.promise;
+    },
+    run: async (_command, _args, context) => {
+      listingSignal = context.signal;
+      assert.equal(context.timeoutMs, 120000);
+      assert.deepEqual(
+        clock.deadlines.map((value) => value.duration),
+        [toolchainPreparationLimits.timeoutMs, 180000],
+      );
+      clock.advance(120000);
+      assert.equal(context.signal.aborted, false);
+      return { code: 0, stdout: row(), stderr: '' };
+    },
+  });
+  await entered.promise;
+  assert.equal(toolchainPreparationLimits.timeoutMs, 20 * 60 * 1000);
+  assert.deepEqual(
+    clock.deadlines.map((value) => value.duration),
+    [20 * 60 * 1000],
+  );
+  clock.advance(4 * 60 * 1000);
+  assert.equal(bootstrapSignal.aborted, false);
+  tools.resolve({ downloader: '/fixed/trusted/tool' });
+  const inventory = await work;
+  assert.notEqual(bootstrapSignal, listingSignal);
+  assert.deepEqual(await readOfficialMapInventory(f.options.jobs), inventory);
+});
+
+test('controlled bootstrap deadlines and operator aborts classify generic child cancellation separately without Steam', async (t) => {
+  const clock = controlledDeadlines(t);
+  for (const operator of [false, true]) {
+    const f = await deadlineFixture(t),
+      caller = new AbortController(),
+      entered = deferred();
+    let downloads = 0;
+    const work = assert.rejects(
+      refreshOfficialMapInventory(
+        { ...f.options, signal: caller.signal },
+        {
+          ...f.adapters,
+          prepareToolchain: ({ signal }) =>
+            new Promise((_resolve, reject) => {
+              signal.addEventListener(
+                'abort',
+                () => reject(Error('Toolchain command was cancelled or exceeded its time limit.')),
+                { once: true },
+              );
+              entered.resolve();
+            }),
+          run: async () => {
+            downloads++;
+            throw Error('No Steam work may start.');
+          },
+        },
+      ),
+      (error) => {
+        assert.deepEqual(error.inventoryDiagnostic, {
+          phase: 'toolchain',
+          code: operator ? 'interrupted' : 'timeout',
+        });
+        return true;
+      },
+    );
+    await entered.promise;
+    if (operator)
+      caller.abort(new DOMException('Private operator reason must not be logged.', 'AbortError'));
+    else clock.advance(toolchainPreparationLimits.timeoutMs);
+    await work;
+    assert.equal(downloads, 0);
+    assert.equal(await readOfficialMapInventory(f.options.jobs), undefined);
+  }
+});
+
+test('listing deadline starts after bootstrap and preserves timeout identity through generic downloader cancellation', async (t) => {
+  const clock = controlledDeadlines(t),
+    f = await deadlineFixture(t),
+    entered = deferred();
+  const work = assert.rejects(
+    refreshOfficialMapInventory(f.options, {
+      ...f.adapters,
+      prepareToolchain: async () => {
+        clock.advance(4 * 60 * 1000);
+        return { downloader: '/fixed/trusted/tool' };
+      },
+      run: async (_command, _args, { signal, timeoutMs }) => {
+        assert.equal(timeoutMs, 120000);
+        entered.resolve();
+        await new Promise((_resolve, reject) =>
+          signal.addEventListener(
+            'abort',
+            () => reject(Error('Operator asset installation was cancelled.')),
+            { once: true },
+          ),
+        );
+      },
+    }),
+    (error) => {
+      assert.deepEqual(error.inventoryDiagnostic, { phase: 'downloader', code: 'timeout' });
+      return true;
+    },
+  );
+  await entered.promise;
+  assert.deepEqual(
+    clock.deadlines.map((value) => value.duration),
+    [20 * 60 * 1000, 180000],
+  );
+  clock.advance(180000);
+  await work;
+  assert.equal(await readOfficialMapInventory(f.options.jobs), undefined);
+});
 
 test('official inventory is bounded fixed-depot membership with exact string versions', () => {
   const inventory = parseOfficialMapInventory(
@@ -160,6 +326,14 @@ test('inventory stages retain only safe failure codes and preserve prior metadat
         },
       },
       { phase: 'toolchain', code: 'toolchain_failed', exitCode: 4 },
+    ],
+    [
+      {
+        prepareToolchain: async () => {
+          throw Error('Toolchain command was cancelled or exceeded its time limit.');
+        },
+      },
+      { phase: 'toolchain', code: 'timeout' },
     ],
     [
       {

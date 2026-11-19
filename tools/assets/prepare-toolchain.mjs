@@ -19,6 +19,7 @@ export const toolchainLock = createHash('sha256')
   .update(JSON.stringify(toolchainPins))
   .digest('hex');
 export const toolchainDirectory = `linux-x64-${toolchainLock.slice(0, 20)}`;
+export const toolchainPreparationLimits = Object.freeze({ timeoutMs: 20 * 60 * 1000 });
 const sourceName = 'SteamFileDownloader-' + toolchainPins.source.version;
 const required = [
   's2v/Source2Viewer-CLI',
@@ -104,7 +105,7 @@ export async function prepareToolchain({ cache, signal, onProgress } = {}) {
   if (onProgress !== undefined && typeof onProgress !== 'function')
     throw new Error('Invalid progress callback.');
   signal?.throwIfAborted();
-  const timeout = AbortSignal.timeout(20 * 60 * 1000);
+  const timeout = AbortSignal.timeout(toolchainPreparationLimits.timeoutMs);
   signal = signal ? AbortSignal.any([signal, timeout]) : timeout;
   const root = await localDirectory(cache, true);
   const destination = join(root, toolchainDirectory);

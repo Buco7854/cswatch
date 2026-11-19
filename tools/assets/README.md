@@ -239,3 +239,9 @@ node tools/assets/inspect-map-identity.mjs \
 ```
 
 The catalog is optional. Without `--replay`, the command reads bounded JSON from stdin, so there is no need to mount the application database or recordings into an asset container. It reports only map fields, missing/conflicting evidence and distinct approval candidates. It does not parse `.dem`, contact Steam, create approvals or output actors/communications. Even a unique tuple match remains operator provenance rather than proof of the original map bytes. Actual approved/latest source selection is described in [map acquisition](../../docs/product/MAP-ACQUISITION.md).
+
+## Cold image verification
+
+Inventory preparation lets fixed tool setup use its existing bounded 20-minute bootstrap, then starts a separate 180-second metadata budget. The listing child still has a 120-second cap. Wrapped cancellations preserve timeout versus operator-interruption identity; source integrity, free-space limits and retry/cooldown policy remain intact.
+
+The parallel `asset-bootstrap` CI job builds the actual assets image and starts with a new private tool cache under read-only/non-root/cap-free container restrictions. It downloads and builds the checksum-pinned SDK, S2V and downloader, then proves verified reuse without rewriting provenance. Only its Steam listing is an explicitly original fixture. No CS2 maps, screenshots, sounds or other game files are downloaded or bundled. This adds genuine first-use tool/runtime coverage beyond fixture-based asset conversion checks; publication depends on both CI jobs. Docker execution remains CI evidence when the local runtime is unavailable.

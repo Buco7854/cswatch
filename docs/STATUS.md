@@ -2,6 +2,8 @@
 
 Updated 2026-11-19. This file is the capability contract. Runtime [`754d9c5`](https://github.com/Buco7854/cswatch/actions/runs/44482972828) replaces the rejected provider banner/raster tiles with compact inline Steam/FACEIT icons and localized labels. Shared theme/sizing, accessible targets and fixed local paths preserve authentication/linking behaviour. Its workflow passed 350 backend and 234 asset cases without skips, 166 public browser cases, both private policies/setup and both hardened containers. Both images published and anonymous latest/immutable digest/OCI identity checks passed. Earlier counts remain historical. See [verification](VERIFICATION.md). Cache has verified 2D overview coverage, with 3D unavailable.
 
+The active inventory bootstrap correction separates the existing 20-minute tool-preparation budget from metadata's 180-second deadline and retains the 120-second listing-child cap. Deadline/operator cancellation diagnostics remain distinct. Controlled local regressions pass; new exact-source CI and real empty-cache container bootstrap coverage remain pending. This does not establish recovery on the operator's host.
+
 ## Access and personal workspace
 
 - One compact logged-out entry for uploading the visitor's own demo when guest policy permits, with GitHub and the shared language dropdown. Signed-in root opens the personal library. No marketing subpages, community catalogue or HLTV wrapper. A fixed, hash-bound local map screenshot can fade into the public landing when installed manually or prepared by the isolated asset worker; absent/failed previews leave the entry usable without a remote fallback.
