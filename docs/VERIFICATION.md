@@ -1,5 +1,11 @@
 # Verification record
 
+## REFERENCE reference inspection
+
+On 2026-11-19, a fresh unauthenticated Playwright session opened the public Spirit/FURIA Ancient demo on the reference viewer. Fourteen successful screenshots were opened, covering 1440/768/390 px and both themes, loading, native POV weapons, actual muzzle flash near second 443.109375, red hurt feedback near 443.29375, death recap, utility and settings. Public JS/CSS and map manifests establish separate native lighting/material, visibility/LOD, GPU-compressed texture-array and first-person action paths. The prepared example is 64 Hz and 20,102,272 bytes. See the [review and pending priorities](product/REFERENCE-REFERENCE-REVIEW.md). Ignored local evidence is in `.design/reference-study/`.
+
+The browser used ANGLE/Vulkan SwiftShader. Later captures used the site's 50% render scale and Low distant detail. A utility-landing action changed playback/camera, but its screenshot crashed while cgroup OOM/kill counters increased by one. No completed landing rendering, comparative FPS or physical-device result is claimed. The browser and driver were closed. This study changes documentation only. No runtime tests, Docker checks, provider accounts or official game acquisition were run for it, and the successful runtime/image release below remains the baseline.
+
 ## Verified spectator, map-management and native-asset release
 
 Released runtime `53a4ef98e85b333be5ff7d8b5d29a88ed6af0396` passed [workflow 44582157304](https://github.com/Buco7854/cswatch/actions/runs/44582157304), run 35. Verify job `135765366841` passes 358 backend and 280 asset cases with no failures/skips/cancellations, 192 public browser cases with two policy skips, both private policies with 21 passes/173 policy skips each, and setup with four passes/one environment skip. Formatting, EN/FR coverage, Compose validation and all four production audits pass. No vulnerability was reported by those audits. These checks are not independent security certification.
