@@ -37,6 +37,7 @@ test('fixed sound bootstrap yields to queued maps and its integrity failure neve
         if (calls === 4) controller.abort();
         return calls === 1;
       },
+      preparePresentation: async () => ({ status: 'installed' }),
       preparePreview: async () => ({ status: 'installed' }),
       prepareSounds: async (_options, manifest) => {
         assert.equal(manifest, '42');
@@ -76,6 +77,7 @@ test('audio Steam rate limits share the worker cooldown while heartbeats and que
         if (jobs.length === 3) controller.abort();
         return false;
       },
+      preparePresentation: async () => ({ status: 'installed' }),
       preparePreview: async () => ({ status: 'installed' }),
       prepareSounds: async () => {
         sounds++;
