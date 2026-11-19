@@ -1,6 +1,21 @@
 # Verification record
 
-## Active spectator and native-asset candidate
+## Verified spectator, map-management and native-asset release
+
+Released runtime `53a4ef98e85b333be5ff7d8b5d29a88ed6af0396` passed [workflow 44582157304](https://github.com/Buco7854/cswatch/actions/runs/44582157304), run 35. Verify job `135765366841` passes 358 backend and 280 asset cases with no failures/skips/cancellations, 192 public browser cases with two policy skips, both private policies with 21 passes/173 policy skips each, and setup with four passes/one environment skip. Formatting, EN/FR coverage, Compose validation and all four production audits pass. No vulnerability was reported by those audits. These checks are not independent security certification.
+
+The actual hardened application image passes immutable revision/health checks, private guest upload, required native confinement, 31-chunk replay, ownership, notes, sharing and offline speech. The actual read-only, networkless asset image passes kernel denial, fixed publication, latest-content recovery, original PCM/Sharp conversion, confined original GLB packing, per-item equipment publication and native-bank crash recovery. Cold job `135765366516` independently prepares pinned tools from an empty cache and proves verified reuse, with original Steam listing metadata and zero official game downloads. Local Docker is unavailable, so these container claims come from this exact-source workflow.
+
+Publish job `135771969720` succeeded. Anonymous GHCR checks returned 200 for both latest and immutable tags, verified manifest/config hashes, and matched this source revision and build time `2026-11-19T18:05:38Z`. Evidence: `.design/spectator-correction/release/{verification,published-images}.json`.
+
+- Application `latest` / `sha-53a4ef98e85b333be5ff7d8b5d29a88ed6af0396-35`: `sha256:69bec562e35ce24e299a981da2ea2ec492de182add1d1e37a946e9edb8c03d62`.
+- Assets `assets-latest` / `assets-sha-53a4ef98e85b333be5ff7d8b5d29a88ed6af0396-35`: `sha256:3c79ff9b7472b7c0fa142c5b77e55671806e50f6932d7a4625a543fe7109b712`.
+
+Administration now removes worker-owned map snapshots and exposes shared-native preparation progress/retries. Visible players and equipment use prepared native assets; missing named weapon artwork keeps recorded text. Names/health, analytical hit feedback, three-demo-second death follow and in-place ground-level free camera are implemented. Actual native Ancient screenshots cover both themes and desktop/tablet/phone browser profiles. Authored scenery is finite, through-wall body proxies are simplified, and animation/attachments/damage remain approximations. No new current-manifest full asset conversion, production-host recovery, physical-device/FPS result or Source 2 parity is claimed. Existing demos need no re-upload. The operator must update/recreate web, worker and assets, then allow shared preparation and reload the viewer. Permanently denied pinned native sources still require coordinated operator recovery.
+
+## Implementation and pre-release verification
+
+The following records describe the local implementation and failed/cancelled candidates before the successful release above. Their counts do not replace its exact-source evidence.
 
 The new source adds administrator removal of worker-owned map snapshots, bounded automatic native actor/HUD/equipment preparation and late read-only catalog observation, through-wall name/health tags, recorded first-person hurt cues and three-demo-second death follow. Free-camera gestures turn in place at the recorded eye, restore saved views, respect newer focus choices and fit overhead views on portrait screens.
 
@@ -20,7 +35,7 @@ Candidate `b0a12fa` passed 358 backend cases, all 280 asset cases and cold Docke
 
 Candidate `758ce55` passed 358 backend, 280 asset and 192 public browser cases with two public policy skips in [workflow 44579410308](https://github.com/Buco7854/cswatch/actions/runs/44579410308). Both private policies pass 21 cases with 173 policy skips each. Setup passes four with one environment skip. Cold bootstrap and the hardened application's actual private upload, 31-chunk replay, ownership/sharing and offline-speech checks pass. The asset-image smoke stopped before its runtime checks because its exact module allowlist still named five helpers, while the image intentionally contains eight. The three new pure helpers are `map-removals.js`, `png.js` and `presentation-assets.js`. The exact allowlist is corrected, preserving rejection of any other modules and application/native/parser dependencies. No runtime code, sandbox boundary or assertion was removed. A fresh complete workflow and both image publications remain required.
 
-The previous bootstrap runtime below remains the published baseline until the new exact-source workflow, hardened containers and anonymous image checks pass. No game artwork or credentials enter Git/images.
+The failed/cancelled candidates above never changed either image tag. The successful release at the top now supersedes the earlier bootstrap baseline. No game artwork or credentials enter Git/images.
 
 Updated 2026-11-19. Use Node 24, a Linux kernel supporting required Landlock/seccomp confinement and the Playwright lockfile's Chromium. The current environment uses Node 24.22.3, Linux 6.12/Landlock ABI 6 and Chromium build 1255. Tests use disposable accounts and original synthetic or checksum-pinned public fixtures. The three authorized supplied recordings were separately verified and deleted.
 
