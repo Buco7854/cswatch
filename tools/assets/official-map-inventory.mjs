@@ -10,7 +10,7 @@ import {
   writeOfficialMapInventory,
   mapInventoryFailureSchema,
 } from '../../backend/dist/map-jobs.js';
-import { prepareToolchain } from './prepare-toolchain.mjs';
+import { prepareToolchain, toolchainPreparationLimits } from './prepare-toolchain.mjs';
 import { runAssetProcess } from './install-steam-assets.mjs';
 import { localDirectory } from './toolchain-security.mjs';
 import { checkStorage, checkFreeReserve } from './asset-storage.mjs';
@@ -45,7 +45,7 @@ export function officialInventoryFailure(error, phase = 'storage', signal) {
   }
   const errno = [error?.code, error?.cause?.code];
   let code;
-  if (signal?.aborted) code = 'interrupted';
+  if (signal?.aborted) code = signal.reason?.name === 'TimeoutError' ? 'timeout' : 'interrupted';
   else if (error?.code === 'STEAM_RATE_LIMIT') {
     phase = 'downloader';
     code = 'steam_rate_limited';
@@ -76,7 +76,9 @@ export function officialInventoryFailure(error, phase = 'storage', signal) {
   else if (
     errno.includes('ETIMEDOUT') ||
     ['AbortError', 'TimeoutError'].includes(error?.name) ||
-    error?.message === 'Operator asset stage timed out.'
+    error?.message === 'Operator asset stage timed out.' ||
+    (phase === 'toolchain' &&
+      error?.message === 'Toolchain command was cancelled or exceeded its time limit.')
   )
     code = 'timeout';
   else
@@ -155,10 +157,12 @@ export function parseOfficialMapInventory(text, at = Math.floor(Date.now() / 100
 
 export async function refreshOfficialMapInventory(options, adapters = {}) {
   let root,
-    phase = 'storage';
-  const signal = options.signal
-    ? AbortSignal.any([options.signal, AbortSignal.timeout(180000)])
-    : AbortSignal.timeout(180000);
+    phase = 'storage',
+    activeSignal = options.signal;
+  const stageSignal = (milliseconds) => {
+    const timeout = AbortSignal.timeout(milliseconds);
+    return options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
+  };
   try {
     await localDirectory(options.cache, true);
     await (adapters.storage || checkStorage)(options.cache, options.assets);
@@ -167,12 +171,19 @@ export async function refreshOfficialMapInventory(options, adapters = {}) {
       temporary = join(root, 'tmp');
     for (const path of [home, temporary]) await mkdir(path, { mode: 0o700 });
     phase = 'toolchain';
+    // A cold pinned SDK/tool build retains its own complete bounded budget.
+    // Metadata's shorter deadline starts only after verified tools are ready.
+    activeSignal = stageSignal(toolchainPreparationLimits.timeoutMs);
+    options.log?.({ event: 'map.toolchain_preparing' });
     const tools = await (adapters.prepareToolchain || prepareToolchain)({
       cache: join(options.cache, 'tools'),
-      signal,
+      signal: activeSignal,
     });
+    activeSignal.throwIfAborted();
+    options.log?.({ event: 'map.toolchain_ready' });
     let result;
     phase = 'downloader';
+    activeSignal = stageSignal(180000);
     try {
       result = await (adapters.run || runAssetProcess)(
         tools.downloader,
@@ -181,14 +192,14 @@ export async function refreshOfficialMapInventory(options, adapters = {}) {
           cwd: root,
           home,
           temporary,
-          signal,
+          signal: activeSignal,
           timeoutMs: 120000,
           log: join(root, 'listing.log'),
           storageGuard: async () => {
             try {
               await (adapters.reserve || checkFreeReserve)(options.cache, options.assets);
             } catch (error) {
-              throw inventoryError(error, 'storage', options.signal);
+              throw inventoryError(error, 'storage', activeSignal);
             }
           },
         },
@@ -207,12 +218,14 @@ export async function refreshOfficialMapInventory(options, adapters = {}) {
         exitCode: result.code,
       });
     phase = 'metadata';
+    activeSignal.throwIfAborted();
     const inventory = parseOfficialMapInventory(result.stdout);
     phase = 'publication';
+    activeSignal.throwIfAborted();
     await (adapters.publish || writeOfficialMapInventory)(options.jobs, inventory);
     return inventory;
   } catch (error) {
-    throw inventoryError(error, phase, options.signal);
+    throw inventoryError(error, phase, activeSignal);
   } finally {
     if (root) await rm(root, { recursive: true, force: true });
   }

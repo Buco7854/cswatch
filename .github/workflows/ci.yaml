@@ -113,9 +113,36 @@ jobs:
           node scripts/asset-runtime-smoke.mjs --prepare-catalog var/asset-runtime-smoke-catalog
           docker run --rm -i --read-only --network none --cap-drop=ALL --security-opt no-new-privileges --pids-limit 32 --memory 256m --cpus 1 --tmpfs /tmp:rw,size=16m,mode=1777 --tmpfs /map-catalog:rw,size=1m,mode=0750,uid=1000,gid=1000 cswatch:verify-assets node tools/assets/update-map-catalog.mjs < var/asset-runtime-smoke-catalog/catalog.json
           docker run --rm -i --init --read-only --network none --cap-drop=ALL --security-opt no-new-privileges --pids-limit 128 --memory 8g --cpus 2 -e CSWATCH_ASSET_SMOKE_CONTAINER=true --tmpfs /tmp:rw,size=256m,mode=1777 --tmpfs /map-assets:rw,size=1g,mode=0750,uid=1000,gid=1000 --tmpfs /map-jobs:rw,size=16m,mode=0750,uid=1000,gid=1000 --tmpfs /map-cache:rw,size=1g,mode=0750,uid=1000,gid=1000 --mount type=bind,source="$PWD/var/asset-runtime-smoke-catalog",target=/map-catalog,readonly cswatch:verify-assets node --input-type=module < scripts/asset-runtime-smoke.mjs
+  asset-bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build identity
+        id: build-identity
+        run: echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+      - name: Build the cold-bootstrap asset image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          target: assets
+          push: false
+          tags: cswatch:verify-bootstrap
+          load: true
+          pull: true
+          build-args: |
+            CSWATCH_REVISION=${{ github.sha }}
+            CSWATCH_BUILD_TIMESTAMP=${{ steps.build-identity.outputs.created }}
+      - name: Verify real pinned tool preparation from an empty cache
+        run: |
+          test "$(docker image inspect cswatch:verify-bootstrap --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" = '${{ github.sha }}'
+          docker run --rm -i --init --read-only --cap-drop=ALL --security-opt no-new-privileges --pids-limit 128 --memory 6g --cpus 2 -e CSWATCH_ASSET_BOOTSTRAP_TEST=true --tmpfs /tmp:rw,size=256m,mode=1777 --tmpfs /map-assets:rw,size=1g,mode=0750,uid=1000,gid=1000 --tmpfs /map-jobs:rw,size=16m,mode=0750,uid=1000,gid=1000 --tmpfs /map-cache:rw,size=4g,mode=0750,uid=1000,gid=1000 cswatch:verify-bootstrap node --input-type=module < scripts/asset-bootstrap-smoke.mjs
   publish:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-    needs: verify
+    needs: [verify, asset-bootstrap]
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
