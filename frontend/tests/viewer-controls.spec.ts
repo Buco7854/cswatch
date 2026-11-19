@@ -3,6 +3,8 @@ import { test, expect, type Page } from '@playwright/test';
 import { sample } from '../src/sample';
 import { selectOptionsCategory } from './fixtures/viewer-options';
 import type { Playback } from '../src/types';
+import { originalMapReplay } from './fixtures/original-map';
+import { installOriginalCameraProbe, originalCameraView } from './fixtures/original-camera';
 
 const ids = sample.players.map((_, index) => String(76561198000000100n + BigInt(index)));
 const replay = {
@@ -407,27 +409,47 @@ test('free camera keyboard movement changes real rendered pixels and ignores key
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE));
   await page.setViewportSize({ width: 1440, height: 900 });
-  await fixture(page);
+  // The sample's northern spawn faces out of this unrelated QA map. At ground
+  // level, W and Z can both move correctly while painting the same empty sky.
+  // Match the recording coordinates to the actual installed original geometry.
+  const cameraReplay = originalMapReplay('de_controls_fixture');
+  cameraReplay.events = [];
+  cameraReplay.grenades = [];
+  await installOriginalCameraProbe(page);
+  await fixture(page, {}, cameraReplay);
   const canvas = page.locator('.scene canvas');
   await expect(canvas).toBeVisible();
-  await page.waitForTimeout(250);
+  await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
+  await expect.poll(async () => (await originalCameraView(page)).position.length).toBe(3);
+  const initialCamera = await originalCameraView(page);
   const before = await canvas.screenshot();
   await page.locator('.viewer-stage').focus();
   await page.keyboard.down('w');
   await page.waitForTimeout(250);
   await page.keyboard.up('w');
   const after = await canvas.screenshot();
+  const movedW = await originalCameraView(page);
   expect(after.equals(before), 'W must move the actual free camera').toBe(false);
+  expect(
+    Math.hypot(...movedW.position.map((part, index) => part - initialCamera.position[index])),
+    'W must change the rendered camera position',
+  ).toBeGreaterThan(0.05);
   await page.keyboard.down('z');
   await page.waitForTimeout(250);
   await page.keyboard.up('z');
   expect((await canvas.screenshot()).equals(after), 'Z also moves the actual free camera').toBe(
     false,
   );
+  const movedZ = await originalCameraView(page);
+  expect(
+    Math.hypot(...movedZ.position.map((part, index) => part - movedW.position[index])),
+    'Z must change the rendered camera position',
+  ).toBeGreaterThan(0.05);
   await page.getByRole('button', { name: 'Options', exact: true }).click();
   await page.waitForTimeout(250);
   const area = { x: 900, y: 250, width: 300, height: 300 };
   const protectedBefore = await page.screenshot({ clip: area });
+  const protectedCamera = await originalCameraView(page);
   await page.getByRole('button', { name: 'Close viewer options' }).focus();
   await page.keyboard.down('w');
   await page.waitForTimeout(250);
@@ -436,4 +458,8 @@ test('free camera keyboard movement changes real rendered pixels and ignores key
     (await page.screenshot({ clip: area })).equals(protectedBefore),
     'Options must prevent free camera movement',
   ).toBe(true);
+  expect(
+    (await originalCameraView(page)).position,
+    'Options must also preserve the actual rendered camera position',
+  ).toEqual(protectedCamera.position);
 });
