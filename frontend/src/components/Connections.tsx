@@ -84,7 +84,10 @@ export default function Connections({ embedded = false }: { embedded?: boolean }
           )}
           <div className="settings-section">
             <div>
-              <h2>{t('Steam')}</h2>
+              <h2 className="provider-title">
+                <ProviderLogo provider="steam" />
+                {t('Steam')}
+              </h2>
               <p>
                 {t(
                   'Sign in through Steam to verify your identity. Your Steam password stays with Steam.',
@@ -210,7 +213,7 @@ export default function Connections({ embedded = false }: { embedded?: boolean }
               {config.faceit_enabled && (
                 <div className="actions">
                   <button
-                    className="button"
+                    className="button provider-faceit-link"
                     disabled={!!busy || !steam || !config.faceit_configured}
                     onClick={() =>
                       void task('faceit-link', async () => {
@@ -220,6 +223,7 @@ export default function Connections({ embedded = false }: { embedded?: boolean }
                       })
                     }
                   >
+                    <ProviderLogo provider="faceit" />
                     {busy === 'faceit-link'
                       ? t('Verifying…')
                       : faceit

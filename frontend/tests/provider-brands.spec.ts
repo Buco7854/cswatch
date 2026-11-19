@@ -1,18 +1,38 @@
-import { expect, test } from '@playwright/test';
-import { createHash } from 'node:crypto';
+import { expect, test, type Locator } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { installMemberWorkspace, memberUser } from './fixtures/member-workspace';
 
-const profiles = [
-  { language: 'en', theme: 'dark', width: 1440, height: 900 },
-  { language: 'fr', theme: 'light', width: 390, height: 844 },
-  { language: 'en', theme: 'light', width: 1440, height: 900 },
-  { language: 'fr', theme: 'dark', width: 390, height: 844 },
-];
-const sha = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
-for (const [index, profile] of profiles.entries()) {
-  test(`official provider artwork remains local, unmodified and readable in ${profile.language} ${profile.theme} ${profile.width}`, async ({
+const profiles = [1440, 768, 390].flatMap((width) =>
+  ['en', 'fr'].flatMap((language) =>
+    ['dark', 'light'].map((theme) => ({
+      language,
+      theme,
+      width,
+      height: width === 390 ? 844 : 900,
+    })),
+  ),
+);
+
+async function compactIcon(icon: Locator, container: Locator) {
+  await expect(icon).toBeVisible();
+  await expect(icon).toHaveAttribute('viewBox', '0 0 24 24');
+  await expect(icon).toHaveAttribute('aria-hidden', 'true');
+  const bounds = (await icon.boundingBox())!;
+  expect(bounds.width).toBe(20);
+  expect(bounds.height).toBe(20);
+  const parent = (await container.boundingBox())!;
+  expect(bounds.x).toBeGreaterThanOrEqual(parent.x);
+  expect(bounds.x + bounds.width).toBeLessThanOrEqual(parent.x + parent.width);
+  expect(bounds.y).toBeGreaterThanOrEqual(parent.y);
+  expect(bounds.y + bounds.height).toBeLessThanOrEqual(parent.y + parent.height);
+  expect(await icon.evaluate((element) => getComputedStyle(element).fill)).toBe(
+    await container.evaluate((element) => getComputedStyle(element).color),
+  );
+}
+
+for (const profile of profiles) {
+  test(`provider actions use compact icons and localized text in ${profile.language} ${profile.theme} ${profile.width}`, async ({
     page,
   }) => {
     test.skip(Boolean(process.env.E2E_PRIVATE) || Boolean(process.env.E2E_SETUP));
@@ -49,62 +69,63 @@ for (const [index, profile] of profiles.entries()) {
       }
     };
     await page.goto('/login?returnTo=%2Fwatch%2Fprovider-fixture');
-    const signIn = page.getByRole('link', {
-      name: profile.language === 'fr' ? 'Continuer avec Steam' : 'Continue with Steam',
-      exact: true,
-    });
+    const label = profile.language === 'fr' ? 'Continuer avec Steam' : 'Continue with Steam';
+    const signIn = page.getByRole('link', { name: label, exact: true });
     await expect(signIn).toHaveAttribute(
       'href',
       '/api/auth/steam?returnTo=%2Fwatch%2Fprovider-fixture',
     );
-    const steam = signIn.locator('img');
-    await expect(steam).toBeVisible();
-    await expect
-      .poll(() => steam.evaluate((image: HTMLImageElement) => image.naturalWidth))
-      .toBe(180);
-    expect(await steam.evaluate((image) => getComputedStyle(image).filter)).toBe('none');
-    const steamBounds = (await steam.boundingBox())!;
-    expect(steamBounds.width).toBe(180);
-    expect(steamBounds.height).toBe(35);
-    expect(
-      sha(await (await page.request.get((await steam.getAttribute('src')) as string)).body()),
-    ).toBe('bbd5d8ac0c737fccca946009a5eb7cb33605fca2bb5c259807a117f9f2cb193f');
-    await expect(page.locator('.provider-logo-faceit')).toHaveCount(0);
-    await expect(page.locator('a[href="/licenses/provider-brands.txt"]')).toBeVisible();
+    await expect(signIn).toHaveText(label);
+    await expect(signIn.locator('img')).toHaveCount(0);
+    await compactIcon(signIn.locator('svg'), signIn);
+    const height = (await signIn.boundingBox())!.height;
+    expect(height).toBeGreaterThanOrEqual(44);
+    expect(height).toBeLessThanOrEqual(48);
+    expect(height).toBe((await page.locator('.auth-submit').boundingBox())!.height);
+    await signIn.focus();
+    await expect(signIn).toBeFocused();
+    await page.getByRole('heading', { level: 1 }).click();
+    await expect(signIn).not.toBeFocused();
     await capture('login');
 
-    await page.route('**/api/auth/me', (route) => route.fulfill({ json: { user: memberUser } }));
+    const connected = profile.width !== 768;
+    await page.route('**/api/auth/me', (route) =>
+      route.fulfill({ json: { user: connected ? memberUser : { ...memberUser, identities: [] } } }),
+    );
     await page.goto('/account/connections');
-    await expect(page.getByRole('heading', { name: 'FACEIT', exact: true })).toBeVisible();
-    const faceit = page.locator(`.provider-logo-on-${profile.theme}`);
-    await expect(faceit).toBeVisible();
-    await expect
-      .poll(() => faceit.evaluate((image: HTMLImageElement) => image.naturalWidth))
-      .toBe(833);
-    const path = (await faceit.getAttribute('src'))!;
-    expect(new URL(path).pathname).toMatch(
-      profile.theme === 'light'
-        ? /^\/assets\/faceit-on-light-[A-Za-z0-9_-]+\.png$/
-        : /^\/assets\/faceit-on-dark-[A-Za-z0-9_-]+\.png$/,
-    );
-    expect(sha(await (await page.request.get(path)).body())).toBe(
-      profile.theme === 'light'
-        ? 'c7fc176a806a904a0d079ee0c113a9cf2b1d297b7a3f64798276c5a7dcb99175'
-        : 'eeedf9d8bd01a1eb450f33bf5c8d307ff7e8a83b05af64271d9938571aaf9909',
-    );
-    await expect(page.locator('a.provider-steam-link')).toHaveAttribute(
+    for (const provider of ['Steam', 'FACEIT']) {
+      const heading = page.getByRole('heading', { name: provider, exact: true });
+      await compactIcon(heading.locator('svg'), heading);
+    }
+    const steamLink = page.locator('a.provider-steam-link');
+    await expect(steamLink).toHaveAttribute(
       'href',
       '/api/auth/steam?returnTo=%2Faccount%2Fconnections',
     );
+    await expect(steamLink).toHaveText(
+      connected
+        ? profile.language === 'fr'
+          ? 'Revérifier Steam'
+          : 'Verify Steam again'
+        : profile.language === 'fr'
+          ? 'Associer Steam'
+          : 'Connect Steam',
+    );
+    await compactIcon(steamLink.locator('svg'), steamLink);
+    const faceit = page.getByRole('button', {
+      name: profile.language === 'fr' ? 'Vérifier FACEIT' : 'Verify FACEIT',
+      exact: true,
+    });
+    await expect(faceit).toBeDisabled();
+    await compactIcon(faceit.locator('svg'), faceit);
+    for (const action of [steamLink, faceit])
+      expect((await action.boundingBox())!.height).toBeGreaterThanOrEqual(44);
     const notice = await (await page.request.get('/licenses/provider-brands.txt')).text();
+    expect(notice).toContain('CC0-1.0');
     expect(notice).toContain('©2026 Valve Corporation.');
-    expect(notice).toContain('not offered under the repository');
-    if (index < 2) await capture('connections');
-    else
-      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
-        true,
-      );
+    await capture('connections');
     expect(images.every((url) => new URL(url).origin === new URL(page.url()).origin)).toBe(true);
+    expect(images.some((url) => /steam-openid|faceit-on-(light|dark)/.test(url))).toBe(false);
     expect(await page.evaluate(() => (window as any).__brandCSP)).toEqual([]);
     expect(errors).toEqual([]);
   });

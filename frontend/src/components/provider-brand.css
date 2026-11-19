@@ -1,41 +1,20 @@
-/* Approved artwork retains its native colour, proportions and included space. */
 .provider-logo {
   flex: none;
   display: block;
-}
-.provider-logo-steam {
-  width: 180px;
-  height: 35px;
-  max-width: none;
-  object-fit: contain;
-}
-.provider-logo-faceit {
-  width: 36px;
-  height: 36px;
-}
-.provider-logo-faceit img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-.provider-logo-faceit .provider-logo-on-light {
-  display: none;
-}
-[data-theme='light'] .provider-logo-faceit .provider-logo-on-dark {
-  display: none;
-}
-[data-theme='light'] .provider-logo-faceit .provider-logo-on-light {
-  display: block;
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
 }
 .provider-title {
   display: flex;
   align-items: center;
   gap: 12px;
 }
-.button.provider-steam-link {
+.button.provider-steam-link,
+.button.provider-faceit-link {
   justify-content: center;
-  min-height: 55px;
+  gap: 10px;
+  min-height: 46px;
   padding: 10px 16px;
 }
 .provider-brand-notice {
@@ -52,4 +31,8 @@
   color: var(--text);
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+
+.app-shell .settings-panel .button:is(.provider-steam-link, .provider-faceit-link) {
+  min-height: 46px;
 }
