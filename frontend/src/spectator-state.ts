@@ -83,7 +83,7 @@ export function damageFeedbackAt(
     const amount = recordedDamage(event.dmg_health) + recordedDamage(event.dmg_armor);
     if (!amount) continue;
     const decay = 1 - age / duration;
-    opacity = Math.min(0.55, opacity + Math.min(0.45, 0.16 + amount / 350) * decay * decay);
+    opacity = Math.min(0.7, opacity + Math.min(0.55, 0.24 + amount / 280) * decay * decay);
     if (direction !== undefined) continue;
     const attacker = eventPlayer(data, event, 'attacker');
     if (!attacker || attacker.id === selected) continue;

@@ -13,7 +13,7 @@ export function agentAnimation(
   const actions = native
     ? nativeAgentRoles.map((role) => ({
         role,
-        action: mixer.clipAction(clips[native[role]]).play(),
+        clip: clips[native[role]],
       }))
     : [];
   let legacy: AnimationAction | undefined;
@@ -23,11 +23,12 @@ export function agentAnimation(
       const seconds = Number.isFinite(time) ? Math.max(0, time) : 0;
       if (native) {
         const weights = locomotionWeights(speed, duck);
-        for (const { role, action } of actions) action.setEffectiveWeight(weights[role]);
+        for (const { role, clip } of actions)
+          mixer.clipAction(clip).play().setEffectiveWeight(weights[role]);
       } else {
         const clip = genericAgentClip(clips, speed > 0.05, duck > 0.5);
-        if (clip && legacy?.getClip() !== clip) {
-          mixer.stopAllAction();
+        if (clip) {
+          if (legacy?.getClip() !== clip) mixer.stopAllAction();
           legacy = mixer.clipAction(clip).play();
         }
       }

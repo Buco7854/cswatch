@@ -1,7 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
+import { writeFile } from 'node:fs/promises';
 import { installDemoMapDescriptor } from './fixtures/map-assets';
 import { originalMapGLB, originalMapReplay, qaActor } from './fixtures/original-map';
 import { selectOptionsCategory } from './fixtures/viewer-options';
+import { originalAnimatedAgentGLB } from './fixtures/original-agent';
 
 const opponent = '76561198000000002',
   teammate = '76561198000000003';
@@ -61,7 +63,11 @@ function mapWithWall() {
   bin.copy(output, 28 + json.length);
   return output;
 }
-async function fixture(page: Page, id: string, options: { wall?: boolean; death?: boolean } = {}) {
+async function fixture(
+  page: Page,
+  id: string,
+  options: { wall?: boolean; death?: boolean; native?: boolean } = {},
+) {
   const data = originalMapReplay();
   data.grenades = [];
   data.players.push({ id: teammate, name: 'Original QA teammate', team: 3 });
@@ -144,6 +150,14 @@ async function fixture(page: Page, id: string, options: { wall?: boolean; death?
       body: options.wall ? mapWithWall() : originalMapGLB(),
     }),
   );
+  if (options.native) {
+    await page.route('**/api/assets/agents', (route) =>
+      route.fulfill({ json: { ct: '/map-assets/agents/ct.glb', t: '/map-assets/agents/t.glb' } }),
+    );
+    await page.route('**/map-assets/agents/*.glb', (route) =>
+      route.fulfill({ contentType: 'model/gltf-binary', body: originalAnimatedAgentGLB() }),
+    );
+  }
   return data;
 }
 async function camera(page: Page, name: string) {
@@ -259,6 +273,63 @@ test('first-person hurt feedback follows recorded ticks, remains optional and le
   await option(page, 'Visuals', 'Damage feedback', false);
   await expect(page.locator('.spectator-damage')).toHaveCount(0);
 });
+
+test('prepared actors draw their skinned silhouette behind real geometry and release it when X-ray is disabled', async ({
+  page,
+}, info) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE));
+  await page.setViewportSize({ width: 1100, height: 800 });
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await fixture(page, 'spectator-native-xray', { wall: true, native: true });
+  await page.goto('/watch/spectator-native-xray');
+  const scene = page.locator('.scene');
+  await expect(scene).toHaveAttribute('data-map-model-state', 'ready');
+  await camera(page, 'Player perspective');
+  await expect(scene).toHaveAttribute('data-agent-ready-count', '2');
+  await expect(scene).toHaveAttribute('data-agent-fallback-count', '0');
+  const canvas = scene.locator('canvas');
+  const on = await canvas.screenshot();
+  await option(page, 'Visuals', 'X-ray silhouettes', false);
+  const off = await canvas.screenshot();
+  const changed = await page.evaluate(
+    async ({ on, off }) => {
+      const pixels = async (bytes: number[]) => {
+        const image = await createImageBitmap(
+          new Blob([new Uint8Array(bytes)], { type: 'image/png' }),
+        );
+        const surface = new OffscreenCanvas(image.width, image.height),
+          context = surface.getContext('2d')!;
+        context.drawImage(image, 0, 0);
+        image.close();
+        return {
+          width: surface.width,
+          height: surface.height,
+          data: context.getImageData(0, 0, surface.width, surface.height).data,
+        };
+      };
+      const a = await pixels(on),
+        b = await pixels(off);
+      let amber = 0;
+      for (let y = Math.floor(a.height * 0.4); y < a.height * 0.75; y++)
+        for (let x = Math.floor(a.width * 0.4); x < a.width * 0.6; x++) {
+          const at = (y * a.width + x) * 4;
+          if (a.data[at] > a.data[at + 2] * 1.1 && Math.abs(a.data[at] - b.data[at]) > 10) amber++;
+        }
+      return amber;
+    },
+    { on: [...on], off: [...off] },
+  );
+  expect(
+    changed,
+    'The prepared body must produce actual team-colored occluded pixels',
+  ).toBeGreaterThan(20);
+  await option(page, 'Visuals', 'X-ray silhouettes', true);
+  await page.getByRole('slider', { name: 'Playback position' }).fill('96');
+  await expect(scene).toHaveAttribute('data-agent-error-count', '0');
+  await page.screenshot({ path: info.outputPath('native-body-xray.png') });
+  expect(errors).toEqual([]);
+});
 test('French spectator controls fit the phone options panel and reduced motion does not animate the damage cue', async ({
   page,
 }, info) => {
@@ -294,6 +365,43 @@ test('French spectator controls fit the phone options panel and reduced motion d
     path: info.outputPath('spectator-french-phone-options.png'),
     animations: 'disabled',
   });
+});
+
+test('native X-ray does not tint a fully visible character with its own hidden surfaces', async ({
+  page,
+}, info) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE));
+  const data = await fixture(page, 'spectator-native-visible', { wall: true, native: true });
+  // Both actors stand before the actual wall. No part of the prepared body
+  // should be painted as occluded merely because it has rear-facing surfaces.
+  data.players = data.players.slice(0, 2);
+  for (const frame of data.frames) {
+    frame.players = frame.players.slice(0, 2);
+    frame.players[1].x = -150;
+  }
+  await page.goto('/watch/spectator-native-visible');
+  const scene = page.locator('.scene');
+  await expect(scene).toHaveAttribute('data-map-model-state', 'ready');
+  await camera(page, 'Player perspective');
+  await expect(scene).toHaveAttribute('data-agent-ready-count', '1');
+  // A locator screenshot also includes DOM drawn above the canvas. Isolate
+  // actual rendered pixels so focus restoration/roster transitions cannot
+  // masquerade as a change to the native artwork.
+  const capture = () =>
+    scene.locator('canvas').screenshot({
+      style: 'body :not(canvas):not(:has(canvas)) { visibility: hidden !important; }',
+    });
+  const on = await capture();
+  await option(page, 'Visuals', 'X-ray silhouettes', false);
+  const off = await capture();
+  await info.attach('visible-native-xray-on', { body: on, contentType: 'image/png' });
+  await info.attach('visible-native-xray-off', { body: off, contentType: 'image/png' });
+  await writeFile(info.outputPath('visible-native-xray-on.png'), on);
+  await writeFile(info.outputPath('visible-native-xray-off.png'), off);
+  expect(
+    on.equals(off),
+    'Visible native geometry must retain its actual artwork with X-ray enabled',
+  ).toBe(true);
 });
 test('three seconds after a watched death POV follows a living teammate and a later explicit seek does not trigger another switch', async ({
   page,

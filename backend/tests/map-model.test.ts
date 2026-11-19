@@ -2,13 +2,19 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   AmbientLight,
+  AnimationClip,
+  Bone,
+  BufferGeometry,
+  Float32BufferAttribute,
   DirectionalLight,
   DataTexture,
   Group,
+  InstancedMesh,
   Mesh,
   MeshStandardMaterial,
   Matrix4,
   PointLight,
+  SkinnedMesh,
   Texture,
 } from '../../frontend/node_modules/three/build/three.module.js';
 import {
@@ -119,4 +125,100 @@ test('map readiness requires decoded base-color images by material association, 
     () => assertMapBaseColorTextures(evidence),
     'An unused textured material does not reject a plain scene',
   );
+});
+
+test('static map placement avoids repeated descendant updates and follows moved roots and ancestors', () => {
+  const source = new Group(),
+    nested = new Group(),
+    mesh = new Mesh(),
+    world = new Group();
+  source.position.set(2, 3, 5);
+  nested.position.set(-2, 7, 4);
+  nested.rotation.set(0.3, 0.5, 0.1);
+  nested.scale.set(2, 3, 4);
+  mesh.name = 'Original immutable map mesh';
+  mesh.position.set(1, 4, 2);
+  nested.add(mesh);
+  source.add(nested);
+  const prepared = prepareMapModel(source),
+    plain = new Group();
+  plain.rotation.y = Math.PI / 2;
+  plain.add(source.clone(true));
+  world.add(prepared.main, plain);
+  let descendantUpdates = 0;
+  const actual = prepared.main.getObjectByName(mesh.name)!;
+  const originalUpdate = actual.updateMatrixWorld;
+  actual.updateMatrixWorld = function (force) {
+    descendantUpdates++;
+    originalUpdate.call(this, force);
+  };
+  const sameWorld = () => {
+    world.updateMatrixWorld(true);
+    assert.deepEqual(
+      actual.matrixWorld.elements,
+      plain.getObjectByName(mesh.name)!.matrixWorld.elements,
+    );
+  };
+  sameWorld();
+  descendantUpdates = 0;
+  for (let index = 0; index < 10; index++) sameWorld();
+  assert.equal(
+    descendantUpdates,
+    0,
+    'Unchanged map descendants are not updated during forced scene traversals',
+  );
+  world.position.set(-1, 4, 2);
+  world.rotation.x = 0.4;
+  sameWorld();
+  assert.equal(descendantUpdates, 1);
+  prepared.main.position.set(4, 6, -5);
+  plain.position.copy(prepared.main.position);
+  sameWorld();
+  assert.equal(descendantUpdates, 2);
+  const other = new Group();
+  other.position.set(-8, 1, 3);
+  other.scale.set(2, 1, 2);
+  world.add(other);
+  other.add(prepared.main, plain);
+  sameWorld();
+  assert.equal(descendantUpdates, 3);
+  assert.equal(mesh.matrixAutoUpdate, true, 'The cached original asset is never frozen');
+  assert.equal(actual.matrixAutoUpdate, false);
+  assert.equal((actual as Mesh).geometry, mesh.geometry);
+  assert.equal((actual as Mesh).material, mesh.material);
+  assert.equal(actual.castShadow, true);
+  assert.equal(actual.receiveShadow, true);
+});
+
+test('animated, skinned, instanced and morphable map trees retain normal descendant updates', () => {
+  for (const kind of ['clip', 'attached-clip', 'skin', 'bone', 'morph', 'instances'] as const) {
+    const source = new Group(),
+      mesh =
+        kind === 'skin'
+          ? new SkinnedMesh()
+          : kind === 'instances'
+            ? new InstancedMesh(new BufferGeometry(), new MeshStandardMaterial(), 1)
+            : new Mesh();
+    mesh.name = 'Mutable native node';
+    source.add(mesh);
+    if (kind === 'bone') mesh.add(new Bone());
+    if (kind === 'morph') {
+      mesh.geometry = new BufferGeometry();
+      mesh.geometry.setAttribute('position', new Float32BufferAttribute([0, 0, 0], 3));
+      mesh.geometry.morphAttributes.position = [new Float32BufferAttribute([1, 0, 0], 3)];
+      mesh.updateMorphTargets();
+    }
+    if (kind === 'attached-clip') mesh.animations = [new AnimationClip('Original QA clip', 1, [])];
+    const prepared = prepareMapModel(
+        source,
+        kind === 'clip' ? [new AnimationClip('Original', 1, [])] : [],
+      ),
+      actual = prepared.main.getObjectByName(mesh.name)!;
+    assert.equal(actual.matrixAutoUpdate, true, kind);
+    prepared.main.updateMatrixWorld(true);
+    const before = actual.matrixWorld.clone();
+    actual.position.x += 2;
+    prepared.main.updateMatrixWorld(true);
+    assert.equal(actual.matrixWorld.equals(before), false, kind);
+  }
 });

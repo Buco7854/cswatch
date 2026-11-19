@@ -7,9 +7,11 @@ import {
   Mesh,
   Scene,
   Texture,
+  type AnimationClip,
   type Material,
   type Object3D,
 } from 'three';
+import { StaticMapGroup } from './static-map-group';
 
 type MapTextureEvidence = {
   scene: Object3D;
@@ -60,8 +62,11 @@ export function cloneMapModel(scene: Object3D): Object3D {
   return copy;
 }
 
-export function prepareMapModel(scene: Object3D): { main: Group; sky: Scene | null } {
-  const main = new Group(),
+export function prepareMapModel(
+  scene: Object3D,
+  clips: readonly AnimationClip[] = [],
+): { main: Group; sky: Scene | null } {
+  const main = new StaticMapGroup(),
     copy = cloneMapModel(scene),
     roots: Object3D[] = [];
   main.rotation.y = Math.PI / 2;
@@ -74,7 +79,10 @@ export function prepareMapModel(scene: Object3D): { main: Group; sky: Scene | nu
       if (roots.includes(parent)) return;
     roots.push(object);
   });
-  if (!roots.length) return { main, sky: null };
+  if (!roots.length) {
+    main.seal(clips);
+    return { main, sky: null };
+  }
   const sky = new Scene();
   for (const root of roots) {
     const matrix = root.matrixWorld.clone();
@@ -93,5 +101,6 @@ export function prepareMapModel(scene: Object3D): { main: Group; sky: Scene | nu
   sun.position.set(-25, 40, 12);
   sky.add(new AmbientLight(0xffffff, 0.35), new HemisphereLight('#e1ecf0', '#7c694b', 0.6), sun);
   sky.updateMatrixWorld(true);
+  main.seal(clips);
   return { main, sky };
 }

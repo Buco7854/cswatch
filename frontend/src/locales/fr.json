@@ -1292,5 +1292,7 @@
   "Delete": "Supprimer",
   "Manual installations are managed on the server to preserve operator files.": "Les installations manuelles sont gérées sur le serveur pour préserver les fichiers de l’opérateur.",
   "Integrity failed. Review the source.": "Intégrité invalide. Vérifiez la source.",
-  "Retry after {{date}}": "Réessayer après {{date}}"
+  "Retry after {{date}}": "Réessayer après {{date}}",
+  "Shot effects": "Effets de tir",
+  "Show muzzle flashes and weapon movement from recorded shots.": "Afficher les flammes de bouche et le mouvement des armes à partir des tirs enregistrés."
 }

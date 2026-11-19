@@ -1292,5 +1292,7 @@
   "Delete": "Delete",
   "Manual installations are managed on the server to preserve operator files.": "Manual installations are managed on the server to preserve operator files.",
   "Integrity failed. Review the source.": "Integrity failed. Review the source.",
-  "Retry after {{date}}": "Retry after {{date}}"
+  "Retry after {{date}}": "Retry after {{date}}",
+  "Shot effects": "Shot effects",
+  "Show muzzle flashes and weapon movement from recorded shots.": "Show muzzle flashes and weapon movement from recorded shots."
 }

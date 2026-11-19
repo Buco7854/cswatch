@@ -25,6 +25,7 @@ export {
   validateEquipmentGeometryMetadata,
 } from './equipment-model-input.mjs';
 import { staticModelBounds } from './static-model-bounds.mjs';
+import { addNativeMuzzle } from './native-weapon-muzzle.mjs';
 const sourceCommit = '942df5b37ebbde6153f6c488880b91d4bed003e6';
 
 function geometryBytes(document) {
@@ -47,6 +48,7 @@ export async function prepareEquipmentModel({
   id,
   assetVersion,
   source = {},
+  nativeMuzzle,
   confined = false,
 }) {
   if (
@@ -77,6 +79,8 @@ export async function prepareEquipmentModel({
     scene.addChild(root);
   }
   await document.transform(dedup(), prune());
+  // Empty authored anchors are inserted after prune so they survive packing.
+  const muzzle = addNativeMuzzle(document, nativeMuzzle);
   const decodedGeometry = geometryBytes(document),
     bounds = staticModelBounds(document);
   const textureBudget = await applyTextureBudget(document, {
@@ -110,6 +114,7 @@ export async function prepareEquipmentModel({
     assetVersion,
     sourceResource: equipmentModelRegistry[id].resource,
     source,
+    ...(muzzle ? { nativeMuzzle: muzzle } : {}),
     sourceFiles: inspection.resources,
     sourceSha256: inspection.sourceSha256,
     sourceBytes: inspection.bytes,
@@ -167,6 +172,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       'native-sha256': { type: 'string' },
       'native-bytes': { type: 'string' },
       'native-meshes': { type: 'string' },
+      'native-muzzle': { type: 'string' },
       manifest: { type: 'string' },
       confined: { type: 'boolean' },
       help: { type: 'boolean' },
@@ -192,9 +198,16 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       !/^[1-9]\d{0,19}$/.test(values.manifest ?? ''))
   )
     throw Error('Native source provenance is incomplete or invalid.');
+  let nativeMuzzle;
+  if (values['native-muzzle'] !== undefined) {
+    if (values['native-muzzle'].length > 1024)
+      throw Error('Native muzzle metadata exceeds its bound.');
+    nativeMuzzle = JSON.parse(values['native-muzzle']);
+  }
   const result = await prepareEquipmentModel({
     ...values,
     assetVersion: values['asset-version'],
+    nativeMuzzle,
     source: hasNative
       ? {
           depot: '2347770',

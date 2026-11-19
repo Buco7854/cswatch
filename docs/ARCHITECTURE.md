@@ -136,6 +136,16 @@ The equipment loader shares private abortable GLTF jobs with the map loader whil
 
 Desktop/mobile quality controls adjust resolution/shadows and select the prepared map tier. This is not a hardware benchmark; test transfer size, memory, sustained frame rate, and thermal behavior on actual target devices.
 
+## Recorded combat and render work
+
+`weapon-fire.ts` indexes manifest-wide recorded `weapon_fire` events by immutable player ID and canonical firearm. A live, matching current weapon gates the absolute-demo-time flash/kick window, so pause, seek, speed and chunk changes do not replay wall-clock timers. `EquipmentFire` shares that evidence with loaded equipment instances. A small procedural flash and optional single POV light remain analytical effects, not native particles or recorded bones. Reduced motion removes the analytical kick. The local Shot effects preference disables the complete firing presentation. Explicit instance-owned GPU resource disposal is required below cache-owned GLB primitives.
+
+`PovEquipmentPass` composes world/sky first, then clears depth for the separate eye-relative equipment scene, restoring renderer state on failure. Its placement/lighting and static weapon remain approximations, without native arm/reload clips. `agent-xray.ts` adds an occluded team-colored second pass over each native actor's actual geometry, shared posed skeleton and masks. It owns only its shell nodes/materials and never disposes cached geometry/textures or the instance skeleton.
+
+`StaticMapGroup` seals only wholly static prepared map trees, preserving root/reparent transforms and excluding animated/skinned/morphed/instanced/custom nodes. `MapShadowCache` skips unchanged static-map shadows while retaining live dynamic caster, material/geometry/bone, light/frustum, camera-layer and external invalidation. Custom depth/caster callbacks fail open to ordinary updates. Both caches are renderer/instance scoped and preserve frustum visibility, geometry, materials and map colors. They do not provide PVS, LOD or GPU texture compression. `scripts/benchmark-map-transforms.mjs` measures the transform-only portion independently of renderer FPS.
+
+The confined equipment installer extracts a bounded optional single-bone `muzzle_flash` attachment from fixed native MDAT, requires agreement across selected variants and adds the exact marker after pruning. Bone-local offsets convert inches to metres once. Its source proof stays private in preparation metadata. Missing/ambiguous anchors do not become authored evidence, and an existing operator pack is never overwritten.
+
 ## Accounts and providers
 
 A user owns credentials, sessions, demos, and notes. `identities(provider, subject, user_id)` separates external identities from accounts. This supports adding identities without changing ownership or trusting display names. Only Steam is currently a social login provider; FACEIT is a linked data source verified through Steam.

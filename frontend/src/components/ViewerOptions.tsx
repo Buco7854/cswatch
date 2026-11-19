@@ -234,6 +234,11 @@ export default function ViewerOptions({
                   t('Show a subtle first-person hurt cue from recorded damage events.'),
                 )}
                 {toggle(
+                  'shotEffects',
+                  t('Shot effects'),
+                  t('Show muzzle flashes and weapon movement from recorded shots.'),
+                )}
+                {toggle(
                   'trails',
                   t('Movement trails'),
                   t('Show the selected player’s recent path.'),
