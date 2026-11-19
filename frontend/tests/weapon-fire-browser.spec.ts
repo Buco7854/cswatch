@@ -2,14 +2,20 @@ import { createHash } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 import { installDemoMapDescriptor } from './fixtures/map-assets';
 import { originalMapGLB, qaActor } from './fixtures/original-map';
+import { installOriginalCameraProbe, originalCameraView } from './fixtures/original-camera';
 import {
   originalEquipmentCatalog,
   originalEquipmentGLB,
   originalEquipmentReplay,
 } from './fixtures/original-equipment';
 
-async function firePixels(page: Page, prop = false) {
-  const bytes = await page.locator('.scene canvas').screenshot();
+async function firePixels(page: Page, prop = false, capture?: string) {
+  const bytes = await page.locator('.scene canvas').screenshot({
+    ...(capture ? { path: capture } : {}),
+    // A locator screenshot is composited: dialogs, focus rings and overlays
+    // above the canvas still paint into it. Measure rendered game pixels only.
+    style: 'body :not(canvas):not(:has(canvas)) { visibility: hidden !important; }',
+  });
   return page.evaluate(
     async ({ bytes, prop }) => {
       const bitmap = await createImageBitmap(
@@ -38,6 +44,7 @@ async function firePixels(page: Page, prop = false) {
 }
 
 async function fixture(page: Page, wall = false) {
+  await installOriginalCameraProbe(page);
   const replay = originalEquipmentReplay();
   // Stable original positions make actual flash pixels independent of camera motion.
   replay.frames = replay.frames.map((frame) => ({
@@ -124,6 +131,39 @@ async function fixture(page: Page, wall = false) {
   return errors;
 }
 
+async function renderedPovReady(page: Page) {
+  const [view, canvas] = await Promise.all([
+    originalCameraView(page),
+    page.locator('.scene canvas').evaluate((element) => {
+      // Three keeps the canvas's own CSS width at the last rendered size.
+      // Its observed container is the current layout requirement.
+      const rect = element.parentElement!.getBoundingClientRect(),
+        low = element.closest('.scene')?.getAttribute('data-quality') === 'low',
+        dpr = low ? 1 : Math.max(1, Math.min(1.75, devicePixelRatio));
+      return { width: rect.width, height: rect.height, dpr };
+    }),
+  ]);
+  const aspect = view.projection[5] / view.projection[0];
+  return (
+    view.position.length === 3 &&
+    Math.abs(view.position[0] - -512 * 0.0254) < 0.00002 &&
+    Math.abs(view.position[1] - 1.65) < 0.00002 &&
+    Math.abs(view.position[2]) < 0.00002 &&
+    Number.isFinite(aspect) &&
+    Math.abs(aspect - canvas.width / canvas.height) < 0.00001 &&
+    view.drawingBuffer[0] === Math.floor(canvas.width * canvas.dpr) &&
+    view.drawingBuffer[1] === Math.floor(canvas.height * canvas.dpr)
+  );
+}
+
+async function waitForRenderedPov(page: Page) {
+  await expect
+    .poll(() => renderedPovReady(page), {
+      message: 'Wait for the actual POV draw, projection and drawing-buffer size after resize',
+    })
+    .toBe(true);
+}
+
 async function pov(page: Page) {
   await page.getByRole('combobox', { name: 'Camera mode', exact: true }).click();
   await page.getByRole('option', { name: 'Player perspective', exact: true }).click();
@@ -142,33 +182,40 @@ test('recorded shots render at the model muzzle in both themes and low-quality p
   let lastIdle = 0;
   for (const theme of ['dark', 'light'])
     for (const width of [1440, 768, 390]) {
-      await page.emulateMedia({ reducedMotion: width === 390 ? 'reduce' : 'no-preference' });
-      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
-      if ((await page.locator('html').getAttribute('data-theme')) !== theme) {
-        await page.getByRole('button', { name: 'Viewer menu', exact: true }).click();
-        await page.getByRole('menuitem', { name: `Switch to ${theme} theme`, exact: true }).click();
-      }
-      await page.locator('.timeline-slider').fill('0');
-      const idle = await firePixels(page);
-      lastIdle = idle;
-      await page.locator('.timeline-slider').fill('64');
-      await expect.poll(() => firePixels(page)).toBeGreaterThan(idle + 30);
-      const paused = await firePixels(page);
-      expect(
-        await firePixels(page),
-        'Paused recorded fire remains at the same demo-time pose',
-      ).toBe(paused);
-      await page.screenshot({ path: info.outputPath(`firing-${theme}-${width}.png`) });
-      await page.locator('.timeline-slider').fill('128');
-      await expect.poll(() => firePixels(page)).toBeGreaterThan(idle + 30);
-      await page.locator('.timeline-slider').fill('64');
-      await expect
-        .poll(() => firePixels(page), {
-          message: 'Returning to an earlier shot restores its deterministic visual variant',
-        })
-        .toBe(paused);
-      await page.locator('.timeline-slider').fill('80');
-      await expect.poll(() => firePixels(page)).toBe(idle);
+      await test.step(`${theme} viewer at ${width}px`, async () => {
+        await page.emulateMedia({ reducedMotion: width === 390 ? 'reduce' : 'no-preference' });
+        await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+        if ((await page.locator('html').getAttribute('data-theme')) !== theme) {
+          await page.getByRole('button', { name: 'Viewer menu', exact: true }).click();
+          await page
+            .getByRole('menuitem', { name: `Switch to ${theme} theme`, exact: true })
+            .click();
+        }
+        await page.locator('.timeline-slider').fill('0');
+        await waitForRenderedPov(page);
+        const idle = await firePixels(page, false, info.outputPath(`idle-${theme}-${width}.png`));
+        lastIdle = idle;
+        await page.locator('.timeline-slider').fill('64');
+        await expect.poll(() => firePixels(page)).toBeGreaterThan(idle + 30);
+        const paused = await firePixels(page);
+        expect(
+          await firePixels(page),
+          'Paused recorded fire remains at the same demo-time pose',
+        ).toBe(paused);
+        await page.screenshot({ path: info.outputPath(`firing-${theme}-${width}.png`) });
+        await page.locator('.timeline-slider').fill('128');
+        await expect.poll(() => firePixels(page)).toBeGreaterThan(idle + 30);
+        await page.locator('.timeline-slider').fill('64');
+        await expect
+          .poll(() => firePixels(page), {
+            message: 'Returning to an earlier shot restores its deterministic visual variant',
+          })
+          .toBe(paused);
+        await page.locator('.timeline-slider').fill('80');
+        await expect
+          .poll(() => firePixels(page, false, info.outputPath(`after80-${theme}-${width}.png`)))
+          .toBe(idle);
+      });
     }
   await page.locator('.timeline-slider').fill('64');
   let language = 'en';
@@ -262,5 +309,91 @@ test('first-person equipment has independent depth and remains visible when a re
     })
     .toBeGreaterThan(1000);
   await page.screenshot({ path: info.outputPath('near-wall-independent-pov.png') });
+  expect(errors).toEqual([]);
+});
+
+test('rendered POV readiness waits for the real resize draw while model metadata stays ready', async ({
+  page,
+}, info) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE));
+  await page.setViewportSize({ width: 1100, height: 700 });
+  await page.addInitScript(() => {
+    const OriginalResizeObserver = ResizeObserver;
+    let held = false;
+    const pending: (() => void)[] = [];
+    const gate = {
+      hold: () => {
+        held = true;
+      },
+      get pending() {
+        return pending.length;
+      },
+      release: () => {
+        held = false;
+        for (const deliver of pending.splice(0)) deliver();
+      },
+    };
+    (window as unknown as { qaResizeGate: typeof gate }).qaResizeGate = gate;
+    window.ResizeObserver = class extends OriginalResizeObserver {
+      constructor(callback: ResizeObserverCallback) {
+        super((entries, observer) => {
+          const canvas = document.querySelector('.scene canvas');
+          if (held && canvas && entries.some((entry) => entry.target.contains(canvas)))
+            pending.push(() => callback(entries, observer));
+          else callback(entries, observer);
+        });
+      }
+    };
+  });
+  const errors = await fixture(page);
+  await pov(page);
+  await waitForRenderedPov(page);
+  const before = await originalCameraView(page);
+  await page.evaluate(() => {
+    (window as unknown as { qaResizeGate: { hold: () => void } }).qaResizeGate.hold();
+    // A layout-driven resize exercises observer delivery without a separate
+    // native window resize listener racing around the controlled gate.
+    (document.querySelector('.scene') as HTMLElement).style.width = 'calc(100% - 137px)';
+  });
+  await page.waitForFunction(
+    () => (window as unknown as { qaResizeGate: { pending: number } }).qaResizeGate.pending > 0,
+  );
+  await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
+  await expect(page.locator('.scene')).toHaveAttribute(
+    'data-equipment-ready-instances',
+    new RegExp('pov:' + qaActor),
+  );
+  expect(
+    await renderedPovReady(page),
+    'Loaded metadata must not certify the stale rendered projection',
+  ).toBe(false);
+  expect((await originalCameraView(page)).drawingBuffer).toEqual(before.drawingBuffer);
+  let resolved = false;
+  const readiness = waitForRenderedPov(page).then(() => {
+    resolved = true;
+  });
+  try {
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
+    expect(
+      resolved,
+      'Two browser frames cannot satisfy readiness while resize delivery is held',
+    ).toBe(false);
+  } finally {
+    await page.evaluate(() =>
+      (window as unknown as { qaResizeGate: { release: () => void } }).qaResizeGate.release(),
+    );
+    await readiness;
+  }
+  expect((await originalCameraView(page)).drawingBuffer).not.toEqual(before.drawingBuffer);
+  const idle = await firePixels(page, false, info.outputPath('resized-idle.png'));
+  await page.locator('.timeline-slider').fill('64');
+  await expect.poll(() => firePixels(page)).toBeGreaterThan(idle + 30);
+  await page.locator('.timeline-slider').fill('80');
+  await expect.poll(() => firePixels(page)).toBe(idle);
   expect(errors).toEqual([]);
 });
