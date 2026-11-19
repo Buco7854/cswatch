@@ -2,11 +2,18 @@
 
 Updated 2026-11-19. Use Node 24, a Linux kernel supporting required Landlock/seccomp confinement and the Playwright lockfile's Chromium. The current environment uses Node 24.22.3, Linux 6.12/Landlock ABI 6 and Chromium build 1255. Tests use disposable accounts and original synthetic or checksum-pinned public fixtures. The three authorized supplied recordings were separately verified and deleted.
 
-The [verified runtime release `3d8c2ee`](https://github.com/Buco7854/cswatch/actions/runs/44226669557) passed both local and CI integration checks. Hardened application and asset-worker containers passed CI, and both images published. Anonymous manifest requests returned HTTP 200 for both tags. Docker remained unavailable locally. Newer documentation-only signoff changes do not alter that verified runtime.
+The earlier [verified runtime release `3d8c2ee`](https://github.com/Buco7854/cswatch/actions/runs/44226669557) passed both local and CI integration checks. Hardened application and asset-worker containers passed CI, and both images published. Anonymous manifest requests returned HTTP 200 for both tags. Docker remained unavailable locally. Newer documentation-only signoff changes do not alter that verified runtime.
 
-## Active authentication and asset-bootstrap revision
+## Verified authentication and asset-bootstrap revision
 
-Final local checks pass for the frozen source. Exact-commit CI, full asset aggregate, hardened containers and publication remain pending; Docker is unavailable locally. The host has roughly 512 MiB free, while existing aggregate asset tests require additional bounded scratch. The 77 relevant asset checks and required actual local asset smoke pass without weakening that reserve. CI must provide the complete aggregate on a host with sufficient storage.
+Released runtime `1aaa5a51c213a90b78c38c44419e93ba7be79579` passed [workflow 44453043246](https://github.com/Buco7854/cswatch/actions/runs/44453043246), verify job `135321374252` and publish job `135325397181`, run number 24. CI confirms 350 backend and 234 complete asset cases without skips/cancellations, 158 public browser cases with two intentional policy skips, both private policies with six passes/154 skips each, and four setup passes/one environment skip. Both hardened containers passed, including actual private upload/ownership/offline speech and the new confined Sharp/fixed-name preview publication checks. Immutable build identity and OCI revision checks passed in the running application image.
+
+Both images published. Anonymous requests to latest and immutable tags returned 200, their manifest/config hashes matched and OCI source/revision/time labels identified this exact runtime. Local evidence: `.design/nov19-published-images.json`.
+
+- Application `latest` / `sha-1aaa5a51c213a90b78c38c44419e93ba7be79579-24`: `sha256:4714d23c42870d1bceb9627bb94325c01c71ebc80a32a52f2ff936ea886cf93e`.
+- Assets `assets-latest` / `assets-sha-1aaa5a51c213a90b78c38c44419e93ba7be79579-24`: `sha256:30f8421bbbe9a299edaaf461c8576025eed8a635c96b96065581af8da422ed83`.
+
+Docker is unavailable locally. The host's roughly 512 MiB free space cannot support the existing complete asset aggregate's additional bounded scratch. Its 77 relevant asset checks and actual local asset smoke passed without weakening the reserve; the complete 234-case aggregate passed in CI with adequate storage. Documentation-only signoff does not alter the verified runtime.
 
 | Current local check                                      | Result                                                                                                                                                               | Evidence                                                                                |
 | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
