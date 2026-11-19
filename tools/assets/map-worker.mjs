@@ -25,6 +25,7 @@ import {
   latestMapPackMarkerSchema,
   readMapCatalog,
   resolveMap,
+  officialMapInventoryLimits,
 } from '../../backend/dist/map-catalog.js';
 import {
   mapJobLimits,
@@ -752,6 +753,7 @@ export async function runMapWorker(options, adapters = {}) {
       previewManifest,
       previewAttempts = 0,
       presentationManifest,
+      presentationCheckedAt,
       pendingPresentation = [];
     while (!options.signal?.aborted) {
       busy = true;
@@ -761,8 +763,8 @@ export async function runMapWorker(options, adapters = {}) {
         await heartbeat();
         continue;
       }
-      for (const kind of await consumePresentationRetries(options.jobs))
-        if (!pendingPresentation.includes(kind)) pendingPresentation.push(kind);
+      for (const retry of await consumePresentationRetries(options.jobs))
+        if (!pendingPresentation.includes(retry.kind)) pendingPresentation.push(retry.kind);
       if (clock() < blockedUntil) {
         await heartbeat();
         await pause(Math.min(15000, (blockedUntil - clock()) * 1000));
@@ -778,6 +780,7 @@ export async function runMapWorker(options, adapters = {}) {
           if (audioAttempts < 3) audioManifest = inventory.manifest;
           if (previewAttempts < 3) previewManifest = inventory.manifest;
           presentationManifest = inventory.manifest;
+          presentationCheckedAt = clock();
           pendingPresentation = [...presentationKinds];
           options.log?.({
             event: 'map.inventory_ready',
@@ -810,8 +813,13 @@ export async function runMapWorker(options, adapters = {}) {
         await pause(Math.min(2000, (idleBlockedUntil - clock()) * 1000));
         continue;
       }
+      const inventoryIsFresh =
+        presentationCheckedAt !== undefined &&
+        clock() >= presentationCheckedAt &&
+        clock() - presentationCheckedAt <= officialMapInventoryLimits.maxAgeSeconds;
       if (
         !worked &&
+        inventoryIsFresh &&
         presentationManifest &&
         pendingPresentation.length &&
         !options.signal?.aborted
@@ -826,7 +834,9 @@ export async function runMapWorker(options, adapters = {}) {
           const kind = pendingPresentation.shift();
           busy = true;
           try {
-            const result = await preparePresentation(workOptions, presentationManifest, kind);
+            const retained = (await readPresentationStatus(options.jobs, true))?.categories[kind];
+            const sourceManifest = retained?.manifest || presentationManifest;
+            const result = await preparePresentation(workOptions, sourceManifest, kind);
             preparedPresentation = result?.status === 'prepared' || result?.status === 'checked';
             if (result?.remaining) pendingPresentation.push(kind);
           } catch (error) {
@@ -845,7 +855,7 @@ export async function runMapWorker(options, adapters = {}) {
         }
         if (preparedPresentation || clock() < blockedUntil || clock() < idleBlockedUntil) continue;
       }
-      if (!worked && previewManifest && !options.signal?.aborted) {
+      if (!worked && inventoryIsFresh && previewManifest && !options.signal?.aborted) {
         const selected = previewManifest;
         previewManifest = undefined;
         previewAttempts++;
@@ -865,7 +875,7 @@ export async function runMapWorker(options, adapters = {}) {
         // Recheck queued maps and the shared Steam cooldown before starting a large bank.
         continue;
       }
-      if (!worked && audioManifest && !options.signal?.aborted) {
+      if (!worked && inventoryIsFresh && audioManifest && !options.signal?.aborted) {
         const selected = audioManifest;
         audioManifest = undefined;
         audioAttempts++;
@@ -918,9 +928,9 @@ export async function prepareIdlePresentation(options, manifest, kind, adapters 
       cache,
       toolchainCache: join(options.cache, 'tools'),
       cacheRoot: options.cache,
-      prepareSource: async () => {
+      prepareSource: async (selectedManifest, selectedCache) => {
         await budgets(options);
-        if ((await sourceCache(options, manifest)) !== cache)
+        if ((await sourceCache(options, selectedManifest)) !== selectedCache)
           throw Error('Native presentation source changed.');
       },
       networkDeny: options.networkDeny || defaultNetworkDeny,

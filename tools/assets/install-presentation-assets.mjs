@@ -121,16 +121,29 @@ async function validateBank(root, kind, manifest) {
 /** One idle category per call, with a persisted three-attempt generation budget. */
 export async function installPresentationAssets(options, manifest, kind, adapters = {}) {
   selectedSteamManifest(manifest);
-  if (!presentationKinds.includes(kind) || !options.networkDeny)
+  if (
+    !presentationKinds.includes(kind) ||
+    !options.networkDeny ||
+    typeof options.cacheRoot !== 'string'
+  )
     throw Error('Fixed native presentation kind and confinement are required.');
   const output = resolve(options.assets),
     target = join(output, kind);
+  const cacheRoot = resolve(options.cacheRoot);
+  if (
+    cacheRoot === '/' ||
+    cacheRoot === output ||
+    cacheRoot.startsWith(output + '/') ||
+    output.startsWith(cacheRoot + '/')
+  )
+    throw Error('Keep native sources separate from served assets.');
+  await localDirectory(cacheRoot);
   await localDirectory(output);
   await localDirectory(options.jobs);
   const stageOptions = {
     jobs: options.jobs,
     assets: output,
-    cache: options.cacheRoot || options.cache,
+    cache: cacheRoot,
   };
   if (await cleanPresentationStages(stageOptions))
     throw Error('Unsafe private presentation staging requires operator review.');
@@ -143,6 +156,9 @@ export async function installPresentationAssets(options, manifest, kind, adapter
     categories: {},
   };
   const previous = status.categories[kind];
+  // A selected category is one immutable native-source generation, including
+  // continuation after an inventory refresh or an acknowledged retry restart.
+  manifest = previous?.manifest || manifest;
   const targetExists = await exists(target);
   let owned = false,
     installedManifest;
@@ -158,6 +174,22 @@ export async function installPresentationAssets(options, manifest, kind, adapter
         installedManifest = value.manifest;
     }
     owned = Boolean(installedManifest);
+    if (installedManifest && previous && installedManifest !== previous.manifest) {
+      // Keep both immutable sources intact and expose the contradiction as a
+      // terminal failure, including after an acknowledged retry/restart.
+      status.categories[kind] = {
+        ...previous,
+        status: 'failed',
+        attempts: presentationPreparationLimits.attempts,
+        updatedAt: now(),
+        code: 'source_mismatch',
+      };
+      delete status.categories[kind].stage;
+      delete status.categories[kind].retryAt;
+      await writePresentationStatus(options.jobs, status);
+      return { status: 'failed' };
+    }
+    manifest = installedManifest || manifest;
     if (kind !== 'equipment-models' || !owned) {
       const state = owned ? 'ready' : 'preserved';
       status.categories[kind] = {
@@ -174,6 +206,7 @@ export async function installPresentationAssets(options, manifest, kind, adapter
       return { status: state === 'ready' ? 'installed' : 'preserved' };
     }
   }
+  options = { ...options, cache: join(cacheRoot, 'sources', `steam-${manifest}`) };
   const existing = new Set();
   if (kind === 'equipment-models' && owned) {
     const entries = await readdir(target, { withFileTypes: true });
@@ -256,7 +289,7 @@ export async function installPresentationAssets(options, manifest, kind, adapter
   await update({ status: 'preparing', stage: 'acquiring' });
   let stage, publishing;
   try {
-    await options.prepareSource?.();
+    await options.prepareSource?.(manifest, options.cache);
     await (adapters.storage || checkStorage)(options.cache, output);
     stage = await mkdtemp(join(output, '.presentation-'));
     await registerPresentationStage(stageOptions, stage, { manifest, kind, location: 'assets' });
