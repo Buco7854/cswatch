@@ -139,7 +139,7 @@ jobs:
       - name: Verify real pinned tool preparation from an empty cache
         run: |
           test "$(docker image inspect cswatch:verify-bootstrap --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" = '${{ github.sha }}'
-          docker run --rm -i --init --read-only --cap-drop=ALL --security-opt no-new-privileges --pids-limit 128 --memory 6g --cpus 2 -e CSWATCH_ASSET_BOOTSTRAP_TEST=true --tmpfs /tmp:rw,size=256m,mode=1777 --tmpfs /map-assets:rw,size=1g,mode=0750,uid=1000,gid=1000 --tmpfs /map-jobs:rw,size=16m,mode=0750,uid=1000,gid=1000 --tmpfs /map-cache:rw,size=4g,mode=0750,uid=1000,gid=1000 cswatch:verify-bootstrap node --input-type=module < scripts/asset-bootstrap-smoke.mjs
+          docker run --rm -i --init --read-only --cap-drop=ALL --security-opt no-new-privileges --pids-limit 128 --memory 6g --cpus 2 -e CSWATCH_ASSET_BOOTSTRAP_TEST=true --tmpfs /tmp:rw,size=256m,mode=1777 --tmpfs /map-assets:rw,size=1g,mode=0750,uid=1000,gid=1000 --tmpfs /map-jobs:rw,size=16m,mode=0750,uid=1000,gid=1000 --tmpfs /map-cache:rw,exec,nosuid,nodev,size=4g,mode=0750,uid=1000,gid=1000 cswatch:verify-bootstrap node --input-type=module < scripts/asset-bootstrap-smoke.mjs
   publish:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: [verify, asset-bootstrap]

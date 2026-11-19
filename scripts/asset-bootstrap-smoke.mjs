@@ -26,6 +26,21 @@ try {
   const processStatus = await readFile('/proc/self/status', 'utf8');
   assert.match(processStatus, /^CapEff:\s+0+$/m);
   assert.match(processStatus, /^NoNewPrivs:\s+1$/m);
+  const cacheMount = (await readFile('/proc/self/mountinfo', 'utf8'))
+    .split('\n')
+    .map((line) => line.split(' '))
+    .find((fields) => fields[4] === '/map-cache');
+  assert.ok(cacheMount);
+  const cacheFlags = cacheMount[5].split(',');
+  const cacheExecutable = !cacheFlags.includes('noexec');
+  console.log(JSON.stringify({ event: 'asset.bootstrap_environment', cacheExecutable }));
+  assert.equal(
+    cacheExecutable,
+    true,
+    'Verified tool binaries require an executable private cache.',
+  );
+  assert.ok(cacheFlags.includes('nosuid'));
+  assert.ok(cacheFlags.includes('nodev'));
 
   const { prepareToolchain, toolchainDirectory } =
     await import('/app/tools/assets/prepare-toolchain.mjs');
