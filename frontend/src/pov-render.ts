@@ -1,4 +1,5 @@
 import type { Camera, Scene, WebGLRenderer } from 'three';
+import { withSceneEnvironment } from './map-ibl';
 
 /** A viewmodel has its own depth, so nearby map walls cannot cut through it. */
 export function renderPovEquipment(
@@ -13,7 +14,7 @@ export function renderPovEquipment(
     if (!worldAlreadyRendered) renderer.render(world, camera);
     renderer.autoClear = false;
     renderer.clearDepth();
-    renderer.render(equipment, camera);
+    withSceneEnvironment(world, equipment, () => renderer.render(equipment, camera));
   } finally {
     renderer.autoClear = autoClear;
   }

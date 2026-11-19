@@ -1,8 +1,5 @@
 import {
-  AmbientLight,
-  DirectionalLight,
   Group,
-  HemisphereLight,
   Light,
   Mesh,
   Scene,
@@ -12,6 +9,13 @@ import {
   type Object3D,
 } from 'three';
 import { StaticMapGroup } from './static-map-group';
+import { readSourceSun, type SourceSun } from './source-sun';
+
+export type MapModelResult = {
+  main: Group;
+  sky: Scene | null;
+  sun: SourceSun | null;
+};
 
 type MapTextureEvidence = {
   scene: Object3D;
@@ -65,13 +69,17 @@ export function cloneMapModel(scene: Object3D): Object3D {
 export function prepareMapModel(
   scene: Object3D,
   clips: readonly AnimationClip[] = [],
-): { main: Group; sky: Scene | null } {
+): MapModelResult {
   const main = new StaticMapGroup(),
     copy = cloneMapModel(scene),
     roots: Object3D[] = [];
   main.rotation.y = Math.PI / 2;
   main.add(copy);
   main.updateMatrixWorld(true);
+  // Read one coherent decision across main and sky authoring, while both still
+  // share the prepared coordinate transform. Reparenting sky geometry must not
+  // lose a sky-only sun or hide conflicting source evidence.
+  const sun = readSourceSun(main);
   main.traverse((object) => {
     const tag = object.userData?.cswatch;
     if (tag?.kind !== 'skybox' || tag.schemaVersion !== 1) return;
@@ -81,7 +89,7 @@ export function prepareMapModel(
   });
   if (!roots.length) {
     main.seal(clips);
-    return { main, sky: null };
+    return { main, sky: null, sun };
   }
   const sky = new Scene();
   for (const root of roots) {
@@ -97,10 +105,7 @@ export function prepareMapModel(
     });
     sky.add(root);
   }
-  const sun = new DirectionalLight(0xffffff, 1.8);
-  sun.position.set(-25, 40, 12);
-  sky.add(new AmbientLight(0xffffff, 0.35), new HemisphereLight('#e1ecf0', '#7c694b', 0.6), sun);
   sky.updateMatrixWorld(true);
   main.seal(clips);
-  return { main, sky };
+  return { main, sky, sun };
 }

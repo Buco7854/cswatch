@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   BoxGeometry,
   Color,
+  CubeTexture,
   Group,
   Mesh,
   PerspectiveCamera,
@@ -57,12 +58,19 @@ test('sky renders behind main depth and restores background and renderer state e
     main.background = new Color('#91a7b3');
     main.backgroundIntensity = 0.75;
     main.backgroundRotation.y = 0.3;
+    main.environment = new CubeTexture();
+    main.environmentIntensity = 0.8;
+    main.environmentRotation.y = -0.2;
     sky.background = new Color('#123456');
     sky.backgroundIntensity = 2;
     sky.backgroundBlurriness = 0.5;
     sky.backgroundRotation.y = 0.7;
     const originalMain = main.background,
       originalSky = sky.background;
+    const originalSkyEnvironment = new CubeTexture();
+    sky.environment = originalSkyEnvironment;
+    sky.environmentIntensity = 0.4;
+    sky.environmentRotation.y = 0.9;
     const renderer = {
       autoClear: true,
       clear() {
@@ -77,6 +85,9 @@ test('sky renders behind main depth and restores background and renderer state e
           assert.equal(active, skyCamera);
           assert.equal(sky.background, originalMain);
           assert.equal(sky.backgroundIntensity, 0.75);
+          assert.equal(sky.environment, main.environment);
+          assert.equal(sky.environmentIntensity, 0.8);
+          assert.equal(sky.environmentRotation.y, -0.2);
         } else {
           draws.push('main');
           assert.equal(active, camera);
@@ -98,5 +109,8 @@ test('sky renders behind main depth and restores background and renderer state e
     assert.equal(sky.backgroundIntensity, 2);
     assert.equal(sky.backgroundBlurriness, 0.5);
     assert.equal(sky.backgroundRotation.y, 0.7);
+    assert.equal(sky.environment, originalSkyEnvironment);
+    assert.equal(sky.environmentIntensity, 0.4);
+    assert.equal(sky.environmentRotation.y, 0.9);
   }
 });

@@ -18,6 +18,7 @@
     "test:installer": "node --test *.test.mjs",
     "test:toolchain": "node --test prepare-toolchain.test.mjs",
     "install-equipment-models": "node install-equipment-models.mjs",
+    "inspect-viewmodel-source": "node inspect-viewmodel-source.mjs",
     "test:models": "node --test equipment-source-model.test.mjs prepare-equipment-model.test.mjs pose-agent-idle.test.mjs retarget-agent-animations.test.mjs prepare-agent-model.test.mjs install-equipment-models.test.mjs"
   },
   "dependencies": {

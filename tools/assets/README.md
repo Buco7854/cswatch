@@ -74,6 +74,17 @@ See [S2V map export documentation](https://s2v.app/ValveResourceFormat/guides/ex
 
 Agent/weapon exports use S2V's [model export guide](https://s2v.app/ValveResourceFormat/guides/exporting-models.html). Static spectator weapons, recorded world equipment and optional agent rigs are supported with prepared packs. Native hand poses, recoil, animation graphs and Source 2 effects remain incomplete.
 
+### Measure first-person source requirements
+
+The read-only diagnostic below inspects one fixed AK first-person prototype: the native shared arms model, AK model and idle/fire/reload clips. It follows only CRC-valid cached resources and reports index hashes, verified payload hashes and missing dependencies. It does not download, convert, install or enable first-person arms.
+
+```sh
+npm --prefix tools/assets run inspect-viewmodel-source -- \
+  --game /srv/cswatch-assets-cache/steam --manifest EXACT_UINT64_MANIFEST
+```
+
+Supply the source pin explicitly. Cache directory names and local index hashes alone do not establish official provenance or current Steam availability. Missing resources make entry bytes a lower bound because they can hide further skeleton, material and texture dependencies. Steam chunk transfer, filesystem allocation and conversion scratch are separate measurements and remain unknown in this report. The source-cache space floor preserves the existing 512 MiB reserve and is not a complete preparation estimate. Full animation graphs and unregistered clips remain excluded. A complete bounded resource scan does not prove rig compatibility or runtime rendering.
+
 No Valve assets are bundled. Operators provide assets and determine whether their intended hosting/distribution is permitted. S2V's own open-source license does not grant rights to game content. Don't put proprietary exports into this repository or its public container image.
 
 ## Local 2D map and radar overviews

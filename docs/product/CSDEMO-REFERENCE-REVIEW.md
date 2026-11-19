@@ -48,6 +48,14 @@ Current cswatch has calibrated maps/radar, authored sky and scenery, native defa
 
 The largest remaining work is therefore rendering and asset preparation. Further control restyling alone cannot close these gaps.
 
+## Follow-up status, 2026-11-19
+
+The gap paragraph above describes the original review state. Released runtime `795c056` subsequently adds analytical recorded-event muzzle flash/kick/light, stronger hurt feedback, native posed-body x-ray and independent POV depth. A matched retained Ancient scene reduces draw submissions 52.2% through static transform/shadow reuse, without an FPS claim.
+
+The current unreleased lighting follow-up retains authored sun direction and linear colour, corrects map-wide shadow projection and adds bounded, approximate local-sky irradiance/reflections to the world, landscape and POV. It reuses installed assets. It does not recover Source lightmaps, native layered materials or local reflection probes. Actual Ancient exports have primary UVs and custom four-component `_TEXCOORD_4` layer-blend data, but no standard secondary lightmap UV channel or lightmap binding. Never reinterpret that custom attribute or reuse UV0 as an invented lightmap layout. The [official export limitations](https://s2v.app/ValveResourceFormat/guides/format-support.html#gltf-export) confirm single-layer PBR conversion and missing baked lighting. At the pinned exporter commit, [layer-blend inputs](https://github.com/ValveResourceFormat/ValveResourceFormat/blob/942df5b37ebbde6153f6c488880b91d4bed003e6/Renderer/Shaders/common/surface_height_layers_vs.slang) and [baked-lighting inputs](https://github.com/ValveResourceFormat/ValveResourceFormat/blob/942df5b37ebbde6153f6c488880b91d4bed003e6/Renderer/Shaders/common/baked_lighting_vs.slang) are separate.
+
+A read-only, fixed AK/arms/idle/fire/reload source diagnostic now reports indexed/CRC-verified/missing entries, exact selected source labels and lower-bound headroom without acquisition or conversion. The five indexed seed payloads total 1,163,745 bytes in the retained indexes, but their verified payloads are missing. Their transitive dependencies, Steam transfer chunks and converter scratch are unknown. Directory names do not prove source provenance, and these seed bytes are not an arms-preparation estimate. The existing reserve and source isolation remain unchanged.
+
 ## Next implementation priorities
 
 1. Establish a repeatable Ancient scene benchmark before changing the renderer. Record the exact source pack, replay tick, camera, viewport/DPR, quality, warm/cold state and device. Measure frame-time distribution, draw calls, submitted/visible triangles, CPU work, decoded geometry, texture residency and transfer bytes. Compare matching conditions and retain pixel evidence. Include a real supported phone before making device claims.
