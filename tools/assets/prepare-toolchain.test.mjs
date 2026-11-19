@@ -315,3 +315,10 @@ test('subprocess output and lifetime are bounded without executing downloaded co
     /time limit/,
   );
 });
+
+test('trusted tool failures preserve a bounded exit status for safe inventory diagnostics', async () => {
+  await assert.rejects(
+    runTool(process.execPath, ['-e', 'process.exit(13)']),
+    (error) => error.exitCode === 13,
+  );
+});

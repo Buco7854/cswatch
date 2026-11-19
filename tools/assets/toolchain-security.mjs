@@ -254,8 +254,11 @@ export async function runTool(
       if (failure) reject(failure);
       else if (code !== 0)
         reject(
-          new Error(
-            `Pinned toolchain command failed with exit ${code}. ${Buffer.concat(errors).toString('utf8').slice(-1200)}`,
+          Object.assign(
+            new Error(
+              `Pinned toolchain command failed with exit ${code}. ${Buffer.concat(errors).toString('utf8').slice(-1200)}`,
+            ),
+            Number.isInteger(code) && code >= 0 && code <= 255 ? { exitCode: code } : {},
           ),
         );
       else resolvePromise(Buffer.concat(output).toString('utf8'));
