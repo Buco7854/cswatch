@@ -6,6 +6,7 @@ import {
   type Scene,
   type WebGLRenderer,
 } from 'three';
+import { withSceneEnvironment } from './map-ibl';
 
 const MAX_SKY_FAR = 1_000_000;
 export function skyCameraFor(scene: Scene) {
@@ -52,7 +53,7 @@ export function renderSkyBehindMap(
     sky.backgroundBlurriness = main.backgroundBlurriness;
     sky.backgroundRotation.copy(main.backgroundRotation);
     renderer.clear(true, true, true);
-    renderer.render(sky, skyCamera);
+    withSceneEnvironment(main, sky, () => renderer.render(sky, skyCamera));
     renderer.clearDepth();
     main.background = null;
     renderer.render(main, mainCamera);

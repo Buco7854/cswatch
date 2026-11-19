@@ -99,6 +99,99 @@ test('native sky tags extract complete transformed roots without changing the ca
   assert.equal(mesh.castShadow, true);
 });
 
+test('map preparation retains one sky-only authored sun without adding sky lights or updating the cached source', () => {
+  const scene = new Group(),
+    sky = new Group(),
+    sun = new DirectionalLight();
+  sky.name = 'Original QA sky';
+  sky.userData.cswatch = { kind: 'skybox', schemaVersion: 1 };
+  sky.position.set(120, 30, -80);
+  sky.rotation.x = -Math.PI / 3;
+  sky.scale.setScalar(16);
+  sun.name = 'Original QA sun';
+  sun.userData.name = 'light_environment';
+  sun.color.setRGB(0.7, 0.5, 0.4);
+  sun.intensity = 3500;
+  sky.add(sun);
+  scene.add(sky);
+  const originals = [scene, sky, sun].map((node) => ({
+      local: node.matrix.clone(),
+      world: node.matrixWorld.clone(),
+      parent: node.parent,
+    })),
+    prepared = prepareMapModel(scene);
+  assert.ok(prepared.sun, 'The main view retains sun evidence that was authored only in the sky');
+  prepared.sun.directionToSun.forEach((value, index) =>
+    assert.ok(Math.abs(value - [0.5, Math.sqrt(3) / 2, 0][index]) < 1e-10),
+  );
+  assert.deepEqual(prepared.sun.color, [0.7, 0.5, 0.4]);
+  assert.equal(prepared.main.getObjectByName(sun.name), undefined);
+  const extracted = prepared.sky!.getObjectByName(sun.name)! as DirectionalLight;
+  assert.equal(extracted.visible, false);
+  assert.equal(extracted.intensity, 0);
+  const lights: DirectionalLight[] = [];
+  prepared.sky!.traverse((node) => {
+    if (node instanceof DirectionalLight) lights.push(node);
+    assert.equal(
+      node instanceof AmbientLight,
+      false,
+      'Shared scene lighting owns sky illumination',
+    );
+  });
+  assert.deepEqual(lights, [extracted], 'No extra generic sun is inserted into the landscape');
+  [scene, sky, sun].forEach((node, index) => {
+    assert.deepEqual(node.matrix, originals[index].local);
+    assert.deepEqual(node.matrixWorld, originals[index].world);
+    assert.equal(node.parent, originals[index].parent);
+  });
+  assert.equal(sun.intensity, 3500);
+  assert.equal(sun.visible, true);
+});
+
+test('main and sky sun conflicts share one fallback decision before sky extraction', () => {
+  const scene = new Group(),
+    sky = new Group(),
+    mainSun = new DirectionalLight(),
+    skySun = new DirectionalLight();
+  sky.userData.cswatch = { kind: 'skybox', schemaVersion: 1 };
+  mainSun.userData.name = skySun.userData.name = 'light_environment';
+  mainSun.color.setRGB(0.7, 0.6, 0.4);
+  skySun.color.copy(mainSun.color);
+  mainSun.rotation.x = skySun.rotation.x = -0.8;
+  sky.add(skySun);
+  scene.add(mainSun, sky);
+  assert.ok(prepareMapModel(scene).sun, 'Agreeing main and sky suns share authored lighting');
+  skySun.color.g += 0.01;
+  assert.equal(
+    prepareMapModel(scene).sun,
+    null,
+    'Reparenting must not hide a source color conflict',
+  );
+  skySun.color.copy(mainSun.color);
+  skySun.rotation.y += 0.1;
+  assert.equal(
+    prepareMapModel(scene).sun,
+    null,
+    'Reparenting must not hide a source pose conflict',
+  );
+});
+
+test('main-only source sun includes the existing coordinate rotation once and missing evidence stays unavailable', () => {
+  const scene = new Group(),
+    sun = new DirectionalLight();
+  assert.deepEqual(prepareMapModel(scene).sun, null);
+  sun.userData.name = 'light_environment';
+  sun.color.setRGB(0.8, 0.7, 0.6);
+  scene.add(sun);
+  const prepared = prepareMapModel(scene);
+  assert.equal(prepared.sky, null);
+  assert.ok(prepared.sun);
+  prepared.sun.directionToSun.forEach((value, index) =>
+    assert.ok(Math.abs(value - [1, 0, 0][index]) < 1e-10),
+  );
+  assert.deepEqual(prepared.sun.color, [0.8, 0.7, 0.6]);
+});
+
 test('map readiness requires decoded base-color images by material association, including identical names', () => {
   const scene = new Group(),
     plain = new MeshStandardMaterial(),

@@ -11,7 +11,7 @@ import {
 } from 'react';
 import type { ReactNode } from 'react';
 import type { ListenerPose } from '../viewer-audio';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { Canvas, createPortal, useFrame, useThree } from '@react-three/fiber';
 import { Html, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import type { Playback, Position } from '../types';
@@ -74,6 +74,9 @@ import { daylightFallback, mapEnvironmentKey, useMapEnvironment } from '../map-e
 import EquipmentFire from './EquipmentFire';
 import PovEquipmentPass from './PovEquipmentPass';
 import { useMapShadowCache } from '../useMapShadowCache';
+import SceneLighting from './SceneLighting';
+import { mapSun, type MapSun } from '../map-sun';
+import { useMapSkyLighting } from '../useMapSkyLighting';
 export type MapRenderState = {
   map: string;
   model: AssetStatus;
@@ -205,6 +208,7 @@ function Model({
     status: 'ready' | 'error',
     sky?: THREE.Scene | null,
     landscape?: AssetStatus,
+    sun?: MapSun | null,
   ) => void;
 }) {
   // Prepared map URLs are fixed. Operator pack installs require reloading open
@@ -227,36 +231,64 @@ function Model({
       [result.main, ...(result.sky ? [result.sky] : [])],
       () => fogResources.current,
     );
-    return { ...result, landscape, compatibility };
+    const sun = mapSun(result.sun, new THREE.Box3().setFromObject(result.main));
+    return { ...result, sun, landscape, compatibility };
   }, [gltf, fogResources]);
   useEffect(() => () => prepared.compatibility.dispose(), [prepared]);
   useLayoutEffect(() => {
-    if (scope.isCurrent()) loaded(url, 'ready', prepared.sky, prepared.landscape);
+    if (scope.isCurrent()) loaded(url, 'ready', prepared.sky, prepared.landscape, prepared.sun);
   }, [url, loaded, prepared, scope]);
   return <primitive object={prepared.main} />;
 }
-function SkyPass({ sky }: { sky: THREE.Scene }) {
+function SkyPass({
+  sky,
+  sun,
+  skylight,
+}: {
+  sky: THREE.Scene;
+  sun: MapSun | null;
+  skylight: boolean;
+}) {
   const camera = useMemo(() => skyCameraFor(sky), [sky]);
   useFrame(({ gl, scene, camera: main }) => {
     const backgroundCamera =
       main instanceof THREE.PerspectiveCamera ? updateSkyCamera(main, camera) : main;
     renderSkyBehindMap(gl, scene, sky, main, backgroundCamera);
   }, 1);
-  return null;
+  return createPortal(<SceneLighting sample={false} sun={sun} skylight={skylight} />, sky);
 }
 function EnvironmentBackground({
   environment,
   sample,
   report,
   resources,
+  low,
 }: {
   environment: MapEnvironment | null;
   sample: boolean;
-  report: (identity: string | null, status: AssetStatus) => void;
+  report: (identity: string | null, status: AssetStatus, skylight?: boolean) => void;
   resources: SourceFogReference;
+  low: boolean;
 }) {
   const { scene, invalidate } = useThree();
   const state = useMapEnvironment(sample ? null : environment);
+  const lighting = useMapSkyLighting(state.texture, low);
+  useLayoutEffect(() => {
+    const previous = scene.environment,
+      intensity = scene.environmentIntensity,
+      rotation = scene.environmentRotation.clone();
+    scene.environment = lighting;
+    // The exported backdrop is clamped LDR artwork, not measured HDR radiance.
+    // Keep its broad reflected fill below the normalized directional sunlight.
+    scene.environmentIntensity = lighting ? environment!.sky.brightness * 0.35 : 1;
+    scene.environmentRotation.copy(scene.backgroundRotation);
+    invalidate();
+    return () => {
+      scene.environment = previous;
+      scene.environmentIntensity = intensity;
+      scene.environmentRotation.copy(rotation);
+    };
+  }, [scene, lighting, environment?.sky.brightness, invalidate]);
   useLayoutEffect(() => {
     resources.current = { fog: environment?.fog || null, cube: state.texture };
     invalidate();
@@ -276,9 +308,9 @@ function EnvironmentBackground({
     };
   }, [scene, state.texture, sample, environment?.sky.brightness, invalidate]);
   useLayoutEffect(() => {
-    report(state.identity, state.status);
+    report(state.identity, state.status, Boolean(lighting));
     return () => report(state.identity, 'pending');
-  }, [state.identity, state.status, report]);
+  }, [state.identity, state.status, lighting, report]);
   return null;
 }
 class MapModelBoundary extends Component<
@@ -442,6 +474,8 @@ function World({
   reportModel,
   modelScope,
   sky,
+  sun,
+  skylight,
   environment,
   reportEnvironment,
   preview,
@@ -464,11 +498,14 @@ function World({
     status: 'ready' | 'error',
     sky?: THREE.Scene | null,
     landscape?: AssetStatus,
+    sun?: MapSun | null,
   ) => void;
   sky: THREE.Scene | null;
+  sun: MapSun | null;
+  skylight: boolean;
   modelScope: ModelScope | null;
   environment: MapEnvironment | null;
-  reportEnvironment: (identity: string | null, status: AssetStatus) => void;
+  reportEnvironment: (identity: string | null, status: AssetStatus, skylight?: boolean) => void;
   preview: boolean;
   settings: ViewerSettings;
   agents: { ct: string | null; t: string | null };
@@ -737,21 +774,10 @@ function World({
         sample={Boolean(data.sample)}
         report={reportEnvironment}
         resources={fogResources}
+        low={low}
       />
-      {sky && <SkyPass sky={sky} />}
-      <ambientLight intensity={data.sample ? 0.9 : 0.35} />
-      <hemisphereLight args={['#e1ecf0', '#7c694b', data.sample ? 2 : 0.6]} />
-      <directionalLight
-        position={[-25, 40, 12]}
-        intensity={data.sample ? 3.5 : 1.8}
-        castShadow
-        shadow-mapSize={[2048, 2048]}
-        shadow-camera-left={-45}
-        shadow-camera-right={45}
-        shadow-camera-top={45}
-        shadow-camera-bottom={-45}
-        shadow-normalBias={0.04}
-      />
+      {sky && <SkyPass sky={sky} sun={sun} skylight={skylight} />}
+      <SceneLighting sample={Boolean(data.sample)} sun={sun} skylight={skylight} shadows={!low} />
       {data.sample ? (
         <Courtyard />
       ) : (
@@ -794,7 +820,12 @@ function World({
             />
           ))}
         {!preview && mode === 'pov' && viewedPlayer && (data.sample || modelReady) && (
-          <PovEquipmentPass hasSky={Boolean(sky)} sample={Boolean(data.sample)}>
+          <PovEquipmentPass
+            hasSky={Boolean(sky)}
+            sample={Boolean(data.sample)}
+            sun={sun}
+            skylight={skylight}
+          >
             <PovEquipment
               position={viewedPlayer}
               next={next.players.find((player) => player.id === viewedPlayer.id)}
@@ -1110,6 +1141,7 @@ export default function Scene({
     status: 'ready' | 'error';
     sky: THREE.Scene | null;
     landscape: AssetStatus;
+    sun: MapSun | null;
   }>();
   const currentModel = useRef(model);
   currentModel.current = model;
@@ -1119,15 +1151,17 @@ export default function Scene({
       status: 'ready' | 'error',
       sky: THREE.Scene | null = null,
       landscape: AssetStatus = 'missing',
+      sun: MapSun | null = null,
     ) => {
       if (currentModel.current === url)
         setModelLoad((previous) =>
           previous?.url === url &&
           previous.status === status &&
           previous.sky === sky &&
-          previous.landscape === landscape
+          previous.landscape === landscape &&
+          previous.sun === sun
             ? previous
-            : { url, status, sky, landscape },
+            : { url, status, sky, landscape, sun },
         );
     },
     [],
@@ -1155,23 +1189,30 @@ export default function Scene({
   const [environmentLoad, setEnvironmentLoad] = useState<{
     identity: string | null;
     status: AssetStatus;
+    skylight: boolean;
   }>();
   const currentEnvironment = useRef(environmentIdentity);
   currentEnvironment.current = environmentIdentity;
-  const reportEnvironment = useCallback((identity: string | null, status: AssetStatus) => {
-    if (currentEnvironment.current === identity)
-      setEnvironmentLoad((previous) =>
-        previous?.identity === identity && previous.status === status
-          ? previous
-          : { identity, status },
-      );
-  }, []);
+  const reportEnvironment = useCallback(
+    (identity: string | null, status: AssetStatus, skylight = false) => {
+      if (currentEnvironment.current === identity)
+        setEnvironmentLoad((previous) =>
+          previous?.identity === identity &&
+          previous.status === status &&
+          previous.skylight === skylight
+            ? previous
+            : { identity, status, skylight },
+        );
+    },
+    [],
+  );
   const environmentStatus: AssetStatus = environment
     ? environmentLoad?.identity === environmentIdentity
       ? environmentLoad.status
       : 'pending'
     : 'missing';
   const landscapeStatus: AssetStatus = modelLoad?.url === model ? modelLoad.landscape : 'missing';
+  const skylight = environmentLoad?.identity === environmentIdentity && environmentLoad.skylight;
   const reportRendererFallback = useCallback(() => {
     if (currentRendererAttempt.current !== rendererAttempt) return;
     rendererAttempt.failed = true;
@@ -1333,6 +1374,7 @@ export default function Scene({
       data-camera-mode={mode}
       data-map-model-state={data.sample ? 'ready' : modelStatus}
       data-environment-state={environmentStatus}
+      data-skylight-state={skylight ? 'ready' : 'fallback'}
       data-environment-version={environment?.assetVersion}
       data-landscape-state={landscapeStatus}
       data-focus-x={focus?.target.x}
@@ -1386,6 +1428,12 @@ export default function Scene({
                       modelReady={modelStatus === 'ready'}
                       reportModel={reportModel}
                       modelScope={modelScope}
+                      sun={
+                        modelLoad?.url === model && modelLoad.status === 'ready'
+                          ? modelLoad.sun
+                          : null
+                      }
+                      skylight={Boolean(skylight)}
                       sky={
                         modelLoad?.url === model && modelLoad.status === 'ready'
                           ? modelLoad.sky
