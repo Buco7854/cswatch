@@ -113,27 +113,11 @@ export function newSession(
   return csrf;
 }
 
-/** Keep authentication intent local. Never redirect to user-supplied external origins or API routes. */
-export function safeReturnPath(value: unknown, fallback = '/library') {
-  if (
-    typeof value !== 'string' ||
-    !value.startsWith('/') ||
-    value.startsWith('//') ||
-    /[\\\r\n]/.test(value) ||
-    value.length > 1024
-  )
-    return fallback;
-  try {
-    const url = new URL(value, 'https://cswatch.invalid');
-    if (
-      url.origin !== 'https://cswatch.invalid' ||
-      !/^\/(?:library|connections|account(?:\/connections)?|explore|watch\/[A-Za-z0-9_-]+)(?:\/)?$/.test(
-        url.pathname,
-      )
-    )
-      return fallback;
-    return url.pathname + url.search + url.hash;
-  } catch {
-    return fallback;
-  }
-}
+/** Source and compiled runtime share the browser's authentication route policy. */
+const { safeAuthReturnPath } = (await import(
+  new URL(
+    import.meta.url.endsWith('.ts') ? '../../shared/auth-navigation.mjs' : './auth-navigation.mjs',
+    import.meta.url,
+  ).href
+)) as typeof import('../../shared/auth-navigation.mjs');
+export const safeReturnPath = safeAuthReturnPath;

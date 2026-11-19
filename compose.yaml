@@ -58,7 +58,6 @@ services:
     <<: *isolated
     init: true
     image: ${CSWATCH_ASSETS_IMAGE:-ghcr.io/buco7854/cswatch:assets-latest}
-    profiles: [assets]
     environment:
       MAP_ASSETS_DIR: /map-assets
       MAP_JOBS_DIR: /map-jobs

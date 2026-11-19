@@ -6,7 +6,10 @@ import {
   officialMapInventorySchema,
   officialMapInventoryLimits,
 } from '../../backend/dist/map-catalog.js';
-import { writeOfficialMapInventory } from '../../backend/dist/map-jobs.js';
+import {
+  writeOfficialMapInventory,
+  mapInventoryFailureSchema,
+} from '../../backend/dist/map-jobs.js';
 import { prepareToolchain } from './prepare-toolchain.mjs';
 import { runAssetProcess } from './install-steam-assets.mjs';
 import { localDirectory } from './toolchain-security.mjs';
@@ -25,6 +28,83 @@ export function markSteamRateLimit(error) {
     return true;
   }
   return error?.code === 'STEAM_RATE_LIMIT';
+}
+
+/** Project only fixed supervisor diagnostics. Never retain error text, paths or native output. */
+export function officialInventoryFailure(error, phase = 'storage', signal) {
+  if (error?.inventoryDiagnostic) {
+    const checked = mapInventoryFailureSchema.safeParse({
+      ...error.inventoryDiagnostic,
+      at: 0,
+      retryAt: 0,
+    });
+    if (checked.success) {
+      const { at: _at, retryAt: _retryAt, ...diagnostic } = checked.data;
+      return diagnostic;
+    }
+  }
+  const errno = [error?.code, error?.cause?.code];
+  let code;
+  if (signal?.aborted) code = 'interrupted';
+  else if (error?.code === 'STEAM_RATE_LIMIT') {
+    phase = 'downloader';
+    code = 'steam_rate_limited';
+  } else if (
+    errno.some((value) => ['ENOSPC', 'EDQUOT', 'ASSET_STORAGE_LIMIT'].includes(value)) ||
+    [
+      'Insufficient free disk space for the selective asset stage and 512 MiB reserve.',
+      'Asset cache exceeds the 16 GiB allocated-storage limit.',
+      'Official map storage limit reached.',
+    ].includes(error?.message)
+  )
+    code = 'storage_limit';
+  else if (errno.some((value) => ['EACCES', 'EPERM', 'EROFS'].includes(value)))
+    code = 'access_denied';
+  else if (
+    errno.some((value) =>
+      [
+        'ENETUNREACH',
+        'EHOSTUNREACH',
+        'ECONNREFUSED',
+        'ECONNRESET',
+        'ENOTFOUND',
+        'EAI_AGAIN',
+      ].includes(value),
+    )
+  )
+    code = 'network_unavailable';
+  else if (
+    errno.includes('ETIMEDOUT') ||
+    ['AbortError', 'TimeoutError'].includes(error?.name) ||
+    error?.message === 'Operator asset stage timed out.'
+  )
+    code = 'timeout';
+  else
+    code = {
+      storage: 'storage_unavailable',
+      toolchain: 'toolchain_failed',
+      downloader: 'steam_unavailable',
+      metadata: 'metadata_invalid',
+      publication: 'publication_failed',
+    }[phase];
+  const diagnostic = {
+    phase,
+    code,
+    ...(Number.isInteger(error?.exitCode) && error.exitCode >= 0 && error.exitCode <= 255
+      ? { exitCode: error.exitCode }
+      : {}),
+  };
+  const checked = mapInventoryFailureSchema.safeParse({ ...diagnostic, at: 0, retryAt: 0 });
+  if (!checked.success) return { phase: 'storage', code: 'storage_unavailable' };
+  return diagnostic;
+}
+function inventoryError(error, phase, signal) {
+  const diagnostic = officialInventoryFailure(error, phase, signal);
+  return Object.assign(Error('Official map inventory is unavailable.'), {
+    inventoryDiagnostic: diagnostic,
+    ...(error?.code === 'STEAM_RATE_LIMIT' ? { code: 'STEAM_RATE_LIMIT' } : {}),
+    ...(diagnostic.exitCode !== undefined ? { exitCode: diagnostic.exitCode } : {}),
+  });
 }
 
 export function parseOfficialMapInventory(text, at = Math.floor(Date.now() / 1000)) {
@@ -74,21 +154,25 @@ export function parseOfficialMapInventory(text, at = Math.floor(Date.now() / 100
 }
 
 export async function refreshOfficialMapInventory(options, adapters = {}) {
-  await localDirectory(options.cache, true);
-  await checkStorage(options.cache, options.assets);
-  const root = await mkdtemp(join(options.cache, '.official-inventory-'));
-  const home = join(root, 'home'),
-    temporary = join(root, 'tmp');
-  for (const path of [home, temporary]) await mkdir(path, { mode: 0o700 });
+  let root,
+    phase = 'storage';
+  const signal = options.signal
+    ? AbortSignal.any([options.signal, AbortSignal.timeout(180000)])
+    : AbortSignal.timeout(180000);
   try {
-    const signal = options.signal
-      ? AbortSignal.any([options.signal, AbortSignal.timeout(180000)])
-      : AbortSignal.timeout(180000);
+    await localDirectory(options.cache, true);
+    await (adapters.storage || checkStorage)(options.cache, options.assets);
+    root = await mkdtemp(join(options.cache, '.official-inventory-'));
+    const home = join(root, 'home'),
+      temporary = join(root, 'tmp');
+    for (const path of [home, temporary]) await mkdir(path, { mode: 0o700 });
+    phase = 'toolchain';
     const tools = await (adapters.prepareToolchain || prepareToolchain)({
       cache: join(options.cache, 'tools'),
       signal,
     });
     let result;
+    phase = 'downloader';
     try {
       result = await (adapters.run || runAssetProcess)(
         tools.downloader,
@@ -100,7 +184,13 @@ export async function refreshOfficialMapInventory(options, adapters = {}) {
           signal,
           timeoutMs: 120000,
           log: join(root, 'listing.log'),
-          storageGuard: () => checkFreeReserve(options.cache, options.assets),
+          storageGuard: async () => {
+            try {
+              await (adapters.reserve || checkFreeReserve)(options.cache, options.assets);
+            } catch (error) {
+              throw inventoryError(error, 'storage', options.signal);
+            }
+          },
         },
       );
     } catch (error) {
@@ -112,11 +202,18 @@ export async function refreshOfficialMapInventory(options, adapters = {}) {
         code: 'STEAM_RATE_LIMIT',
         exitCode: 4,
       });
-    if (result.code !== 0) throw Error('Official map inventory is unavailable.');
+    if (result.code !== 0)
+      throw Object.assign(Error('Official map inventory is unavailable.'), {
+        exitCode: result.code,
+      });
+    phase = 'metadata';
     const inventory = parseOfficialMapInventory(result.stdout);
-    await writeOfficialMapInventory(options.jobs, inventory);
+    phase = 'publication';
+    await (adapters.publish || writeOfficialMapInventory)(options.jobs, inventory);
     return inventory;
+  } catch (error) {
+    throw inventoryError(error, phase, options.signal);
   } finally {
-    await rm(root, { recursive: true, force: true });
+    if (root) await rm(root, { recursive: true, force: true });
   }
 }

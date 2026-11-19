@@ -885,7 +885,6 @@ summary {
 .history-row {
   border-color: var(--border);
 }
-[data-theme] .auth-dialog,
 [data-theme] .options-dialog {
   background: var(--surface);
   color: var(--text);
@@ -894,19 +893,7 @@ summary {
   padding: 28px;
   box-shadow: 0 20px 80px #0004;
 }
-.auth-dialog h2 {
-  font-size: 23px;
-  font-weight: 500;
-  max-width: 320px;
-}
-.auth-dialog > p {
-  font-size: 14px;
-  margin-bottom: 22px;
-}
-.auth-dialog label {
-  font-size: 14px;
-}
-.auth-dialog::backdrop,
+
 .options-dialog::backdrop {
   background: #10160d88;
 }
@@ -914,17 +901,7 @@ summary {
   top: 10px;
   right: 10px;
 }
-.auth-dialog small {
-  font-size: 12px;
-}
-.auth-dialog .auth-switch {
-  font-size: 13px;
-}
-.auth-dialog .steam-button {
-  background: var(--raised);
-  color: var(--text);
-  border-color: var(--control);
-}
+
 .options-dialog section > h3 {
   font-size: 13px;
   border-color: var(--border);
@@ -1685,12 +1662,7 @@ summary {
     left: 12px;
     max-width: calc(100vw - 24px);
   }
-  .auth-dialog {
-    padding: 28px 24px !important;
-  }
-  .auth-dialog h2 {
-    font-size: 23px;
-  }
+
   .options-dialog {
     padding: 22px !important;
   }

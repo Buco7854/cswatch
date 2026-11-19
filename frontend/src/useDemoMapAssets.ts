@@ -18,7 +18,9 @@ export function useDemoMapAssets(
 ) {
   const identity = useMemo(() => ({ id, map, userId }), [id, map, userId]);
   const [snapshot, setSnapshot] = useState<{ identity: object; state: DemoMapState }>();
-  const lease = useRef<{ identity: object; retry: () => void } | undefined>(undefined);
+  const lease = useRef<{ identity: object; retry: () => void; check: () => void } | undefined>(
+    undefined,
+  );
   const current = useRef(identity);
   current.current = identity;
   useEffect(() => {
@@ -29,6 +31,7 @@ export function useDemoMapAssets(
     const attempted = new Set<string>(),
       uncertain = new Set<string>();
     let poll = 0,
+      readinessPoll = 0,
       cooldownChecks = 0,
       retryBusy = false;
     let latest: DemoMapState = pendingDemoMap;
@@ -82,17 +85,27 @@ export function useDemoMapAssets(
         body: '{}',
       });
     }
-    function schedule(state: DemoMapState) {
+    function schedule(state: DemoMapState, readiness = false) {
       if (!live()) return;
       if (Date.now() - started >= 45 * 60 * 1000) {
         publish({ ...state, pollingEnded: true });
         return;
       }
-      timeout = setTimeout(() => void check(), delays[Math.min(poll++, delays.length - 1)]);
+      const interval = readiness
+        ? [2000, 5000, 15000, 30000][Math.min(readinessPoll++, 3)]
+        : delays[Math.min(poll++, delays.length - 1)];
+      timeout = setTimeout(() => void check(), interval);
     }
     function observe(state: DemoMapState) {
       if (state.acquisition && ['queued', 'processing'].includes(state.acquisition.acquisition))
         schedule(state);
+      else if (
+        state.acquisition?.acquisition === 'unavailable' &&
+        ['worker_unavailable', 'inventory_unavailable', 'inventory_stale'].includes(
+          state.acquisition.readinessReason || '',
+        )
+      )
+        schedule(state, true);
       else if (
         state.acquisition?.acquisition === 'failed' &&
         !state.acquisition.canAcquire &&
@@ -167,6 +180,11 @@ export function useDemoMapAssets(
     }
     lease.current = {
       identity,
+      check: () => {
+        if (!live() || request || retryBusy) return;
+        clearTimeout(timeout);
+        void check();
+      },
       retry: () => {
         if (
           !live() ||
@@ -209,5 +227,8 @@ export function useDemoMapAssets(
   const retryAcquisition = useCallback(() => {
     if (lease.current?.identity === current.current) lease.current.retry();
   }, []);
-  return { ...state, reportOverview, retryAcquisition };
+  const refreshAvailability = useCallback(() => {
+    if (lease.current?.identity === current.current) lease.current.check();
+  }, []);
+  return { ...state, reportOverview, retryAcquisition, refreshAvailability };
 }

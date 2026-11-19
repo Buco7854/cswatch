@@ -1,11 +1,8 @@
 import { t } from './i18n';
 import { useTranslation } from 'react-i18next';
-import Brand from './components/Brand';
 import { PublicShell, Landing } from './components/PublicSite';
-import LanguageControl from './components/LanguageControl';
 import Setup from './components/Setup';
 import { ConfirmationProvider } from './components/Confirmation';
-import AccountGate from './components/AccountGate';
 import { Component, StrictMode, useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -18,7 +15,7 @@ import {
   useLocation,
   useNavigate,
 } from 'react-router-dom';
-import { ArrowUpRight, X, Sun, Moon, LockKeyhole } from 'lucide-react';
+import { X } from 'lucide-react';
 import { api, setCsrf } from './api';
 import { AppContext } from './context';
 import type { Config, User } from './types';
@@ -26,7 +23,8 @@ import Library from './components/Library';
 import Viewer from './components/Viewer';
 import WorkspaceShell from './components/WorkspaceShell';
 import { Account, Admin } from './components/Settings';
-import AuthDialog from './components/AuthDialog';
+import AuthPage from './components/AuthPage';
+import { authPath } from './auth-navigation';
 import '@fontsource/ibm-plex-sans/latin-400.css';
 import '@fontsource/ibm-plex-sans/latin-500.css';
 import '@fontsource/ibm-plex-sans/latin-600.css';
@@ -38,6 +36,7 @@ import './member.css';
 import './member-controls.css';
 import './viewer-layout.css';
 import './viewer-presentation.css';
+import './components/auth.css';
 import '@fontsource/barlow-condensed/latin-600.css';
 import '@fontsource/barlow-condensed/latin-700.css';
 
@@ -82,7 +81,6 @@ function App() {
   }, [theme]);
   const [user, setUser] = useState<User | null>(null),
     [config, setConfig] = useState<Config | null>(null),
-    [auth, setAuth] = useState(false),
     [toast, setToast] = useState(''),
     [error, setError] = useState('');
   const location = useLocation();
@@ -206,9 +204,17 @@ function App() {
         <p>{t('Opening your review room…')}</p>
       </main>
     );
-  const privateGate = !config.public_access && !user;
+  const authRoute = ['/login', '/register'].includes(location.pathname);
+  const accountRoute = [
+    '/library',
+    '/connections',
+    '/account',
+    '/account/connections',
+    '/admin',
+  ].includes(location.pathname);
+  const privateGate = !user && (!config.public_access || accountRoute);
   const publicSurface = location.pathname === '/' && !user;
-  const guestPath = location.pathname + location.search;
+  const guestPath = location.pathname + location.search + location.hash;
   const pageTitle = location.pathname.startsWith('/watch')
     ? t('Match review')
     : ['/connections', '/account/connections'].includes(location.pathname)
@@ -220,7 +226,16 @@ function App() {
           : t('Demo library');
   return (
     <AppContext.Provider
-      value={{ user, config, refresh, notify: setToast, signIn: () => setAuth(true) }}
+      value={{
+        user,
+        config,
+        refresh,
+        notify: setToast,
+        signIn: () =>
+          navigate(authPath('login', publicSurface ? '/library' : guestPath), {
+            state: { authFrom: guestPath },
+          }),
+      }}
     >
       <a className="skip-link" href="#main">
         {t('Skip to content')}
@@ -235,39 +250,18 @@ function App() {
         <Navigate replace to={user ? '/library' : '/'} />
       ) : location.pathname === '/' && user ? (
         <Navigate replace to="/library" />
+      ) : authRoute ? (
+        <AuthPage
+          key={location.key}
+          theme={theme}
+          toggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+        />
       ) : privateGate ? (
-        <div className="private-entry">
-          <header>
-            <Brand />
-            <div className="private-entry-tools">
-              <LanguageControl />
-              <button
-                className="icon-button"
-                aria-label={t(theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme')}
-                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              >
-                {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
-              </button>
-            </div>
-          </header>
-          <main id="main">
-            <LockKeyhole size={34} />
-            <h1>{t('A private review room.')}</h1>
-            <p>{t('This instance is open to signed-in members only.')}</p>
-            <button className="button primary" onClick={() => setAuth(true)}>
-              {t('Sign in to continue')}
-              <ArrowUpRight size={17} />
-            </button>
-            <small>
-              {t(
-                config.registrations_enabled
-                  ? 'Create an account or sign in to join this instance.'
-                  : 'New registrations are closed on this instance. Existing members can still sign in.',
-              )}
-            </small>
-          </main>
-          <span className="private-entry-brand">CSWATCH</span>
-        </div>
+        <Navigate
+          replace
+          to={authPath('login', guestPath)}
+          state={{ authFrom: config.public_access ? '/' : guestPath }}
+        />
       ) : publicSurface ? (
         <PublicShell
           theme={theme}
@@ -298,7 +292,7 @@ function App() {
           toggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
         >
           <Routes>
-            <Route path="/library" element={user ? <Library /> : <AccountGate />} />
+            <Route path="/library" element={<Library />} />
             <Route path="/explore" element={<Navigate replace to={user ? '/library' : '/'} />} />
             <Route
               path="/features/:kind"
@@ -309,13 +303,8 @@ function App() {
               path="/connections"
               element={<Navigate replace to={'/account/connections' + location.search} />}
             />
-            <Route path="/account" element={user ? <Account /> : <AccountGate kind="account" />} />
-            <Route
-              path="/account/connections"
-              element={
-                user ? <Account section="connections" /> : <AccountGate kind="connections" />
-              }
-            />
+            <Route path="/account" element={<Account />} />
+            <Route path="/account/connections" element={<Account section="connections" />} />
             <Route path="/admin" element={<Admin />} />
             <Route
               path="*"
@@ -331,15 +320,6 @@ function App() {
           </Routes>
         </WorkspaceShell>
       )}
-      {auth && (
-        <AuthDialog
-          returnTo={publicSurface ? '/library' : guestPath}
-          onSuccess={() => {
-            if (publicSurface) navigate('/library');
-          }}
-          close={() => setAuth(false)}
-        />
-      )}{' '}
       {toast && (
         <div className={'toast' + (!publicSurface ? ' member-toast' : '')} role="status">
           <span>{t(toast)}</span>

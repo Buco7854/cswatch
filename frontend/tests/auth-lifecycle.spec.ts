@@ -23,7 +23,7 @@ const fixtureUser = {
   identities: [],
 };
 
-test('a dismissed login still refreshes its session without closing a newer dialog or redirecting', async ({
+test('leaving sign-in still refreshes its session without replacing a newer sign-in page or redirecting', async ({
   page,
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE) || Boolean(process.env.E2E_SETUP));
@@ -42,27 +42,36 @@ test('a dismissed login still refreshes its session without closing a newer dial
   try {
     await page.goto('/');
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-    const dialog = page.getByRole('dialog', { name: 'Back for another look.', exact: true });
-    await expect(dialog).toHaveAccessibleDescription('Sign in to your review room.');
-    await dialog.getByLabel('Username', { exact: true }).fill('fixture');
-    await dialog.getByLabel('Password', { exact: true }).fill('Disposable-password-2026');
-    await dialog.getByRole('button', { name: 'Sign in', exact: true }).click();
+    const form = page.getByRole('form', { name: 'Sign in', exact: true });
+    await expect(page.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible();
+    await expect(page.getByText('Sign in to your review room.', { exact: true })).toBeVisible();
+    await form.getByLabel('Username', { exact: true }).fill('fixture');
+    await form.getByLabel('Password', { exact: true }).fill('Disposable-password-2026');
+    await form.getByRole('button', { name: 'Sign in', exact: true }).click();
     await expect.poll(() => attempts).toBe(1);
     // An explicit second submit must not create a competing authentication request.
-    await dialog.locator('form').evaluate((form: HTMLFormElement) => form.requestSubmit());
-    await page.keyboard.press('Escape');
-    await expect(dialog).toHaveCount(0);
+    await form.evaluate((form: HTMLFormElement) => form.requestSubmit());
+    await page.getByRole('link', { name: 'Go back', exact: true }).click();
+    await expect(form).toHaveCount(0);
     await changeRoute(page, '/account');
-    await page.getByRole('button', { name: 'Sign in to continue', exact: true }).click();
-    await dialog.getByLabel('Username', { exact: true }).fill('new_attempt');
+    await expect(page).toHaveURL(/\/login\?returnTo=%2Faccount$/);
+    await form.getByLabel('Username', { exact: true }).fill('new_attempt');
 
+    const refreshed = page.waitForResponse(
+      async (response) =>
+        response.url().endsWith('/api/auth/me') &&
+        (await response.json()).user?.id === fixtureUser.id,
+    );
     response.resolve();
-    await expect(page.getByText('Signed in as fixture.', { exact: true })).toBeVisible();
-    await expect(page).toHaveURL(/\/account$/);
-    await expect(dialog).toBeVisible();
-    await expect(dialog.getByLabel('Username', { exact: true })).toHaveValue('new_attempt');
-    await expect(dialog.getByRole('alert')).toHaveCount(0);
+    await (await refreshed).finished();
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+    await expect(page).toHaveURL(/\/login\?returnTo=%2Faccount$/);
+    await expect(form).toBeVisible();
+    await expect(form.getByLabel('Username', { exact: true })).toHaveValue('new_attempt');
+    await expect(form.getByRole('alert')).toHaveCount(0);
     expect(attempts).toBe(1);
+    await changeRoute(page, '/account');
+    await expect(page.getByText('Signed in as fixture.', { exact: true })).toBeVisible();
   } finally {
     response.resolve();
   }
@@ -93,27 +102,38 @@ test('an obsolete login cannot overwrite an active attempt after route navigatio
   try {
     await page.goto('/');
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-    const dialog = page.getByRole('dialog', { name: 'Back for another look.', exact: true });
-    await dialog.getByLabel('Username', { exact: true }).fill('fixture');
-    await dialog.getByLabel('Password', { exact: true }).fill('Disposable-password-2026');
-    await dialog.getByRole('button', { name: 'Sign in', exact: true }).click();
+    const form = page.getByRole('form', { name: 'Sign in', exact: true });
+    await form.getByLabel('Username', { exact: true }).fill('fixture');
+    await form.getByLabel('Password', { exact: true }).fill('Disposable-password-2026');
+    await form.getByRole('button', { name: 'Sign in', exact: true }).click();
     await expect.poll(() => attempts).toBe(1);
 
     await changeRoute(page, '/account');
-    await dialog.getByLabel('Username', { exact: true }).fill('new_attempt');
-    await dialog.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await expect(page).toHaveURL(/\/login\?returnTo=%2Faccount$/);
+    await form.getByLabel('Username', { exact: true }).fill('new_attempt');
+    await expect(form.getByLabel('Password', { exact: true })).toHaveValue('');
+    await form.getByLabel('Password', { exact: true }).fill('Disposable-new-password-2026');
+    await form.getByRole('button', { name: 'Sign in', exact: true }).click();
     await expect.poll(() => attempts).toBe(2);
+    const refreshed = page.waitForResponse(
+      async (response) =>
+        response.url().endsWith('/api/auth/me') &&
+        (await response.json()).user?.id === fixtureUser.id,
+    );
     first.resolve();
-    await expect(page.getByText('Signed in as fixture.', { exact: true })).toBeVisible();
-    await expect(page).toHaveURL(/\/account$/);
-    await expect(dialog).toBeVisible();
-    await expect(dialog.getByRole('button', { name: 'One moment…', exact: true })).toBeDisabled();
-    await expect(dialog.getByLabel('Username', { exact: true })).toHaveValue('new_attempt');
+    await (await refreshed).finished();
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+    await expect(page).toHaveURL(/\/login\?returnTo=%2Faccount$/);
+    await expect(form).toBeVisible();
+    await expect(form.getByRole('button', { name: 'One moment…', exact: true })).toBeDisabled();
+    await expect(form.getByLabel('Username', { exact: true })).toHaveValue('new_attempt');
 
     second.resolve();
-    await expect(dialog.getByRole('alert')).toHaveText('Invalid username or password.');
-    await expect(dialog.getByRole('button', { name: 'Sign in', exact: true })).toBeEnabled();
-    await expect(page).toHaveURL(/\/account$/);
+    await expect(form.getByRole('alert')).toHaveText('Invalid username or password.');
+    await expect(form.getByRole('button', { name: 'Sign in', exact: true })).toBeEnabled();
+    await expect(page).toHaveURL(/\/login\?returnTo=%2Faccount$/);
+    await changeRoute(page, '/account');
+    await expect(page.getByText('Signed in as fixture.', { exact: true })).toBeVisible();
   } finally {
     first.resolve();
     second.resolve();
@@ -154,20 +174,19 @@ test('an older session response cannot replace the latest authenticated identity
   });
   try {
     await page.goto('/account');
-    await page.getByRole('button', { name: 'Sign in to continue', exact: true }).click();
-    const dialog = page.getByRole('dialog', { name: 'Back for another look.', exact: true });
-    await dialog.getByLabel('Username', { exact: true }).fill(firstUser.username);
-    await dialog.getByLabel('Password', { exact: true }).fill('Disposable-first-password-2026');
-    await dialog.getByRole('button', { name: 'Sign in', exact: true }).click();
+    const form = page.getByRole('form', { name: 'Sign in', exact: true });
+    await form.getByLabel('Username', { exact: true }).fill(firstUser.username);
+    await form.getByLabel('Password', { exact: true }).fill('Disposable-first-password-2026');
+    await form.getByRole('button', { name: 'Sign in', exact: true }).click();
     await oldRefreshStarted.promise;
-    await page.keyboard.press('Escape');
-    await expect(dialog).toHaveCount(0);
+    await page.getByRole('link', { name: 'Go back', exact: true }).click();
+    await expect(form).toHaveCount(0);
+    await changeRoute(page, '/account');
 
-    await page.getByRole('button', { name: 'Sign in to continue', exact: true }).click();
-    await dialog.getByLabel('Username', { exact: true }).fill(latestUser.username);
-    await dialog.getByLabel('Password', { exact: true }).fill('Disposable-latest-password-2026');
-    await dialog.getByRole('button', { name: 'Sign in', exact: true }).click();
-    await expect(dialog).toHaveCount(0);
+    await form.getByLabel('Username', { exact: true }).fill(latestUser.username);
+    await form.getByLabel('Password', { exact: true }).fill('Disposable-latest-password-2026');
+    await form.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await expect(form).toHaveCount(0);
     await expect(
       page.getByRole('button', { name: latestUser.username, exact: true }),
     ).toBeVisible();
@@ -248,20 +267,19 @@ test('a late successful login cannot authorize another session while its identit
   });
   try {
     await page.goto('/account');
-    await page.getByRole('button', { name: 'Sign in to continue', exact: true }).click();
-    const dialog = page.getByRole('dialog', { name: 'Back for another look.', exact: true });
-    await dialog.getByLabel('Username', { exact: true }).fill(lateUser.username);
-    await dialog.getByLabel('Password', { exact: true }).fill('Disposable-late-password-2026');
-    await dialog.getByRole('button', { name: 'Sign in', exact: true }).click();
+    const form = page.getByRole('form', { name: 'Sign in', exact: true });
+    await form.getByLabel('Username', { exact: true }).fill(lateUser.username);
+    await form.getByLabel('Password', { exact: true }).fill('Disposable-late-password-2026');
+    await form.getByRole('button', { name: 'Sign in', exact: true }).click();
     await expect.poll(() => attempts).toBe(1);
-    await page.keyboard.press('Escape');
-    await expect(dialog).toHaveCount(0);
-    await page.getByRole('button', { name: 'Sign in to continue', exact: true }).click();
-    await dialog.getByLabel('Username', { exact: true }).fill(displayedUser.username);
-    await dialog.getByLabel('Password', { exact: true }).fill('Disposable-displayed-password-2026');
-    await dialog.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await page.getByRole('link', { name: 'Go back', exact: true }).click();
+    await expect(form).toHaveCount(0);
+    await changeRoute(page, '/account');
+    await form.getByLabel('Username', { exact: true }).fill(displayedUser.username);
+    await form.getByLabel('Password', { exact: true }).fill('Disposable-displayed-password-2026');
+    await form.getByRole('button', { name: 'Sign in', exact: true }).click();
     await expect(page.getByText('Signed in as displayed_fixture.', { exact: true })).toBeVisible();
-    await expect(dialog).toHaveCount(0);
+    await expect(form).toHaveCount(0);
     lateLogin.resolve();
     await lateRefresh.promise;
     await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));

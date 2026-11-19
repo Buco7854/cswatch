@@ -6,7 +6,7 @@ A self-hosted Counter-Strike 2 demo review room. TypeScript, React, Three.js, Fa
 
 ## Product and navigation
 
-Logged-out visitors get one compact upload page at `/`. When guest uploads are enabled, they can upload and watch their own private, temporary demo without an account. Signed-in visits to `/` go straight to `/library`. There are no marketing subpages or community catalogue. Explicit shared demo links remain available. Account and connected services live in the user menu at `/account` and `/account/connections`; `/connections` redirects there. `/admin` is administrator-only. Account-required actions preserve a safe local destination through authentication. Private instances replace public/product entry with a branded sign-in gate and also block anonymous content APIs and map assets.
+Logged-out visitors get one compact upload page at `/`. When guest uploads are enabled, they can upload and watch their own private, temporary demo without an account. Signed-in visits to `/` go straight to `/library`. There are no marketing subpages or community catalogue. Sign-in and registration have dedicated `/login` and `/register` pages, with policy-aware links and a validated local return destination. Explicit shared demo links remain available. Account and connected services live in the user menu at `/account` and `/account/connections`; `/connections` redirects there. `/admin` is administrator-only. Private instances send anonymous visitors to sign-in and independently block anonymous content APIs and map assets.
 
 The viewer takes the whole browser tab. Its in-view controls include cameras, player selection, round/event/timeout navigation, private notes and display options. On phones, secondary actions sit in **More controls**, with primary touch targets at least 44 pixels. Browser fullscreen is an additional option.
 
@@ -16,23 +16,23 @@ Product decisions and follow-up tasks live in [the product brief](docs/product/B
 
 ## Docker deployment
 
-Requirements: Docker with Compose on Linux with Landlock ABI 3 or newer (kernel 6.2+ with Landlock enabled), a CPU supporting the native parser, storage for demos/assets, and your own HTTPS reverse proxy. Budget approximately 2 CPU cores and 6–8 GB RAM for the two services. Limits are configurable; these are deployment defaults, not benchmark guarantees.
+Requirements: Docker with Compose on Linux with Landlock ABI 3 or newer (kernel 6.2+ with Landlock enabled), a CPU supporting the native parser, storage for demos/assets, and your own HTTPS reverse proxy. Web and parsing need approximately 6–8 GB RAM together; native asset conversion has a separate 8 GiB container limit and can run concurrently. Allow host capacity for the work you enable. Limits are configurable deployment defaults, not benchmark guarantees.
 
-Compose uses the published `ghcr.io/buco7854/cswatch:latest` image for web, parsing and optional transcription. Set `CSWATCH_IMAGE` to pin a different tag or digest. The optional map worker uses `ghcr.io/buco7854/cswatch:assets-latest`, independently pinned with `CSWATCH_ASSETS_IMAGE`. A source checkout/build is not required for deployment; use `compose.yaml` and `.env.example` from this repository.
+Compose uses the published `ghcr.io/buco7854/cswatch:latest` image for web, parsing and optional transcription. Set `CSWATCH_IMAGE` to pin a different tag or digest. The map worker uses `ghcr.io/buco7854/cswatch:assets-latest`, independently pinned with `CSWATCH_ASSETS_IMAGE`. A source checkout/build is not required for deployment; use `compose.yaml` and `.env.example` from this repository.
 
 ```sh
 cp .env.example .env
 # Edit APP_URL to your public HTTPS origin.
-docker compose pull
+docker compose pull web worker assets
 docker compose run --rm worker ./dist/parser-sandbox --check
-docker compose up -d
+docker compose up -d web worker assets
 ```
 
 On a new instance, open the app and follow `/setup`. Retrieve the private one-time code with `docker compose exec web cat /data/setup-token`, then create the administrator. Registrations, sign-in and uploads remain closed until setup completes. Alternatively set both `ADMIN_USERNAME` and `ADMIN_PASSWORD` in `.env` before starting. They create the first administrator only and never reset an existing account. There is no default password or first-visitor takeover. See [first-run and guest access](docs/ACCESS-SETUP.md). The terminal `create-admin` command remains available for operators.
 
 Point your proxy at `127.0.0.1:8000`. Preserve the original `Host` header, terminate HTTPS, allow requests up to `MAX_UPLOAD_MB` plus multipart overhead, and allow long uploads. The application validates `Host` and request `Origin` against `APP_URL`. Set `TRUSTED_PROXY_IPS` to your proxy's exact address/CIDR only if it should supply client IPs. Never trust all proxy sources on a publicly reachable listener. For a proxy in another container, join a shared Docker network and remove the loopback port publishing only if needed.
 
-Both web and worker must run. Data is stored in the named volume `cswatch_cswatch-data`. The worker has no network, and both services run as a non-root user with dropped capabilities, read-only root filesystems, memory/CPU/process limits, and `no-new-privileges`. Uploads and prepared playback stay private until their owner explicitly shares them.
+Web, parser `worker` and the separate long-running `assets` service start in the normal stack. Automatic map acquisition remains an independent policy that defaults off. The assets service refreshes official metadata and prepares optional native artwork/sounds; it does not receive application data or credentials. Data is stored in the named volume `cswatch_cswatch-data`. The parser has no network. Services run as a non-root user with dropped capabilities, read-only root filesystems, memory/CPU/process limits and `no-new-privileges`. Uploads and prepared playback stay private until their owner explicitly shares them.
 
 Each native parser child additionally runs inside a required Landlock/seccomp sandbox. It receives only its job copy and read-only runtime libraries; it cannot read the application database, other demos or provider secrets. Unsupported kernels fail closed. `PARSER_SANDBOX=off` is an explicit escape hatch for **trusted local development**, never public uploads. The small compiled C launcher is a Linux security bridge; application code remains TypeScript. See [the security boundary](SECURITY.md).
 
@@ -68,7 +68,7 @@ Accounts use usernames, not email addresses. There is no email verification or e
 docker compose exec web node dist/cli.js reset-password USERNAME
 ```
 
-Resetting invalidates existing sessions. Signed-in users can change/set their own passwords in Account settings. The identity table supports multiple provider identities per user without merging accounts by display name or email. See [architecture](docs/ARCHITECTURE.md) for adding future providers.
+Resetting invalidates existing sessions. Signed-in users can change/set their own passwords in Account settings. Login rechecks credentials after password verification, and password changes recheck the initiating session and credentials after hashing, so a concurrent reset or logout cannot revive stale authority. The identity table supports multiple provider identities per user without merging accounts by display name or email. See [architecture](docs/ARCHITECTURE.md) for adding future providers.
 
 ### Recorded inputs, economy and communications
 
@@ -78,7 +78,7 @@ Communications has separate controls for recorded Opus voice, selected player/te
 
 Gameplay sound is separate from recorded voice. Options → Sound controls shots, exact recorded surface-footstep cues, reload actions, grenades, bomb actions and round cues, with master/game volume, mute and approximate positional audio. A user gesture enables the browser's shared audio context. Voice and gameplay have separate channels, and seeking, pausing or changing demos cancels old scheduled sounds. Missing events or local samples stay unavailable. Footsteps are not generated from movement, and reload audio is not inferred from ammunition changes.
 
-The optional `assets` service prepares a fixed bank of 116 native samples from a pinned official Steam source when its map queue is idle. This does not require recordings or account credentials in that service. Start it with `docker compose --profile assets up -d assets`, or use the [operator sound installer](tools/assets/README.md#native-gameplay-sounds). Game audio needs the prepared bank and newly processed replay sound evidence. Exact recorded event names and positions do not reproduce native random sample variations, wall acoustics, persistent loops or the complete Source 2 mix. No game audio is bundled in Git or images.
+The long-running `assets` service prepares a fixed bank of 116 native samples from a pinned official Steam source when its map queue is idle, after its smaller landing-artwork task. This does not require recordings or account credentials in that service. Pull and start its separate image with `docker compose pull web worker assets` followed by `docker compose up -d web worker assets`, or use the [operator sound installer](tools/assets/README.md#native-gameplay-sounds). Game audio needs the prepared bank and newly processed replay sound evidence. Exact recorded event names and positions do not reproduce native random sample variations, wall acoustics, persistent loops or the complete Source 2 mix. No game audio is bundled in Git or images.
 
 Optional automatic subtitles use a small multilingual Whisper model **on the CPU**, in a separate durable sandboxed worker stage. The replay is watchable before transcription finishes; failure or timeout leaves the replay intact. Prepare the model using [the offline tooling](tools/transcription/README.md), then mount it read-only into the optional worker. For example, add `compose.override.yaml`:
 
@@ -128,9 +128,13 @@ npm --prefix tools/assets run install-steam -- \
 
 See the [operator guide](tools/assets/README.md) for tool pins, storage requirements and installation paths. Maps can still require several gigabytes of temporary space. The installer refuses to overwrite installed maps, processes them serially and stops if its free-space reserve is crossed. Keep the private source/tool cache outside the served map directory. Mount only the prepared output at `MAP_ASSETS_DIR`: `/map-assets` in Compose or `DATA_DIR/maps` by default in standalone deployments.
 
-The optional [automatic map preparation service](docs/MAP-ASSETS.md) prefers a unique operator-approved source, then offers a clearly labeled latest official snapshot when a reliable historical selection is unavailable. The separate worker periodically discovers current official map names from fixed Steam metadata, so an empty catalog and newly shipped official map names need no manual mapping. The viewer shows the selected manifest and check time. It does not claim that latest geometry matches the original recording.
+Optional [automatic map preparation](docs/MAP-ASSETS.md) prefers a unique operator-approved source, then offers a clearly labeled latest official snapshot when a reliable historical selection is unavailable. The separate worker periodically discovers current official map names from fixed Steam metadata, so an empty catalog and newly shipped official map names need no manual mapping. The viewer shows the selected manifest and check time. It does not claim that latest geometry matches the original recording.
 
-Enable the `assets` Compose profile and `AUTO_OFFICIAL_MAPS_ENABLED` to allow acquisition. Owner/guest authorization, Origin/CSRF, request rates, queue limits, pinned sources and resource budgets apply. Explicit addons, conflicting map evidence and unrecognized official names are blocked. Source integrity failures do not silently choose another version. Conversion subprocesses have no network and can write only their stage. The parser stays networkless and receives no asset-service volumes or credentials. Optional catalog approvals remain available for established historical sources, while manual map-name packs remain explicitly version-unverified. See [map identity and provenance](docs/product/MAP-ACQUISITION.md) for the exact selection rules.
+Enable `AUTO_OFFICIAL_MAPS_ENABLED` in the environment or unlocked admin policy to allow map acquisition. The assets service already runs in the normal stack. Owner/guest authorization, Origin/CSRF, request rates, queue limits, pinned sources and resource budgets apply. Explicit addons, conflicting map evidence and unrecognized official names are blocked. Source integrity failures do not silently choose another version. Conversion subprocesses have no network and can write only their stage. The parser stays networkless and receives no asset-service volumes or credentials. Optional catalog approvals remain available for established historical sources, while manual map-name packs remain explicitly version-unverified. See [map identity and provenance](docs/product/MAP-ACQUISITION.md) for the exact selection rules.
+
+The assets service must remain running to refresh official metadata and process new requests. Its image is separate from the web image, so update both. Administration shows automatic-policy state, worker availability, official-list freshness, historical-catalog status and safe inventory failure stage/code/retry time. An empty historical catalog does not prevent latest Ancient or another listed official map. A missing worker or missing/stale list has its own explanation. An open viewer checks bootstrap availability for at most 45 minutes and requests an eligible source once it becomes available; it does not retry failed conversions automatically. See [setup and troubleshooting](docs/MAP-ASSETS.md#readiness-and-troubleshooting).
+
+When the asset queue is idle, the same service can selectively prepare the fixed official 720p Mirage screenshot used behind the public upload entry. Both S2V decoding and Sharp normalization run in confined conversion children. Existing operator previews are preserved, and missing or failed artwork leaves the page usable. No map screenshot is included in Docker or loaded from a remote image service. This decorative preview does not establish a matching 3D map version.
 
 The same operator workflow prepares actual CS2 weapon, utility, knife and kit icons: see [equipment artwork preparation](tools/assets/README.md#exact-equipment-silhouettes). Install PNGs under `MAP_ASSETS_DIR/equipment`. The HUD uses local assets and a labeled fallback when absent. Native weapon, grenade and C4 GLBs support held/POV models and recorded world placements. The optional [model installer](tools/assets/README.md#static-weapon-grenade-and-c4-models) prepares fixed equipment selections and bounded CT/T agents with five genuine idle, walk, run and crouch cycles. Recorded speed and crouch blend those cycles at absolute demo time, including on low quality. Held equipment follows the native weapon bone when available. These are approximate locomotion and attachments, without the recorded animation graph, first-person arms, recoil, firing or reload animation. Options → Performance reports asset availability and provenance. Source 2 lighting, materials and volumetric effects remain approximations. No Valve content is bundled or redistributed by this repository.
 
@@ -169,20 +173,30 @@ Playwright needs Chromium: `cd frontend && npx playwright install chromium`. Set
 
 ## Updates
 
-The GitHub workflow tests/builds on PRs and main pushes, and runs **every Monday**. After verification it rebuilds without cache, pulls the current Node/Debian base, and publishes to `ghcr.io/buco7854/cswatch` on main. It prepares checksum-pinned parser/speech fixtures, exercises actual offline English/French inference, and runs upload/ownership/parsing/transcription checks inside the hardened networkless image. Publishing requires the Actions token's package write access. Repository permissions and GHCR visibility are operator-controlled.
+The GitHub workflow tests/builds on PRs and main pushes, and runs **every Monday**. After verification it rebuilds without cache, pulls the current Node/Debian base, and publishes the application and separate assets images to `ghcr.io/buco7854/cswatch` on main. It prepares checksum-pinned parser/speech fixtures, exercises actual offline English/French inference, and runs upload/ownership/parsing/transcription checks inside the hardened networkless image. Publishing requires the Actions token's package write access. Repository permissions and GHCR visibility are operator-controlled.
 
 Dependabot opens weekly dependency and base/action update PRs; locked npm dependencies change through reviewed PRs. A weekly rebuild alone does not upgrade a lockfile. Versioned image tags contain the commit and workflow run number. Scheduled builds do **not** automatically replace a running self-hosted deployment.
 
 ```sh
-docker compose pull
-docker compose up -d
+docker compose pull web worker assets
+docker compose up -d web worker assets
 ```
 
-Include `--profile transcription` when enabled. Pin a published tag/digest through `CSWATCH_IMAGE` when needed. To build a local image explicitly from a source checkout:
+The explicit service names also start `assets` when upgrading with an older Compose file that put it behind a profile. Keep the service running after the update. If using the optional transcription profile, update that service too:
+
+```sh
+docker compose --profile transcription pull web worker assets transcription
+docker compose --profile transcription up -d web worker assets transcription
+```
+
+Pin published tags/digests through `CSWATCH_IMAGE` and `CSWATCH_ASSETS_IMAGE` when needed. CI labels both images with the full source revision and UTC build time. The web also reports validated immutable build-file fields in `/api/config` and Administration; runtime environment values do not replace them. Local builds without supplied identity report unknown fields. CI checks the running image against its expected source revision. A displayed revision identifies a build, not a passing workflow; verify that revision's workflow before release.
+
+To build a local image explicitly from a source checkout:
 
 ```sh
 docker build --pull --no-cache -t cswatch:local .
-CSWATCH_IMAGE=cswatch:local docker compose up -d --pull never
+docker build --pull --no-cache --target assets -t cswatch:assets-local .
+CSWATCH_IMAGE=cswatch:local CSWATCH_ASSETS_IMAGE=cswatch:assets-local docker compose up -d --pull never
 ```
 
 Back up data before upgrades. Schema migrations are additive: safe auth return paths (v2), nullable import provenance (v3), separate transcription state/leases/artifact pointers (v4), and operator enrollment/temporary guest capabilities (v5). Production host-prefixed cookies require a fresh sign-in when upgrading from the initial proof of concept. Future changes must use explicit migrations.
@@ -192,3 +206,5 @@ Back up data before upgrades. Schema migrations are additive: safe auth return p
 Start with [AGENTS.md](AGENTS.md), [architecture](docs/ARCHITECTURE.md), [security](SECURITY.md), [feature status](docs/STATUS.md), and [verification record](docs/VERIFICATION.md). The repository's existing license is retained in [LICENSE](LICENSE).
 
 The browser distribution includes the [csgo-sharecode MIT license](frontend/public/licenses/csgo-sharecode.txt) and the [Barlow Condensed](frontend/public/licenses/barlow-condensed.txt) and [IBM Plex Sans](frontend/public/licenses/ibm-plex-sans.txt) font licenses. Game artwork and demo recordings are excluded from Git and Docker build contexts.
+
+Steam's unchanged official OpenID artwork and FACEIT's official light/dark web icons identify their respective authentication/data connections. They remain third-party trademarks and artwork, are excluded from the repository's software license, and do not imply endorsement. Source URLs, original filenames, SHA-256 hashes and the reviewed brand-use context are recorded in the shipped [provider brand notice](frontend/public/licenses/provider-brands.txt). These small approved provider assets are separate from the unbundled Counter-Strike game artwork. FACEIT remains a data connection, not a login provider.

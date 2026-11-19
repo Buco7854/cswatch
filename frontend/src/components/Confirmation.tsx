@@ -21,6 +21,7 @@ type Confirmation = {
 type Pending = Confirmation & {
   resolve: (confirmed: boolean) => void;
   trigger: HTMLElement | null;
+  viewerUI: boolean;
 };
 const ConfirmationContext = createContext<(request: Confirmation) => Promise<boolean>>(() =>
   Promise.resolve(false),
@@ -50,6 +51,7 @@ function ConfirmDialog({
     <dialog
       ref={dialog}
       className="confirmation-dialog"
+      data-viewer-ui={request.viewerUI || undefined}
       aria-labelledby="confirmation-title"
       aria-describedby="confirmation-description"
       onCancel={(event) => {
@@ -104,10 +106,20 @@ export function ConfirmationProvider({ children }: { children: ReactNode }) {
           resolve(false);
           return;
         }
+        const trigger =
+          document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        // Capture the initiating context before another modal or navigation can
+        // change focus. Touch browsers may focus the native dialog instead of
+        // the tapped button, so retain that dialog's viewer ancestry as well.
+        const viewerUI = Boolean(
+          trigger?.closest('.viewer-shell,.viewer-frame,[data-viewer-ui]') ||
+          document.querySelector('dialog[open]')?.closest('.viewer-shell,.viewer-frame'),
+        );
         const value = {
           ...options,
           resolve,
-          trigger: document.activeElement instanceof HTMLElement ? document.activeElement : null,
+          trigger,
+          viewerUI,
         };
         pending.current = value;
         setRequest(value);

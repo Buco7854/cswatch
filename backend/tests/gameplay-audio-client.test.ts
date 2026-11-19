@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { GameplayAudioTimeline } from '../../frontend/src/gameplay-audio-timeline.js';
 import {
   GameplaySoundBuffers,
@@ -396,7 +397,7 @@ test('sound loading admits at most two fetches and cancellation drains queued id
 test(
   'a newly requested sound cannot overtake a waking waiter and exceed the two-operation budget',
   { timeout: 5000 },
-  async () => {
+  async (t) => {
     const original = globalThis.fetch,
       wave = originalSoundWAV(),
       ids = ['ak47-fire', 'aug-fire', 'awp-fire', 'bizon-fire'],
@@ -404,7 +405,18 @@ test(
       watchers: (() => void)[] = [];
     let fetched = 0,
       active = 0,
-      peak = 0;
+      peak = 0,
+      digestCalls = 0;
+    // Native hash completion may put B's decoder before A's. This scheduler
+    // regression releases the first decoder then awaits A, so keep its identity
+    // controlled while still hashing every actual payload with SHA-256.
+    t.mock.method(crypto.subtle, 'digest', async (algorithm: string, bytes: ArrayBuffer) => {
+      assert.equal(algorithm, 'SHA-256');
+      assert.ok(bytes instanceof ArrayBuffer);
+      digestCalls++;
+      const digest = createHash('sha256').update(new Uint8Array(bytes)).digest();
+      return digest.buffer.slice(digest.byteOffset, digest.byteOffset + digest.byteLength);
+    });
     globalThis.fetch = async () => {
       fetched++;
       return new Response(wave, { headers: { 'Content-Type': 'audio/wav' } });
@@ -454,6 +466,7 @@ test(
       await Promise.all(tasks);
       assert.equal(peak, 2);
       assert.equal(fetched, 4, 'Both queued sounds must eventually finish');
+      assert.equal(digestCalls, 4, 'Every admitted sound still verifies its actual SHA-256');
     } finally {
       buffers.close();
       for (const finish of decodes) finish();

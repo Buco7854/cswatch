@@ -1,4 +1,4 @@
-.confirmation-dialog {
+.confirmation-dialog[open] {
   position: fixed;
   inset: 0;
   width: 440px;
@@ -34,27 +34,27 @@
   gap: 8px;
   margin-top: 24px;
 }
-.confirmation-actions .button {
+.confirmation-dialog .confirmation-actions .button {
   min-height: 44px;
-}
-.confirmation-dialog .button {
   border: 0;
   border-radius: 6px;
   background: var(--raised);
   color: var(--text);
+  clip-path: none;
+  box-shadow: none;
 }
-.confirmation-dialog .button:hover {
+.confirmation-dialog .confirmation-actions .button:hover {
   background: color-mix(in srgb, var(--raised) 90%, var(--text));
 }
-.confirmation-dialog .button.primary {
+.confirmation-dialog .confirmation-actions .button.primary {
   background: var(--text);
   color: var(--surface);
 }
-.confirmation-dialog .button.confirmation-danger {
+.confirmation-dialog .confirmation-actions .button.confirmation-danger {
   background: #b73039;
   color: #fff;
 }
-.confirmation-dialog .button.confirmation-danger:hover {
+.confirmation-dialog .confirmation-actions .button.confirmation-danger:hover {
   background: #9e232c;
 }
 @media (max-width: 480px) {

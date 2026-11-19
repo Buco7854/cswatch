@@ -58,7 +58,12 @@ import {
 } from './install-steam-assets.mjs';
 import { prepareToolchain } from './prepare-toolchain.mjs';
 import { selectedSteamManifest } from './steam-assets-plan.mjs';
-import { refreshOfficialMapInventory, markSteamRateLimit } from './official-map-inventory.mjs';
+import {
+  refreshOfficialMapInventory,
+  markSteamRateLimit,
+  officialInventoryFailure,
+} from './official-map-inventory.mjs';
+import { installMapPreview, officialPreview } from './install-map-preview.mjs';
 import { installGameplaySounds } from './install-gameplay-sounds.mjs';
 
 export const mapWorkerLimits = Object.freeze({
@@ -656,7 +661,8 @@ export async function runMapWorker(options, adapters = {}) {
     sleep = adapters.delay || delay,
     refreshInventory = adapters.refreshInventory || refreshOfficialMapInventory,
     processRequest = adapters.processRequest || processOneMapRequest,
-    prepareSounds = adapters.prepareSounds || prepareIdleGameplaySounds;
+    prepareSounds = adapters.prepareSounds || prepareIdleGameplaySounds,
+    preparePreview = adapters.preparePreview || prepareIdleMapPreview;
   await localDirectory(options.jobs, true);
   await readableDirectory(options.assets);
   await localDirectory(options.assets);
@@ -679,7 +685,8 @@ export async function runMapWorker(options, adapters = {}) {
   const release = await lockMapWorker(options.jobs);
   if (!release) throw Error('Another official-map worker owns this queue or flock is unavailable.');
   let busy = false,
-    beat;
+    beat,
+    inventoryFailure;
   let blockedUntil = 0;
   const onSteamRateLimit = () => {
     blockedUntil = Math.max(blockedUntil, clock() + mapWorkerLimits.steamCooldownSeconds);
@@ -700,6 +707,7 @@ export async function runMapWorker(options, adapters = {}) {
       schemaVersion: 1,
       status: busy ? 'processing' : 'idle',
       updatedAt: clock(),
+      ...(inventoryFailure ? { inventoryFailure } : {}),
     }).finally(() => {
       beat = undefined;
     });
@@ -714,7 +722,9 @@ export async function runMapWorker(options, adapters = {}) {
     let refreshAt = 0,
       refreshFailures = 0,
       audioManifest,
-      audioAttempts = 0;
+      audioAttempts = 0,
+      previewManifest,
+      previewAttempts = 0;
     while (!options.signal?.aborted) {
       if (clock() < blockedUntil) {
         await heartbeat();
@@ -726,9 +736,11 @@ export async function runMapWorker(options, adapters = {}) {
         try {
           await budgets(options);
           const inventory = await refreshInventory(workOptions);
+          inventoryFailure = undefined;
           refreshFailures = 0;
           refreshAt = clock() + 3600;
           if (audioAttempts < 3) audioManifest = inventory.manifest;
+          if (previewAttempts < 3) previewManifest = inventory.manifest;
           options.log?.({
             event: 'map.inventory_ready',
             manifest: inventory.manifest,
@@ -740,7 +752,12 @@ export async function runMapWorker(options, adapters = {}) {
           // Discovery backoff and the shared explicit-rate cooldown are separate.
           // Both respect Steam's advised fifteen-minute login-rate pause.
           refreshAt = clock() + Math.min(3600, 900 * 2 ** Math.min(refreshFailures - 1, 2));
-          options.log?.({ event: 'map.inventory_unavailable' });
+          inventoryFailure = {
+            ...officialInventoryFailure(error, 'storage', options.signal),
+            at: clock(),
+            retryAt: Math.max(refreshAt, blockedUntil),
+          };
+          options.log?.({ event: 'map.inventory_unavailable', ...inventoryFailure });
         }
         busy = false;
         await heartbeat();
@@ -751,6 +768,26 @@ export async function runMapWorker(options, adapters = {}) {
       const worked = await processRequest(workOptions);
       busy = false;
       await heartbeat();
+      if (!worked && previewManifest && !options.signal?.aborted) {
+        const selected = previewManifest;
+        previewManifest = undefined;
+        previewAttempts++;
+        busy = true;
+        try {
+          await preparePreview(workOptions, selected);
+          options.log?.({ event: 'preview.ready', manifest: selected });
+          previewAttempts = 3;
+        } catch (error) {
+          if (error?.code === 'STEAM_RATE_LIMIT') onSteamRateLimit();
+          if (error?.code === 'SOURCE_MAP_MISMATCH') previewAttempts = 3;
+          options.log?.({ event: 'preview.failed', code: mapFailureCode(error, options.signal) });
+        } finally {
+          busy = false;
+          await heartbeat();
+        }
+        // Recheck queued maps and the shared Steam cooldown before starting a large bank.
+        continue;
+      }
       if (!worked && audioManifest && !options.signal?.aborted) {
         const selected = audioManifest;
         audioManifest = undefined;
@@ -775,11 +812,49 @@ export async function runMapWorker(options, adapters = {}) {
     clearInterval(timer);
     try {
       await beat?.catch(() => undefined);
-      await writeMapWorkerStatus(options.jobs, { schemaVersion: 1, status: 'idle', updatedAt: 0 });
+      await writeMapWorkerStatus(options.jobs, {
+        schemaVersion: 1,
+        status: 'idle',
+        updatedAt: 0,
+        ...(inventoryFailure ? { inventoryFailure } : {}),
+      });
     } finally {
       await release();
     }
   }
+}
+
+/** Decorative official artwork shares only source storage and supervisor limits, never demos. */
+export async function prepareIdleMapPreview(options, manifest, adapters = {}) {
+  selectedSteamManifest(manifest);
+  const signal = options.signal
+    ? AbortSignal.any([options.signal, AbortSignal.timeout(officialPreview.deadlineMs)])
+    : AbortSignal.timeout(officialPreview.deadlineMs);
+  await budgets(options);
+  const cache = await sourceCache(options, manifest);
+  return (adapters.install || installMapPreview)(
+    {
+      cache,
+      output: options.assets,
+      toolchainCache: join(options.cache, 'tools'),
+      manifest,
+      networkDeny: options.networkDeny || defaultNetworkDeny,
+      signal,
+      beforePublish: () => budgets(options),
+    },
+    {
+      run: async (command, args, context) => {
+        await budgets(options);
+        return runAssetProcess(command, args, {
+          ...context,
+          storageGuard: async () => {
+            await context.storageGuard?.();
+            await checkFreeReserve(options.cache, options.assets);
+          },
+        });
+      },
+    },
+  );
 }
 
 /** Idle-only fixed audio preparation never changes map/replay results. */

@@ -8,7 +8,7 @@ import { emptyMapAssets, validateMapAssets, type MapAssetState } from './map-ass
 type Resolution = DemoMapAssets['resolution']['status'];
 export type DemoMapSummary = Pick<
   DemoMapAssets,
-  'acquisition' | 'canAcquire' | 'verification' | 'packId' | 'code'
+  'acquisition' | 'canAcquire' | 'verification' | 'packId' | 'code' | 'readinessReason'
 > & {
   resolution: Resolution;
   latest?: {
@@ -67,6 +67,15 @@ const codes = new Set([
   'approval_removed',
   'worker_interrupted',
   'queue_full',
+]);
+const readinessReasons = new Set([
+  'automatic_disabled',
+  'worker_unavailable',
+  'inventory_unavailable',
+  'inventory_stale',
+  'official_map_unknown',
+  'owner_required',
+  'identity_invalid',
 ]);
 const digest = (value: unknown, length: 40 | 64) =>
   typeof value === 'string' && new RegExp(`^[a-f0-9]{${length}}$`).test(value);
@@ -129,7 +138,9 @@ export function validateDemoMapAssets(value: unknown, map: string): DemoMapState
     !['operator-approved', 'latest-official', 'version-unverified', 'unavailable'].includes(
       String(input.verification),
     ) ||
-    (input.code !== undefined && !codes.has(String(input.code)))
+    (input.code !== undefined && !codes.has(String(input.code))) ||
+    (input.readinessReason !== undefined &&
+      (!readinessReasons.has(String(input.readinessReason)) || input.canAcquire))
   )
     throw new Error('Invalid map discovery');
   const approved = resolution.status === 'approved',
@@ -226,6 +237,9 @@ export function validateDemoMapAssets(value: unknown, map: string): DemoMapState
       packId: input.packId as string | null,
       ...(latestInfo ? { latest: latestInfo } : {}),
       ...(input.code ? { code: input.code as DemoMapAssets['code'] } : {}),
+      ...(input.readinessReason
+        ? { readinessReason: input.readinessReason as DemoMapAssets['readinessReason'] }
+        : {}),
     },
   };
 }
@@ -335,6 +349,48 @@ export function mapAcquisitionMessage(
                   ? 'The preparation worker stopped before completing this map. The administrator needs to check the job.'
                   : 'The instance administrator needs to check the preparation worker. No different map version will be substituted.',
     };
+  if (info.readinessReason) {
+    const explanations: Record<
+      NonNullable<DemoMapAssets['readinessReason']>,
+      { title: string; description: string }
+    > = {
+      automatic_disabled: {
+        title: 'Map preparation is disabled',
+        description:
+          'The administrator can enable automatic official maps and start the assets service, or install a local map pack.',
+      },
+      worker_unavailable: {
+        title: 'Map worker unavailable',
+        description:
+          'Automatic map preparation is enabled, but the assets service is not responding. The administrator needs to start or check that service.',
+      },
+      inventory_unavailable: {
+        title: 'Official map list is not ready',
+        description:
+          'The map worker has not provided a valid official map list yet. This viewer will check again while the administrator checks the service and Steam access.',
+      },
+      inventory_stale: {
+        title: 'Official map list needs refreshing',
+        description:
+          'New map preparation is waiting for the worker to refresh its official map list. No unverified source will be used.',
+      },
+      official_map_unknown: {
+        title: 'Official map source unavailable',
+        description:
+          'The current official depot list does not include this map. The administrator can inspect its source or install a local map pack.',
+      },
+      owner_required: {
+        title: 'Map preparation requires its owner',
+        description: 'The demo owner needs to open this recording to request map preparation.',
+      },
+      identity_invalid: {
+        title: 'Recorded map identity is invalid',
+        description:
+          'The recording has conflicting or invalid map evidence. Automatic preparation cannot safely select an official source.',
+      },
+    };
+    return explanations[info.readinessReason];
+  }
   if (info.acquisition === 'disabled')
     return {
       title: 'Map unavailable',

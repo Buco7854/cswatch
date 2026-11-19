@@ -6,6 +6,7 @@ export type User = {
   identities?: { provider: string; subject: string }[];
 };
 export type Config = {
+  build?: { revision: string | null; builtAt: string | null };
   setup_required: boolean;
   guest_uploads_enabled: boolean;
   auto_official_maps_enabled: boolean;

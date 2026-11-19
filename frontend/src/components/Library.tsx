@@ -1,7 +1,7 @@
 import { t, locale } from '../i18n';
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ArrowUpRight, Search, RefreshCw, Lock, Globe } from 'lucide-react';
+import { ArrowUpRight, Search, RefreshCw, Lock, Globe, Upload } from 'lucide-react';
 import { useApp } from '../context';
 import { useDemoLibrary } from '../useDemoLibrary';
 import UploadDialog from './UploadDialog';
@@ -31,7 +31,7 @@ export default function Library() {
           <p>{t('Your matches. A clearer picture.')}</p>
         </div>
         <button className="button primary" onClick={() => setUploadOpen(true)}>
-          <ArrowUpRight size={16} />
+          <Upload size={16} />
           {t('Add a demo')}
         </button>
       </header>
@@ -79,9 +79,9 @@ export default function Library() {
                   <div className="demo-row table-head">
                     <span>{t('Match')}</span>
                     <span>{t('Source')}</span>
-                    <span>{t('Rounds')}</span>
-                    <span>{t('Added')}</span>
-                    <span>{t('Playback')}</span>
+                    <span className="rounds-heading">{t('Rounds')}</span>
+                    <span className="added-heading">{t('Added')}</span>
+                    <span className="playback-heading">{t('Playback')}</span>
                   </div>
                   {demos.map((demo) => (
                     <Link
@@ -95,40 +95,42 @@ export default function Library() {
                           {(demo.map || 'D').replace('de_', '').slice(0, 2)}
                         </span>
                         <span>
-                          <strong>
+                          <strong className={demo.map ? 'match-map' : undefined}>
                             {demo.map ? demo.map.replace('de_', '') : t('Demo processing')}
                           </strong>
                           <small title={demo.name}>{demo.name}</small>
                         </span>
                       </div>
-                      <span className="source">
-                        {demo.source === 'faceit' ? 'FACEIT' : t('Upload')}
-                        <small>
-                          {demo.public ? (
-                            <>
-                              <Globe size={12} />
-                              {t(config.public_access ? 'Public' : 'Shared')}
-                            </>
-                          ) : (
-                            <>
-                              <Lock size={12} />
-                              {t('Private')}
-                            </>
-                          )}
-                        </small>
-                      </span>
-                      <span className="num rounds-count">
-                        <span className="desktop-round-count">{demo.rounds ?? '-'}</span>
-                        <span className="mobile-round-count">
-                          {demo.rounds === null ? '-' : t('round_count', { count: demo.rounds })}
+                      <div className="demo-details">
+                        <span className="source">
+                          {demo.source === 'faceit' ? 'FACEIT' : t('Upload')}
+                          <small>
+                            {demo.public ? (
+                              <>
+                                <Globe size={12} />
+                                {t(config.public_access ? 'Public' : 'Shared')}
+                              </>
+                            ) : (
+                              <>
+                                <Lock size={12} />
+                                {t('Private')}
+                              </>
+                            )}
+                          </small>
                         </span>
-                      </span>
-                      <span className="added">
-                        {new Date(demo.created_at * 1000).toLocaleDateString(locale(), {
-                          month: 'short',
-                          day: 'numeric',
-                        })}
-                      </span>
+                        <span className="num rounds-count">
+                          <span className="desktop-round-count">{demo.rounds ?? '-'}</span>
+                          <span className="mobile-round-count">
+                            {demo.rounds === null ? '-' : t('round_count', { count: demo.rounds })}
+                          </span>
+                        </span>
+                        <span className="added">
+                          {new Date(demo.created_at * 1000).toLocaleDateString(locale(), {
+                            month: 'short',
+                            day: 'numeric',
+                          })}
+                        </span>
+                      </div>
                       <span className={'demo-state status-' + demo.status}>
                         {demo.status === 'ready' ? (
                           <>
@@ -171,13 +173,15 @@ export default function Library() {
                             : 'Your matches belong here.',
                       )}
                     </h2>
-                    <p>
-                      {t(
-                        search
-                          ? 'Try a different map or match name.'
-                          : 'Upload a demo above, or connect an account to start reviewing.',
-                      )}
-                    </p>
+                    {!loading && (
+                      <p>
+                        {t(
+                          search
+                            ? 'Try a different map or match name.'
+                            : 'Upload a demo above, or connect an account to start reviewing.',
+                        )}
+                      </p>
+                    )}
                   </div>
                   {!loading && !search && (
                     <button className="button" onClick={() => setUploadOpen(true)}>

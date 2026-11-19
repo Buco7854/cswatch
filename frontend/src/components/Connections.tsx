@@ -5,6 +5,7 @@ import { ArrowUpRight, Check, Link2, RefreshCw } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useApp } from '../context';
+import { ProviderBrandNotice, ProviderLogo, SteamSignInLink } from './ProviderBrand';
 type Match = {
   match_id: string;
   finished_at?: number;
@@ -115,10 +116,10 @@ export default function Connections({ embedded = false }: { embedded?: boolean }
                     )}
               </p>
               {config.steam_enabled && (
-                <a className="button" href="/api/auth/steam?returnTo=%2Faccount%2Fconnections">
-                  {steam ? t('Verify Steam again') : t('Connect Steam')}
-                  <ArrowUpRight size={16} />
-                </a>
+                <SteamSignInLink
+                  returnTo="/account/connections"
+                  label={steam ? t('Verify Steam again') : t('Connect Steam')}
+                />
               )}
               {config.steam_enabled && steam && (
                 <details>
@@ -168,7 +169,10 @@ export default function Connections({ embedded = false }: { embedded?: boolean }
           </div>
           <div className="settings-section">
             <div>
-              <h2>{t('FACEIT')}</h2>
+              <h2 className="provider-title">
+                <ProviderLogo provider="faceit" />
+                {t('FACEIT')}
+              </h2>
               <p>
                 {t(
                   'We match FACEIT’s CS2 Steam ID with your verified Steam identity. No nickname guessing.',
@@ -317,6 +321,7 @@ export default function Connections({ embedded = false }: { embedded?: boolean }
               ))}
             </section>
           )}
+          <ProviderBrandNotice />
         </>
       )}
     </>

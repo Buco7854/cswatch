@@ -2,6 +2,7 @@
    controls opt into the same palette without changing the member workspace. */
 .viewer-frame,
 .member-floating[data-viewer-ui],
+.confirmation-dialog[data-viewer-ui],
 .options-dialog,
 .viewer-options-dialog,
 .communications-dialog,
@@ -34,6 +35,7 @@
   :is(
     .viewer-frame,
     .member-floating[data-viewer-ui],
+    .confirmation-dialog[data-viewer-ui],
     .options-dialog,
     .viewer-options-dialog,
     .communications-dialog,

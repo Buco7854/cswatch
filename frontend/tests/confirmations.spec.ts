@@ -60,12 +60,45 @@ test('demo deletion uses an accessible reusable modal with safe cancellation and
   await remove.click();
   const confirmation = page.getByRole('dialog', { name: 'Delete demo', exact: true });
   await expect(confirmation).toBeVisible();
+  await expect(confirmation).toHaveAttribute('data-viewer-ui', 'true');
+  const contextPalette = await page.locator('.viewer-frame').evaluate((element) => {
+    const style = getComputedStyle(element);
+    const context = document.createElement('canvas').getContext('2d')!;
+    context.fillStyle = style.getPropertyValue('--surface');
+    const background = context.fillStyle;
+    context.fillStyle = style.getPropertyValue('--text');
+    return { background, color: context.fillStyle };
+  });
+  expect(
+    await confirmation.evaluate((element) => {
+      const style = getComputedStyle(element);
+      const context = document.createElement('canvas').getContext('2d')!;
+      context.fillStyle = style.backgroundColor;
+      const background = context.fillStyle;
+      context.fillStyle = style.color;
+      return { background, color: context.fillStyle };
+    }),
+  ).toEqual(contextPalette);
+  for (const button of await confirmation.getByRole('button').all()) {
+    expect(
+      await button.evaluate((element) => element.getBoundingClientRect().height),
+    ).toBeGreaterThanOrEqual(44);
+  }
   await expect(confirmation.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(confirmation).toHaveCount(0);
   expect(deletes).toBe(0);
   await expect(remove).toBeFocused();
+  // Touch browsers may activate a button without retaining focus on it. Keep
+  // the confirmation's captured viewer context through the active native modal.
+  await remove.evaluate((element) =>
+    element.addEventListener('click', () => (element as HTMLElement).blur(), {
+      capture: true,
+      once: true,
+    }),
+  );
   await remove.click();
+  await expect(confirmation).toHaveAttribute('data-viewer-ui', 'true');
   await confirmation.getByRole('button', { name: 'Delete permanently', exact: true }).click();
   await expect.poll(() => deletes).toBe(1);
   await expect(page).toHaveURL(/\/library$/);

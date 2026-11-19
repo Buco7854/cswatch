@@ -467,3 +467,43 @@ test(
     }
   },
 );
+
+test(
+  'preview publication uses only shared fixed map names and refuses any existing target',
+  { skip: !enabled },
+  () => {
+    const root = mkdtempSync(join(tmpdir(), 'cswatch-preview-publish-'));
+    try {
+      const helper = buildNetworkDeny(join(root, 'boundary')),
+        registry = JSON.parse(
+          readFileSync(new URL('../../shared/map-previews.json', import.meta.url), 'utf8'),
+        );
+      for (const name of registry.maps) {
+        const stage = join(root, '.preview-Ab12cd'),
+          target = join(root, name);
+        mkdirSync(stage, { mode: 0o700 });
+        writeFileSync(join(stage, 'original'), 'fixture');
+        assert.equal(run(helper, ['--publish-preview', stage, target]).status, 0);
+        mkdirSync(stage, { mode: 0o700 });
+        assert.equal(run(helper, ['--publish-preview', stage, target]).status, 125);
+        rmSync(stage, { recursive: true });
+      }
+      const stage = join(root, '.preview-Ef34gh');
+      mkdirSync(stage, { mode: 0o700 });
+      assert.equal(run(helper, ['--publish-preview', stage, join(root, 'de_unknown')]).status, 125);
+      const empty = join(root, registry.maps[0]);
+      rmSync(empty, { recursive: true });
+      mkdirSync(empty);
+      assert.equal(run(helper, ['--publish-preview', stage, empty]).status, 125);
+      rmSync(empty, { recursive: true });
+      symlinkSync(stage, empty);
+      assert.equal(run(helper, ['--publish-preview', stage, empty]).status, 125);
+      assert.equal(
+        run(helper, ['--publish-preview', root, join(root, registry.maps[1])]).status,
+        125,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);

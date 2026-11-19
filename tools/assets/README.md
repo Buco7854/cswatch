@@ -1,6 +1,6 @@
 # S2V map preparation
 
-This is a **trusted operator CPU pipeline**, separate from replay parsing and the HTTP process. The optional isolated asset worker invokes the same map installer for preferred approved historical sources or disclosed latest official snapshots; see [automatic-map deployment](../../docs/MAP-ASSETS.md). It uses local CS2 content, either selectively downloaded below or provided by an existing installation, and [Source2Viewer-CLI](https://s2v.app/ValveResourceFormat/guides/command-line.html). The web/replay runtime requires neither .NET nor a server GPU. The optional asset service uses verified native/.NET tools in its private cache for conversion.
+This is a **trusted operator CPU pipeline**, separate from replay parsing and the HTTP process. The isolated asset worker invokes the same map installer for preferred approved historical sources or disclosed latest official snapshots; see [automatic-map deployment](../../docs/MAP-ASSETS.md). It uses local CS2 content, either selectively downloaded below or provided by an existing installation, and [Source2Viewer-CLI](https://s2v.app/ValveResourceFormat/guides/command-line.html). The web/replay runtime requires neither .NET nor a server GPU. The asset service uses verified native/.NET tools in its private cache for conversion.
 
 ## Install selected official maps from Steam
 
@@ -52,7 +52,7 @@ Install `/srv/cswatch/maps` as the web service's `/data/maps` mount or copy the 
 
 `npm --prefix tools/assets run test:installer` exercises synthetic VPK/RERL files, strict selections, pinned prefab acquisition, environment precedence, shader planning, verified map/overview/environment publication, rollback and process cancellation. It does not contact Steam or substitute for a real map export, sky-orientation and alignment check.
 
-Prepared environments live at `environments/<map>/environment.json` alongside `px.png`, `nx.png`, `py.png`, `ny.png`, `pz.png`, `nz.png` and private `provenance.json`. The six equal square PNGs are at most 1024 pixels and 8 MiB each, with a 32 MiB total bound. Runtime discovery checks their hashes, brightness from 0 to 16, and matching map/asset versions in both prepared tier manifests before exposing fixed, instance-policy-protected URLs. Generic static access cannot bypass these checks. Landscape capability reports geometry already merged into the map. The public application never accepts arbitrary sky URLs. Demo parsing does not convert game assets; optional map acquisition uses the separate approved-source service.
+Prepared environments live at `environments/<map>/environment.json` alongside `px.png`, `nx.png`, `py.png`, `ny.png`, `pz.png`, `nz.png` and private `provenance.json`. The six equal square PNGs are at most 1024 pixels and 8 MiB each, with a 32 MiB total bound. Runtime discovery checks their hashes, brightness from 0 to 16, and matching map/asset versions in both prepared tier manifests before exposing fixed, instance-policy-protected URLs. Generic static access cannot bypass these checks. Landscape capability reports geometry already merged into the map. The public application never accepts arbitrary sky URLs. Demo parsing does not convert game assets; optional map acquisition uses the separate official-source service.
 
 The installer also prepares opacity for explicitly supported atmospheric materials whose native mask channels are absent from S2V's glTF color texture. It validates the full native material/shader identity, selectively acquires only exact local mask/color resources, verifies VPK availability/CRCs and decodes them with their original alpha and linear mask channels. A bounded static phase-zero bake is embedded before tier packing. Its patch preserves the original geometry/binary bytes, changes only the supported material texture binding and records private provenance. It does not infer opacity from tint alpha or apply to unrelated materials. Native panning, Fresnel and depth feather remain explicit approximations; recorded gameplay smoke effects are separate. No extra mask URL or public conversion endpoint is introduced.
 
@@ -165,7 +165,7 @@ All five roles must be supplied together for locomotion. An idle-only input rema
 
 The version-controlled [sound registry](../../shared/gameplay-sounds.json) contains 116 fixed native samples and exact supported sound-event aliases. Source acquisition uses only official app `730`/depot `2347770`, a pinned manifest, a SHA-1-verified package index and CRC-checked selected VSND entries. No whole-game download, user account, uploaded sound or arbitrary URL is accepted. Keep all native files, decoded audio and preparation caches outside Git and application images.
 
-The optional `assets` service prepares this bank after a successful current-inventory refresh, only when no map job is ready to run. It shares the service's storage guards, bounded attempts and Steam login cooldown. Audio failure is logged independently and never changes map/replay readiness. An existing installed bank avoids repeat acquisition and is not overwritten. The web and replay workers do not download or convert sounds.
+The long-running `assets` service prepares this bank after a successful current-inventory refresh, only when no map job is ready to run and after its smaller landing-artwork task. It rechecks map work between idle tasks and shares storage guards, bounded attempts and the Steam login cooldown. Audio failure is logged independently and never changes map/replay readiness. An existing installed bank avoids repeat acquisition and is not overwritten. The web and replay workers do not download or convert sounds.
 
 For standalone operator preparation, build the backend contracts and required conversion helper, create a fresh output root, then supply the verified official manifest as a decimal string:
 
@@ -188,7 +188,27 @@ The installed layout is `sounds/<id>/{sound.wav,manifest.json}`, with private ba
 
 ## Optional landing map preview
 
-A decorative local map screenshot can fade behind the public upload page. Prepare one of the fixed [preview map names](../../shared/map-previews.json) from an operator-provided PNG, outside Git and application images:
+A decorative local map screenshot can fade behind the public upload page. A fresh Docker image contains no game screenshot. The `assets` service can prepare the fixed native 720p Mirage screenshot automatically after its official metadata refresh, while no map request is ready. It checks for any existing fixed operator preview first and preserves it. It rechecks map jobs before starting the larger sound bank. Artwork failure does not change map or replay readiness.
+
+`install-map-preview.mjs` selects only `panorama/images/map_icons/screenshots/720p/de_mirage_png.vtex_c` and its package index from fixed app `730`/depot `2347770` at one explicit observed manifest. It verifies the index SHA-1 and native entry CRC, reuses freshly verified cached bytes and records input/output hashes. Source selection is capped at 32 MiB, individual native/image files at 8 MiB and the task at five minutes. Fresh CDN downloads still reserve chunk overhead as well as the unchanged 512 MiB free-space floor; existing verified cache entries do not trigger unnecessary downloads. Conversion and final publication have independent write reservations.
+
+Native input is copied into a fresh conversion-only root. Both S2V decoding and Node/Sharp normalization run through the required Landlock/seccomp helper, with stage-local HOME/TMP and no network. Downloader controls, manifests, cached tools and final assets stay outside converter writes. Final PNGs are fully decoded, normalized to at most 1600×900 and structurally/hash validated before the exact `--publish-preview` no-replace operation. Only the shared fixed target names are accepted. Output is `previews/<map>/{preview.png,preview.json,provenance.json}` with readable finalized artwork and retained private provenance.
+
+For standalone automatic-source preparation, build the boundary, create a fresh output root and use a verified current manifest:
+
+```sh
+npm --prefix tools/assets run build:boundary
+mkdir -p /srv/cswatch/new-preview-assets
+node tools/assets/install-map-preview.mjs \
+  --manifest PINNED_UINT64 \
+  --output /srv/cswatch/new-preview-assets \
+  --cache /srv/cswatch-private-preview-cache \
+  --network-deny "$PWD/tools/assets/bin/asset-network-deny"
+```
+
+Do not infer `PINNED_UINT64` from demo header fields or overwrite another manifest's source cache. The verified toolchain can be bootstrapped, or supply both explicit trusted `--s2v` and `--downloader` paths. Steam exit 4 uses the worker's shared fifteen-minute cooldown. No arbitrary image URL, user credential, public upload or whole-game selector is accepted.
+
+Alternatively prepare one of the fixed [preview map names](../../shared/map-previews.json) from an operator-provided local PNG:
 
 ```sh
 node tools/assets/prepare-map-preview.mjs \
@@ -197,13 +217,17 @@ node tools/assets/prepare-map-preview.mjs \
   --source 'Local native CS2 map preview, exact source version recorded separately'
 ```
 
-The helper fully decodes a bounded single PNG and writes `previews/<map>/{preview.png,preview.json,provenance.json}` without overwriting an existing preview. Runtime delivery binds the image hash and fixed map name under normal setup/private policy. It accepts no external image URL or public image upload and has a quiet no-image fallback. This decorative image is not replay calibration or proof that a matching 3D pack is installed.
+The local helper fully decodes a bounded single PNG and refuses an existing preview. Runtime delivery binds the image hash and fixed map name under normal setup/private policy. The public entry checks for newly available local artwork with bounded polling and retains a usable no-image fallback. This decorative image is not replay calibration or proof that a matching 3D pack is installed. Keep all native source/output artwork outside Git and application images.
 
-## Optional acquisition service and catalog maintenance
+The November 19 native proof converted the retained exact VTEX from manifest `807392217824910805` through confined S2V and Sharp, fully decoded the resulting 1280×720 PNG and matched its existing output digest. The installed preview remained unchanged. No new current-source Steam acquisition was run below the host's storage reserve; do not relabel this cached-source proof as a current download.
+
+## Acquisition service and catalog maintenance
 
 The separate assets Docker target supplies tools and the required Linux x86-64 Landlock/seccomp helper without the application database, auth/provider dependencies, account environment or game content. Acquisition alone has network access. S2V and Node conversion subprocesses receive stage-local HOME/TMP, confined byte writes, metadata/process restrictions and no sockets. The trusted supervisor still runs bounded Sharp decoders and publication validation outside that subprocess filter; maintain its memory/container limits and pinned dependencies. This does not make arbitrary native decoders safe or replace host quotas.
 
 Automatic acquisition defaults off. The optional historical approval catalog starts empty. Latest fallback obtains official membership and source pins from fixed Steam metadata without generating approvals. Operators must establish recording/source relationships before adding historical entries. The viewer labels latest snapshots separately. [Deployment instructions](../../docs/MAP-ASSETS.md) cover read-only application catalog mounts, the isolated one-shot updater, resources, explicit retry and crash recovery. `npm --prefix tools/assets run test:catalog` validates updater bounds, atomic replacement and filesystem protection with original fixtures. No test acquires official game content. Docker/Compose runtime behavior is established by CI, not by the local source tests.
+
+The long-running asset service starts in the normal Compose stack, without a profile. Automatic map acquisition still defaults off independently; metadata discovery and bounded idle artwork/sound bootstrap do not grant demo owners map-acquisition permission. Use `docker compose pull web worker assets` and then `docker compose up -d web worker assets` to update both the application and separate asset image. Explicit service names also work with older files that put assets behind a profile. Administration distinguishes policy disabled, absent worker, missing/stale official inventory and optional historical-catalog state. Inventory failures retain only a fixed safe stage/code, timestamp/retry time and optional process exit code in logs/heartbeats/admin diagnostics, clearing on success. An empty catalog does not block latest official Ancient. Bootstrap polling is read-only and bounded; it does not retry failed conversions. Build revision/time describe the built image, while successful exact-revision CI remains the release evidence.
 
 ## Inspect recorded map evidence
 

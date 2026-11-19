@@ -34,9 +34,10 @@ test('fixed sound bootstrap yields to queued maps and its integrity failure neve
       processRequest: async () => {
         sequence.push('map');
         calls++;
-        if (calls === 3) controller.abort();
+        if (calls === 4) controller.abort();
         return calls === 1;
       },
+      preparePreview: async () => ({ status: 'installed' }),
       prepareSounds: async (_options, manifest) => {
         assert.equal(manifest, '42');
         sequence.push('sound');
@@ -47,7 +48,7 @@ test('fixed sound bootstrap yields to queued maps and its integrity failure neve
       delay: async () => {},
     },
   );
-  assert.deepEqual(sequence, ['map', 'map', 'sound', 'map']);
+  assert.deepEqual(sequence, ['map', 'map', 'map', 'sound', 'map']);
   assert.deepEqual(
     logs.find((x) => x.event === 'sound.failed'),
     { event: 'sound.failed', code: 'source_mismatch' },
@@ -72,9 +73,10 @@ test('audio Steam rate limits share the worker cooldown while heartbeats and que
       refreshInventory: async () => ({ manifest: '42', maps: [{}] }),
       processRequest: async () => {
         jobs.push(clock);
-        if (jobs.length === 2) controller.abort();
+        if (jobs.length === 3) controller.abort();
         return false;
       },
+      preparePreview: async () => ({ status: 'installed' }),
       prepareSounds: async () => {
         sounds++;
         throw Object.assign(Error('Steam rate limit'), { code: 'STEAM_RATE_LIMIT' });
@@ -89,7 +91,7 @@ test('audio Steam rate limits share the worker cooldown while heartbeats and que
       },
     },
   );
-  assert.deepEqual(jobs, [1000, 1900]);
+  assert.deepEqual(jobs, [1000, 1000, 1900]);
   assert.equal(sounds, 1);
   assert.ok(beats.length >= 60);
 });

@@ -245,7 +245,6 @@ h3 {
 [data-theme] .tag {
   border-radius: 2px;
 }
-[data-theme] .auth-dialog,
 [data-theme] .options-dialog {
   border-radius: 4px;
 }
@@ -253,19 +252,7 @@ h3 {
 [data-theme] select {
   border-radius: 2px;
 }
-.auth-dialog > .brand {
-  margin: 0 0 28px;
-}
-.auth-dialog h2 {
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: 32px;
-  font-weight: 600;
-  letter-spacing: 0;
-  line-height: 1.1;
-}
-.auth-dialog > p {
-  font-size: 14px;
-}
+
 .tabs a {
   position: relative;
   padding: 13px 0;
