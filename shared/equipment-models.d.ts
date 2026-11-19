@@ -34,6 +34,7 @@ export type EquipmentModel = {
 };
 export type EquipmentModelCatalog = {
   schemaVersion: 1;
+  complete?: boolean;
   items: Record<string, EquipmentModel>;
 };
 /** Private prepared-pack identity. Source/tool provenance is a separate file. */

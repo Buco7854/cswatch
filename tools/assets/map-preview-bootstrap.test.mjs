@@ -1,11 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, readdir, rm } from 'node:fs/promises';
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  readdir,
+  rm,
+  statfs,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { prepareMapJobs } from '../../backend/dist/map-jobs.js';
 import { buildNetworkDeny } from './build-network-deny.mjs';
-import { runMapWorker, prepareIdleMapPreview } from './map-worker.mjs';
+import { runMapWorker, prepareIdleMapPreview, mapPreviewInstallOptions } from './map-worker.mjs';
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'cswatch-preview-bootstrap-'));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -20,6 +29,96 @@ async function fixture(t) {
   await prepareMapJobs(options.jobs);
   return options;
 }
+test('core native actors and HUD icons precede preview/audio while each bulk model yields to queued maps', async (t) => {
+  const options = await fixture(t),
+    controller = new AbortController(),
+    sequence = [];
+  let maps = 0,
+    models = 0;
+  await runMapWorker(
+    { ...options, signal: controller.signal },
+    {
+      refreshInventory: async () => ({ manifest: '1', maps: [{}] }),
+      processRequest: async () => {
+        sequence.push('map');
+        if (++maps === 8) controller.abort();
+        return false;
+      },
+      preparePresentation: async (_options, manifest, kind) => {
+        assert.equal(manifest, '1');
+        sequence.push(kind === 'equipment-models' ? `model${++models}` : kind);
+        return { status: 'prepared', remaining: kind === 'equipment-models' && models < 2 };
+      },
+      preparePreview: async () => {
+        sequence.push('preview');
+      },
+      prepareSounds: async () => {
+        sequence.push('sounds');
+      },
+      delay: async () => {},
+    },
+  );
+  assert.deepEqual(sequence, [
+    'map',
+    'agents',
+    'map',
+    'equipment',
+    'map',
+    'preview',
+    'map',
+    'sounds',
+    'map',
+    'model1',
+    'map',
+    'model2',
+    'map',
+    'map',
+  ]);
+});
+test('a failed idle native task backs off other optional downloads while map checks and heartbeats continue', async (t) => {
+  const options = await fixture(t),
+    controller = new AbortController();
+  let clock = 1000,
+    calls = 0,
+    maps = 0;
+  await runMapWorker(
+    { ...options, signal: controller.signal },
+    {
+      now: () => clock,
+      refreshInventory: async () => ({ manifest: '1', maps: [{}] }),
+      processRequest: async () => {
+        maps++;
+        if (maps > 200) {
+          controller.abort();
+          throw Error('Native idle fixture never reached its bounded recovery turn.');
+        }
+        return false;
+      },
+      preparePresentation: async (_options, _manifest, kind) => {
+        calls++;
+        if (kind === 'agents') throw Error('original transient fixture failure');
+        assert.equal(kind, 'equipment');
+        assert.ok(clock >= 1300);
+        controller.abort();
+        return { status: 'installed' };
+      },
+      preparePreview: async () => {
+        throw Error('Preview must wait for idle backoff');
+      },
+      prepareSounds: async () => {
+        throw Error('Sounds must wait for idle backoff');
+      },
+      delay: async (milliseconds) => {
+        assert.ok(milliseconds > 0 && milliseconds <= 2000);
+        const state = JSON.parse(await readFile(join(options.jobs, 'worker-status.json'), 'utf8'));
+        assert.equal(state.updatedAt, clock);
+        clock += milliseconds / 1000;
+      },
+    },
+  );
+  assert.equal(calls, 2);
+  assert.ok(maps >= 150);
+});
 test('small native artwork yields to maps, runs before sounds and rechecks newly queued maps after preparing it', async (t) => {
   const options = await fixture(t),
     controller = new AbortController(),
@@ -28,6 +127,7 @@ test('small native artwork yields to maps, runs before sounds and rechecks newly
   await runMapWorker(
     { ...options, signal: controller.signal },
     {
+      preparePresentation: async () => ({ status: 'installed' }),
       refreshInventory: async () => ({ manifest: '123', maps: [{}] }),
       processRequest: async () => {
         maps++;
@@ -63,9 +163,14 @@ test('preview Steam rate limit blocks both sound and map acquisition until the s
     { ...options, signal: controller.signal },
     {
       now: () => clock,
+      preparePresentation: async () => ({ status: 'installed' }),
       refreshInventory: async () => ({ manifest: '123', maps: [{}] }),
       processRequest: async () => {
         jobs.push(clock);
+        if (jobs.length > 8) {
+          controller.abort();
+          throw Error('Artwork cooldown fixture never reached its bounded recovery turn.');
+        }
         return false;
       },
       preparePreview: async () => {
@@ -107,6 +212,7 @@ test('preview source-integrity failure remains terminal across inventory refresh
     { ...options, signal: controller.signal, log: (value) => logs.push(value) },
     {
       now: () => clock,
+      preparePresentation: async () => ({ status: 'installed' }),
       refreshInventory: async () => {
         refreshes++;
         return { manifest: String(refreshes), maps: [{}] };
@@ -134,10 +240,12 @@ test('preview source-integrity failure remains terminal across inventory refresh
   assert.equal(JSON.stringify(logs).includes('Untrusted native diagnostics'), false);
   assert.deepEqual(await readdir(join(options.jobs, 'results')), []);
 });
-test('idle artwork receives only fixed assets/cache/source limits and a final prepared-budget check, never application secrets', async (t) => {
+test('idle artwork options exclude application secrets and real storage guards precede install/publication', async (t) => {
   const options = await fixture(t);
   let received;
-  await prepareIdleMapPreview(
+  const disks = await Promise.all([options.cache, options.assets].map((path) => statfs(path)));
+  const lowDisk = disks.some((disk) => disk.bavail * disk.bsize < 512 * 1024 ** 2);
+  const preparation = prepareIdleMapPreview(
     { ...options, dataDir: '/private/data', steamApiKey: 'private-fixture' },
     '123',
     {
@@ -147,6 +255,15 @@ test('idle artwork receives only fixed assets/cache/source limits and a final pr
       },
     },
   );
+  if (lowDisk) {
+    await assert.rejects(preparation, /512 MiB reserve/);
+    assert.equal(received, undefined, 'A failed admission must never invoke the installer.');
+    received = mapPreviewInstallOptions(
+      { ...options, dataDir: '/private/data', steamApiKey: 'private-fixture' },
+      '123',
+      new AbortController().signal,
+    );
+  } else await preparation;
   assert.deepEqual(
     Object.keys(received).sort(),
     [
@@ -164,6 +281,37 @@ test('idle artwork receives only fixed assets/cache/source limits and a final pr
   assert.equal(received.output, options.assets);
   assert.equal(received.toolchainCache, join(options.cache, 'tools'));
   assert.equal(typeof received.beforePublish, 'function');
-  await received.beforePublish();
+  if (lowDisk) await assert.rejects(received.beforePublish(), /512 MiB reserve/);
+  else await received.beforePublish();
   await assert.rejects(() => prepareIdleMapPreview(options, '../bad'), /uint64/);
+});
+test('default worker inventory admission rejects unsafe source storage before any tool preparation', async (t) => {
+  const options = await fixture(t),
+    controller = new AbortController(),
+    events = [];
+  const outside = join(options.assets, 'operator.txt');
+  await writeFile(outside, 'operator sentinel');
+  await symlink(outside, join(options.cache, 'unsafe-source'));
+  let maps = 0;
+  await runMapWorker(
+    { ...options, signal: controller.signal, log: (event) => events.push(event) },
+    {
+      processRequest: async () => {
+        maps++;
+        controller.abort();
+        return false;
+      },
+      delay: async () => {},
+    },
+  );
+  assert.equal(maps, 1);
+  assert.equal(
+    events.some((event) => event.event === 'map.toolchain_preparing'),
+    false,
+  );
+  assert.equal(
+    events.find((event) => event.event === 'map.inventory_unavailable')?.phase,
+    'storage',
+  );
+  assert.equal(await readFile(outside, 'utf8'), 'operator sentinel');
 });

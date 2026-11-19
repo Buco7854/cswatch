@@ -106,6 +106,43 @@ async function open(page: Page) {
   await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
   await expect(page.locator('.scene')).toHaveAttribute('data-equipment-model-state', 'ready');
 }
+
+test('model catalog completeness is strictly validated, retains partial models on errors and stops discovery after completion', async ({
+  page,
+}) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE));
+  await page.clock.install();
+  await install(page);
+  let reads = 0;
+  await page.route('**/api/assets/equipment-models', async (route) => {
+    reads++;
+    if (reads === 1)
+      return route.fulfill({ json: { schemaVersion: 1, items: {}, complete: 'true' } });
+    if (reads === 2)
+      return route.fulfill({ json: { schemaVersion: 1, items: {}, complete: false } });
+    if (reads === 4) return route.fulfill({ status: 503, json: {} });
+    return route.fulfill({ json: { ...originalEquipmentCatalog(), complete: reads >= 5 } });
+  });
+  await page.goto('/watch/equipment-model-fixture');
+  const scene = page.locator('.scene');
+  await expect(scene).toHaveAttribute('data-map-model-state', 'ready');
+  await expect(scene).toHaveAttribute('data-equipment-model-state', 'error');
+  await page.clock.pauseAt(new Date((await page.evaluate(() => Date.now())) + 100));
+  await page.clock.runFor(2100);
+  await expect.poll(() => reads).toBe(2);
+  await expect(scene).toHaveAttribute('data-equipment-model-state', 'missing');
+  await page.clock.runFor(5100);
+  await expect.poll(() => reads).toBe(3);
+  await expect(scene).toHaveAttribute('data-equipment-model-state', 'ready');
+  await page.clock.runFor(15100);
+  await expect.poll(() => reads).toBe(4);
+  await expect(scene).toHaveAttribute('data-equipment-model-state', 'ready');
+  await page.clock.runFor(30100);
+  await expect.poll(() => reads).toBe(5);
+  await expect(scene).toHaveAttribute('data-equipment-model-state', 'ready');
+  await page.clock.fastForward(60000);
+  expect(reads).toBe(5);
+});
 async function magentaPixels(page: Page, interior = false) {
   const bytes = await page.locator('.scene canvas').screenshot();
   return page.evaluate(
@@ -298,7 +335,7 @@ test('missing model packs expose availability without fake bodies and incomplete
   await expect(
     report
       .locator('dl div')
-      .filter({ has: page.getByText('Indisponibles', { exact: true }) })
+      .filter({ has: page.getByText('Modèles indisponibles', { exact: true }) })
       .locator('dd'),
   ).toHaveText('2');
   await page.screenshot({ path: info.outputPath('equipment-status-phone-light-french.png') });

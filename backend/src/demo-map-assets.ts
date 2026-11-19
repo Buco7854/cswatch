@@ -19,6 +19,7 @@ import {
   latestMapPackMarkerSchema,
 } from './map-catalog.js';
 import { readMapPreparationState } from './map-readiness.js';
+import { unsettledMapRemoval } from './map-removals.js';
 import { mapIdentitySchema, officialMapName } from './map-identity.js';
 import { withDirectory, regularFile, bytesFrom, fileVersion } from './map-asset-files.js';
 import {
@@ -170,6 +171,16 @@ export async function demoMapAssetRoutes(
           : validLatest
             ? result!.assetPackId!
             : null;
+      if (assetPackId && (await unsettledMapRemoval(c.mapJobsDir, assetPackId)))
+        return {
+          resolution,
+          acquisition: 'failed',
+          canAcquire: false,
+          verification: 'unavailable',
+          packId: resolution.status === 'approved' ? resolution.packId : null,
+          code: 'removed_by_admin',
+          assets: emptyAssets,
+        };
       if (result?.status === 'ready') {
         if (
           !assetPackId ||
@@ -216,7 +227,12 @@ export async function demoMapAssetRoutes(
           resolution,
           acquisition: result.status,
           canAcquire: Boolean(
-            enabled && owned && canRetryMapResult(result) && state.diagnostics.worker.available,
+            enabled &&
+            owned &&
+            canRetryMapResult(result) &&
+            state.diagnostics.worker.available &&
+            (result.code !== 'removed_by_admin' ||
+              !(await unsettledMapRemoval(c.mapJobsDir, result.assetPackId || requestId))),
           ),
           verification: 'unavailable',
           packId: resolution.status === 'approved' ? resolution.packId : null,
@@ -345,6 +361,8 @@ export async function demoMapAssetRoutes(
     const params = request.params as { packId?: string; name?: string; '*'?: string };
     const id = packIdSchema.safeParse(params.packId);
     if (!id.success) throw new HttpError(404, 'Map pack not found.');
+    if (await unsettledMapRemoval(c.mapJobsDir, id.data))
+      throw new HttpError(404, 'Map pack not found.');
     const catalog = await readMapCatalog(c.mapCatalogFile);
     const approvals = catalog?.entries.filter((entry) => mapPackId(entry) === id.data) || [];
     const name = params.name ?? params['*']?.split('/')[0];

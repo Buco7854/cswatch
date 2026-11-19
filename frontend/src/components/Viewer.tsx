@@ -82,6 +82,8 @@ import RecordedCrosshair from './RecordedCrosshair';
 import { buildRecordedCrosshairTimeline, recordedCrosshairAt } from '../recorded-crosshair';
 import CombatRecap from './CombatRecap';
 import { combatDamage } from '../combat-recap';
+import { damageFeedbackAt, DeathFollowController, indexSpectatorEvents } from '../spectator-state';
+import DamageFeedback from './DamageFeedback';
 import Communications from './Communications';
 import ViewerOptions from './ViewerOptions';
 import Crosshair from './Crosshair';
@@ -121,6 +123,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
   }
   function selectPlayer(playerId: string, dismissPicker = false) {
     if (!data?.players.some((player) => player.id === playerId)) return;
+    deathFollow.current.reset();
     setSelected(playerId);
     setGrenadeFocus(undefined);
     setMode('pov');
@@ -517,6 +520,11 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     return () => document.removeEventListener('keydown', escape);
   }, [panel, compactPanels]);
   const playbackClock = useRef(new PlaybackClock());
+  const deathFollow = useRef(new DeathFollowController());
+  const spectatorEvents = useMemo(
+    () => (data ? indexSpectatorEvents(data) : undefined),
+    [data?.events, data?.players, data?.sample],
+  );
   const currentTick = useRef(tick);
   currentTick.current = tick;
   const playbackState = useRef({ data, availableUntil, autoSkip: settings.autoSkip });
@@ -557,12 +565,39 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
   const seek = useCallback(
     (value: number) => {
       audio.flush();
+      deathFollow.current.reset();
       const next = Math.max(first, Math.min(last, value));
       playbackClock.current.reset(next, performance.now());
       setTick(next);
     },
     [first, last, audio],
   );
+  useEffect(() => {
+    if (!data || !spectatorEvents) return;
+    const next = deathFollow.current.advance(data, spectatorEvents, {
+      identity: audioIdentity,
+      selected,
+      mode,
+      tick,
+      playing,
+      buffering,
+      enabled: settings.autoFollowDeath,
+    });
+    if (!next) return;
+    setSelected(next);
+    setGrenadeFocus(undefined);
+    cueCameraChange();
+  }, [
+    data,
+    spectatorEvents,
+    audioIdentity,
+    selected,
+    mode,
+    tick,
+    playing,
+    buffering,
+    settings.autoFollowDeath,
+  ]);
   useEffect(() => {
     playbackClock.current.reset(currentTick.current, performance.now());
     if (!playing || !data || buffering) return;
@@ -1204,6 +1239,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
             icon={<Eye size={16} />}
             value={mode}
             onValueChange={(value) => {
+              deathFollow.current.reset();
               setGrenadeFocus(undefined);
               setMode(value);
               cueCameraChange();
@@ -1316,6 +1352,13 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
               onAudioListener={cameraAudio}
             />
           </Suspense>
+          {settings.damageFeedback &&
+            mode === 'pov' &&
+            !using2D &&
+            !buffering &&
+            spectatorEvents && (
+              <DamageFeedback value={damageFeedbackAt(data, spectatorEvents, selected, tick)} />
+            )}
           {buffering && (
             <div className="replay-buffer" role={chunkError ? 'alert' : 'status'}>
               <span>{t(chunkError || 'Loading this moment…')}</span>

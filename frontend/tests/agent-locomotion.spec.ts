@@ -181,6 +181,10 @@ test('five prepared cycles deform actual skinned actors from recorded speed and 
     const scene = page.locator('.scene');
     await expect(scene).toHaveAttribute('data-agent-ready-count', '1');
     await expect(scene).toHaveAttribute('data-map-model-state', 'ready');
+    // The ground-level free camera intentionally hides the body intersecting
+    // its eye. Observe from above so GPU bone/attachment probes see the actor.
+    await page.getByRole('combobox', { name: 'Camera mode', exact: true }).click();
+    await page.getByRole('option', { name: 'Overhead', exact: true }).click();
     if (width < 600) {
       await expect(page.locator('.map-verification-short')).toHaveText('Unverified');
       expect(

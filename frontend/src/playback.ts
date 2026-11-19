@@ -56,6 +56,9 @@ export function skipDeadTime(
 }
 export type ViewerSettings = {
   xray: boolean;
+  playerLabels: boolean;
+  damageFeedback: boolean;
+  autoFollowDeath: boolean;
   crosshair: boolean;
   crosshairStyle: CrosshairStyle;
   crosshairSource: 'custom' | 'player';
@@ -98,6 +101,9 @@ export type ViewerSettings = {
 };
 export const defaultSettings: ViewerSettings = {
   xray: true,
+  playerLabels: true,
+  damageFeedback: true,
+  autoFollowDeath: true,
   crosshair: true,
   crosshairStyle: defaultCrosshairStyle,
   crosshairSource: 'custom',

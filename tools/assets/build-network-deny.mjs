@@ -19,6 +19,17 @@ if (
 )
   throw Error('Invalid fixed preview publication registry.');
 const previewNames = previewRegistry.maps.map((name) => JSON.stringify(name)).join(',');
+const modelRegistry = JSON.parse(
+  readFileSync(new URL('../../shared/equipment-models.json', import.meta.url), 'utf8'),
+);
+const equipmentNames = Object.keys(modelRegistry.items || {});
+if (
+  modelRegistry.schemaVersion !== 1 ||
+  !equipmentNames.length ||
+  equipmentNames.length > 96 ||
+  equipmentNames.some((name) => !/^[a-z0-9]{1,40}$/.test(name))
+)
+  throw Error('Invalid fixed equipment publication registry.');
 const source = fileURLToPath(new URL('./native/asset-network-deny.c', import.meta.url));
 export function buildNetworkDeny(output) {
   if (process.platform !== 'linux' || process.arch !== 'x64')
@@ -33,6 +44,7 @@ export function buildNetworkDeny(output) {
       [
         '-std=c11',
         `-DCSWATCH_PREVIEW_NAMES=${previewNames}`,
+        `-DCSWATCH_EQUIPMENT_NAMES=${equipmentNames.map((name) => JSON.stringify(name)).join(',')}`,
         '-O2',
         '-Wall',
         '-Wextra',

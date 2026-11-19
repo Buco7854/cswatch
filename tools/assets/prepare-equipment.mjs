@@ -141,7 +141,7 @@ async function sourceFile(root, filename) {
   }
 }
 
-export async function prepareEquipment({ input, output, version, source }) {
+export async function prepareEquipment({ input, output, version, source, confined = false }) {
   const inputRoot = await realpath(resolve(input));
   if (!(await lstat(inputRoot)).isDirectory()) throw new Error('Input must be an SVG directory.');
   const target = resolve(output);
@@ -207,9 +207,11 @@ export async function prepareEquipment({ input, output, version, source }) {
     );
     // Keep incomplete work private. Publish this operator artwork pack with
     // predictable read permissions even under a restrictive host umask.
-    for (const filename of [...Object.keys(items).map((key) => key + '.png'), 'provenance.json'])
-      await chmod(join(staging, filename), 0o644);
-    await chmod(staging, 0o755);
+    if (!confined) {
+      for (const filename of [...Object.keys(items).map((key) => key + '.png'), 'provenance.json'])
+        await chmod(join(staging, filename), 0o644);
+      await chmod(staging, 0o755);
+    }
     await rename(staging, target);
     return { count: Object.keys(items).length, output: target };
   } catch (error) {
@@ -224,7 +226,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     const options = {};
     for (let index = 0; index < args.length; index += 2) {
       const key = args[index]?.replace(/^--/, '');
-      if (!['input', 'output', 'version', 'source'].includes(key) || !args[index + 1])
+      if (!['input', 'output', 'version', 'source', 'confined'].includes(key) || !args[index + 1])
         throw new Error(
           'Usage: prepare-equipment --input SVG_DIR --output NEW_DIR --version CS2_BUILD --source SOURCE',
         );
@@ -232,6 +234,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     }
     if (!options.input || !options.output)
       throw new Error('Both --input and --output are required.');
+    if (options.confined !== undefined) {
+      if (options.confined !== 'true') throw Error('Invalid confinement mode.');
+      options.confined = true;
+    }
     console.log(JSON.stringify(await prepareEquipment(options)));
   } catch (error) {
     console.error(error instanceof Error ? error.message : 'Equipment preparation failed.');

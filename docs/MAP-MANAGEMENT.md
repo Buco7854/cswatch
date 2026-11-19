@@ -1,0 +1,15 @@
+# Installed map management
+
+Administrators can review prepared map snapshots and request deletion from **Administration → Installed maps**. The confirmation names the map and explains the impact on demos using that snapshot. Demo recordings, accounts, shared player/weapon artwork and shared source caches are kept. Source downloads remain subject to their existing bounded retention policy.
+
+The list separates automatic worker-owned snapshots from operator-managed installations. Manual maps are discovered through the same validated model/overview paths as the viewer and are explicitly read-only here. Manage those files on the server. Unrecognized files never become deletion targets.
+
+The web service keeps its read-only asset mount. An authenticated administrator submits only the reviewed immutable pack ID and current marker hash, under exact Origin, CSRF and rate checks. A bounded disk intent captures the validated source request, its generation and a server-generated removal identity. No caller can select a directory, source manifest, URL or converter argument.
+
+Accepting that intent blocks future discovery and GET/HEAD/range delivery for the snapshot. Already-open descriptors and viewers can finish using bytes they loaded earlier. The single asset worker processes local removals before network cooldown/inventory work, serially with map publication. It verifies the marker and generation again, rejects links, hardlinks, foreign files and oversized trees, then atomically retires only that snapshot into its exact private quarantine name through the native same-parent no-replace rename. Existing empty, nonempty or linked destinations remain untouched. Cleanup is descriptor-relative and limited to the map's known model, radar, environment and provenance filenames. The authorization marker is removed last so an interrupted cleanup can recover.
+
+Controlled shutdown leaves the durable intent pending for the next worker. Genuine cleanup failures require an explicit administrator retry and remain visible in the map list. Unfinished cleanup prevents a new acquisition generation. Successful removal records `removed_by_admin`, so opening a demo cannot immediately download the same snapshot again. An eligible demo owner can explicitly prepare it again after the existing five-minute retry cooldown.
+
+The deletion queue has its own 32-pending/512-retained bounds and 1,024-entry scan limit. Shared temporary-name rules apply. Only single-web startup reclaims verified abandoned web-intent temporaries. Worker result temporaries and unknown/operator files remain untouched. Safe `map.removing`, `map.removed`, `map.removal_interrupted` and `map.removal_failed` events contain IDs and fixed codes rather than native errors or paths.
+
+The same administration area shows separate player-model, weapon-icon and weapon-model preparation status. Fixed-category retries capture the worker's failed generation and retain its selected source. They cannot supply a manifest or reset another category. Progress/coverage and unavailable fixed model IDs stay independent of map and replay readiness.

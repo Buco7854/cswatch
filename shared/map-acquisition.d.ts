@@ -58,7 +58,8 @@ export type MapJobFailureCode =
   | 'storage_limit'
   | 'preparation_failed'
   | 'approval_removed'
-  | 'worker_interrupted';
+  | 'worker_interrupted'
+  | 'removed_by_admin';
 export type MapJobResult = {
   schemaVersion: 1;
   packId: string;
@@ -111,6 +112,21 @@ export type MapPreparationDiagnostics = {
     updatedAt?: number;
   };
   catalog: { status: 'unavailable' | 'empty' | 'configured'; entries: number };
+};
+
+/** Installed worker-owned immutable packs. No filesystem locations cross the API. */
+export type ManagedMap = {
+  packId: string;
+  map: string;
+  manifest: string;
+  preparedAt: number;
+  version: string;
+  removal: 'none' | 'queued' | 'failed';
+};
+export type ManagedMaps = {
+  maps: ManagedMap[];
+  operatorMaps?: { map: string }[];
+  workerAvailable: boolean;
 };
 /** Fixed safe supervisor diagnostics, never native output, filesystem paths or credentials. */
 export type MapInventoryFailure = {

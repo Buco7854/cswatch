@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { validPng } from './png.js';
 import { createHash } from 'node:crypto';
 import { fileDigest, fileVersion } from './asset-content.js';
+import { presentationCatalogComplete } from './presentation-assets.js';
 
 /** Fixed, version-controlled registry shared with the operator CLI and frontend.
  * Builds copy it next to this module; development reads the same source registry. */
@@ -75,6 +76,7 @@ export async function equipmentAssetRoutes(
   app: FastifyInstance,
   dataRoot: string,
   mapsRoot = join(dataRoot, 'maps'),
+  jobsRoot?: string,
 ) {
   const cache = new Map<string, { version: string; digest: string; data: Buffer }>();
   let cachedBytes = 0;
@@ -131,15 +133,22 @@ export async function equipmentAssetRoutes(
       await handle?.close();
     }
   };
-  app.get('/api/assets/equipment', async () => ({
-    icons:
+  app.get('/api/assets/equipment', async (_request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    const icons =
       (await withDirectory(mapsRoot, async (folder) => {
         const icons: Record<string, string> = {};
         for (const key of equipmentIconKeys)
           if (await load(folder, key)) icons[key] = `/api/assets/equipment/${key}.png`;
         return icons;
-      })) || {},
-  }));
+      })) || {};
+    const complete = await presentationCatalogComplete(
+      jobsRoot,
+      'equipment',
+      Object.keys(icons).length,
+    );
+    return { icons, ...(complete === undefined ? {} : { complete }) };
+  });
   app.get<{ Params: { filename: string } }>(
     '/api/assets/equipment/:filename',
     async (request, reply) => {

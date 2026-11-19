@@ -128,12 +128,13 @@ test('map response parser bounds streaming UTF-8 before JSON parsing', async () 
   await assert.rejects(() => readMapJSON(new Response(new Uint8Array([255])), 32));
 });
 
-test('failed eligibility is accepted only for bounded transient retry codes, never permanent source mismatch', () => {
+test('failed eligibility is accepted only for bounded explicit retry codes, never permanent source mismatch', () => {
   for (const code of [
     'source_unavailable',
     'storage_limit',
     'preparation_failed',
     'worker_interrupted',
+    'removed_by_admin',
   ])
     assert.equal(
       validateDemoMapAssets({ ...pending, acquisition: 'failed', code }, map).acquisition

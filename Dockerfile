@@ -28,7 +28,7 @@ COPY tools/assets/package*.json ./tools/assets/
 RUN npm ci --prefix tools/assets --omit=dev
 COPY tools/assets/*.mjs ./tools/assets/
 COPY tools/assets/native/asset-network-deny.c ./tools/assets/native/
-COPY shared/map-previews.json ./shared/
+COPY shared/map-previews.json shared/equipment-models.json ./shared/
 RUN node tools/assets/build-network-deny.mjs --output tools/assets/bin/asset-network-deny \
     && node -e "const fs=require('node:fs'); for (const name of fs.readdirSync('tools/assets')) if (name.endsWith('.test.mjs')) fs.unlinkSync('tools/assets/'+name)"
 
@@ -45,7 +45,7 @@ COPY --from=asset-build /build/tools/assets/package*.json ./tools/assets/
 COPY --from=asset-build /build/tools/assets/node_modules ./tools/assets/node_modules
 COPY --from=asset-build /build/tools/assets/*.mjs ./tools/assets/
 COPY --from=asset-build /build/tools/assets/bin/asset-network-deny ./tools/assets/bin/asset-network-deny
-COPY --from=backend /build/backend/dist/map-catalog.js /build/backend/dist/map-identity.js /build/backend/dist/map-jobs.js /build/backend/dist/map-asset-files.js /build/backend/dist/asset-content.js ./backend/dist/
+COPY --from=backend /build/backend/dist/map-catalog.js /build/backend/dist/map-identity.js /build/backend/dist/map-jobs.js /build/backend/dist/map-asset-files.js /build/backend/dist/asset-content.js /build/backend/dist/map-removals.js /build/backend/dist/presentation-assets.js /build/backend/dist/png.js ./backend/dist/
 COPY --from=backend /build/backend/node_modules/zod ./backend/node_modules/zod
 COPY shared/equipment-icons.json shared/equipment-models.json shared/agent-animation.json shared/map-previews.json shared/gameplay-sounds.json shared/gameplay-sound-files.mjs ./shared/
 RUN mkdir -p /map-assets /map-jobs /map-cache /map-catalog \

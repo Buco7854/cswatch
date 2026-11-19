@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { AssetStatus } from './map-assets';
+import { observeAssets, readAssetJSON } from './asset-discovery';
 
 export type AgentAssets = { ct: string | null; t: string | null };
 const empty: AgentAssets = Object.freeze({ ct: null, t: null });
@@ -24,37 +25,23 @@ export function useAgentAssets(identity: string, enabled: boolean): State {
   });
   useEffect(() => {
     if (!enabled) return;
-    let active = true;
-    const controller = new AbortController(),
-      timeout = window.setTimeout(() => controller.abort(), 10000);
     setState({ identity, value: pending });
-    void (async () => {
-      try {
-        const response = await fetch('/api/assets/agents', {
-          credentials: 'same-origin',
-          signal: controller.signal,
-          headers: { Accept: 'application/json' },
-        });
-        if (!response.ok) throw new Error('Agent discovery failed');
-        const text = await response.text();
-        if (text.length > 1024) throw new Error('Agent discovery exceeded its bound');
-        const assets = validateAgentAssets(JSON.parse(text));
-        if (active && !controller.signal.aborted)
-          setState({
-            identity,
-            value: { status: assets.ct || assets.t ? 'ready' : 'missing', assets },
-          });
-      } catch {
-        if (active) setState({ identity, value: { status: 'error', assets: empty } });
-      } finally {
-        window.clearTimeout(timeout);
-      }
-    })();
-    return () => {
-      active = false;
-      controller.abort();
-      window.clearTimeout(timeout);
-    };
+    return observeAssets({
+      read: async (signal) =>
+        validateAgentAssets(await readAssetJSON('/api/assets/agents', 1024, signal)),
+      complete: (assets) => Boolean(assets.ct && assets.t),
+      changed: (assets) =>
+        setState({
+          identity,
+          value: { status: assets.ct || assets.t ? 'ready' : 'missing', assets },
+        }),
+      failed: () =>
+        setState((previous) =>
+          previous.identity === identity && (previous.value.assets.ct || previous.value.assets.t)
+            ? previous
+            : { identity, value: { status: 'error', assets: empty } },
+        ),
+    });
   }, [identity, enabled]);
   return !enabled
     ? { status: 'missing', assets: empty }

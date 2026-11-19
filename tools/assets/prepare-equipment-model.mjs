@@ -41,7 +41,14 @@ function geometryBytes(document) {
   if (bytes > limits.geometryBytes) throw Error('Decoded equipment geometry exceeds 8 MiB.');
   return bytes;
 }
-export async function prepareEquipmentModel({ input, output, id, assetVersion, source = {} }) {
+export async function prepareEquipmentModel({
+  input,
+  output,
+  id,
+  assetVersion,
+  source = {},
+  confined = false,
+}) {
   if (
     !Object.hasOwn(equipmentModelRegistry, id) ||
     typeof assetVersion !== 'string' ||
@@ -137,7 +144,7 @@ export async function prepareEquipmentModel({ input, output, id, assetVersion, s
     const verified = await verifyPreparedGlb(join(stage, 'model.glb'));
     if (verified.sha256 !== manifest.sha256 || verified.bytes !== manifest.bytes)
       throw Error('Prepared equipment verification failed.');
-    await chmod(stage, 0o755);
+    if (!confined) await chmod(stage, 0o755);
     await mkdir(target, { mode: 0o700 });
     claimed = true;
     await rename(stage, target);
@@ -161,6 +168,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       'native-bytes': { type: 'string' },
       'native-meshes': { type: 'string' },
       manifest: { type: 'string' },
+      confined: { type: 'boolean' },
       help: { type: 'boolean' },
     },
   });

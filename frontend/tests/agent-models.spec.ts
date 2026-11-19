@@ -14,6 +14,9 @@ async function install(page: Page, badT = false) {
   let missingT = false;
   replay.events = [];
   replay.grenades = [];
+  // Ground-level free view begins at the reviewer. Face the other recorded
+  // actor toward that camera so the asymmetric authored front remains visible.
+  for (const frame of replay.frames) frame.players[1].yaw = 180;
   // This QA uses the actual authored courtyard extents, unlike the deliberately
   // oversized coordinate fixture used to test overview calibration.
   replay.worldBounds = { minX: -768, maxX: 768, minY: -512, maxY: 512, minZ: 0, maxZ: 128 };
@@ -177,7 +180,6 @@ test('skinned original native-axis agents release cloned bone textures on POV re
       );
   await expect(scene).toHaveAttribute('data-agent-ready-count', '2');
   await expect(scene).toHaveAttribute('data-agent-fallback-count', '0');
-  await expect.poll(async () => (await stats()).uploaded).toBeGreaterThanOrEqual(2);
   const colors = await page.locator('.scene canvas').screenshot();
   const visibleColors = await page.evaluate(
     async (bytes) => {
@@ -214,16 +216,20 @@ test('skinned original native-axis agents release cloned bone textures on POV re
   expect(visibleColors.green, 'Asymmetric native-front marker must actually draw').toBeGreaterThan(
     5,
   );
+  // Free view intentionally hides a body intersecting its own eye. Use the
+  // explicit overview to render both bodies and exercise both GPU bone textures.
+  await camera(page, 'Overhead');
+  await expect.poll(async () => (await stats()).uploaded).toBeGreaterThanOrEqual(2);
   const before = await stats();
   await camera(page, 'Player perspective');
   await expect(scene).toHaveAttribute('data-agent-ready-count', '1');
   await expect.poll(async () => (await stats()).disposed).toBeGreaterThan(before.disposed);
-  await camera(page, 'Free camera');
+  await camera(page, 'Overhead');
   await expect(scene).toHaveAttribute('data-agent-ready-count', '2');
   await expect.poll(async () => (await stats()).uploaded).toBeGreaterThan(before.uploaded);
   await camera(page, '2D tactical · low power');
   await expect(page.locator('.tactical-plot')).toBeVisible();
-  await camera(page, 'Free camera');
+  await camera(page, 'Overhead');
   await expect(scene).toHaveAttribute('data-agent-ready-count', '2');
   await expect(scene).toHaveAttribute('data-map-model-state', 'ready');
   expect(requests).toEqual({ ct: 1, t: 1 });

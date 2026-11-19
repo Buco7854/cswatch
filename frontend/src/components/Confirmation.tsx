@@ -91,7 +91,7 @@ export function ConfirmationProvider({ children }: { children: ReactNode }) {
   }, []);
   useEffect(() => {
     finish(false);
-  }, [location.key, finish]);
+  }, [location.key, location.pathname, location.search, location.hash, finish]);
   useEffect(
     () => () => {
       pending.current?.resolve(false);

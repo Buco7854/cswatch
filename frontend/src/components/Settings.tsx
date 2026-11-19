@@ -3,11 +3,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { LockKeyhole } from 'lucide-react';
 import type { MapPreparationDiagnostics } from '../../../shared/map-acquisition';
+import type { PresentationKind, PresentationStatus } from '../../../shared/presentation-assets';
 import { api } from '../api';
 import { useApp } from '../context';
 import { NavLink } from 'react-router-dom';
 import Connections from './Connections';
 import AdminMapReadiness from './AdminMapReadiness';
+import AdminMaps from './AdminMaps';
 const names: Record<string, string> = {
   public_access: 'Public access',
   registrations_enabled: 'New registrations',
@@ -19,6 +21,7 @@ const names: Record<string, string> = {
 };
 type AdminData = {
   mapReadiness?: MapPreparationDiagnostics;
+  presentationAssets?: PresentationStatus;
   flags: Record<string, { value: boolean; locked: boolean }>;
   users: { id: string; username: string; is_admin: boolean; created_at: number }[];
   queue: { status: string; count: number }[];
@@ -187,6 +190,9 @@ export function Admin() {
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false),
     [loading, setLoading] = useState(true);
+  const [retryingAsset, setRetryingAsset] = useState<PresentationKind>();
+  const currentIdentity = useRef(user?.id);
+  currentIdentity.current = user?.id;
   const request = useRef<AbortController | null>(null);
   const scope = useRef({ active: true });
   const load = useCallback(async (preserveFlags = false) => {
@@ -227,6 +233,7 @@ export function Admin() {
     scope.current = current;
     setData(null);
     setBusy(false);
+    setRetryingAsset(undefined);
     setError('');
     if (user?.is_admin) void load();
     return () => {
@@ -257,6 +264,28 @@ export function Admin() {
       if (current.active) setError((e as Error).message);
     } finally {
       if (current.active) setBusy(false);
+    }
+  }
+  async function retryAsset(kind: PresentationKind) {
+    if (busy || !user?.is_admin) return;
+    const current = scope.current,
+      identity = user.id;
+    const live = () => current.active && currentIdentity.current === identity;
+    setBusy(true);
+    setRetryingAsset(kind);
+    setError('');
+    try {
+      await api(`/api/admin/assets/presentation/${kind}/retry`, { method: 'POST', body: '{}' });
+      if (!live()) return;
+      await load(true);
+      if (live()) notify(t('Asset preparation retry queued.'));
+    } catch (failure) {
+      if (live()) setError((failure as Error).message);
+    } finally {
+      if (live()) {
+        setBusy(false);
+        setRetryingAsset(undefined);
+      }
     }
   }
   const revision = config.build?.revision;
@@ -344,9 +373,13 @@ export function Admin() {
               </div>
               <AdminMapReadiness
                 data={data.mapReadiness}
+                presentation={data.presentationAssets}
+                retryingAsset={retryingAsset}
+                retryAsset={(kind) => void retryAsset(kind)}
                 refreshing={loading || busy}
                 refresh={() => void load(true)}
               />
+              <AdminMaps />
               <div className="admin-grid">
                 <section className="settings-panel">
                   <h2>{t('Processing queue')}</h2>

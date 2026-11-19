@@ -87,6 +87,9 @@ export const memberUser = {
   identities: [{ provider: 'steam', subject: '76561190000000000' }],
 };
 export async function installMemberWorkspace(page: Page) {
+  await page.route('**/api/admin/maps', (route) =>
+    route.fulfill({ json: { maps: [], workerAvailable: false } }),
+  );
   await page.route('**/api/config', (route) => route.fulfill({ json: memberConfig }));
   await page.route('**/api/auth/me', (route) =>
     route.fulfill({

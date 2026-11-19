@@ -7,7 +7,18 @@ import { createServer, connect } from 'node:net';
 import { createRequire } from 'node:module';
 import { once } from 'node:events';
 import { existsSync } from 'node:fs';
-import { mkdir, writeFile, readFile, readdir, lstat, mkdtemp, rm, chmod } from 'node:fs/promises';
+import {
+  mkdir,
+  writeFile,
+  readFile,
+  readdir,
+  lstat,
+  mkdtemp,
+  rm,
+  chmod,
+  symlink,
+  rename,
+} from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -217,6 +228,47 @@ const model = Buffer.from(await new NodeIO().writeBinary(document)),
   png = await sharp({ create: { width: 8, height: 8, channels: 4, background: '#8090a0' } })
     .png()
     .toBuffer();
+// The actual shipped Node/GLB packer must work inside the same read-only image,
+// not only on the CI host. Original geometry exercises required write confinement.
+const packingRoot = await mkdtemp(join(options.assets, '.packing-ci-'));
+try {
+  const conversion = join(packingRoot, 'conversion'),
+    output = join(packingRoot, 'output');
+  for (const directory of [conversion, output]) await mkdir(directory, { mode: 0o700 });
+  const input = join(conversion, 'original.glb');
+  await writeFile(input, model, { flag: 'wx', mode: 0o600 });
+  const packed = spawnSync(
+    boundary,
+    [
+      '--write-root',
+      conversion,
+      '--write-root',
+      output,
+      '--',
+      process.execPath,
+      join(root, 'tools/assets/prepare-equipment-model.mjs'),
+      '--input',
+      input,
+      '--output',
+      output,
+      '--id',
+      'ak47',
+      '--asset-version',
+      'original-ci-fixture',
+      '--confined',
+    ],
+    {
+      encoding: 'utf8',
+      timeout: 30000,
+      maxBuffer: 16384,
+      env: { PATH: process.env.PATH, HOME: conversion, TMPDIR: conversion, LANG: 'C.UTF-8' },
+    },
+  );
+  assert.equal(packed.status, 0, 'Confined original model packing failed in the assets image.');
+  assert.equal(JSON.parse(packed.stdout).manifest.id, 'ak47');
+} finally {
+  await rm(packingRoot, { recursive: true, force: true });
+}
 // Exercise the shipped Sharp conversion child and compiled fixed-name publisher
 // with original pixels, without Steam or proprietary artwork.
 const previewParent = join(options.assets, 'previews');
@@ -275,6 +327,82 @@ try {
 } finally {
   await rm(previewStage, { recursive: true, force: true });
 }
+
+// Exercise the exact shared-bank publisher and crash journal with original data.
+const presentationPublish = (stage, target, mode = '--publish-presentation') =>
+  spawnSync(boundary, [mode, stage, target], { encoding: 'utf8', timeout: 5000, maxBuffer: 4096 });
+const nativeBank = await mkdtemp(join(options.assets, '.presentation-'));
+await writeFile(join(nativeBank, 'original.txt'), 'Original native-bank publication fixture');
+const nativeTarget = join(options.assets, 'agents');
+assert.equal(presentationPublish(nativeBank, nativeTarget).status, 0);
+const rejectedNative = await mkdtemp(join(options.assets, '.presentation-'));
+try {
+  await writeFile(join(rejectedNative, 'original.txt'), 'Must never replace the installed bank');
+  assert.equal(presentationPublish(rejectedNative, nativeTarget).status, 125);
+  assert.equal(presentationPublish(rejectedNative, join(options.assets, 'arbitrary')).status, 125);
+  const linkedStage = join(options.assets, '.presentation-ABC123');
+  await symlink(rejectedNative, linkedStage);
+  try {
+    assert.equal(presentationPublish(linkedStage, join(options.assets, 'equipment')).status, 125);
+  } finally {
+    await rm(linkedStage);
+  }
+  assert.equal(
+    await readFile(join(nativeTarget, 'original.txt'), 'utf8'),
+    'Original native-bank publication fixture',
+  );
+} finally {
+  await rm(rejectedNative, { recursive: true, force: true });
+}
+const equipmentParent = join(options.assets, 'equipment-models');
+await mkdir(equipmentParent);
+const nativeItem = await mkdtemp(join(equipmentParent, '.equipment-'));
+await writeFile(join(nativeItem, 'model.glb'), model);
+assert.equal(
+  presentationPublish(nativeItem, join(equipmentParent, 'ak47'), '--publish-equipment').status,
+  0,
+);
+const rejectedItem = await mkdtemp(join(equipmentParent, '.equipment-'));
+try {
+  assert.equal(
+    presentationPublish(rejectedItem, join(equipmentParent, 'ak47'), '--publish-equipment').status,
+    125,
+  );
+  assert.equal(
+    presentationPublish(rejectedItem, join(equipmentParent, 'arbitrary'), '--publish-equipment')
+      .status,
+    125,
+  );
+  assert.equal(hash(await readFile(join(equipmentParent, 'ak47/model.glb'))), hash(model));
+} finally {
+  await rm(rejectedItem, { recursive: true, force: true });
+}
+const { registerPresentationStage, cleanPresentationStages, presentationStageIdentity } =
+  await import(pathToFileURL(join(root, 'tools/assets/presentation-stages.mjs')).href);
+const crashWork = await mkdtemp(join(options.assets, '.presentation-'));
+await registerPresentationStage(options, crashWork, {
+  kind: 'agents',
+  manifest: '1',
+  location: 'assets',
+});
+const crashBank = join(crashWork, 'agents');
+await mkdir(crashBank);
+await writeFile(join(crashBank, 'original.txt'), 'Interrupted before final publication');
+const crashPublishing = await mkdtemp(join(options.assets, '.presentation-'));
+await registerPresentationStage(options, crashPublishing, {
+  kind: 'agents',
+  manifest: '1',
+  location: 'assets',
+  futureIdentity: presentationStageIdentity(await lstat(crashBank, { bigint: true })),
+});
+await rename(crashBank, crashPublishing);
+assert.equal(await cleanPresentationStages(options), 0);
+assert.equal(existsSync(crashPublishing), false);
+assert.equal(existsSync(crashWork), false);
+assert.equal(
+  await readFile(join(nativeTarget, 'original.txt'), 'utf8'),
+  'Original native-bank publication fixture',
+);
 
 async function prepareOriginal(output, entry) {
   const map = entry.identity.map,
@@ -497,6 +625,10 @@ try {
       originalPcmSoundPublication: true,
       confinedPreviewNormalization: true,
       fixedPreviewPublication: true,
+      fixedPresentationPublication: true,
+      confinedEquipmentPacking: true,
+      perItemEquipmentPublication: true,
+      presentationCrashRecovery: true,
       corruptOutputRejected: true,
       originalRuntimeFiles: validated.length,
       officialDownloads: 0,

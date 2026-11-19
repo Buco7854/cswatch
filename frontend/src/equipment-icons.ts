@@ -1,62 +1,65 @@
 import { useSyncExternalStore } from 'react';
-import catalog from '../../shared/equipment-icons.json';
+import catalog from '../../shared/equipment-icons.json' with { type: 'json' };
 import { canonicalEquipmentKey } from './equipment-key';
+import { observeAssets, readAssetJSON } from './asset-discovery';
 
 type Icons = Readonly<Record<string, string>>;
 const empty: Icons = Object.freeze({});
 let icons = empty;
 const listeners = new Set<() => void>();
-let pending: AbortController | undefined;
-let loaded = false;
+let stopObservation: (() => void) | undefined;
 
 export function equipmentIconKey(item: string) {
   const canonical = canonicalEquipmentKey(item);
   return Object.hasOwn(catalog.items, canonical) ? canonical : undefined;
 }
 
-async function load() {
-  if (pending || loaded) return;
-  const controller = new AbortController();
-  pending = controller;
-  const timeout = window.setTimeout(() => controller.abort(), 10000);
-  try {
-    const response = await fetch('/api/assets/equipment', {
-      signal: controller.signal,
-      credentials: 'same-origin',
-      headers: { Accept: 'application/json' },
-    });
-    if (!response.ok) return;
-    const text = await response.text();
-    if (text.length > 32768) return;
-    const result: unknown = JSON.parse(text);
-    if (!result || typeof result !== 'object' || !('icons' in result)) return;
-    const values = result.icons;
-    if (!values || typeof values !== 'object' || Array.isArray(values)) return;
-    const next: Record<string, string> = {};
-    for (const [key, url] of Object.entries(values))
-      if (Object.hasOwn(catalog.items, key) && url === `/api/assets/equipment/${key}.png`)
-        next[key] = url;
-    if (controller.signal.aborted || pending !== controller) return;
-    icons = Object.freeze(next);
-    loaded = true;
-    for (const listener of listeners) listener();
-  } catch {
-    // Missing operator art or private-instance authentication keeps the recorded
-    // text and original vector fallback. Retry on the next mounted viewer.
-  } finally {
-    window.clearTimeout(timeout);
-    if (pending === controller) pending = undefined;
+export function validateEquipmentIcons(result: unknown): Icons {
+  if (!result || typeof result !== 'object' || !('icons' in result))
+    throw new Error('Invalid equipment artwork');
+  if ('complete' in result && typeof result.complete !== 'boolean')
+    throw new Error('Invalid equipment artwork readiness');
+  const values = result.icons;
+  if (!values || typeof values !== 'object' || Array.isArray(values))
+    throw new Error('Invalid equipment artwork');
+  const next: Record<string, string> = {};
+  for (const [key, url] of Object.entries(values)) {
+    if (!Object.hasOwn(catalog.items, key) || url !== `/api/assets/equipment/${key}.png`)
+      throw new Error('Invalid equipment artwork URL');
+    next[key] = url;
   }
+  return Object.freeze(next);
 }
 
 function subscribe(listener: () => void) {
   listeners.add(listener);
-  void load();
+  if (!stopObservation)
+    stopObservation = observeAssets({
+      read: async (signal) => {
+        const value = await readAssetJSON('/api/assets/equipment', 32768, signal);
+        return {
+          icons: validateEquipmentIcons(value),
+          complete: (value as { complete?: boolean }).complete === true,
+        };
+      },
+      complete: (value) =>
+        value.complete || Object.keys(value.icons).length === Object.keys(catalog.items).length,
+      changed: ({ icons: next }) => {
+        const keys = Object.keys(next);
+        if (
+          keys.length === Object.keys(icons).length &&
+          keys.every((key) => icons[key] === next[key])
+        )
+          return;
+        icons = next;
+        for (const listener of listeners) listener();
+      },
+    });
   return () => {
     listeners.delete(listener);
-    if (!listeners.size && pending) {
-      pending.abort();
-      pending = undefined;
+    if (!listeners.size) {
+      stopObservation?.();
+      stopObservation = undefined;
     }
   };
 }
