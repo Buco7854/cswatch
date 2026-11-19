@@ -33,6 +33,8 @@ The asset service has its own egress network, no published ports, a read-only ro
 
 New volume roots are owned by UID 1000 in both images. Bind-mount replacements need equivalent ownership and permissions. For existing manual packs, mount the complete prepared maps tree at `/map-assets` read-only in web. Use the same tree read/write in the asset worker if automatic preparation is enabled.
 
+The private `/map-cache` tool volume must permit execution of checksum-verified binaries. Keep the container root read-only; bootstrap supplies its own private writable HOME and bundle directory under disposable cache staging. No writable image home or additional capabilities are needed. Initial setup logs `map.toolchain_preparing` and then `map.toolchain_ready`; cold tool preparation has a bounded 20-minute budget separate from the subsequent inventory listing.
+
 ## Readiness and troubleshooting
 
 Administration separates automatic-policy state, the worker heartbeat, the official-list freshness and the optional historical catalog. The administrator-only diagnostic response contains bounded status/count/version fields, without host paths, credentials or Steam requests. Viewer explanations distinguish automatic preparation disabled, worker unavailable, official list missing/stale, unknown official map, invalid recording identity and lack of owner authorization. An empty catalog is not itself an error for latest-official preparation.
