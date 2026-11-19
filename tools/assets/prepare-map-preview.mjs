@@ -13,23 +13,12 @@ import { selectedMaps } from './steam-assets-plan.mjs';
 import { completePng } from './source-image-compactor.mjs';
 
 const maximum = 8 * 1024 ** 2;
-const previewMaps = JSON.parse(
+export const previewMaps = JSON.parse(
   readFileSync(new URL('../../shared/map-previews.json', import.meta.url), 'utf8'),
 ).maps;
 const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
-export async function prepareMapPreview({ image, map, output, version, source }) {
-  if (selectedMaps([map]).length !== 1 || !image || !output)
-    throw Error('Provide one map, local PNG and output directory.');
-  if (!previewMaps.includes(map)) throw Error('This map is not a supported landing preview.');
-  if (
-    typeof version !== 'string' ||
-    !version.trim() ||
-    version.length > 100 ||
-    typeof source !== 'string' ||
-    !source.trim() ||
-    source.length > 500
-  )
-    throw Error('Provide a bounded source description and asset version.');
+/** Bounded decoding/normalization only. The automatic worker runs this in its confined Node child. */
+export async function normalizeMapPreview(image) {
   const input = resolve(image);
   await localDirectory(dirname(input));
   const { handle, stat } = await regularFile(input, maximum);
@@ -65,6 +54,31 @@ export async function prepareMapPreview({ image, map, output, version, source })
     .toBuffer({ resolveWithObject: true });
   if (prepared.length > maximum) throw Error('Prepared preview exceeds its image bound.');
   completePng(prepared);
+  return {
+    data: prepared,
+    input,
+    sourceSha256: hash(bytes),
+    sourceWidth: info.width,
+    sourceHeight: info.height,
+    width: preparedInfo.width,
+    height: preparedInfo.height,
+  };
+}
+export async function prepareMapPreview({ image, map, output, version, source }) {
+  if (selectedMaps([map]).length !== 1 || !image || !output)
+    throw Error('Provide one map, local PNG and output directory.');
+  if (!previewMaps.includes(map)) throw Error('This map is not a supported landing preview.');
+  if (
+    typeof version !== 'string' ||
+    !version.trim() ||
+    version.length > 100 ||
+    typeof source !== 'string' ||
+    !source.trim() ||
+    source.length > 500
+  )
+    throw Error('Provide a bounded source description and asset version.');
+  const normalized = await normalizeMapPreview(image);
+  const { data: prepared, input } = normalized;
   const parent = resolve(output, 'previews'),
     target = join(parent, map);
   await readableDirectory(parent);
@@ -92,12 +106,12 @@ export async function prepareMapPreview({ image, map, output, version, source })
         assetVersion: version.trim(),
         source: source.trim(),
         sourceImage: basename(input),
-        sourceSha256: hash(bytes),
+        sourceSha256: normalized.sourceSha256,
         imageSha256: hash(prepared),
-        width: preparedInfo.width,
-        height: preparedInfo.height,
-        sourceWidth: info.width,
-        sourceHeight: info.height,
+        width: normalized.width,
+        height: normalized.height,
+        sourceWidth: normalized.sourceWidth,
+        sourceHeight: normalized.sourceHeight,
         preparedAt: new Date().toISOString(),
         transformation:
           'Decoded and normalized local PNG, maximum 1600 by 900. Decorative only, not replay calibration.',

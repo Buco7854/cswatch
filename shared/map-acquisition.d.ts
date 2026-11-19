@@ -83,9 +83,51 @@ export type DemoMapAssets = {
   /** Operator approval is provenance, not cryptographic proof of recorded geometry. */
   resolution: MapResolution;
   canAcquire: boolean;
+  /** Why a source cannot currently be prepared, separate from historical matching. */
+  readinessReason?: MapReadinessReason;
   acquisition: 'disabled' | 'unavailable' | 'queued' | 'processing' | 'ready' | 'failed';
   code?: MapJobFailureCode | 'queue_full';
   verification: 'operator-approved' | 'latest-official' | 'version-unverified' | 'unavailable';
   packId: string | null;
   assets: MapAssets;
+};
+
+/** Safe operational status, independent of a recording's historical identity. */
+export type MapReadinessReason =
+  | 'automatic_disabled'
+  | 'worker_unavailable'
+  | 'inventory_unavailable'
+  | 'inventory_stale'
+  | 'official_map_unknown'
+  | 'owner_required'
+  | 'identity_invalid';
+export type MapPreparationDiagnostics = {
+  enabled: boolean;
+  worker: { available: boolean; inventoryFailure?: MapInventoryFailure };
+  inventory: {
+    status: 'unavailable' | 'stale' | 'fresh';
+    mapCount: number;
+    manifest?: string;
+    updatedAt?: number;
+  };
+  catalog: { status: 'unavailable' | 'empty' | 'configured'; entries: number };
+};
+/** Fixed safe supervisor diagnostics, never native output, filesystem paths or credentials. */
+export type MapInventoryFailure = {
+  phase: 'storage' | 'toolchain' | 'downloader' | 'metadata' | 'publication';
+  code:
+    | 'storage_limit'
+    | 'storage_unavailable'
+    | 'access_denied'
+    | 'network_unavailable'
+    | 'toolchain_failed'
+    | 'steam_rate_limited'
+    | 'steam_unavailable'
+    | 'metadata_invalid'
+    | 'publication_failed'
+    | 'timeout'
+    | 'interrupted';
+  at: number;
+  retryAt: number;
+  exitCode?: number;
 };

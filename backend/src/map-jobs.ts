@@ -11,6 +11,7 @@ import type {
   ApprovedMapEntry,
   LatestOfficialSelection,
   OfficialMapInventory,
+  MapInventoryFailure,
 } from '../../shared/map-acquisition.js';
 import {
   approvedMapEntrySchema,
@@ -95,11 +96,34 @@ export function latestMapResultMatches(request: MapJobRequest, result: MapJobRes
     )
   );
 }
+export const mapInventoryFailureSchema: z.ZodType<MapInventoryFailure> = z
+  .object({
+    phase: z.enum(['storage', 'toolchain', 'downloader', 'metadata', 'publication']),
+    code: z.enum([
+      'storage_limit',
+      'storage_unavailable',
+      'access_denied',
+      'network_unavailable',
+      'toolchain_failed',
+      'steam_rate_limited',
+      'steam_unavailable',
+      'metadata_invalid',
+      'publication_failed',
+      'timeout',
+      'interrupted',
+    ]),
+    at: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    retryAt: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    exitCode: z.number().int().min(0).max(255).optional(),
+  })
+  .strict()
+  .refine((value) => value.retryAt >= value.at && value.retryAt <= value.at + 3600);
 export const mapWorkerStatusSchema = z
   .object({
     schemaVersion: z.literal(1),
     updatedAt: z.number().int().min(0),
     status: z.enum(['idle', 'processing']),
+    inventoryFailure: mapInventoryFailureSchema.optional(),
   })
   .strict();
 
@@ -508,23 +532,21 @@ export function retryLatestMapRequest(
 ) {
   return retryMapJob(root, latestMapRequestId(selection), at, options);
 }
+export async function readMapWorkerStatus(root: string) {
+  return withDirectory(root, [], async (directory) => {
+    const file = await regularFile(directory, 'worker-status.json', 2, 1024);
+    if (!file) return;
+    try {
+      const before = await fileVersion(file),
+        data = await bytesFrom(file, (await file.stat()).size, 1024);
+      const status = mapWorkerStatusSchema.parse(JSON.parse(data.toString('utf8')));
+      if (before === (await fileVersion(file))) return status;
+    } finally {
+      await file.close();
+    }
+  });
+}
 export async function mapWorkerAvailable(root: string, at = Math.floor(Date.now() / 1000)) {
-  return (
-    (await withDirectory(root, [], async (directory) => {
-      const file = await regularFile(directory, 'worker-status.json', 2, 1024);
-      if (!file) return false;
-      try {
-        const before = await fileVersion(file),
-          data = await bytesFrom(file, (await file.stat()).size, 1024);
-        const status = mapWorkerStatusSchema.parse(JSON.parse(data.toString('utf8')));
-        return (
-          before === (await fileVersion(file)) &&
-          status.updatedAt <= at + 5 &&
-          status.updatedAt >= at - 90
-        );
-      } finally {
-        await file.close();
-      }
-    })) ?? false
-  );
+  const status = await readMapWorkerStatus(root);
+  return Boolean(status && status.updatedAt <= at + 5 && status.updatedAt >= at - 90);
 }

@@ -8,6 +8,8 @@ COPY shared/ /build/shared/
 RUN npm run build
 
 FROM node:24-bookworm-slim AS backend
+ARG CSWATCH_REVISION=
+ARG CSWATCH_BUILD_TIMESTAMP=
 WORKDIR /build/backend
 ENV ONNXRUNTIME_NODE_INSTALL=skip
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev && rm -rf /var/lib/apt/lists/*
@@ -26,10 +28,16 @@ COPY tools/assets/package*.json ./tools/assets/
 RUN npm ci --prefix tools/assets --omit=dev
 COPY tools/assets/*.mjs ./tools/assets/
 COPY tools/assets/native/asset-network-deny.c ./tools/assets/native/
+COPY shared/map-previews.json ./shared/
 RUN node tools/assets/build-network-deny.mjs --output tools/assets/bin/asset-network-deny \
     && node -e "const fs=require('node:fs'); for (const name of fs.readdirSync('tools/assets')) if (name.endsWith('.test.mjs')) fs.unlinkSync('tools/assets/'+name)"
 
 FROM node:24-bookworm-slim AS assets
+ARG CSWATCH_REVISION=
+ARG CSWATCH_BUILD_TIMESTAMP=
+LABEL org.opencontainers.image.source="https://github.com/Buco7854/cswatch" \
+      org.opencontainers.image.revision="${CSWATCH_REVISION}" \
+      org.opencontainers.image.created="${CSWATCH_BUILD_TIMESTAMP}"
 ENV NODE_ENV=production MAP_ASSETS_DIR=/map-assets MAP_JOBS_DIR=/map-jobs MAP_CACHE_DIR=/map-cache MAP_CATALOG_FILE=/map-catalog/catalog.json
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libicu72 util-linux unzip tar gzip && rm -rf /var/lib/apt/lists/*
@@ -49,6 +57,11 @@ CMD ["node", "tools/assets/map-worker.mjs"]
 
 # Keep the application runtime last: an ordinary docker build remains the web image.
 FROM node:24-bookworm-slim AS runtime
+ARG CSWATCH_REVISION=
+ARG CSWATCH_BUILD_TIMESTAMP=
+LABEL org.opencontainers.image.source="https://github.com/Buco7854/cswatch" \
+      org.opencontainers.image.revision="${CSWATCH_REVISION}" \
+      org.opencontainers.image.created="${CSWATCH_BUILD_TIMESTAMP}"
 ENV NODE_ENV=production DATA_DIR=/data FRONTEND_DIR=/app/frontend PORT=8000
 WORKDIR /app
 COPY --from=backend --chown=node:node /build/backend/dist ./dist

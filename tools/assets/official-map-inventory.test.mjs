@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import {
   parseOfficialMapInventory,
   refreshOfficialMapInventory,
+  officialInventoryFailure,
 } from './official-map-inventory.mjs';
 import { prepareMapJobs, readOfficialMapInventory } from '../../backend/dist/map-jobs.js';
 const row = (map = 'de_mirage', manifest = '18446744073709551615') =>
@@ -114,4 +115,124 @@ test('explicit Steam exit 4 is tagged from actual downloader status and preserve
     },
   );
   assert.deepEqual(await readOfficialMapInventory(options.jobs), previous);
+});
+
+test('inventory stages retain only safe failure codes and preserve prior metadata until complete recovery', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'cswatch-inventory-diagnostics-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const options = {
+    jobs: join(root, 'jobs'),
+    cache: join(root, 'cache'),
+    assets: join(root, 'assets'),
+  };
+  await mkdir(options.assets);
+  await prepareMapJobs(options.jobs);
+  const base = {
+    storage: async () => {},
+    reserve: async () => {},
+    prepareToolchain: async () => ({ downloader: '/fixed/trusted/tool' }),
+    run: async () => ({ code: 0, stdout: row(), stderr: '' }),
+  };
+  const previous = await refreshOfficialMapInventory(options, base);
+  const secret = 'https://private.invalid/token?credential=never-log /operator/private';
+  const fail = (attributes = {}) => Object.assign(Error(secret), attributes);
+  for (const [adapters, expected] of [
+    [
+      {
+        storage: async () => {
+          throw fail({ code: 'ENOSPC' });
+        },
+      },
+      { phase: 'storage', code: 'storage_limit' },
+    ],
+    [
+      {
+        prepareToolchain: async () => {
+          throw fail();
+        },
+      },
+      { phase: 'toolchain', code: 'toolchain_failed' },
+    ],
+    [
+      {
+        prepareToolchain: async () => {
+          throw fail({ exitCode: 4 });
+        },
+      },
+      { phase: 'toolchain', code: 'toolchain_failed', exitCode: 4 },
+    ],
+    [
+      {
+        prepareToolchain: async () => {
+          throw fail({ cause: { code: 'EAI_AGAIN' } });
+        },
+      },
+      { phase: 'toolchain', code: 'network_unavailable' },
+    ],
+    [
+      {
+        run: async () => {
+          throw fail({ exitCode: 4 });
+        },
+      },
+      { phase: 'downloader', code: 'steam_rate_limited', exitCode: 4 },
+    ],
+    [
+      { run: async () => ({ code: 5, stdout: secret, stderr: secret }) },
+      { phase: 'downloader', code: 'steam_unavailable', exitCode: 5 },
+    ],
+    [
+      {
+        run: async () => {
+          throw Error('Operator asset stage timed out.');
+        },
+      },
+      { phase: 'downloader', code: 'timeout' },
+    ],
+    [
+      { run: async () => ({ code: 0, stdout: secret, stderr: secret }) },
+      { phase: 'metadata', code: 'metadata_invalid' },
+    ],
+    [
+      {
+        publish: async () => {
+          throw fail({ code: 'EACCES' });
+        },
+      },
+      { phase: 'publication', code: 'access_denied' },
+    ],
+    [
+      {
+        reserve: async () => {
+          throw fail({ code: 'ENOSPC' });
+        },
+        run: async (_command, _args, context) => {
+          await context.storageGuard();
+        },
+      },
+      { phase: 'storage', code: 'storage_limit' },
+    ],
+  ]) {
+    await assert.rejects(
+      () => refreshOfficialMapInventory(options, { ...base, ...adapters }),
+      (error) => {
+        assert.deepEqual(officialInventoryFailure(error), expected);
+        assert.equal(JSON.stringify(error).includes(secret), false);
+        return true;
+      },
+    );
+    assert.deepEqual(await readOfficialMapInventory(options.jobs), previous);
+  }
+  const recovered = await refreshOfficialMapInventory(options, {
+    ...base,
+    run: async () => ({ code: 0, stdout: row('de_ancient', '42'), stderr: '' }),
+  });
+  assert.equal((await readOfficialMapInventory(options.jobs)).manifest, recovered.manifest);
+  assert.equal(recovered.manifest, '42');
+  assert.deepEqual(
+    officialInventoryFailure(
+      Object.assign(Error(secret), { inventoryDiagnostic: { phase: secret, code: secret } }),
+    ),
+    { phase: 'storage', code: 'storage_unavailable' },
+  );
 });

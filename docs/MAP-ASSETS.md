@@ -2,20 +2,22 @@
 
 Official map preparation is optional and defaults off. The web app prefers a unique operator-approved source for the recording. If a historical selection is unavailable, it can use a clearly disclosed latest official snapshot from worker-observed Steam metadata. Latest geometry is never presented as the original recording's revision. The separate worker prepares game assets on the CPU and browsers render them locally.
 
-The worker requires Linux x86-64, Landlock ABI 3 or later and seccomp. The published application image stays the default Docker target. The optional image is `ghcr.io/buco7854/cswatch:assets-latest`, with revision tags named `assets-sha-<commit>-<run>`. Neither image includes game artwork, recordings or prepared Steam assets.
+The worker requires Linux x86-64, Landlock ABI 3 or later and seccomp. The published application image stays the default Docker target. The separate assets image is `ghcr.io/buco7854/cswatch:assets-latest`, with revision tags named `assets-sha-<commit>-<run>`. Neither image includes game artwork, recordings or prepared Steam assets.
 
-The assets tag is available only after this revision's verification/publication workflow succeeds. Before that, build the assets target locally and set `CSWATCH_ASSETS_IMAGE` to the resulting local image.
+Deploy published application and asset images from the same verified revision. Active source changes require their own successful workflow before release; an older passing workflow does not verify them. For unpublished local work, build the assets target and set `CSWATCH_ASSETS_IMAGE` to that local image.
 
-## Enable the optional worker
+## Run and update the asset worker
 
-Start the ordinary deployment, then enable the profile:
+The normal Compose stack starts web, parser and assets services. Start or update all three explicitly:
 
 ```sh
-docker compose up -d
-docker compose --profile assets up -d
+docker compose pull web worker assets
+docker compose up -d web worker assets
 ```
 
 Set `AUTO_OFFICIAL_MAPS_ENABLED=true` in `.env` to lock the feature on, or leave it empty and enable it in the admin UI. An empty value permits UI management and initially defaults off. The worker refreshes bounded official map metadata at startup and about hourly. With automatic acquisition enabled, a known official name can use the disclosed latest mode without any catalog entries. Optional catalog approvals remain preferred for established historical sources. Steam/FACEIT credentials and `.env` are never passed to this service.
+
+The assets service is long-running, not a one-shot download, and no longer requires a Compose profile. Keep it running for metadata refreshes, eligible map jobs and optional native artwork/sounds. Map acquisition still defaults off independently of service startup. Explicit service names in the commands above also start it when upgrading with an older Compose file that used a profile, and ensure its separately published image is updated. Add the optional `transcription` service and its profile when using subtitles.
 
 Compose keeps these stores separate:
 
@@ -30,6 +32,35 @@ Compose keeps these stores separate:
 The asset service has its own egress network, no published ports, a read-only root, UID/GID 1000, all capabilities dropped and `no-new-privileges`. Its defaults are 8 GiB RAM, two CPUs and 128 processes. Parsing and transcription retain `network_mode: none`. Native S2V and Node conversion subprocesses have an additional required filesystem/network/process boundary even though the acquisition service can reach Steam and the pinned tool sources. Landlock confines byte writes to the current stage; seccomp also denies metadata mutation, cross-process signals/limits and unsafe descriptor operations. The trusted supervisor still performs bounded Sharp image validation/compaction outside that child boundary. The asset container and resource bounds remain necessary; this does not sandbox every native image decoder in the supervisor.
 
 New volume roots are owned by UID 1000 in both images. Bind-mount replacements need equivalent ownership and permissions. For existing manual packs, mount the complete prepared maps tree at `/map-assets` read-only in web. Use the same tree read/write in the asset worker if automatic preparation is enabled.
+
+## Readiness and troubleshooting
+
+Administration separates automatic-policy state, the worker heartbeat, the official-list freshness and the optional historical catalog. The administrator-only diagnostic response contains bounded status/count/version fields, without host paths, credentials or Steam requests. Viewer explanations distinguish automatic preparation disabled, worker unavailable, official list missing/stale, unknown official map, invalid recording identity and lack of owner authorization. An empty catalog is not itself an error for latest-official preparation.
+
+For a newly uploaded Ancient recording, enable automatic maps and confirm that the assets service is running and has a fresh official list containing `de_ancient`. No historical Ancient approval is required for the clearly labeled latest mode. Inspect the service with:
+
+```sh
+docker compose ps
+docker compose logs --tail 100 assets
+```
+
+The viewer rechecks missing-worker/list bootstrap states after 2, 5, 15 and then 30 seconds, bounded to 45 minutes. These are read-only checks. Once an owner or original guest capability becomes eligible, it can submit one source-scoped acquisition request under the existing Origin/CSRF/rate controls. A read-only availability action can refresh diagnostics; failed conversions still require an explicit eligible retry. Starting a worker does not silently restart a failed job or label a manually installed map as a historical match.
+
+Fresh inventory requires working anonymous Steam access, available tool sources and sufficient storage. Failed metadata refreshes back off, and an explicit Steam exit 4 pauses all new service Steam work for fifteen minutes while heartbeats continue. Preserve the 512 MiB reserve and review source/storage/confinement failure codes before retrying. A valid current list cannot guarantee that an older selected manifest remains accessible.
+
+Inventory failures log a fixed safe `phase`, `code` and `retryAt`, with a bounded process `exitCode` when available. The phases are storage, toolchain, downloader, metadata and publication. For example, `phase: "storage", code: "storage_limit"` points to the reserve/cache ceiling; `phase: "toolchain", code: "network_unavailable"` identifies recognized network failure while preparing tools. Steam exit 4 is `steam_rate_limited`, not an unavailable historical source. The validated failure remains in worker heartbeat/admin diagnostics until a successful refresh clears it, including when the service subsequently stops. Raw errors, URLs, credentials and host paths are never included. Paste these structured fields when seeking help instead of private cache logs.
+
+Administration also shows the web image's immutable source revision and UTC build time from `/api/config`. CI supplies these at build time and verifies the running image against the expected revision; absent local-build fields remain unknown. Pulling a new web image alone does not update the asset worker's separate image or existing immutable prepared assets.
+
+## Automatic landing artwork
+
+After a successful current-inventory refresh, an idle worker first checks for existing operator previews, then can prepare one fixed native 720p Mirage screenshot. The source is exactly `panorama/images/map_icons/screenshots/720p/de_mirage_png.vtex_c` from anonymous app `730`/depot `2347770` at the selected manifest. Package SHA-1, entry CRC and output hashes are verified; only that resource and its package index are selected. It does not download the game or derive artwork from a private demo.
+
+S2V decoding and Sharp PNG normalization both run in conversion-only children with no network and stage-only writes. Downloader manifests, controls, home and cached tools stay outside those writable roots. The image remains at most 1600×900 and 8 MiB. The same-parent `--publish-preview` helper accepts only shared fixed map names and refuses an existing target. Any existing fixed operator preview is preserved. The landing periodically checks for newly available local artwork, with a usable no-image fallback; no image is bundled in Docker or fetched from a remote image service.
+
+Artwork preparation has a five-minute deadline, bounded attempts and the shared Steam cooldown. Queued map work has priority, and the worker rechecks the queue before starting the larger idle sound bank. Artwork failure never changes map/replay readiness. It preserves the same storage reserve and prepared-asset accounting as other service work.
+
+The November 19 local native conversion proof used the retained CRC-verified screenshot from manifest `807392217824910805`: confined S2V and Sharp produced the exact existing 1280×720 PNG without changing installed artwork. That is cached-source conversion evidence, not a new current-manifest download. A new current-source artwork acquisition was not run on the disk-constrained host. See [verification](VERIFICATION.md) for the active revision's release gates.
 
 ## Latest official snapshots
 
@@ -71,10 +102,10 @@ Desktop/mobile preparation budgets decoded textures at 512/256 MiB and uses loss
 
 Compatible opaque static desktop siblings are also batched in 64 m cells, preserving material/source metadata, named hierarchy, transforms and exact images. Mobile stays unbatched by default after both 16 m and 64 m experiments regressed this host's measured software-rendered pacing. Explicit mobile 16 m re-optimization remains experimental. Batching reduces draw submissions independently of compression and does not promise a frame rate. Existing tiers can be re-optimized into fresh directories with `tools/assets/compress-prepared-map.mjs --batch-static`; see the [asset tooling](../tools/assets/README.md). Never overwrite active packs or discard the original provenance. Runtime model cancellation aborts initial transfer promptly while allowing already-started bounded embedded-image parsing to settle into private retired-resource cleanup, avoiding false texture errors on camera/2D switches.
 
-Inspect service state with `docker compose --profile assets logs assets`. Transient source, storage, conversion and interruption failures can be explicitly retried by an owner after the five-minute cooldown while the worker is healthy and approval is still valid. Source mismatches or removed approvals require operator correction. Steam may deny historical manifest request codes even when an older manifest file was previously available. An unavailable historical selection can create a separate, clearly disclosed latest request from fresh inventory. It never relabels the failed old job or changes a pin within that job.
+Inspect service state with `docker compose logs assets`. Transient source, storage, conversion and interruption failures can be explicitly retried by an owner after the five-minute cooldown while the worker is healthy and approval is still valid. Source mismatches or removed approvals require operator correction. Steam may deny historical manifest request codes even when an older manifest file was previously available. An unavailable historical selection can create a separate, clearly disclosed latest request from fresh inventory. It never relabels the failed old job or changes a pin within that job.
 
 Only exact worker-owned source/staging markers are cleanup candidates. Prepared packs and unmarked operator folders are preserved. Back up the catalog and prepared assets. Disposable source/tool caches can be rebuilt, subject to upstream availability. Stop active viewers before replacing manual assets and reload tabs afterward.
 
 Operator preparation also supports genuine native CT/T rifle locomotion cycles. These are analytical replay approximations, not the recorded animation graph, firing/reload animation or exact weapon grips. The existing verified geometry and selected clips came from manifests `6678473446694075055` and `807392217824910805` respectively. Mixed packs record both source versions explicitly.
 
-For manual preparation commands and artwork/model limits, see [asset tools](../tools/assets/README.md). Build the optional image locally with `docker build --target assets -t cswatch:assets .`. CI verifies confinement and publication using only original synthetic geometry/pixels, then publishes both images after the complete verification job. A passing local source check does not establish container verification or image publication.
+For manual preparation commands and artwork/model limits, see [asset tools](../tools/assets/README.md). Build the separate image locally with `docker build --target assets -t cswatch:assets .`. CI verifies confinement and publication using only original synthetic geometry/pixels, including the shipped Sharp conversion child and fixed no-replace preview publisher, then publishes both images after the complete verification job. A passing local source check does not establish container verification or image publication.

@@ -217,6 +217,65 @@ const model = Buffer.from(await new NodeIO().writeBinary(document)),
   png = await sharp({ create: { width: 8, height: 8, channels: 4, background: '#8090a0' } })
     .png()
     .toBuffer();
+// Exercise the shipped Sharp conversion child and compiled fixed-name publisher
+// with original pixels, without Steam or proprietary artwork.
+const previewParent = join(options.assets, 'previews');
+await mkdir(previewParent, { recursive: true });
+const previewStage = await mkdtemp(join(previewParent, '.preview-'));
+const originalPreview = join(previewStage, 'original.png');
+await writeFile(originalPreview, png, { flag: 'wx', mode: 0o600 });
+const normalizedPreview = join(previewStage, 'preview.png');
+try {
+  const normalized = spawnSync(
+    boundary,
+    [
+      '--write-root',
+      previewStage,
+      '--',
+      process.execPath,
+      join(root, 'tools/assets/install-map-preview.mjs'),
+      '--prepare-image',
+      originalPreview,
+      '--output',
+      normalizedPreview,
+    ],
+    {
+      encoding: 'utf8',
+      timeout: 30000,
+      maxBuffer: 16384,
+      env: { PATH: process.env.PATH, LANG: 'C.UTF-8', HOME: previewStage, TMPDIR: previewStage },
+    },
+  );
+  assert.equal(normalized.status, 0, normalized.stderr);
+  const preparedPreview = await readFile(normalizedPreview);
+  const previewReport = JSON.parse(normalized.stdout);
+  assert.equal(previewReport.sha256, hash(preparedPreview));
+  assert.equal(previewReport.sourceSha256, hash(png));
+  assert.equal(previewReport.width, 8);
+  assert.equal(previewReport.height, 8);
+  assert.equal((await sharp(preparedPreview).raw().toBuffer()).length, 8 * 8 * 4);
+  const previewTarget = join(previewParent, 'de_mirage');
+  const publish = (...args) =>
+    spawnSync(boundary, ['--publish-preview', ...args], {
+      encoding: 'utf8',
+      timeout: 5000,
+      maxBuffer: 4096,
+    });
+  assert.equal(publish(previewStage, previewTarget).status, 0);
+  assert.equal(hash(await readFile(join(previewTarget, 'preview.png'))), previewReport.sha256);
+  const rejectedStage = await mkdtemp(join(previewParent, '.preview-'));
+  try {
+    await writeFile(join(rejectedStage, 'preview.png'), 'must not replace installed artwork');
+    assert.equal(publish(rejectedStage, previewTarget).status, 125);
+    assert.equal(publish(rejectedStage, join(previewParent, 'de_arbitrary')).status, 125);
+    assert.equal(hash(await readFile(join(previewTarget, 'preview.png'))), previewReport.sha256);
+  } finally {
+    await rm(rejectedStage, { recursive: true, force: true });
+  }
+} finally {
+  await rm(previewStage, { recursive: true, force: true });
+}
+
 async function prepareOriginal(output, entry) {
   const map = entry.identity.map,
     assetVersion = entry.assetVersion;
@@ -436,6 +495,8 @@ try {
       latestContentPublication: true,
       latestCrashRecovery: true,
       originalPcmSoundPublication: true,
+      confinedPreviewNormalization: true,
+      fixedPreviewPublication: true,
       corruptOutputRejected: true,
       originalRuntimeFiles: validated.length,
       officialDownloads: 0,

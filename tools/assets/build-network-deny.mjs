@@ -1,9 +1,24 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, renameSync, rmSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomBytes } from 'node:crypto';
+const previewRegistry = JSON.parse(
+  readFileSync(new URL('../../shared/map-previews.json', import.meta.url), 'utf8'),
+);
+if (
+  previewRegistry.schemaVersion !== 1 ||
+  !Array.isArray(previewRegistry.maps) ||
+  !previewRegistry.maps.length ||
+  previewRegistry.maps.length > 8 ||
+  new Set(previewRegistry.maps).size !== previewRegistry.maps.length ||
+  previewRegistry.maps.some(
+    (name) => typeof name !== 'string' || !/^de_[a-z0-9_]{1,76}$/.test(name),
+  )
+)
+  throw Error('Invalid fixed preview publication registry.');
+const previewNames = previewRegistry.maps.map((name) => JSON.stringify(name)).join(',');
 const source = fileURLToPath(new URL('./native/asset-network-deny.c', import.meta.url));
 export function buildNetworkDeny(output) {
   if (process.platform !== 'linux' || process.arch !== 'x64')
@@ -17,6 +32,7 @@ export function buildNetworkDeny(output) {
       'cc',
       [
         '-std=c11',
+        `-DCSWATCH_PREVIEW_NAMES=${previewNames}`,
         '-O2',
         '-Wall',
         '-Wextra',

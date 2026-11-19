@@ -1,10 +1,13 @@
 import { t, locale } from '../i18n';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { api, setCsrf } from '../api';
+import { LockKeyhole } from 'lucide-react';
+import type { MapPreparationDiagnostics } from '../../../shared/map-acquisition';
+import { api } from '../api';
 import { useApp } from '../context';
 import { NavLink } from 'react-router-dom';
 import Connections from './Connections';
+import AdminMapReadiness from './AdminMapReadiness';
 const names: Record<string, string> = {
   public_access: 'Public access',
   registrations_enabled: 'New registrations',
@@ -15,6 +18,7 @@ const names: Record<string, string> = {
   transcription_enabled: 'Local speech transcription',
 };
 type AdminData = {
+  mapReadiness?: MapPreparationDiagnostics;
   flags: Record<string, { value: boolean; locked: boolean }>;
   users: { id: string; username: string; is_admin: boolean; created_at: number }[];
   queue: { status: string; count: number }[];
@@ -24,25 +28,62 @@ export function Account({ section = 'security' }: { section?: 'security' | 'conn
   const { user, signIn, refresh, notify } = useApp();
   const [busy, setBusy] = useState(false),
     [error, setError] = useState('');
+  const scope = useRef({ active: true });
+  const pending = useRef<object | null>(null);
+  const currentIdentity = useRef(user?.id);
+  currentIdentity.current = user?.id;
+  useEffect(() => {
+    const current = { active: true };
+    scope.current = current;
+    pending.current = null;
+    setBusy(false);
+    setError('');
+    return () => {
+      current.active = false;
+    };
+  }, [user?.id, section]);
   async function change(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (pending.current || !scope.current.active || !user) return;
+    const current = scope.current,
+      identity = user.id,
+      attempt = {};
+    pending.current = attempt;
+    const isCurrent = () =>
+      current.active && pending.current === attempt && currentIdentity.current === identity;
     setBusy(true);
     setError('');
     const form = e.currentTarget;
     const fd = new FormData(form);
+    let failure: Error | undefined;
     try {
-      const r = await api<{ csrf: string }>('/api/auth/password', {
+      await api('/api/auth/password', {
         method: 'POST',
         body: JSON.stringify(Object.fromEntries(fd)),
       });
-      setCsrf(r.csrf);
+    } catch (error) {
+      failure = error as Error;
+    }
+    // A committed password mutation replaces the session cookie, even after
+    // leaving this form or losing its response. Only an authoritative session
+    // refresh publishes identity and CSRF together, never this response's token.
+    try {
       await refresh();
-      form.reset();
-      notify(t('Password updated. Other sessions have been signed out.'));
-    } catch (e) {
-      setError((e as Error).message);
+    } catch (error) {
+      failure ??= error as Error;
+    }
+    try {
+      if (!isCurrent()) return;
+      if (failure) setError(failure.message);
+      else {
+        form.reset();
+        notify(t('Password updated. Other sessions have been signed out.'));
+      }
     } finally {
-      setBusy(false);
+      if (isCurrent()) {
+        pending.current = null;
+        setBusy(false);
+      }
     }
   }
   return (
@@ -141,20 +182,64 @@ export function Account({ section = 'security' }: { section?: 'security' | 'conn
   );
 }
 export function Admin() {
-  const { user, notify, refresh } = useApp();
+  const { user, config, notify, refresh } = useApp();
   const [data, setData] = useState<AdminData | null>(null),
     [error, setError] = useState(''),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [loading, setLoading] = useState(true);
+  const request = useRef<AbortController | null>(null);
+  const scope = useRef({ active: true });
+  const load = useCallback(async (preserveFlags = false) => {
+    request.current?.abort();
+    const controller = new AbortController();
+    request.current = controller;
+    setLoading(true);
+    setError('');
+    try {
+      const next = await api<AdminData>('/api/admin', { signal: controller.signal });
+      if (!controller.signal.aborted)
+        setData((previous) =>
+          preserveFlags && previous
+            ? {
+                ...next,
+                flags: Object.fromEntries(
+                  Object.entries(next.flags).map(([key, flag]) => [
+                    key,
+                    flag.locked || !previous.flags[key] || previous.flags[key].locked
+                      ? flag
+                      : { ...flag, value: previous.flags[key].value },
+                  ]),
+                ),
+              }
+            : next,
+        );
+    } catch (failure) {
+      if (!controller.signal.aborted) setError((failure as Error).message);
+    } finally {
+      if (request.current === controller) {
+        request.current = null;
+        setLoading(false);
+      }
+    }
+  }, []);
   useEffect(() => {
-    if (user?.is_admin)
-      api<AdminData>('/api/admin')
-        .then(setData)
-        .catch((e) => setError(e.message));
-  }, [user]);
+    const current = { active: true };
+    scope.current = current;
+    setData(null);
+    setBusy(false);
+    setError('');
+    if (user?.is_admin) void load();
+    return () => {
+      current.active = false;
+      request.current?.abort();
+    };
+  }, [user?.id, user?.is_admin, load]);
   async function save(e: FormEvent) {
     e.preventDefault();
-    if (!data) return;
+    if (!data || busy) return;
+    const current = scope.current;
     setBusy(true);
+    setError('');
     try {
       await api('/api/admin', {
         method: 'PATCH',
@@ -162,14 +247,21 @@ export function Admin() {
           Object.fromEntries(Object.entries(data.flags).map(([k, v]) => [k, v.value])),
         ),
       });
+      if (!current.active) return;
       await refresh();
+      if (!current.active) return;
+      await load();
+      if (!current.active) return;
       notify(t('Instance settings saved.'));
     } catch (e) {
-      setError((e as Error).message);
+      if (current.active) setError((e as Error).message);
     } finally {
-      setBusy(false);
+      if (current.active) setBusy(false);
     }
   }
+  const revision = config.build?.revision;
+  const validRevision = typeof revision === 'string' && /^[0-9a-f]{40}$/.test(revision);
+  const buildDate = config.build?.builtAt ? new Date(config.build.builtAt) : null;
   return (
     <>
       <header className="page-heading">
@@ -183,8 +275,20 @@ export function Admin() {
       ) : (
         <>
           {error && (
-            <p role="alert" className="error">
-              {t(error)}
+            <div className="member-inline-error" role="alert">
+              <p className="error">{t(error)}</p>
+              <button
+                className="button"
+                onClick={() => void load(Boolean(data))}
+                disabled={loading || busy}
+              >
+                {t('Try again')}
+              </button>
+            </div>
+          )}
+          {loading && !data && (
+            <p className="member-loading" role="status">
+              {t('Loading instance settings…')}
             </p>
           )}
           {data && (
@@ -203,38 +307,46 @@ export function Admin() {
                     )}
                   </p>
                 </div>
-                <form className="settings-panel" onSubmit={save}>
-                  {Object.entries(data.flags).map(([key, flag]) => (
-                    <label className="toggle-row" key={key}>
-                      <span>
-                        {t(names[key])}
-                        <small>
-                          {flag.locked
-                            ? t('Managed by environment')
-                            : flag.value
-                              ? t('Enabled')
-                              : t('Disabled')}
-                        </small>
-                      </span>
-                      <input
-                        type="checkbox"
-                        role="switch"
-                        checked={flag.value}
-                        disabled={flag.locked}
-                        onChange={(e) =>
-                          setData({
-                            ...data,
-                            flags: { ...data.flags, [key]: { ...flag, value: e.target.checked } },
-                          })
-                        }
-                      />
-                    </label>
-                  ))}
-                  <button className="button primary" disabled={busy}>
-                    {busy ? t('Saving…') : t('Save settings')}
-                  </button>
+                <form className="settings-panel admin-policy-panel" onSubmit={save}>
+                  <div className="admin-policy-rows">
+                    {Object.entries(data.flags).map(([key, flag]) => (
+                      <label className="toggle-row" key={key}>
+                        <span>
+                          {t(names[key])}
+                          {flag.locked && (
+                            <small>
+                              <LockKeyhole size={12} aria-hidden="true" />
+                              {t('Managed by environment')}
+                            </small>
+                          )}
+                        </span>
+                        <input
+                          type="checkbox"
+                          role="switch"
+                          checked={flag.value}
+                          disabled={flag.locked || busy}
+                          onChange={(e) =>
+                            setData({
+                              ...data,
+                              flags: { ...data.flags, [key]: { ...flag, value: e.target.checked } },
+                            })
+                          }
+                        />
+                      </label>
+                    ))}
+                  </div>
+                  <div className="form-actions">
+                    <button className="button primary" disabled={busy}>
+                      {busy ? t('Saving…') : t('Save settings')}
+                    </button>
+                  </div>
                 </form>
               </div>
+              <AdminMapReadiness
+                data={data.mapReadiness}
+                refreshing={loading || busy}
+                refresh={() => void load(true)}
+              />
               <div className="admin-grid">
                 <section className="settings-panel">
                   <h2>{t('Processing queue')}</h2>
@@ -260,7 +372,7 @@ export function Admin() {
                   {data.users.map((u) => (
                     <div className="kv-row" key={u.id}>
                       <span>{u.username}</span>
-                      <span>{u.is_admin ? t('Admin') : t('Member')}</span>
+                      <span className="member-role">{u.is_admin ? t('Admin') : t('Member')}</span>
                     </div>
                   ))}
                 </section>
@@ -271,13 +383,46 @@ export function Admin() {
                   data.audit.map((a, i) => (
                     <div className="kv-row" key={i}>
                       <span>{a.action.replaceAll('.', ' · ')}</span>
-                      <span>{new Date(a.created_at * 1000).toLocaleString(locale())}</span>
+                      <time dateTime={new Date(a.created_at * 1000).toISOString()}>
+                        {new Date(a.created_at * 1000).toLocaleString(locale())}
+                      </time>
                     </div>
                   ))
                 ) : (
                   <p>{t('No security events yet.')}</p>
                 )}
               </section>
+              <dl className="instance-build">
+                <div>
+                  <dt>{t('Application revision')}</dt>
+                  <dd>
+                    {validRevision ? (
+                      <a
+                        href={'https://github.com/Buco7854/cswatch/commit/' + revision}
+                        target="_blank"
+                        rel="noreferrer"
+                        title={revision}
+                      >
+                        {revision.slice(0, 8)}
+                      </a>
+                    ) : (
+                      t('Unavailable')
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt>{t('Built')}</dt>
+                  <dd>
+                    {buildDate && Number.isFinite(buildDate.getTime()) ? (
+                      <time dateTime={buildDate.toISOString()}>
+                        {buildDate.toLocaleString(locale())}
+                      </time>
+                    ) : (
+                      t('Unavailable')
+                    )}
+                  </dd>
+                </div>
+              </dl>
             </>
           )}
         </>

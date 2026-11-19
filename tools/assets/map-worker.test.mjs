@@ -48,6 +48,7 @@ import {
 } from './map-worker.mjs';
 import { validatePreparedMap } from './prepared-map-publication.mjs';
 import { buildNetworkDeny } from './build-network-deny.mjs';
+import { refreshOfficialMapInventory } from './official-map-inventory.mjs';
 
 let boundaryRoot, networkDeny;
 before(async () => {
@@ -184,6 +185,75 @@ test('explicit Steam rate failures pause globally without reclassifying as unava
     'preparation_failed',
   );
 });
+
+test(
+  'inventory failure heartbeat and logs retain a safe stage across retries then clear it on successful refresh',
+  { timeout: 15000 },
+  async (t) => {
+    const f = await fixture(t),
+      controller = new AbortController(),
+      logs = [];
+    let clock = 1000,
+      attempts = 0,
+      checks = 0;
+    const original = await readFile(join(f.options.jobs, 'requests', f.packId + '.json'));
+    const secret = 'https://private.invalid/?credential=never-log /private/operator/path';
+    const failure = { phase: 'toolchain', code: 'toolchain_failed', at: 1000, retryAt: 1900 };
+    await runMapWorker(
+      {
+        ...f.options,
+        signal: AbortSignal.any([controller.signal, t.signal]),
+        log: (value) => logs.push(value),
+      },
+      {
+        now: () => clock,
+        refreshInventory: (options) =>
+          refreshOfficialMapInventory(options, {
+            storage: async () => {},
+            prepareToolchain: async () => {
+              if (++attempts === 1) throw Error(secret);
+              return { downloader: '/fixed/trusted/tool' };
+            },
+            run: async () => ({
+              code: 0,
+              stdout: `2347770\t42\t${'a'.repeat(40)}\t100\tgame/csgo/maps/de_ancient.vpk`,
+              stderr: '',
+            }),
+          }),
+        processRequest: async () => {
+          const heartbeat = JSON.parse(
+            await readFile(join(f.options.jobs, 'worker-status.json'), 'utf8'),
+          );
+          if (++checks === 1) assert.deepEqual(heartbeat.inventoryFailure, failure);
+          else {
+            assert.equal(heartbeat.inventoryFailure, undefined);
+            controller.abort();
+          }
+          return checks > 1;
+        },
+        delay: async (ms) => {
+          assert.equal(ms, 2000);
+          clock = 1900;
+        },
+      },
+    );
+    assert.equal(attempts, 2);
+    assert.deepEqual(
+      logs.find((value) => value.event === 'map.inventory_unavailable'),
+      { event: 'map.inventory_unavailable', ...failure },
+    );
+    assert.equal(JSON.stringify(logs).includes(secret), false);
+    assert.equal(
+      JSON.parse(await readFile(join(f.options.jobs, 'worker-status.json'), 'utf8'))
+        .inventoryFailure,
+      undefined,
+    );
+    assert.deepEqual(
+      await readFile(join(f.options.jobs, 'requests', f.packId + '.json')),
+      original,
+    );
+  },
+);
 
 test('shared Steam cooldown blocks queued work after inventory rate failure and keeps heartbeat responsive', async (t) => {
   const f = await fixture(t),

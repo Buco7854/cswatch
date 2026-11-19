@@ -2,9 +2,11 @@ import { spawnSync } from 'node:child_process';
 import { copyFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { writeBuildInfo } from './build-info.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 mkdirSync(resolve(root, 'dist'), { recursive: true });
+writeBuildInfo(resolve(root, 'dist/build-info.json'));
 for (const name of [
   'equipment-icons',
   'recorded-equipment',
@@ -13,10 +15,8 @@ for (const name of [
   'gameplay-sounds',
 ])
   copyFileSync(resolve(root, `../shared/${name}.json`), resolve(root, `dist/${name}.json`));
-copyFileSync(
-  resolve(root, '../shared/gameplay-sound-files.mjs'),
-  resolve(root, 'dist/gameplay-sound-files.mjs'),
-);
+for (const name of ['gameplay-sound-files', 'auth-navigation'])
+  copyFileSync(resolve(root, `../shared/${name}.mjs`), resolve(root, `dist/${name}.mjs`));
 if (process.platform !== 'linux') {
   console.warn('Parser sandbox requires Linux. Use Docker for untrusted demos.');
   process.exit(0);

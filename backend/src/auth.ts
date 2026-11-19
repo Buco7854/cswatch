@@ -6,6 +6,7 @@ import type { Config } from './config.js';
 import { readUpstreamText } from './upstream.js';
 import {
   HttpError,
+  currentUser,
   digest,
   equal,
   hashPassword,
@@ -60,8 +61,23 @@ export async function authRoutes(app: FastifyInstance, db: Store, c: Config) {
     );
     if (!(await verifyPassword(u?.password_hash, b.password)))
       throw new HttpError(401, 'Username or password is incorrect.');
-    const csrf = newSession(db, c, r, reply, u!.id);
-    return { user: { id: u!.id, username: u!.username, is_admin: Boolean(u!.is_admin), csrf } };
+    // Password verification yields. Revoked credentials cannot issue a session
+    // afterward, and account details must come from the current immutable user.
+    const current = db.one(
+      'SELECT id,username,password_hash,is_admin FROM users u WHERE id=? AND NOT EXISTS(SELECT 1 FROM guest_sessions g WHERE g.owner_id=u.id)',
+      u!.id,
+    );
+    if (!current || current.password_hash !== u!.password_hash)
+      throw new HttpError(401, 'Username or password is incorrect.');
+    const csrf = newSession(db, c, r, reply, current.id);
+    return {
+      user: {
+        id: current.id,
+        username: current.username,
+        is_admin: Boolean(current.is_admin),
+        csrf,
+      },
+    };
   });
   app.post('/api/auth/logout', async (r, reply) => {
     const cookie = sessionCookieName(c);
@@ -85,6 +101,17 @@ export async function authRoutes(app: FastifyInstance, db: Store, c: Config) {
       throw new HttpError(400, 'Current password is incorrect.');
     const hash = await hashPassword(b.new_password);
     db.transaction(() => {
+      // Hashing yields to other requests. A logout, account switch or another
+      // password change must revoke this captured mutation before it can
+      // replace credentials or create a fresh session.
+      const active = currentUser(db, r, c);
+      if (!active || active.id !== u.id || active.csrf !== u.csrf)
+        throw new HttpError(401, 'Session expired. Refresh the page and try again.');
+      if (
+        db.one('SELECT password_hash FROM users WHERE id=?', u.id)?.password_hash !==
+        old.password_hash
+      )
+        throw new HttpError(409, 'Session expired. Refresh the page and try again.');
       db.run('UPDATE users SET password_hash=? WHERE id=?', hash, u.id);
       db.run('DELETE FROM sessions WHERE user_id=?', u.id);
     });

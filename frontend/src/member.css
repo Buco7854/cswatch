@@ -1,7 +1,15 @@
 /* Member surfaces are deliberately isolated from the accepted public landing.
    216px navigation + fluid work area; a single 28px canvas gutter on desktop.
    Neutral elevations carry structure. Brand teal is a focus/data signal only. */
-:is(.app-shell, .viewer-shell, .member-dialog, .member-toast, .member-floating) {
+:is(
+  .app-shell,
+  .viewer-shell,
+  .member-dialog,
+  .member-toast,
+  .member-floating,
+  .auth-page,
+  .confirmation-dialog
+) {
   --ground: #101113;
   --surface: #17191c;
   --raised: #202328;
@@ -21,7 +29,15 @@
   line-height: 1.5;
 }
 [data-theme='light']
-  :is(.app-shell, .viewer-shell, .member-dialog, .member-toast, .member-floating) {
+  :is(
+    .app-shell,
+    .viewer-shell,
+    .member-dialog,
+    .member-toast,
+    .member-floating,
+    .auth-page,
+    .confirmation-dialog
+  ) {
   --ground: #f3f4f6;
   --surface: #fff;
   --raised: #f3f4f6;
@@ -201,11 +217,11 @@
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  margin-bottom: 28px;
+  margin-bottom: 24px;
 }
 .app-shell h1 {
   font-family: inherit;
-  font-size: 26px;
+  font-size: 24px;
   font-weight: 500;
   line-height: 1.25;
   letter-spacing: -0.6px;
@@ -260,6 +276,26 @@
 :is(.app-shell, .viewer-shell, .member-dialog) .button.primary:hover {
   background: var(--primary);
   filter: brightness(0.9);
+}
+.app-shell .button,
+.app-shell .icon-button,
+.app-shell .select-control,
+.app-shell .account-button {
+  min-height: 44px;
+}
+.app-shell .icon-button {
+  min-width: 44px;
+}
+.app-shell .button:not(.primary, .tertiary) {
+  background: var(--raised);
+}
+.app-shell .button:not(.primary, .tertiary):hover {
+  background: color-mix(in srgb, var(--raised) 85%, var(--text));
+}
+.app-shell .button.primary {
+  background: var(--primary);
+  color: var(--ground);
+  padding: 10px 16px;
 }
 :is(.app-shell, .viewer-shell, .member-dialog) .button.tertiary {
   background: none;
@@ -388,7 +424,7 @@
 .app-shell .library-tools {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
   flex: 0 1 340px;
 }
@@ -401,10 +437,20 @@
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   min-width: 0;
   flex: 1;
   width: 100%;
+  padding: 0 12px;
+  background: var(--ground);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.app-shell .search:focus-within {
+  border-color: var(--signal);
+}
+.app-shell .search svg {
+  flex-shrink: 0;
 }
 .app-shell .search svg {
   color: var(--faint);
@@ -438,6 +484,13 @@
   border: 0;
   min-height: 0;
 }
+.app-shell .demo-details {
+  display: contents;
+}
+.app-shell :is(.rounds-heading, .added-heading, .playback-heading, .rounds-count, .added) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
 .app-shell .demo-row:hover:not(.table-head) {
   background: var(--raised);
 }
@@ -460,6 +513,10 @@
   font-size: 14px;
   line-height: 1.5;
   font-weight: 500;
+  text-transform: none;
+}
+.app-shell .match-name .match-map {
+  text-transform: capitalize;
 }
 .app-shell .match-name small {
   font-size: 12px;
@@ -588,7 +645,7 @@
   background: var(--surface);
   border: 0;
   border-radius: 8px !important;
-  padding: 25px;
+  padding: 24px;
   min-width: 0;
   align-self: start;
 }
@@ -614,6 +671,43 @@
 .app-shell .settings-panel .actions {
   gap: 10px;
   flex-wrap: wrap;
+}
+.app-shell .settings-panel :is(.actions, .form-actions) {
+  margin-top: 8px;
+}
+.app-shell .form-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.app-shell .settings-panel > .button,
+.app-shell .settings-panel form > .button {
+  align-self: flex-start;
+  width: fit-content;
+}
+.app-shell .admin-policy-rows {
+  display: flex;
+  flex-direction: column;
+}
+.app-shell .admin-policy-panel .toggle-row {
+  min-height: 56px;
+  padding: 12px 0;
+}
+.app-shell .admin-policy-panel .toggle-row + .toggle-row {
+  border-top: 1px solid var(--border);
+}
+.app-shell .admin-policy-panel .toggle-row small {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 4px;
+}
+.app-shell .admin-policy-panel .toggle-row small svg {
+  flex: none;
+}
+.app-shell .admin-policy-panel .form-actions {
+  margin-top: 0;
 }
 .app-shell details {
   border-color: var(--border);
@@ -672,6 +766,126 @@
   max-width: 50%;
   color: var(--faint);
 }
+.app-shell .kv-row > time {
+  color: var(--faint);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.app-shell .member-role {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 4px;
+  padding: 2px 7px;
+  background: var(--raised);
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.app-shell .member-inline-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.app-shell .member-loading {
+  padding: 24px 0;
+}
+.app-shell .map-readiness-panel .panel-heading {
+  margin-bottom: 8px;
+  gap: 16px;
+}
+.app-shell .map-readiness-panel h3 {
+  margin: 0;
+}
+.app-shell .readiness-details {
+  margin: 0;
+}
+.app-shell .readiness-details > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(90px, 0.8fr);
+  gap: 16px;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.app-shell .readiness-details dt {
+  color: var(--muted);
+}
+.app-shell .readiness-details dd {
+  margin: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+.app-shell .readiness-details dd small {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+}
+.app-shell .readiness-timestamp {
+  font-size: 12px;
+  margin: 14px 0 0;
+}
+.app-shell .readiness-help {
+  margin-top: 18px;
+}
+.app-shell .readiness-failure {
+  margin-top: 16px;
+  padding: 12px;
+  border-radius: 5px;
+  background: var(--ground);
+  overflow-wrap: anywhere;
+}
+.app-shell .readiness-failure p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.app-shell .readiness-failure p:first-child {
+  color: var(--text);
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+.app-shell .readiness-help p {
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+.app-shell .readiness-help code {
+  display: block;
+  background: var(--ground);
+  border-radius: 5px;
+  padding: 12px;
+  font-size: 12px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.app-shell .instance-build {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 28px;
+  padding-top: 20px;
+  margin-top: 28px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--faint);
+}
+.app-shell .instance-build > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.app-shell .instance-build dd {
+  margin: 0;
+  color: var(--muted);
+}
+.app-shell .instance-build a {
+  font-family: ui-monospace, monospace;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 .app-shell .audit-panel {
   margin-top: 30px;
 }
@@ -696,8 +910,7 @@
   color: var(--faint);
 }
 /* Dialogs scroll as a unit, including expanded French descriptions. */
-.member-dialog.options-dialog,
-.member-dialog.auth-dialog {
+.member-dialog.options-dialog {
   background: var(--surface);
   color: var(--text);
   border: 0;
@@ -728,8 +941,7 @@
   margin: -1px -1px 0;
   padding: 0 0 12px;
 }
-.member-dialog .panel-heading > h2,
-.member-dialog.auth-dialog h2 {
+.member-dialog .panel-heading > h2 {
   font-family: inherit;
   font-size: 20px;
   font-weight: 500;
@@ -844,24 +1056,6 @@
 }
 .member-dialog form > .button.wide {
   align-self: stretch;
-}
-.member-dialog.auth-dialog .brand {
-  margin-bottom: 26px;
-  font-size: 30px;
-}
-.member-dialog.auth-dialog .brand > svg {
-  color: var(--signal);
-}
-.member-dialog .or {
-  color: var(--faint);
-  font-size: 12px;
-}
-.member-dialog .auth-switch {
-  font-size: 13px;
-}
-.member-dialog .recovery-note {
-  font-size: 12px;
-  line-height: 1.65;
 }
 .member-dialog .dialog-close {
   right: 12px;
@@ -1045,7 +1239,7 @@
   }
   .app-shell .library-tools {
     padding: 8px 0 10px;
-    border-top: 1px solid var(--border);
+    border-top: 0;
     gap: 12px;
     flex-basis: auto;
   }
@@ -1076,7 +1270,7 @@
     line-height: 1.7;
   }
   .app-shell .settings-panel {
-    padding: 23px;
+    padding: 22px;
   }
   .app-shell .admin-grid {
     grid-template-columns: 1fr;
@@ -1133,8 +1327,8 @@
   .app-shell .page-heading > .button {
     font-size: 12px;
     min-height: 38px;
-    max-width: 140px;
-    padding: 9px 11px;
+    max-width: 152px;
+    padding: 10px 12px;
   }
   .app-shell .section-heading {
     padding: 0 16px;
@@ -1153,14 +1347,14 @@
     display: none;
   }
   .app-shell .demo-row:not(.table-head) {
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     grid-template-rows: auto auto;
-    gap: 5px 13px;
+    gap: 12px;
     padding: 18px 0;
   }
   .app-shell .match-name {
     grid-column: 1;
-    grid-row: 1/3;
+    grid-row: 1;
     gap: 10px;
     min-width: 0;
   }
@@ -1168,40 +1362,48 @@
     font-size: 14px;
   }
   .app-shell .match-name small {
-    font-size: 11px;
-    max-width: 135px;
+    font-size: 12px;
+    max-width: 100%;
   }
   .app-shell .map-initial {
     width: 32px;
     height: 38px;
   }
   .app-shell .source {
-    grid-column: 2;
-    grid-row: 1;
-    font-size: 11px;
+    display: inline-flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
   }
   .app-shell .source small {
-    font-size: 11px;
+    font-size: 12px;
+    margin: 0;
   }
   .app-shell .rounds-count {
-    grid-column: 2;
-    grid-row: 2;
-    text-align: left;
-    font-size: 11px;
+    font-size: 12px;
   }
   .app-shell .added {
-    grid-column: 3;
-    grid-row: 2;
-    font-size: 11px;
+    margin-left: auto;
+    font-size: 12px;
   }
   .app-shell .demo-state {
-    grid-column: 3;
+    grid-column: 2;
     grid-row: 1;
-    font-size: 11px;
-    max-width: 85px;
+    font-size: 12px;
+    max-width: 100px;
     text-align: right;
     flex-wrap: wrap;
     gap: 3px;
+  }
+  .app-shell .demo-details {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    gap: 6px 14px;
+    color: var(--faint);
   }
   .app-shell .library-meta {
     padding: 14px 16px;
@@ -1259,7 +1461,15 @@
   }
   .app-shell .kv-row {
     gap: 16px;
-    font-size: 12px;
+    font-size: 13px;
+  }
+  .app-shell .audit-panel .kv-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .app-shell .audit-panel .kv-row time {
+    text-align: left;
   }
   .app-shell .account-gate h1 {
     font-size: 26px;
@@ -1268,8 +1478,7 @@
     font-size: 15px;
     line-height: 1.75;
   }
-  .member-dialog.options-dialog,
-  .member-dialog.auth-dialog {
+  .member-dialog.options-dialog {
     padding: 24px !important;
     max-width: calc(100vw - 24px);
     max-height: calc(100dvh - 24px);

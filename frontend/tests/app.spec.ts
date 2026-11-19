@@ -78,7 +78,7 @@ test('the single public page uploads a private guest demo into the whole-tab vie
   await (await picker).setFiles(file);
   await expect(page).toHaveURL(/\/watch\/guest-fixture$/);
   await expect(page.getByRole('heading', { name: 'guest_fixture', exact: true })).toBeVisible();
-  await expect(page.locator('.auth-dialog')).toHaveCount(0);
+  await expect(page.locator('.auth-page')).toHaveCount(0);
   await expect(page.locator('.site-sidebar')).toHaveCount(0);
   expect(
     await page
@@ -128,14 +128,14 @@ test('account-required upload preserves route intent, registration and logout wo
   test.skip(privateInstance || process.env.E2E_REGISTRATIONS === 'false');
   const username = 'review_' + Date.now().toString(36);
   await page.goto('/library?upload=1');
-  await expect(page).toHaveURL(/\/library\?upload=1/);
-  await expect(page.getByRole('heading', { name: 'Your review needs a home.' })).toBeVisible();
-  await page.getByRole('button', { name: 'Sign in to continue', exact: true }).click();
-  await page.getByRole('button', { name: 'New here? Create an account' }).click();
+  await expect(page).toHaveURL(/\/login\?returnTo=%2Flibrary%3Fupload%3D1$/);
+  await expect(page.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible();
+  await page.getByRole('link', { name: 'New here? Create an account' }).click();
+  await expect(page.getByRole('heading', { name: 'Create account', exact: true })).toBeVisible();
   await page.getByLabel('Username', { exact: true }).fill(username);
   await page.getByLabel('Password', { exact: true }).fill('Unique-test-password-392!');
   await page.getByRole('button', { name: 'Create account', exact: true }).click();
-  await expect(page.locator('.auth-dialog')).toBeHidden();
+  await expect(page.getByRole('form', { name: 'Create account', exact: true })).toHaveCount(0);
   await expect(page).toHaveURL(/\/library\?upload=1/);
   await page.getByRole('button', { name: 'Close upload' }).click();
   await expect(page.getByText('Your matches belong here.')).toBeVisible();
@@ -162,7 +162,8 @@ test('account-required upload preserves route intent, registration and logout wo
   await expect(page).toHaveURL(/\/account\/connections$/);
   await page.getByRole('button', { name: new RegExp(username) }).click();
   await page.getByRole('menuitem', { name: 'Sign out' }).click();
-  await expect(page.getByRole('heading', { name: 'Your accounts, in one place.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/login\?returnTo=%2Faccount%2Fconnections$/);
 });
 test('French covers public pages, viewer, auth errors and saved language choice', async ({
   page,
@@ -188,9 +189,12 @@ test('French covers public pages, viewer, auth errors and saved language choice'
   await page.getByRole('menuitem', { name: 'Se connecter', exact: true }).click();
   await page.getByLabel('Nom d’utilisateur', { exact: true }).fill('missing_member');
   await page.getByLabel('Mot de passe', { exact: true }).fill('wrong-test-password');
-  await page.getByRole('dialog').getByRole('button', { name: 'Se connecter', exact: true }).click();
+  await page
+    .getByRole('form', { name: 'Se connecter', exact: true })
+    .getByRole('button', { name: 'Se connecter', exact: true })
+    .click();
   await expect(page.getByRole('alert')).toHaveText('Nom d’utilisateur ou mot de passe incorrect.');
-  await page.getByRole('button', { name: 'Fermer la connexion' }).click();
+  await page.getByRole('link', { name: 'Retour', exact: true }).click();
   await choose(page, 'Langue', 'EN');
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
 });
@@ -201,22 +205,40 @@ test('private entry gates feature and demo routes and respects registrations pol
   test.skip(!privateInstance);
   for (const path of ['/', '/features/viewer', '/library', '/watch/sample']) {
     await page.goto(path);
-    await expect(page.getByRole('heading', { name: 'A private review room.' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible();
+    await expect(
+      page.getByText('This instance is open to signed-in members only.', { exact: true }),
+    ).toBeVisible();
     await expect(page.getByRole('link', { name: 'Try the viewer' })).toHaveCount(0);
   }
+  const login = await page.goto('/login?returnTo=%2Faccount');
+  expect(login?.status()).toBe(200);
+  await expect(page.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible();
+  expect((await page.reload())?.status()).toBe(200);
+  await expect(page.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible();
+  const registration = await page.goto('/register?returnTo=%2Faccount');
+  expect(registration?.status()).toBe(200);
+  await expect(
+    page.getByRole('heading', {
+      name: process.env.E2E_REGISTRATIONS === 'false' ? 'Sign in' : 'Create account',
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page.goto('/login');
+  const notice = await request.get('/licenses/provider-brands.txt');
+  expect(notice.status()).toBe(200);
+  expect(notice.headers()['content-type']).toContain('text/plain');
+  expect(await notice.text()).toContain('©2026 Valve Corporation.');
   expect((await request.get('/api/demos?scope=public')).status()).toBe(401);
   expect((await request.get('/api/maps/de_mirage')).status()).toBe(401);
   expect((await request.get('/map-assets/de_mirage.glb')).status()).toBe(401);
-  await page.getByRole('button', { name: 'Sign in to continue' }).click();
   if (process.env.E2E_REGISTRATIONS === 'false')
-    await expect(page.getByRole('button', { name: 'New here? Create an account' })).toHaveCount(0);
-  else
-    await expect(page.getByRole('button', { name: 'New here? Create an account' })).toBeVisible();
-  await page.getByRole('button', { name: 'Close sign in' }).click();
+    await expect(page.getByRole('link', { name: 'New here? Create an account' })).toHaveCount(0);
+  else await expect(page.getByRole('link', { name: 'New here? Create an account' })).toBeVisible();
   if (process.env.E2E_REGISTRATIONS !== 'false') {
     await page.goto('/');
-    await page.getByRole('button', { name: 'Sign in to continue' }).click();
-    await page.getByRole('button', { name: 'New here? Create an account' }).click();
+    await page.getByRole('link', { name: 'New here? Create an account' }).click();
+    await expect(page.getByRole('heading', { name: 'Create account', exact: true })).toBeVisible();
     await page.getByLabel('Username', { exact: true }).fill('private_' + Date.now().toString(36));
     await page.getByLabel('Password', { exact: true }).fill('Unique-private-password-392!');
     await page.getByRole('button', { name: 'Create account', exact: true }).click();
@@ -502,7 +524,8 @@ test('guest upload policy keeps the public entry simple and uses one accessible 
     }
   }
   await page.getByRole('button', { name: 'Se connecter pour importer', exact: true }).click();
-  await expect(page.locator('.auth-dialog')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Se connecter', exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/login\?returnTo=%2Flibrary$/);
 });
 
 test('personal library search keeps the complete placeholder readable and keyboard focus visible', async ({

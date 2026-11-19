@@ -154,13 +154,41 @@ test('leaving public entry cancels a delayed preview without loading artwork on 
       history.pushState({}, '', '/account');
       dispatchEvent(new PopStateEvent('popstate'));
     });
-    await expect(page.getByRole('button', { name: 'Sign in to continue' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible();
     response.resolve();
     await expect(page.locator('.landing-backdrop')).toHaveCount(0);
-    await page.getByRole('button', { name: 'Sign in to continue' }).click();
-    await expect(page.getByRole('dialog', { name: 'Back for another look.' })).toBeVisible();
+    await expect(page.getByRole('form', { name: 'Sign in', exact: true })).toBeVisible();
     expect(images).toBe(0);
   } finally {
     response.resolve();
   }
+});
+
+test('a newly prepared official preview appears without reloading and discovery stops when entry is left', async ({
+  page,
+}) => {
+  test.skip(publicOnly);
+  await page.clock.install();
+  let checks = 0;
+  await page.route('**/api/map-preview', (route) => {
+    checks++;
+    return route.fulfill({ json: checks === 1 ? { image: null, map: null } : descriptor });
+  });
+  await page.route('**/api/map-preview/de_mirage.png', (route) =>
+    route.fulfill({ contentType: 'image/png', body: image }),
+  );
+  await page.goto('/');
+  await expect.poll(() => checks).toBe(1);
+  await expect(page.getByRole('button', { name: /Choose demo file/ })).toBeEnabled();
+  await expect(page.locator('.landing-backdrop')).toHaveCount(0);
+  await page.clock.runFor(2000);
+  await expect(page.locator('.landing-backdrop')).toHaveAttribute('data-ready', 'true');
+  expect(checks).toBe(2);
+  await page.clock.runFor(120000);
+  expect(checks).toBe(2);
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible();
+  await page.clock.runFor(120000);
+  expect(checks).toBe(2);
+  await expect(page.locator('.landing-backdrop')).toHaveCount(0);
 });

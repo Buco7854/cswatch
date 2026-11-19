@@ -303,3 +303,48 @@ test('latest official readiness never accepts manual URLs, incomplete assets or 
     ),
   );
 });
+
+test('operational map readiness is distinct from historical matching and cannot authorize a new source', () => {
+  const empty = { model: null, mobile: null, overview: null, environment: null };
+  for (const [reason, description] of [
+    ['automatic_disabled', 'enable automatic'],
+    ['worker_unavailable', 'assets service'],
+    ['inventory_unavailable', 'official map list'],
+    ['inventory_stale', 'refresh'],
+    ['official_map_unknown', 'does not include'],
+    ['owner_required', 'demo owner'],
+    ['identity_invalid', 'conflicting or invalid'],
+  ]) {
+    const input = {
+      resolution: { status: 'unmapped' },
+      acquisition: reason === 'automatic_disabled' ? 'disabled' : 'unavailable',
+      canAcquire: false,
+      verification: 'unavailable',
+      packId: null,
+      assets: empty,
+      readinessReason: reason,
+    };
+    const state = validateDemoMapAssets(input, map);
+    assert.equal(state.acquisition?.readinessReason, reason);
+    assert.match(mapAcquisitionMessage(state)!.description, new RegExp(description));
+    assert.doesNotMatch(
+      mapAcquisitionMessage(state)!.description,
+      /operator-approved map version matches/,
+    );
+    assert.throws(() => validateDemoMapAssets({ ...input, canAcquire: true }, map));
+  }
+  assert.throws(() =>
+    validateDemoMapAssets(
+      {
+        resolution: { status: 'unmapped' },
+        acquisition: 'unavailable',
+        canAcquire: false,
+        verification: 'unavailable',
+        packId: null,
+        assets: empty,
+        readinessReason: 'unknown_private_error',
+      },
+      map,
+    ),
+  );
+});

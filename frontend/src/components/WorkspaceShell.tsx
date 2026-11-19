@@ -78,9 +78,6 @@ export default function WorkspaceShell({
             GitHub
             <ArrowUpRight size={13} />
           </a>
-          <span className="sidebar-version">
-            cswatch <span>v0.1</span>
-          </span>
         </div>
       </aside>
       <div className="workspace">

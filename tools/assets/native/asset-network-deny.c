@@ -231,7 +231,15 @@ static int hex_id(const char *name) {
     for(int i=0;i<64;i++) if(!((name[i]>='0' && name[i]<='9') || (name[i]>='a' && name[i]<='f'))) return 0;
     return 1;
 }
-static void publish(const char *source,const char *target,int sound_bank) {
+#ifndef CSWATCH_PREVIEW_NAMES
+#error Build the asset boundary with the fixed shared preview registry.
+#endif
+static int preview_name(const char *name) {
+    static const char *names[] = { CSWATCH_PREVIEW_NAMES };
+    for(size_t i=0;i<sizeof(names)/sizeof(names[0]);i++) if(!strcmp(name,names[i])) return 1;
+    return 0;
+}
+static void publish(const char *source,const char *target,int kind) {
     char from[PATH_MAX],to[PATH_MAX];
     if(!source || !target || strlen(source) >= sizeof(from) || strlen(target) >= sizeof(to)) {
         errno = EINVAL;fail("invalid publication paths");
@@ -241,11 +249,16 @@ static void publish(const char *source,const char *target,int sound_bank) {
     if(!from_name || !to_name || from_name==from || to_name==to) { errno=EINVAL;fail("absolute same-parent publication required"); }
     *from_name++='\0';*to_name++='\0';
     int suffix_start;
-    if(sound_bank) {
+    if(kind==1) {
         if(strcmp(from,to) || strcmp(to_name,"sounds") || strlen(from_name)!=14 || strncmp(from_name,".sounds-",8)) {
             errno=EINVAL;fail("approved same-parent sound bank names required");
         }
         suffix_start=8;
+    } else if(kind==2) {
+        if(strcmp(from,to) || !preview_name(to_name) || strlen(from_name)!=15 || strncmp(from_name,".preview-",9)) {
+            errno=EINVAL;fail("approved same-parent preview names required");
+        }
+        suffix_start=9;
     } else {
         if(strcmp(from,to) || !hex_id(to_name) || strlen(from_name)!=82 ||
             strncmp(from_name,".preparing-",11) || strncmp(from_name+11,to_name,64) || from_name[75]!='-') {
@@ -276,6 +289,7 @@ int main(int argc,char **argv) {
     standard_io();
     if(argc == 4 && !strcmp(argv[1],"--publish")) { publish(argv[2],argv[3],0);return 0; }
     if(argc == 4 && !strcmp(argv[1],"--publish-sounds")) { publish(argv[2],argv[3],1);return 0; }
+    if(argc == 4 && !strcmp(argv[1],"--publish-preview")) { publish(argv[2],argv[3],2);return 0; }
     if(argc == 2 && !strcmp(argv[1],"--check")) {
         const int abi=landlock_abi();restrict_writes(NULL,0);restrict_conversion();
         printf("Linux x86-64 conversion confinement ready, Landlock ABI %d\n",abi);return 0;

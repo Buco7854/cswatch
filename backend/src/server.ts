@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { z, ZodError } from 'zod';
 import { loadConfig, flagDefaults, type Config, type Flag } from './config.js';
 import { Store, now } from './db.js';
+import { buildInfo } from './build-info.js';
 import {
   HttpError,
   currentUser,
@@ -24,6 +25,7 @@ import { authRoutes } from './auth.js';
 import { providerRoutes } from './providers.js';
 import { captionArtifactName } from './captions.js';
 import { requeueTranscription } from './transcription-worker.js';
+import { readMapPreparationState } from './map-readiness.js';
 import { gameplaySoundAssetRoutes } from './gameplay-sound-assets.js';
 import { equipmentAssetRoutes } from './equipment-assets.js';
 import { equipmentModelAssetRoutes } from './equipment-model-assets.js';
@@ -123,6 +125,9 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
         (['GET', 'HEAD'].includes(r.method) &&
           ([
             '/library',
+            '/login',
+            '/register',
+            '/licenses/provider-brands.txt',
             '/connections',
             '/account/connections',
             '/account',
@@ -225,21 +230,25 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
     db.one('SELECT 1');
     return { status: 'ok' };
   });
-  app.get('/api/config', async (r) => ({
-    ...Object.fromEntries(Object.keys(flagDefaults).map((k) => [k, db.flag(c, k as Flag)])),
-    guest_uploads_enabled: guestUploadsEnabled(db, c),
-    guest_retention_hours: c.guestRetentionHours,
-    setup_required: setupRequired(db),
-    max_upload_mb:
-      !r.user && guestUploadsEnabled(db, c)
-        ? Math.min(c.maxUploadMb, c.guestStorageMb)
-        : c.maxUploadMb,
-    retention_days: c.retentionDays,
-    steam_discovery: Boolean(c.steamApiKey),
-    faceit_configured: Boolean(c.faceitApiKey),
-    faceit_downloads: Boolean(c.faceitDownloadToken),
-    transcription_configured: Boolean(c.transcriptionModelDir),
-  }));
+  app.get('/api/config', async (r, reply) => {
+    reply.header('Cache-Control', 'private, no-store');
+    return {
+      build: buildInfo,
+      ...Object.fromEntries(Object.keys(flagDefaults).map((k) => [k, db.flag(c, k as Flag)])),
+      guest_uploads_enabled: guestUploadsEnabled(db, c),
+      guest_retention_hours: c.guestRetentionHours,
+      setup_required: setupRequired(db),
+      max_upload_mb:
+        !r.user && guestUploadsEnabled(db, c)
+          ? Math.min(c.maxUploadMb, c.guestStorageMb)
+          : c.maxUploadMb,
+      retention_days: c.retentionDays,
+      steam_discovery: Boolean(c.steamApiKey),
+      faceit_configured: Boolean(c.faceitApiKey),
+      faceit_downloads: Boolean(c.faceitDownloadToken),
+      transcription_configured: Boolean(c.transcriptionModelDir),
+    };
+  });
   app.get('/api/demos', async (r) => {
     const q = z
       .object({
@@ -422,7 +431,12 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
   });
   app.get('/api/admin', async (r) => {
     requireAdmin(r);
+    const { diagnostics: mapReadiness } = await readMapPreparationState(
+      c,
+      db.flag(c, 'auto_official_maps_enabled'),
+    );
     return {
+      mapReadiness,
       flags: Object.fromEntries(
         Object.keys(flagDefaults).map((k) => [
           k,
@@ -462,6 +476,15 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
       dotfiles: 'deny',
       cacheControl: false,
     });
+  app.route({
+    method: ['GET', 'HEAD'],
+    url: '/licenses/provider-brands.txt',
+    handler: async (_request, reply) => {
+      const notice = join(c.frontendDir, 'licenses/provider-brands.txt');
+      if (!existsSync(notice)) throw new HttpError(404, 'Not found.');
+      return reply.type('text/plain; charset=utf-8').send(createReadStream(notice));
+    },
+  });
   app.setNotFoundHandler(async (r, reply) => {
     if (
       r.url.startsWith('/api/') ||

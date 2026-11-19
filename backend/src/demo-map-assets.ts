@@ -1,7 +1,11 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { MapAssets } from '../../shared/map-assets.js';
-import type { DemoMapAssets, MapResolution } from '../../shared/map-acquisition.js';
+import type {
+  DemoMapAssets,
+  MapResolution,
+  MapReadinessReason,
+} from '../../shared/map-acquisition.js';
 import type { Config } from './config.js';
 import type { Store } from './db.js';
 import { accessDemo } from './ingestion.js';
@@ -14,13 +18,13 @@ import {
   latestMapRequestId,
   latestMapPackMarkerSchema,
 } from './map-catalog.js';
+import { readMapPreparationState } from './map-readiness.js';
 import { mapIdentitySchema, officialMapName } from './map-identity.js';
 import { withDirectory, regularFile, bytesFrom, fileVersion } from './map-asset-files.js';
 import {
   enqueueMapRequest,
   retryMapRequest,
   canRetryMapResult,
-  mapWorkerAvailable,
   packIdSchema,
   readMapRequest,
   readMapResult,
@@ -51,28 +55,34 @@ export async function demoMapAssetRoutes(
   c: Config,
   repository: Repository,
 ) {
-  const resolutionFor = async (demo: Record<string, any>): Promise<MapResolution> => {
-    let identity;
+  const recordedIdentity = (demo: Record<string, any>) => {
     try {
       const raw = JSON.parse(demo.metadata || '{}').mapIdentity;
-      if (raw !== undefined) identity = mapIdentitySchema.parse(raw);
+      if (raw === undefined) return { invalid: false };
+      const identity = mapIdentitySchema.parse(raw);
+      if (identity.map !== demo.map || identity.conflicted) return { invalid: true };
+      return { identity, invalid: false };
     } catch {
-      return { status: 'unknown' };
+      return { invalid: true };
     }
-    if (identity && identity.map !== demo.map) return { status: 'unknown' };
-    const exact = resolveMap(identity, await readMapCatalog(c.mapCatalogFile));
-    if (identity?.conflicted || identity?.addonPresence === 'present') return exact;
+  };
+  type PreparationState = Awaited<ReturnType<typeof readMapPreparationState>>;
+  const resolutionFor = async (
+    demo: Record<string, any>,
+    state: PreparationState,
+  ): Promise<MapResolution> => {
+    const recorded = recordedIdentity(demo);
+    if (recorded.invalid) return { status: 'unknown' };
+    const identity = recorded.identity;
+    const exact = resolveMap(identity, state.catalog);
+    if (identity?.addonPresence === 'present') return exact;
     if (exact.status === 'approved') {
       const result = await readMapResult(c.mapJobsDir, exact.packId);
       if (result?.status !== 'failed' || result.code !== 'source_unavailable') return exact;
     }
     if (!officialMapName.safeParse(demo.map).success) return exact;
-    const fresh = await readOfficialMapInventory(c.mapJobsDir);
-    const inventory =
-      fresh ??
-      (await readOfficialMapInventory(c.mapJobsDir, Math.floor(Date.now() / 1000), {
-        allowStale: true,
-      }));
+    const fresh = state.inventoryFresh;
+    const inventory = state.inventory;
     const selection = inventory && latestOfficialSelection(inventory, demo.map);
     if (selection && !fresh) {
       const requestId = latestMapRequestId(selection),
@@ -131,12 +141,13 @@ export async function demoMapAssetRoutes(
     }
     return false;
   };
-  const describe = async (
+  const describeAssets = async (
     request: FastifyRequest,
     demo: Record<string, any>,
+    state: PreparationState,
   ): Promise<DemoMapAssets> => {
-    let resolution = await resolutionFor(demo);
-    const enabled = db.flag(c, 'auto_official_maps_enabled');
+    let resolution = await resolutionFor(demo, state);
+    const enabled = state.diagnostics.enabled;
     const owned = request.user?.id === demo.owner_id || request.guest?.id === demo.owner_id;
     if (resolution.status === 'approved' || resolution.status === 'latest') {
       const requestId =
@@ -205,10 +216,7 @@ export async function demoMapAssetRoutes(
           resolution,
           acquisition: result.status,
           canAcquire: Boolean(
-            enabled &&
-            owned &&
-            canRetryMapResult(result) &&
-            (await mapWorkerAvailable(c.mapJobsDir)),
+            enabled && owned && canRetryMapResult(result) && state.diagnostics.worker.available,
           ),
           verification: 'unavailable',
           packId: resolution.status === 'approved' ? resolution.packId : null,
@@ -229,7 +237,7 @@ export async function demoMapAssetRoutes(
         return {
           resolution,
           acquisition: 'unavailable',
-          canAcquire: owned && (await mapWorkerAvailable(c.mapJobsDir)),
+          canAcquire: owned && state.diagnostics.worker.available,
           verification: 'unavailable',
           packId: resolution.status === 'approved' ? resolution.packId : null,
           assets: emptyAssets,
@@ -257,6 +265,40 @@ export async function demoMapAssetRoutes(
       packId: null,
       assets: emptyAssets,
     };
+  };
+  const describe = async (
+    request: FastifyRequest,
+    demo: Record<string, any>,
+  ): Promise<DemoMapAssets> => {
+    const enabled = db.flag(c, 'auto_official_maps_enabled');
+    const state = await readMapPreparationState(c, enabled);
+    const assets = await describeAssets(request, demo, state);
+    if (
+      assets.acquisition === 'ready' ||
+      assets.acquisition === 'queued' ||
+      assets.acquisition === 'processing' ||
+      assets.verification === 'version-unverified'
+    )
+      return assets;
+    // Existing terminal source failures retain their evidence and recovery rules.
+    if (assets.acquisition === 'failed' && assets.code !== 'source_unavailable') return assets;
+    let readinessReason: MapReadinessReason | undefined;
+    if (recordedIdentity(demo).invalid || !officialMapName.safeParse(demo.map).success)
+      readinessReason = 'identity_invalid';
+    else if (assets.resolution.status === 'addon' || assets.resolution.status === 'ambiguous')
+      return assets;
+    else if (!enabled) readinessReason = 'automatic_disabled';
+    else if (!state.diagnostics.worker.available) readinessReason = 'worker_unavailable';
+    else if (assets.resolution.status !== 'approved' && assets.resolution.status !== 'latest') {
+      readinessReason =
+        state.diagnostics.inventory.status === 'unavailable'
+          ? 'inventory_unavailable'
+          : state.diagnostics.inventory.status === 'stale'
+            ? 'inventory_stale'
+            : 'official_map_unknown';
+    } else if (request.user?.id !== demo.owner_id && request.guest?.id !== demo.owner_id)
+      readinessReason = 'owner_required';
+    return readinessReason ? { ...assets, readinessReason } : assets;
   };
   app.get<{ Params: { id: string } }>('/api/demos/:id/map-assets', async (request, reply) => {
     const demo = accessDemo(db, request.params.id, request.user, false, request.guest);

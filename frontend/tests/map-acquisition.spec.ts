@@ -518,3 +518,66 @@ test('a different eligible source returned by enqueue is observed before one new
   expect(gets).toBe(3);
   expect(legacy()).toBe(0);
 });
+
+test('worker bootstrap recovers from missing and stale official inventory then requests the disclosed latest source once', async ({
+  page,
+}) => {
+  const legacy = await install(page);
+  await page.clock.install();
+  let stage: 'worker_unavailable' | 'inventory_unavailable' | 'inventory_stale' | 'fresh' =
+      'worker_unavailable',
+    posts = 0,
+    accepted = false;
+  await page.route('**/api/demos/acquisition-a/map-assets', (route) => {
+    if (route.request().method() === 'POST') {
+      posts++;
+      expect(stage).toBe('fresh');
+      expect(route.request().postDataJSON()).toEqual({});
+      expect(route.request().headers()['x-csrf-token']).toBe('original-guest-capability');
+      accepted = true;
+      return route.fulfill({
+        status: 202,
+        json: { ...latestEligible, canAcquire: false, acquisition: 'queued' },
+      });
+    }
+    return route.fulfill({
+      json:
+        stage === 'fresh'
+          ? accepted
+            ? latestReady
+            : latestEligible
+          : {
+              ...eligible,
+              resolution: { status: 'unmapped' },
+              packId: null,
+              canAcquire: false,
+              readinessReason: stage,
+            },
+    });
+  });
+  await page.goto('/watch/acquisition-a');
+  await expect(page.locator('.map-unavailable p')).toContainText(
+    'assets service is not responding',
+  );
+  expect(posts).toBe(0);
+  stage = 'inventory_unavailable';
+  await page.clock.runFor(2001);
+  await expect(page.locator('.map-unavailable p')).toContainText('valid official map list');
+  expect(posts).toBe(0);
+  stage = 'inventory_stale';
+  await page.clock.runFor(5001);
+  await expect(page.locator('.map-unavailable p')).toContainText('refresh its official map list');
+  expect(posts).toBe(0);
+  stage = 'fresh';
+  await page.clock.runFor(15001);
+  await expect.poll(() => posts).toBe(1);
+  await page.clock.runFor(2001);
+  await expect(page.locator('.viewer-map-status')).toHaveText('3D map');
+  await expect(page.locator('.viewer-map-verification')).toContainText('Latest official map');
+  await expect(page.locator('.viewer-map-verification')).toHaveAttribute(
+    'title',
+    /layout may differ/,
+  );
+  expect(posts).toBe(1);
+  expect(legacy()).toBe(0);
+});
