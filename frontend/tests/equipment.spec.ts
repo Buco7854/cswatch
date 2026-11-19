@@ -48,6 +48,7 @@ test('many glyphs share one equipment manifest and ignore external artwork URLs'
     manifests++;
     return route.fulfill({
       json: {
+        complete: true,
         icons: {
           m4a1: '/api/assets/equipment/m4a1.png',
           ak47: 'https://untrusted.invalid/ak47.png',
@@ -64,15 +65,19 @@ test('many glyphs share one equipment manifest and ignore external artwork URLs'
     hud.locator('.broadcast-bank[data-team="2"] .equipment-game-icon.is-weapon'),
   ).toHaveCount(0);
   await expect(
-    hud.locator('.broadcast-bank[data-team="2"] svg.equipment-glyph.is-weapon'),
+    hud.locator('.broadcast-bank[data-team="2"] .equipment-text-fallback.is-weapon'),
   ).toHaveCount(5);
+  await expect(
+    hud.locator('.broadcast-bank[data-team="2"] .equipment-text-fallback.is-weapon'),
+  ).toHaveText(Array(5).fill('AK-47'));
   await page.locator('.timeline-slider').fill('620');
   const feed = page.locator('.killfeed-entry');
   await expect(feed).toBeVisible();
   await expect(feed.getByRole('img', { name: 'AK-47 · Headshot', exact: true })).toBeVisible();
-  await expect(feed.locator('svg.equipment-glyph.is-weapon')).toHaveCount(1);
+  await expect(feed.locator('.equipment-text-fallback.is-weapon')).toHaveCount(1);
+  await expect(feed.locator('.equipment-text-fallback.is-weapon')).toHaveText('AK-47');
   await expect(feed.locator('[data-event-type="headshot"]')).toHaveCount(1);
-  await expect(feed).toHaveText('marlowatlas');
+  await expect(feed).toHaveText('marlowAK-47atlas');
   expect(manifests).toBe(1);
   expect(externalRequests).toBe(0);
 });

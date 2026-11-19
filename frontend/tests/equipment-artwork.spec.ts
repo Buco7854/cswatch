@@ -15,9 +15,18 @@ test('equipment artwork admits only exact registry identities and local paths', 
     { icons: { ak47: '/api/assets/equipment/awp.png' } },
     { icons: { invented: '/api/assets/equipment/invented.png' } },
     JSON.parse('{"icons":{"__proto__":"/api/assets/equipment/ak47.png"}}'),
-    { icons: [] },
-    { icons: {}, complete: 'true' },
   ])
+    expect(validateEquipmentIcons(value)).toEqual({});
+  expect(
+    validateEquipmentIcons({
+      icons: {
+        m4a1: '/api/assets/equipment/m4a1.png',
+        ak47: 'https://untrusted.invalid/ak47.png',
+        invented: '/api/assets/equipment/invented.png',
+      },
+    }),
+  ).toEqual({ m4a1: '/api/assets/equipment/m4a1.png' });
+  for (const value of [null, {}, { icons: [] }, { icons: {}, complete: 'true' }])
     expect(() => validateEquipmentIcons(value)).toThrow();
 });
 

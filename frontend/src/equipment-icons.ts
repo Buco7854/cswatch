@@ -24,8 +24,7 @@ export function validateEquipmentIcons(result: unknown): Icons {
     throw new Error('Invalid equipment artwork');
   const next: Record<string, string> = {};
   for (const [key, url] of Object.entries(values)) {
-    if (!Object.hasOwn(catalog.items, key) || url !== `/api/assets/equipment/${key}.png`)
-      throw new Error('Invalid equipment artwork URL');
+    if (!Object.hasOwn(catalog.items, key) || url !== `/api/assets/equipment/${key}.png`) continue;
     next[key] = url;
   }
   return Object.freeze(next);
