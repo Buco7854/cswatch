@@ -45,7 +45,7 @@ async function fixture(root) {
     .setAttribute('TEXCOORD_0', uv)
     .setMaterial(material);
   scene.addChild(
-    document.createNode('native mesh').setMesh(document.createMesh().addPrimitive(primitive)),
+    document.createNode('original_weapon').setMesh(document.createMesh().addPrimitive(primitive)),
   );
   const input = join(root, 'input.glb');
   await new NodeIO().write(input, document);
@@ -61,6 +61,41 @@ test('fixed registry selects real source identities and rejects arbitrary names/
   assert.deepEqual(selectedEquipmentModels('ak47,smokegrenade'), ['ak47', 'smokegrenade']);
   for (const value of ['../private', 'https://example.test/a', 'ak47,ak47', '', undefined])
     assert.throws(() => selectedEquipmentModels(value));
+});
+test('equipment publication retains an authored muzzle node and its independent native source evidence', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'cswatch-equipment-muzzle-'));
+  try {
+    const input = await fixture(root),
+      nativeMuzzle = {
+        bone: 'original_weapon',
+        position: [20, 2, 4],
+        rotation: [0, 0, 0, 1],
+      },
+      result = await prepareEquipmentModel({
+        input,
+        output: join(root, 'output'),
+        id: 'ak47',
+        assetVersion: 'original-muzzle-test',
+        nativeMuzzle,
+      });
+    assert.deepEqual(result.provenance.nativeMuzzle, {
+      ...nativeMuzzle,
+      units: 'source-inches',
+      node: 'cswatch_native_muzzle',
+    });
+    const glb = await readFile(result.path),
+      json = JSON.parse(glb.toString('utf8', 20, 20 + glb.readUInt32LE(12))),
+      markerIndex = json.nodes.findIndex((node) => node.name === 'cswatch_native_muzzle'),
+      marker = json.nodes[markerIndex],
+      bone = json.nodes.find((node) => node.name === 'original_weapon');
+    assert.ok(markerIndex >= 0);
+    assert.ok(bone.children.includes(markerIndex));
+    assert.deepEqual(marker.translation, [0.508, 0.0508, 0.1016]);
+    assert.equal(marker.extras.cswatchNativeAttachment, 'muzzle_flash');
+    assert.equal(result.manifest.attachments.approximate, true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 test('equipment packing applies only exact axis correction, bounds textures, retains native dimensions and refuses overwrite', async () => {
   const root = await mkdtemp(join(tmpdir(), 'cswatch-equipment-model-'));

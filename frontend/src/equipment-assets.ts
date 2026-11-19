@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { EquipmentModelCatalog, EquipmentModel } from '../../shared/equipment-models';
-import equipment from '../../shared/equipment-models.json';
+import equipment from '../../shared/equipment-models.json' with { type: 'json' };
 import type { AssetStatus } from './map-assets';
 import { observeAssets, readAssetJSON } from './asset-discovery';
 

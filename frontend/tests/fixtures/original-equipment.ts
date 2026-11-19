@@ -3,7 +3,11 @@ import type { EquipmentModelCatalog } from '../../../shared/equipment-models';
 import { originalMapReplay } from './original-map';
 
 /** An original bright cuboid prop for renderer QA, not game artwork or a weapon replica. */
-export function originalEquipmentGLB(color: [number, number, number] = [1, 0, 1]) {
+export function originalEquipmentGLB(
+  color: [number, number, number] = [1, 0, 1],
+  muzzle = false,
+  transform?: { position: [number, number, number]; scale: [number, number, number] },
+) {
   const faces = [
     [
       [1, 0, 0],
@@ -62,7 +66,23 @@ export function originalEquipmentGLB(color: [number, number, number] = [1, 0, 1]
     asset: { version: '2.0', generator: 'Original cswatch equipment QA, not CS2' },
     scene: 0,
     scenes: [{ nodes: [0] }],
-    nodes: [{ name: 'qa-original-equipment-body', mesh: 0 }],
+    nodes: [
+      {
+        name: 'qa-original-equipment-body',
+        mesh: 0,
+        ...(muzzle ? { children: [1] } : {}),
+        ...(transform ? { translation: transform.position, scale: transform.scale } : {}),
+      },
+      ...(muzzle
+        ? [
+            {
+              name: 'cswatch_native_muzzle',
+              translation: [0.31, 0.02, 0],
+              extras: { cswatchNativeAttachment: 'muzzle_flash' },
+            },
+          ]
+        : []),
+    ],
     meshes: [{ primitives: [{ attributes: { POSITION: 0, NORMAL: 1 }, material: 0 }] }],
     materials: [
       {

@@ -71,6 +71,9 @@ import { installSourceBlackMaterials, type SourceFogResources } from '../source-
 type SourceFogReference = { current: SourceFogResources };
 import type { MapEnvironment } from '../../../shared/map-assets';
 import { daylightFallback, mapEnvironmentKey, useMapEnvironment } from '../map-environment';
+import EquipmentFire from './EquipmentFire';
+import PovEquipmentPass from './PovEquipmentPass';
+import { useMapShadowCache } from '../useMapShadowCache';
 export type MapRenderState = {
   map: string;
   model: AssetStatus;
@@ -209,7 +212,7 @@ function Model({
   const gltf = useMapGLTF(url);
   useLayoutEffect(() => scope.acquire(), [scope]);
   const prepared = useMemo(() => {
-    const result = prepareMapModel(gltf.scene);
+    const result = prepareMapModel(gltf.scene, gltf.animations);
     assertMapBaseColorTextures({ scene: result.main, parser: gltf.parser });
     let landscape: AssetStatus = result.sky ? 'ready' : 'missing';
     if (result.sky) {
@@ -369,19 +372,6 @@ function Agent({
   if (!position.alive) return null;
   return (
     <group ref={ref}>
-      {xray && (
-        <mesh position={[0, 0.95, 0]} renderOrder={10}>
-          <capsuleGeometry args={[0.26, 1.1, 4, 8]} />
-          <meshBasicMaterial
-            color={color}
-            transparent
-            opacity={0.27}
-            depthTest
-            depthFunc={THREE.GreaterDepth}
-            depthWrite={false}
-          />
-        </mesh>
-      )}
       {model ? (
         <RenderAgent
           url={model}
@@ -390,11 +380,12 @@ function Agent({
           rate={rate}
           speed={roundBoundary ? 0 : motion.speed}
           duck={pose.duck ?? 0}
+          xrayColor={xray ? color : undefined}
           registerWeaponAnchor={registerWeaponAnchor}
-          fallback={<GenericAgentBody team={position.team} id={position.id} />}
+          fallback={<GenericAgentBody team={position.team} id={position.id} xray={xray} />}
         />
       ) : (
-        <GenericAgentBody team={position.team} id={position.id} />
+        <GenericAgentBody team={position.team} id={position.id} xray={xray} />
       )}
       <HeldEquipment position={pose} anchor={weaponAnchor} />
       {showMarkers && labels && name && !nearCamera && (
@@ -442,6 +433,7 @@ function Agent({
 }
 function World({
   data,
+  low,
   tick,
   mode,
   selected,
@@ -461,6 +453,7 @@ function World({
   onAudioListener,
 }: {
   data: Playback;
+  low: boolean;
   tick: number;
   mode: string;
   selected: string;
@@ -485,6 +478,7 @@ function World({
   onAudioListener?: (pose: ListenerPose | null) => void;
 }) {
   const { camera, gl, invalidate } = useThree();
+  useMapShadowCache(!data.sample && !low);
   const fogResources = useRef<SourceFogResources>({ fog: null, cube: null });
   const movement = useRef(new Set<string>());
   const fastMovement = useRef(false);
@@ -799,13 +793,15 @@ function World({
               roundBoundary={Boolean(poseTiming.roundBoundary)}
             />
           ))}
-        {!preview && mode === 'pov' && viewedPlayer && (
-          <PovEquipment
-            position={viewedPlayer}
-            next={next.players.find((player) => player.id === viewedPlayer.id)}
-            alpha={alpha}
-            timing={poseTiming}
-          />
+        {!preview && mode === 'pov' && viewedPlayer && (data.sample || modelReady) && (
+          <PovEquipmentPass hasSky={Boolean(sky)} sample={Boolean(data.sample)}>
+            <PovEquipment
+              position={viewedPlayer}
+              next={next.players.find((player) => player.id === viewedPlayer.id)}
+              alpha={alpha}
+              timing={poseTiming}
+            />
+          </PovEquipmentPass>
         )}
         {!preview && <RecordedEquipment items={items} />}
         {!preview && (
@@ -1374,37 +1370,40 @@ export default function Scene({
               shadows={!low}
               dpr={low ? 1 : [1, 1.75]}
               camera={{ position: [32, 36, 34], fov: settings.cameraFov, near: 0.05, far: 3000 }}
-              gl={{ antialias: true, powerPreference: 'high-performance' }}
+              gl={{ antialias: true, stencil: true, powerPreference: 'high-performance' }}
               fallback={<span>{t('3D rendering is unavailable.')}</span>}
             >
-              <EquipmentModels.Provider value={equipmentContext}>
-                <AgentModels.Provider value={agentContext}>
-                  <World
-                    data={data}
-                    tick={tick}
-                    mode={mode}
-                    selected={selected}
-                    model={model}
-                    modelReady={modelStatus === 'ready'}
-                    reportModel={reportModel}
-                    modelScope={modelScope}
-                    sky={
-                      modelLoad?.url === model && modelLoad.status === 'ready'
-                        ? modelLoad.sky
-                        : null
-                    }
-                    environment={environment}
-                    reportEnvironment={reportEnvironment}
-                    preview={preview}
-                    settings={settings}
-                    agents={agents}
-                    focus={focus}
-                    utilityState={utilityState}
-                    items={liveItems}
-                    onAudioListener={reportAudioListener}
-                  />
-                </AgentModels.Provider>
-              </EquipmentModels.Provider>
+              <EquipmentFire data={data} tick={tick} low={low} enabled={settings.shotEffects}>
+                <EquipmentModels.Provider value={equipmentContext}>
+                  <AgentModels.Provider value={agentContext}>
+                    <World
+                      data={data}
+                      low={low}
+                      tick={tick}
+                      mode={mode}
+                      selected={selected}
+                      model={model}
+                      modelReady={modelStatus === 'ready'}
+                      reportModel={reportModel}
+                      modelScope={modelScope}
+                      sky={
+                        modelLoad?.url === model && modelLoad.status === 'ready'
+                          ? modelLoad.sky
+                          : null
+                      }
+                      environment={environment}
+                      reportEnvironment={reportEnvironment}
+                      preview={preview}
+                      settings={settings}
+                      agents={agents}
+                      focus={focus}
+                      utilityState={utilityState}
+                      items={liveItems}
+                      onAudioListener={reportAudioListener}
+                    />
+                  </AgentModels.Provider>
+                </EquipmentModels.Provider>
+              </EquipmentFire>
             </Canvas>
           </SceneBoundary>
           {!data.sample && modelStatus === 'pending' && (

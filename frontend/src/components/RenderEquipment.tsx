@@ -31,6 +31,7 @@ import { equipmentIconKey } from '../equipment-icons';
 import { useEquipmentGLTF, useEquipmentScope } from '../equipment-loader';
 import type { ModelScope } from '../model-cache';
 import { assertMapBaseColorTextures } from '../map-model';
+import { EquipmentMuzzle, useEquipmentFire } from './EquipmentFire';
 
 export type EquipmentInstanceStatus = 'pending' | 'ready' | 'error';
 type EquipmentContextValue = {
@@ -60,10 +61,12 @@ function LoadedEquipment({
   asset,
   scope,
   ready,
+  presentation,
 }: {
   asset: EquipmentModel;
   scope: ModelScope;
   ready: () => void;
+  presentation?: (model: Object3D) => ReactNode;
 }) {
   const gltf = useEquipmentGLTF(asset.model);
   const { invalidate } = useThree();
@@ -80,16 +83,22 @@ function LoadedEquipment({
       invalidate();
     }
   }, [scope, ready, invalidate]);
-  return <primitive object={model} dispose={null} />;
+  return (
+    <primitive object={model} dispose={null}>
+      {presentation?.(model)}
+    </primitive>
+  );
 }
 function AvailableEquipment({
   asset,
   instance,
   fallback,
+  presentation,
 }: {
   asset: EquipmentModel;
   instance: string;
   fallback: ReactNode;
+  presentation?: (model: Object3D) => ReactNode;
 }) {
   const context = useContext(EquipmentModels)!;
   const scope = useEquipmentScope(asset.model, context.identity);
@@ -115,7 +124,12 @@ function AvailableEquipment({
       fallback={fallback}
     >
       <Suspense fallback={<PendingEquipment instance={instance}>{fallback}</PendingEquipment>}>
-        <LoadedEquipment asset={asset} scope={scope} ready={callbacks.ready} />
+        <LoadedEquipment
+          asset={asset}
+          scope={scope}
+          ready={callbacks.ready}
+          presentation={presentation}
+        />
       </Suspense>
     </EquipmentBoundary>
   );
@@ -129,16 +143,23 @@ export function EquipmentModelInstance({
   equipment,
   instance,
   fallback = null,
+  presentation,
 }: {
   equipment: string;
   instance: string;
   fallback?: ReactNode;
+  presentation?: (model: Object3D) => ReactNode;
 }) {
   const context = useContext(EquipmentModels),
     key = equipmentIconKey(equipment);
   const asset = key && context?.catalog.items[key];
   return asset ? (
-    <AvailableEquipment asset={asset} instance={instance} fallback={fallback} />
+    <AvailableEquipment
+      asset={asset}
+      instance={instance}
+      fallback={fallback}
+      presentation={presentation}
+    />
   ) : (
     fallback
   );
@@ -160,6 +181,7 @@ export function HeldEquipment({
   const context = useContext(EquipmentModels),
     key = equipmentIconKey(position.weapon);
   const asset = key && context?.catalog.items[key];
+  const fire = useEquipmentFire(position);
   const transform = useRef<Group>(null),
     matrix = useMemo(() => new Matrix4(), []);
   useFrame(() => {
@@ -181,16 +203,25 @@ export function HeldEquipment({
     >
       <group rotation={[0, 0, -MathUtils.degToRad(position.pitch)]}>
         <group rotation={asset.attachments.hold.rotation} scale={asset.attachments.hold.scale}>
-          <EquipmentModelInstance
-            equipment={position.weapon}
-            instance={'held:' + position.id + ':' + key}
-          />
+          <group
+            position={[-(fire?.kick || 0) * 0.025, 0, 0]}
+            rotation={[0, 0, (fire?.kick || 0) * 0.035]}
+          >
+            <EquipmentModelInstance
+              equipment={position.weapon}
+              instance={'held:' + position.id + ':' + key}
+              presentation={(model) => (
+                <EquipmentMuzzle asset={asset} position={position} model={model} />
+              )}
+            />
+          </group>
         </group>
       </group>
     </group>
   );
 }
-/** A static model uses an explicit approximate eye-relative preset, without invented arm/recoil animation. */
+/** Static eye-relative placement with a small analytical shot kick. Native
+ * first-person arm/action animation is a separate asset capability. */
 export function PovEquipment({
   position,
   next,
@@ -206,6 +237,7 @@ export function PovEquipment({
   const context = useContext(EquipmentModels),
     key = equipmentIconKey(position.weapon);
   const asset = key && context?.catalog.items[key];
+  const fire = useEquipmentFire(position);
   const { size } = useThree();
   const preset = useMemo(
     () => (asset ? fitPovAttachment(asset.attachments.pov, size.width / size.height) : null),
@@ -224,10 +256,18 @@ export function PovEquipment({
   return (
     <primitive object={root} dispose={null} name={'pov-equipment:' + position.id + ':' + key}>
       <Preset value={preset}>
-        <EquipmentModelInstance
-          equipment={position.weapon}
-          instance={'pov:' + position.id + ':' + key}
-        />
+        <group
+          position={[-(fire?.kick || 0) * 0.025, 0, 0]}
+          rotation={[0, 0, (fire?.kick || 0) * 0.035]}
+        >
+          <EquipmentModelInstance
+            equipment={position.weapon}
+            instance={'pov:' + position.id + ':' + key}
+            presentation={(model) => (
+              <EquipmentMuzzle asset={asset} position={position} model={model} pov />
+            )}
+          />
+        </group>
       </Preset>
     </primitive>
   );

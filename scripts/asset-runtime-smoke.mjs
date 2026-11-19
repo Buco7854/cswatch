@@ -220,7 +220,7 @@ document
   .createScene()
   .addChild(
     document
-      .createNode('Original CI triangle')
+      .createNode('original_ci_triangle')
       .setMesh(
         document
           .createMesh()
@@ -258,6 +258,12 @@ try {
       'ak47',
       '--asset-version',
       'original-ci-fixture',
+      '--native-muzzle',
+      JSON.stringify({
+        bone: 'original_ci_triangle',
+        position: [20, 2, 4],
+        rotation: [0, 0, 0, 1],
+      }),
       '--confined',
     ],
     {
@@ -269,6 +275,20 @@ try {
   );
   assert.equal(packed.status, 0, 'Confined original model packing failed in the assets image.');
   assert.equal(JSON.parse(packed.stdout).manifest.id, 'ak47');
+  const publishedModel = await readFile(join(output, 'ak47/model.glb')),
+    publishedJson = JSON.parse(
+      publishedModel.toString('utf8', 20, 20 + publishedModel.readUInt32LE(12)),
+    ),
+    markerIndex = publishedJson.nodes.findIndex((node) => node.name === 'cswatch_native_muzzle'),
+    marker = publishedJson.nodes[markerIndex],
+    parent = publishedJson.nodes.find((node) => node.name === 'original_ci_triangle');
+  assert.ok(markerIndex >= 0, 'Confined publication must retain the authored attachment.');
+  assert.ok(parent.children.includes(markerIndex));
+  assert.deepEqual(marker.translation, [0.508, 0.0508, 0.1016]);
+  assert.equal(marker.extras.cswatchNativeAttachment, 'muzzle_flash');
+  const publishedProof = JSON.parse(await readFile(join(output, 'ak47/provenance.json'), 'utf8'));
+  assert.equal(publishedProof.nativeMuzzle.node, 'cswatch_native_muzzle');
+  assert.equal(publishedProof.nativeMuzzle.units, 'source-inches');
 } finally {
   await rm(packingRoot, { recursive: true, force: true });
 }

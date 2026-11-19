@@ -58,6 +58,7 @@ export type ViewerSettings = {
   xray: boolean;
   playerLabels: boolean;
   damageFeedback: boolean;
+  shotEffects: boolean;
   autoFollowDeath: boolean;
   crosshair: boolean;
   crosshairStyle: CrosshairStyle;
@@ -103,6 +104,7 @@ export const defaultSettings: ViewerSettings = {
   xray: true,
   playerLabels: true,
   damageFeedback: true,
+  shotEffects: true,
   autoFollowDeath: true,
   crosshair: true,
   crosshairStyle: defaultCrosshairStyle,

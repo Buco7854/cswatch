@@ -46,7 +46,8 @@
   inset: 0;
   z-index: 2;
   pointer-events: none;
-  box-shadow: inset 0 0 clamp(45px, 9vw, 130px) 8px #b51e19; /* taste-skill-ignore: transient recorded-damage vignette, not a resting surface shadow. */
+  background: rgb(148 13 8 / 12%);
+  box-shadow: inset 0 0 clamp(65px, 12vw, 180px) 16px #bd1c13; /* taste-skill-ignore: transient recorded-damage vignette, not a resting surface shadow. */
 }
 .spectator-damage-direction {
   position: absolute;

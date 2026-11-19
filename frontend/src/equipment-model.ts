@@ -1,4 +1,4 @@
-import { Light, Mesh, SkinnedMesh, type Object3D } from 'three';
+import { Light, Mesh, SkinnedMesh, type Object3D, type Matrix4 } from 'three';
 import type { EquipmentModelTransform } from '../../shared/equipment-models';
 import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 
@@ -22,6 +22,27 @@ export function disposeEquipmentInstance(scene: Object3D) {
     if (object instanceof SkinnedMesh) skeletons.add(object.skeleton);
   });
   for (const skeleton of skeletons) skeleton.dispose();
+}
+
+/** Only the offline preparer's exact native attachment marker is accepted.
+ * Keep the effect in the instance's own frame, including any authored bones. */
+export function nativeMuzzleFrame(target: Matrix4, model: Object3D, marker: Object3D | undefined) {
+  if (
+    !marker ||
+    marker.name !== 'cswatch_native_muzzle' ||
+    marker.userData.cswatchNativeAttachment !== 'muzzle_flash'
+  )
+    return false;
+  let ancestor: Object3D | null = marker,
+    depth = 0;
+  while (ancestor && ancestor !== model && depth++ < 256) ancestor = ancestor.parent;
+  if (ancestor !== model) return false;
+  model.updateWorldMatrix(true, false);
+  marker.updateWorldMatrix(true, false);
+  const determinant = model.matrixWorld.determinant();
+  if (!Number.isFinite(determinant) || Math.abs(determinant) < 1e-12) return false;
+  target.copy(model.matrixWorld).invert().multiply(marker.matrixWorld);
+  return target.elements.every(Number.isFinite);
 }
 
 /** Static spectator placement adapts to portrait horizontal FOV without scaling game geometry. */

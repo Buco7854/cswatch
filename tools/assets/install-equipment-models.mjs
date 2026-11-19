@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { runAssetProcess } from './install-steam-assets.mjs';
 import { equipmentModelRegistry, selectedEquipmentModels } from './equipment-model-registry.mjs';
 import { inspectEquipmentSourceModel } from './equipment-source-model.mjs';
+import { inspectNativeMuzzle } from './native-weapon-muzzle.mjs';
 import { scanEquipmentDependencies } from './equipment-dependencies.mjs';
 import { agentAnimationRegistry, agentAnimationRoles } from './agent-animation-registry.mjs';
 import { readVpkDirectory } from './source2-dependencies.mjs';
@@ -270,8 +271,17 @@ export async function installEquipmentModels(options, adapters = {}) {
       await writeFile(path, bytes, { flag: 'wx', mode: 0o600 });
       const data = await execute(tools.s2v, ['-i', path, '--block', 'DATA'], `model-${i}-data`),
         control = await execute(tools.s2v, ['-i', path, '--block', 'CTRL'], `model-${i}-ctrl`);
+      const firearm = ids.some(
+        (id) =>
+          equipmentModelRegistry[id].resource === resource &&
+          equipmentModelRegistry[id].kind === 'weapon',
+      );
+      const mesh = firearm
+        ? await execute(tools.s2v, ['-i', path, '--block', 'MDAT'], `model-${i}-mesh`)
+        : undefined;
       modelSelections.set(resource, {
         ...inspectEquipmentSourceModel({ data: data.stdout, control: control.stdout }),
+        nativeMuzzle: mesh ? inspectNativeMuzzle(mesh.stdout) : undefined,
         sourceSha256: createHash('sha256').update(bytes).digest('hex'),
         sourceBytes: bytes.length,
       });
@@ -367,6 +377,9 @@ export async function installEquipmentModels(options, adapters = {}) {
           selected.meshes.join(','),
           '--manifest',
           options.manifest,
+          ...(selected.nativeMuzzle
+            ? ['--native-muzzle', JSON.stringify(selected.nativeMuzzle)]
+            : []),
           ...(options.networkDeny ? ['--confined'] : []),
         ],
         `equipment-${i}-pack`,

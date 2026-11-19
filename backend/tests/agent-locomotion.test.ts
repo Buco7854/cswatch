@@ -117,7 +117,8 @@ test('actual Three native blending samples bone deformation deterministically ac
       },
     },
   }));
-  const control = agentAnimation(new AnimationMixer(root), clips, defs);
+  const mixer = new AnimationMixer(root),
+    control = agentAnimation(mixer, clips, defs);
   assert.equal(control.native, true);
   control.sample(0.25, 4, 0.5);
   // standing walk/run contribute.25each, crouchwalk.5: (.25*2+.25*3+.5*5)*.5
@@ -132,6 +133,13 @@ test('actual Three native blending samples bone deformation deterministically ac
   assert.ok(Math.abs(otherbone.position.y - 0.5) < 1e-8);
   assert.ok(Math.abs(bone.position.y - 1.875) < 1e-8);
   assert.deepEqual(root.position.toArray(), [0, 0, 0]);
+  control.stop();
+  mixer.uncacheRoot(root);
+  control.sample(0.25, 4, 0.5);
+  assert.ok(
+    Math.abs(bone.position.y - 1.875) < 1e-8,
+    'StrictMode cleanup and re-setup must restore native bone sampling',
+  );
   control.stop();
   other.stop();
 });
@@ -181,4 +189,31 @@ test('original embedded glTF cycle metadata and actual skinned bone tracks survi
   control.stop();
   mixer.uncacheRoot(model.instance);
   disposeEquipmentInstance(model.root);
+});
+
+test('generic operator animation resumes its actual pose after effect cleanup and mixer cache retirement', async () => {
+  const { AnimationClip, AnimationMixer, Bone, Group, VectorKeyframeTrack } =
+    await import('../../frontend/node_modules/three/build/three.module.js');
+  const { agentAnimation } = await import('../../frontend/src/agent-animation.js');
+  const root = new Group(),
+    bone = new Bone();
+  bone.name = 'original-generic-bone';
+  root.add(bone);
+  const clip = new AnimationClip('idle', 1, [
+    new VectorKeyframeTrack(
+      'original-generic-bone.position',
+      [0, 0.5, 1],
+      [0, 0, 0, 0, 1, 0, 0, 0, 0],
+    ),
+  ]);
+  const mixer = new AnimationMixer(root),
+    control = agentAnimation(mixer, [clip], undefined);
+  assert.equal(control.native, false);
+  control.sample(0.25, 0, 0);
+  assert.equal(bone.position.y, 0.5);
+  control.stop();
+  mixer.uncacheRoot(root);
+  control.sample(0.25, 0, 0);
+  assert.equal(bone.position.y, 0.5);
+  control.stop();
 });
