@@ -1,65 +1,29 @@
-PROVIDER BRAND ARTWORK
+PROVIDER ICONS
 Reviewed 2026-11-19
 
-The frontend bundles the following files under hashed same-origin /assets URLs.
+The Steam and FACEIT glyph paths in components/ProviderBrand.tsx come from
+Simple Icons under CC0-1.0. Only two fixed paths are bundled inline with the app.
+No third-party image, icon script or provider banner is loaded at runtime.
 
-These provider marks are third-party artwork, not cswatch's own identity.
-They are not offered under the repository's AGPL-3.0 software license or under
-any bundled dependency's MIT license. Their owners retain all trademark and
-artwork rights. Published provider guidelines govern their use. No endorsement,
-partnership, general trademark license or unrestricted redistribution right is
-claimed. This notice is not a replacement for those guidelines.
+Source and license:
+https://github.com/simple-icons/simple-icons
+https://github.com/simple-icons/simple-icons/blob/develop/LICENSE.md
+https://creativecommons.org/publicdomain/zero/1.0/
 
-STEAM OPENID
+Steam glyph:
+https://github.com/simple-icons/simple-icons/blob/develop/icons/steam.svg
+Git blob: affefa51848857876d55161e998ec1dc4cc79501
 
-Source file: frontend/src/assets/provider-brands/steam-openid.png
-Original: sits_01.png, 180 x 35 pixels. Copied unchanged, including its disclaimer.
-SHA-256: bbd5d8ac0c737fccca946009a5eb7cb33605fca2bb5c259807a117f9f2cb193f
-Source:
-https://community.akamai.steamstatic.com/public/images/signinthroughsteam/sits_01.png
+FACEIT glyph:
+https://github.com/simple-icons/simple-icons/blob/develop/icons/faceit.svg
+Git blob: cd64e0b3d655972720a0abe9a6f2898cdf6ebc03
 
-Use: only within actual Steam OpenID sign-in/account-linking links. The accessible
-link name is localized; the official English artwork is not translated, redrawn,
-cropped, recoloured or distorted. Steam's developer documentation specifically
-provides this button for OpenID implementations. Section 3 of the Steam Web API
-Terms of Use separately describes Valve Brand & Links in documented API/data use.
-We do not substitute a general Steam logo or claim that cswatch runs on Steam.
-https://steamcommunity.com/dev
-https://steamcommunity.com/dev/apiterms
-https://partner.steamgames.com/doc/marketing/branding
+CC0 covers the contributed icon paths, not the providers' trademark rights.
+Provider names and marks identify the corresponding authentication/data service.
+They are not offered under the repository's AGPL-3.0 software license, and no
+endorsement or partnership is represented. FACEIT is a data connection, not a
+sign-in provider. The surrounding application code retains its software license.
 
-Copyright attribution required by the published Steam branding page:
 ©2026 Valve Corporation. Steam and the Steam logo are trademarks and/or registered
 trademarks of Valve Corporation in the U.S. and/or other countries.
-
-FACEIT
-
-Files are copied unchanged from FACEIT's official Web Logos Package, as linked
-by FACEIT PR's Brand Guidelines & Presskit under "For Web Usage". Only the
-prescribed icon variants are used, to identify the existing FACEIT data connection.
-No FACEIT sign-in method, partnership or endorsement is represented. Included
-backgrounds, orange detail and aspect ratio are preserved without filters or crops.
-
-Source file: frontend/src/assets/provider-brands/faceit-on-dark.png
-Original ZIP entry: For_Web_RGB/PNG/FACEIT_Icon_on_dark.png, 833 x 833 pixels
-SHA-256: eeedf9d8bd01a1eb450f33bf5c8d307ff7e8a83b05af64271d9938571aaf9909
-
-Source file: frontend/src/assets/provider-brands/faceit-on-light.png
-Original ZIP entry: For_Web_RGB/PNG/FACEIT_Icon_on_White.png, 833 x 833 pixels
-SHA-256: c7fc176a806a904a0d079ee0c113a9cf2b1d297b7a3f64798276c5a7dcb99175
-
-Official publication:
-https://blog.faceit.com/brand-guidelines-presskit-5c317db077ea
-Official package linked by that publication:
-https://app.frontify.com/api/attachment/download/vg4s1A4l9C-UyY-g0gAVaSM5f4tBeQe2ru7_BQurrdG5G6i15vL6DkIarpmhDJ0-m8X07L9u-RnGbpcPHI2v5g
-Package SHA-256:
-fb62f4174263911de25de82aa77a847a4068bba34c4159af56e59bd6a1607913
-
 FACEIT and its logo remain the property of their respective rights holders.
-The official presskit's web-use context and variant guidance are the basis for
-this limited provider-identification display. The package does not provide an
-open-source license. No additional permission from FACEIT's developer terms is
-claimed: the terms link in its developer documentation was behind a verification
-challenge and could not be reviewed on this date.
-https://docs.faceit.com/getting-started/intro/start-here/
-https://developers.faceit.com/terms

@@ -160,7 +160,7 @@
   background: var(--raised);
   color: var(--text);
   justify-content: center;
-  min-height: 55px;
+  min-height: 46px;
 }
 [data-theme='light'] .auth-page .auth-steam {
   background: var(--surface);
