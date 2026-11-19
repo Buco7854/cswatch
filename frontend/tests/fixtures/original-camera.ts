@@ -1,6 +1,11 @@
 import type { Page } from '@playwright/test';
 
-type CameraView = { position: number[]; matrix: number[] };
+type CameraView = {
+  position: number[];
+  matrix: number[];
+  projection: number[];
+  drawingBuffer: number[];
+};
 
 /** Observe the actual rendered camera through the original QA floor's draw,
  * without depending on React/Three private instance fields or test app hooks. */
@@ -9,7 +14,13 @@ export async function installOriginalCameraProbe(page: Page) {
     const locations = new WeakMap<WebGLUniformLocation, string>();
     const programs = new WeakMap<WebGL2RenderingContext, WebGLProgram | null>();
     const matrices = new WeakMap<WebGLProgram, number[]>();
-    const capture = { position: [] as number[], matrix: [] as number[] };
+    const projections = new WeakMap<WebGLProgram, number[]>();
+    const capture = {
+      position: [] as number[],
+      matrix: [] as number[],
+      projection: [] as number[],
+      drawingBuffer: [] as number[],
+    };
     (window as unknown as { qaOriginalCamera: typeof capture }).qaOriginalCamera = capture;
     const location = WebGL2RenderingContext.prototype.getUniformLocation;
     const matrix = WebGL2RenderingContext.prototype.uniformMatrix4fv;
@@ -28,6 +39,8 @@ export async function installOriginalCameraProbe(page: Page) {
       const program = programs.get(this);
       if (program && at && locations.get(at) === 'modelViewMatrix')
         matrices.set(program, Array.from(values));
+      if (program && at && locations.get(at) === 'projectionMatrix')
+        projections.set(program, Array.from(values));
       return matrix.call(this, at, transpose, values);
     };
     WebGL2RenderingContext.prototype.drawArrays = function (mode, first, count) {
@@ -41,6 +54,8 @@ export async function installOriginalCameraProbe(page: Page) {
           z = -(m[8] * m[12] + m[9] * m[13] + m[10] * m[14]);
         capture.position = [z, y, -x];
         capture.matrix = [...m];
+        capture.projection = projections.get(program!) || [];
+        capture.drawingBuffer = [this.drawingBufferWidth, this.drawingBufferHeight];
       }
       return draw.call(this, mode, first, count);
     };
