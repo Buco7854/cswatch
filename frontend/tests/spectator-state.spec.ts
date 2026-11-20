@@ -6,6 +6,7 @@ import {
   indexSpectatorEvents,
 } from '../src/spectator-state';
 import { firstPersonView, overheadDistance } from '../src/pov-camera';
+import { playerPose } from '../src/player-pose';
 
 const ids = ['76561198000000001', '76561198000000002', '76561198000000003', '76561198000000004'];
 function recording(): Playback {
@@ -231,4 +232,24 @@ test('overhead camera fits the recorded extent across phone and desktop aspect r
     expect(halfHeight).toBeGreaterThan(39 / 2);
     expect(halfHeight * aspect).toBeGreaterThan(39 / 2);
   }
+});
+test('recorded native eye height and lateral displacement are sampled in Source space', () => {
+  const from = {
+    id: '1',
+    alive: true,
+    x: 100,
+    y: 200,
+    z: 30,
+    yaw: 0,
+    pitch: 0,
+    duck: 1,
+    eyeOffset: [64] as [number] | [number, number, number],
+  };
+  const to = { ...from, eyeOffset: [2, 4, 46] as [number, number, number] };
+  const pose = playerPose(from, to, 0.5);
+  expect(pose.eyeOffset).toEqual([1, 2, 55]);
+  expect(firstPersonView(pose).position[0]).toBeCloseTo(101 * 0.0254);
+  expect(firstPersonView(pose).position[1]).toBeCloseTo(85 * 0.0254);
+  expect(firstPersonView(pose).position[2]).toBeCloseTo(-202 * 0.0254);
+  expect(playerPose(from, { ...to, id: '2' }, 0.5)).toBe(from);
 });

@@ -21,6 +21,10 @@ import { COOKIE, digest } from '../src/security.js';
 import { equipmentModelManifestSchema, validEquipmentGlb } from '../src/equipment-model-assets.js';
 import { initializeFixture } from './fixtures/initialized.js';
 
+const firstPersonPins = JSON.parse(
+  readFileSync(new URL('../../shared/viewmodels.json', import.meta.url), 'utf8'),
+) as Record<string, { sha256: string; bytes: number }>;
+
 process.env.LOG_LEVEL = 'silent';
 const glb = (extra = {}) => {
   const value = JSON.stringify({ asset: { version: '2.0' }, name: 'Fixture', ...extra });
@@ -90,6 +94,37 @@ async function fixture() {
     },
   };
 }
+
+test('the optional first-person route keeps instance policy and rejects unpinned bytes and paths', async () => {
+  const s = await fixture();
+  try {
+    for (const [id, pin] of Object.entries(firstPersonPins)) {
+      const filename = pin.sha256 + '.glb';
+      const url = `/api/assets/viewmodels/${id}/${filename}`;
+      assert.equal(
+        (await s.app.inject({ method: 'HEAD', url, headers: { host: s.headers.host } })).statusCode,
+        401,
+      );
+      assert.equal(
+        (await s.app.inject({ method: 'HEAD', url, headers: s.headers })).statusCode,
+        404,
+      );
+      const directory = join(s.root, 'maps', 'viewmodels', id);
+      mkdirSync(directory, { recursive: true });
+      const malformed = Buffer.alloc(pin.bytes);
+      writeFileSync(join(directory, filename), malformed);
+      assert.equal((await s.app.inject({ url, headers: s.headers })).statusCode, 404);
+    }
+    for (const path of [
+      '/api/assets/viewmodels/ak47/' + firstPersonPins.awp.sha256 + '.glb',
+      '/api/assets/viewmodels/m4a4/other.glb',
+      '/map-assets/viewmodels/desktop/scene.glb',
+    ])
+      assert.equal((await s.app.inject({ url: path, headers: s.headers })).statusCode, 404);
+  } finally {
+    await s.close();
+  }
+});
 
 test('equipment manifest and self-contained GLB bounds reject unsafe transforms, unknown IDs and external resources', () => {
   assert.equal(validEquipmentGlb(glb()), true);

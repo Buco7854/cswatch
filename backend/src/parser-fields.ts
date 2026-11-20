@@ -1,6 +1,8 @@
 export type PlayerColumns = Record<string, unknown[]>;
 type ReadColumns = (fields: string[]) => unknown;
 export const playerRowLimit = 180000 * 64;
+export const recordedCameraFov = 'CCSPlayerPawn.CCSPlayer_CameraServices.m_iFOV';
+export const recordedReloadTickLimit = 256;
 
 /** The native SoA bridge includes aligned identity columns even for optional-only queries. */
 export function playerColumns(value: unknown, maxRows = playerRowLimit): PlayerColumns {

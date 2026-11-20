@@ -57,7 +57,6 @@ export function Landing() {
       <div className="landing-workspace">
         <header className="landing-copy">
           <h1 id="landing-title">{t('Open your demo.')}</h1>
-          <p>{t('Every round, another perspective.')}</p>
         </header>
         <div className="landing-import">
           {config.guest_uploads_enabled ? (
@@ -78,9 +77,6 @@ export function Landing() {
               <h2 id="upload-title" className="visually-hidden">
                 {t('Sign in to upload')}
               </h2>
-              <p>
-                {t('Guest uploads are disabled on this instance. Sign in to review your demo.')}
-              </p>
               <button className="button primary" onClick={signIn}>
                 {t('Sign in to upload')}
                 <ArrowUpRight size={17} />

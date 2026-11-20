@@ -9,6 +9,7 @@ export type ProjectileState = {
 };
 export type UtilityZone = {
   id: string;
+  entity?: number;
   kind: 'smoke' | 'fire' | 'flash' | 'he' | 'decoy';
   start: number;
   end: number;
@@ -39,6 +40,10 @@ export function buildUtilityZones(events: GameEvent[], rate: number): UtilityZon
     return [
       {
         id: `${event.type}:${event.tick}:${index}`,
+        entity:
+          typeof event.entityid === 'number' && Number.isSafeInteger(event.entityid)
+            ? event.entityid
+            : undefined,
         kind: effect.kind,
         start: event.tick,
         end: event.tick + Math.max(1, rate * effect.seconds),
@@ -48,6 +53,32 @@ export function buildUtilityZones(events: GameEvent[], rate: number): UtilityZon
       },
     ];
   });
+}
+
+export function buildUtilityZoneIndex(events: GameEvent[], rate: number) {
+  const zones = buildUtilityZones(events, rate).sort((a, b) => a.start - b.start);
+
+  // Every effect expires inside this lookback window, even if no later event arrived.
+  const longest = Math.max(1, rate * effects.smokegrenade_detonate.seconds);
+  const after = (tick: number) => {
+    let low = 0;
+    let high = zones.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (zones[middle].start <= tick) low = middle + 1;
+      else high = middle;
+    }
+    return low;
+  };
+  return (tick: number) => {
+    const active: UtilityZone[] = [];
+    const end = after(tick);
+    for (let index = after(tick - longest); index < end; index++) {
+      const zone = zones[index];
+      if (zone.end > tick) active.push(zone);
+    }
+    return active;
+  };
 }
 
 function upperPoint(points: UtilityPoint[], tick: number) {
@@ -62,7 +93,12 @@ function upperPoint(points: UtilityPoint[], tick: number) {
 }
 
 /** Interpolate only between recorded samples. Never extend flight beyond them. */
-export function projectilesAt(paths: Grenade[], tick: number, rate: number): ProjectileState[] {
+export function projectilesAt(
+  paths: Grenade[],
+  tick: number,
+  rate: number,
+  includeTrails = true,
+): ProjectileState[] {
   return paths.flatMap((path) => {
     if (!path.points.length || tick < path.points[0].tick || tick > path.points.at(-1)!.tick)
       return [];
@@ -76,8 +112,10 @@ export function projectilesAt(paths: Grenade[], tick: number, rate: number): Pro
       y: from.y + (to.y - from.y) * alpha,
       z: from.z + (to.z - from.z) * alpha,
     };
-    const trail = path.points.slice(upperPoint(path.points, tick - rate * 2), after);
-    if (!trail.length || trail.at(-1)!.tick !== tick) trail.push(point);
+    const trail = includeTrails
+      ? path.points.slice(upperPoint(path.points, tick - rate * 2), after)
+      : [];
+    if (includeTrails && trail.at(-1)?.tick !== tick) trail.push(point);
     return [{ id: path.id, kind: path.kind, point, trail }];
   });
 }

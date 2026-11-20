@@ -32,7 +32,7 @@ export function agentXray(root: Object3D) {
     result = new MeshBasicMaterial({
       color: '#ffffff',
       transparent: true,
-      opacity: 0.3 * source.opacity,
+      opacity: 0.46 * source.opacity,
       depthTest: true,
       depthFunc: GreaterDepth,
       depthWrite: false,

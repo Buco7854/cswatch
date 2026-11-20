@@ -47,13 +47,13 @@ export function indexWeaponFire(
 
 /** Stateless sampling makes pause, backward seeking, speed changes and identity
  * retirement deterministic. Input attack/reload flags never create shots. */
-export function weaponFireAt(
+export function recentWeaponShot(
   index: WeaponFireIndex,
   player: Pick<Position, 'id' | 'alive' | 'weapon'>,
   tick: number,
   tickRate: number,
-  reducedMotion = false,
-): WeaponFireState | undefined {
+  duration: number,
+) {
   if (!player.alive || !Number.isFinite(tick) || !Number.isFinite(tickRate) || tickRate <= 0)
     return;
   const shots = index.get(player.id);
@@ -68,7 +68,20 @@ export function weaponFireAt(
   const shot = shots[low - 1];
   if (!shot || shot.weapon !== canonicalEquipmentKey(player.weapon)) return;
   const age = (tick - shot.tick) / tickRate;
-  if (age < 0 || age >= 0.14) return;
+  if (age < 0 || age >= duration) return;
+  return { ...shot, age };
+}
+
+export function weaponFireAt(
+  index: WeaponFireIndex,
+  player: Pick<Position, 'id' | 'alive' | 'weapon'>,
+  tick: number,
+  tickRate: number,
+  reducedMotion = false,
+): WeaponFireState | undefined {
+  const shot = recentWeaponShot(index, player, tick, tickRate, 0.14);
+  if (!shot) return;
+  const { age } = shot;
   // Suppressed weapons retain a small, restrained flash. This does not infer
   // a suppressor switch that the recording did not expose.
   const suppressed = ['m4a1silencer', 'uspsilencer', 'mp5sd'].includes(shot.weapon);

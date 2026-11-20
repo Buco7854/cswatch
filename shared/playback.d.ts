@@ -7,6 +7,7 @@ import type { CrosshairData } from './crosshairs.js';
 import type { ItemSample, ItemStateInfo } from './item-state.js';
 import type { GameplaySoundCue, GameplaySoundInfo } from './gameplay-sounds.js';
 import type { MapIdentity } from './map-acquisition.js';
+import type { SmokeTrack } from './smoke-state.mjs';
 export type Player = { id: string; name: string; team: number };
 /** Recorded actions, independent of the player's physical keyboard layout/binds. */
 export type RecordedInput = {
@@ -61,11 +62,17 @@ export type Position = {
   armor?: number;
   money?: number;
   ammo?: number;
+  /** First observed active-weapon reload sample after a contiguous recorded false sample. */
+  reloadStarted?: number;
   duck?: number;
   flash?: number;
   helmet?: boolean;
   defuser?: boolean;
   scoped?: boolean;
+  /** Narrow field of view reported by the recorded player camera service. */
+  scopeFov?: number;
+  /** Recorded eye offset in Source inches. The short form has zero XY. */
+  eyeOffset?: [height: number] | [x: number, y: number, height: number];
   defusing?: boolean;
   equipmentValue?: number;
   startMoney?: number;
@@ -105,6 +112,7 @@ export type Playback = {
   frames: Frame[];
   deadTimes?: DeadTime[];
   grenades?: Grenade[];
+  smokeTracks?: SmokeTrack[];
   warnings?: string[];
   capabilities?: ReplayCapabilities;
   voice?: VoicePacket[];

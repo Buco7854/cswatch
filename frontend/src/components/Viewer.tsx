@@ -43,7 +43,7 @@ import { useViewerChrome } from '../useViewerChrome';
 import { useReviewLayout } from '../useReviewLayout';
 import { useApp } from '../context';
 import type { Bookmark } from '../types';
-import { frameAt, skipDeadTime } from '../playback';
+import { frameAt, skipDeadTime, type DeadTimeFilter } from '../playback';
 import { useViewerPreferences } from '../viewer-device';
 import { typingOrDialog } from '../free-camera';
 import { roundAt, roundEvents } from '../review-events';
@@ -64,6 +64,7 @@ import './kill-feed.css';
 import type { LandingPrompt, ThrowPrompt } from '../review-prompts';
 import {
   buildReviewMoments,
+  replayLeadInTick,
   recentReviewMoment,
   indexThrowInputs,
   throwInputAt,
@@ -84,15 +85,18 @@ import CombatRecap from './CombatRecap';
 import { combatDamage } from '../combat-recap';
 import { damageFeedbackAt, DeathFollowController, indexSpectatorEvents } from '../spectator-state';
 import DamageFeedback from './DamageFeedback';
+import FlashFeedback from './FlashFeedback';
 import Communications from './Communications';
 import ViewerOptions from './ViewerOptions';
 import Crosshair from './Crosshair';
+import { scopedVerticalFov } from '../pov-camera';
 import TacticalPlot from './TacticalPlot';
 import ManageDemo from './ManageDemo';
 import AccountMenu from './AccountMenu';
 import { ActionMenu, SelectControl, type MenuAction } from './Controls';
 import { useConfirm } from './Confirmation';
-const Scene = lazy(() => import('./Scene'));
+const loadScene = () => import('./Scene');
+const Scene = lazy(loadScene);
 const clock = (seconds: number) =>
   t('{{v0}}:{{v1}}', {
     v0: Math.floor(seconds / 60),
@@ -126,8 +130,10 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     deathFollow.current.reset();
     setSelected(playerId);
     setGrenadeFocus(undefined);
-    setMode('pov');
-    cueCameraChange();
+    if (mode !== '2d') {
+      setMode('pov');
+      cueCameraChange();
+    }
     if (dismissPicker) closePanel();
   }
   const previous = location.state?.from;
@@ -173,6 +179,10 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     },
     user?.id,
   );
+  useEffect(() => {
+    // Download the renderer while the authorized replay manifest and first slice load.
+    if (demo?.status === 'ready') void loadScene().catch(() => {});
+  }, [demo?.status]);
   const mapAssets = useDemoMapAssets(
     data && !data.sample ? id : undefined,
     data && !data.sample ? data.map : undefined,
@@ -237,7 +247,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
               : 'Map unavailable';
   const allReviewEvents = useMemo(
     () => (data ? roundEvents(data, { number: 0, start: first, end: last }, selected) : []),
-    [data, first, last, selected],
+    [data?.events, data?.players, data?.sample, first, last, selected],
   );
   const { settings, setSettings } = useViewerPreferences();
   useEffect(() => {
@@ -527,8 +537,19 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
   );
   const currentTick = useRef(tick);
   currentTick.current = tick;
-  const playbackState = useRef({ data, availableUntil, autoSkip: settings.autoSkip });
-  playbackState.current = { data, availableUntil, autoSkip: settings.autoSkip };
+  const autoSkip = settings.autoSkipFreeze
+    ? settings.autoSkipTimeouts
+      ? 'all'
+      : 'freeze'
+    : settings.autoSkipTimeouts
+      ? 'timeout'
+      : null;
+  const playbackState = useRef<{
+    data: typeof data;
+    availableUntil: typeof availableUntil;
+    autoSkip: DeadTimeFilter | null;
+  }>({ data, availableUntil, autoSkip });
+  playbackState.current = { data, availableUntil, autoSkip };
   useEffect(() => {
     const scope = { active: true };
     mutationScope.current = scope;
@@ -608,7 +629,9 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       const ceiling = Math.min(last, state.availableUntil(playbackClock.current.tick));
       const advanced = playbackClock.current.at(now, rate * speed, ceiling);
       const requested =
-        state.autoSkip && state.data ? skipDeadTime(state.data, advanced, 'all', last) : advanced;
+        state.autoSkip && state.data
+          ? skipDeadTime(state.data, advanced, state.autoSkip, last)
+          : advanced;
       const next = Math.min(requested, ceiling, last);
       if (next !== advanced) playbackClock.current.reset(next, now);
       setTick(next);
@@ -956,21 +979,22 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
   function replayCombat(prompt: CombatMoment, perspective: 'attacker' | 'victim') {
     enableAudio();
     const playerId = perspective === 'attacker' ? prompt.attackerId : prompt.victimId;
-    if (!playerId) return;
+    if (!data || !playerId) return;
     setSelected(playerId);
     setGrenadeFocus(undefined);
     if (mode !== '2d') setMode('pov');
-    seek(prompt.startTick);
+    seek(replayLeadInTick(data, prompt.tick, settings.killLeadIn, first, last));
     setPlaying(true);
     chrome.show();
     requestAnimationFrame(() => playTrigger.current?.focus({ preventScroll: true }));
   }
   function replayThrow(prompt: ThrowPrompt) {
     enableAudio();
+    if (!data) return;
     setSelected(prompt.throwerId);
     setGrenadeFocus(undefined);
     if (mode !== '2d') setMode('pov');
-    seek(prompt.startTick);
+    seek(replayLeadInTick(data, prompt.tick, settings.utilityLeadIn, first, last));
     setPlaying(true);
     chrome.show();
     requestAnimationFrame(() => playTrigger.current?.focus({ preventScroll: true }));
@@ -1020,8 +1044,12 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     },
   ];
   const { frame } = frameAt(data, tick);
+  const selectedPosition = frame.players.find((player) => player.id === selected);
+  const recordedFlash = selectedPosition?.alive ? selectedPosition.flash : undefined;
+  const scopeFov =
+    mode === 'pov' && !using2D && !buffering ? scopedVerticalFov(selectedPosition) : undefined;
   const playerCrosshairCode =
-    !buffering && frame.players.some((player) => player.id === selected)
+    !buffering && selectedPosition
       ? recordedCrosshairAt(crosshairTimeline, selected, tick)
       : undefined;
   const round = data.rounds.filter((r) => r.tick <= tick).at(-1);
@@ -1245,11 +1273,11 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
               cueCameraChange();
             }}
             options={[
-              { value: 'orbit', label: t('Free camera') },
-              { value: 'tactical', label: t('Overhead') },
-              { value: '2d', label: t('2D tactical · low power') },
-              { value: 'follow', label: t('Third-person follow') },
-              { value: 'pov', label: t('Player perspective') },
+              { value: 'orbit', label: t('Free camera'), compactLabel: t('Free') },
+              { value: 'tactical', label: t('Overhead'), compactLabel: t('Overhead') },
+              { value: '2d', label: t('2D tactical · low power'), compactLabel: '2D' },
+              { value: 'follow', label: t('Third-person follow'), compactLabel: t('Follow') },
+              { value: 'pov', label: t('Player perspective'), compactLabel: 'POV' },
             ]}
           />
           <button
@@ -1342,6 +1370,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
             <Scene
               data={data}
               tick={tick}
+              playing={playing && !buffering}
               mode={mode}
               selected={selected}
               settings={settings}
@@ -1359,6 +1388,13 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
             spectatorEvents && (
               <DamageFeedback value={damageFeedbackAt(data, spectatorEvents, selected, tick)} />
             )}
+          {mode === 'pov' &&
+            !using2D &&
+            !buffering &&
+            settings.flashFeedback !== 'off' &&
+            recordedFlash !== undefined &&
+            Number.isFinite(recordedFlash) &&
+            recordedFlash > 0 && <FlashFeedback presentation={settings.flashFeedback} />}
           {buffering && (
             <div className="replay-buffer" role={chunkError ? 'alert' : 'status'}>
               <span>{t(chunkError || 'Loading this moment…')}</span>
@@ -1369,7 +1405,13 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
               )}
             </div>
           )}
-          {settings.crosshair &&
+          {scopeFov !== undefined && (
+            <div className="viewer-scope" aria-hidden="true" data-scope-fov={scopeFov}>
+              {settings.crosshair && <span />}
+            </div>
+          )}
+          {scopeFov === undefined &&
+            settings.crosshair &&
             mode === 'pov' &&
             !using2D &&
             (settings.crosshairSource === 'player' ? (
@@ -1604,8 +1646,13 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
                 onValueChange={(value) => setTimelineScope(value === 'round' ? 'round' : 'match')}
                 icon={<ScanLine size={16} />}
                 options={[
-                  { value: 'match', label: t('All match') },
-                  { value: 'round', label: t('Current round'), disabled: !data.rounds.length },
+                  { value: 'match', label: t('All match'), compactLabel: t('Match') },
+                  {
+                    value: 'round',
+                    label: t('Current round'),
+                    compactLabel: t('Round'),
+                    disabled: !data.rounds.length,
+                  },
                 ]}
               />
             </div>
@@ -1906,6 +1953,8 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
           settings={settings}
           playerCrosshairCode={playerCrosshairCode}
           equipment={mapRender?.map === data.map ? mapRender.equipment : undefined}
+          renderResolution={mapRender?.map === data.map ? mapRender.resolution : undefined}
+          shadowsPaused={mapRender?.map === data.map && mapRender.shadowsPaused}
           mapAcquisition={mapAssets.acquisition}
           recordedMapIdentity={data.mapIdentity}
           audio={audio}

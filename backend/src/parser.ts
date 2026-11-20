@@ -22,7 +22,7 @@ import type { Playback, GameEvent, Grenade } from '../../shared/playback.js';
 import { validateMagic } from './demo-format.js';
 import { collectColumnFrameState } from './frame-state.js';
 import { writeReplay } from './replay.js';
-import { playerColumns, readPlayerColumns } from './parser-fields.js';
+import { playerColumns, readPlayerColumns, recordedCameraFov } from './parser-fields.js';
 import { replayCapabilities } from './player-input.js';
 import { readCommunications } from './communications.js';
 import {
@@ -120,6 +120,8 @@ function readFrames(source: string, sampled: number[]) {
         'usercmd_mouse_dy',
       ],
       ['kills_total', 'deaths_total', 'assists_total', 'headshot_kills_total', 'damage_total'],
+      ['active_weapon', 'is_in_reload'],
+      [recordedCameraFov],
     ],
     sampled.length * 64,
   );
@@ -302,6 +304,7 @@ export async function parse(folder: string, maxExpanded: number) {
     frames.at(-1)!.tick,
     new Set(players.map((player) => player.id)),
     events,
+    frames,
   );
   warnings.push(...media.warnings);
   const data: Playback = {
@@ -328,6 +331,7 @@ export async function parse(folder: string, maxExpanded: number) {
     crosshairs: media.crosshairs,
     itemSamples: media.itemSamples,
     itemState: media.itemState,
+    smokeTracks: media.smokeTracks,
     eventAvailability,
     throwInputs: throwInputs.snapshots,
   };

@@ -1,4 +1,4 @@
-import { t } from '../i18n';
+import { locale, t } from '../i18n';
 import {
   useEffect,
   useLayoutEffect,
@@ -8,7 +8,13 @@ import {
   type ReactNode,
 } from 'react';
 import { MessageSquareText, X } from 'lucide-react';
-import type { ViewerSettings } from '../playback';
+import {
+  KILL_LEAD_INS,
+  UTILITY_LEAD_INS,
+  RENDER_RESOLUTION_MIN,
+  RENDER_RESOLUTION_MAX,
+  type ViewerSettings,
+} from '../playback';
 import type { DemoMapSummary } from '../demo-map-assets';
 import type { MapIdentity } from '../../../shared/map-acquisition';
 import type { EquipmentRenderState } from '../equipment-assets';
@@ -21,12 +27,11 @@ import {
 import Crosshair from './Crosshair';
 import RecordedCrosshair from './RecordedCrosshair';
 import MapDetails from './MapDetails';
-import { RangeSetting, ToggleSetting } from './ViewerSettingControls';
+import { RangeSetting, SelectSetting, ToggleSetting } from './ViewerSettingControls';
 import GameplaySoundSettings from './GameplaySoundSettings';
 import type { ViewerAudio } from '../viewer-audio';
 import type { GameplayAudioReport } from '../useGameplayAudio';
 import { recordedCrosshair } from '../recorded-crosshair';
-import { SelectControl } from './Controls';
 import './viewer-options.css';
 
 type Category = 'visuals' | 'crosshair' | 'playback' | 'camera' | 'performance';
@@ -48,6 +53,8 @@ export default function ViewerOptions({
   openCommunications,
   playerCrosshairCode,
   equipment,
+  renderResolution,
+  shadowsPaused,
   mapAcquisition,
   recordedMapIdentity,
   audio,
@@ -59,6 +66,8 @@ export default function ViewerOptions({
   openCommunications: () => void;
   playerCrosshairCode?: string;
   equipment?: EquipmentRenderState;
+  renderResolution?: number;
+  shadowsPaused?: boolean;
   mapAcquisition?: DemoMapSummary;
   recordedMapIdentity?: MapIdentity;
   audio: ViewerAudio;
@@ -71,6 +80,13 @@ export default function ViewerOptions({
   const [presetText, setPresetText] = useState('');
   const [presetStatus, setPresetStatus] = useState<'copied' | 'manual' | ''>('');
   const copyGeneration = useRef(0);
+  const seconds = new Intl.NumberFormat(locale(), {
+    style: 'unit',
+    unit: 'second',
+    unitDisplay: 'narrow',
+  });
+  const leadInOptions = (values: number[]) =>
+    values.map((value) => ({ value: String(value), label: seconds.format(value) }));
   const style = settings.crosshairStyle;
   useEffect(() => {
     dialog.current?.showModal();
@@ -231,8 +247,25 @@ export default function ViewerOptions({
                 {toggle(
                   'damageFeedback',
                   t('Damage feedback'),
-                  t('Show a subtle first-person hurt cue from recorded damage events.'),
+                  t('Tint the screen edges when the viewed player takes recorded damage.'),
                 )}
+                <SelectSetting
+                  label={t('Flashbang feedback')}
+                  value={settings.flashFeedback}
+                  options={[
+                    { value: 'off', label: t('Off') },
+                    { value: 'indicator', label: t('Indicator only') },
+                    { value: 'reduced', label: t('Reduced tint') },
+                    { value: 'strong', label: t('Strong tint') },
+                  ]}
+                  description={t('Show the viewed player’s recorded flash state in first person.')}
+                  onChange={(value) =>
+                    onChange({
+                      ...settings,
+                      flashFeedback: value as ViewerSettings['flashFeedback'],
+                    })
+                  }
+                />
                 {toggle(
                   'shotEffects',
                   t('Shot effects'),
@@ -259,7 +292,9 @@ export default function ViewerOptions({
                 {toggle(
                   'utilities',
                   t('Utility zones'),
-                  t('Show recorded detonation markers and approximate smoke and fire zones.'),
+                  t(
+                    'Show recorded detonation markers, available smoke volumes and approximate fire zones.',
+                  ),
                 )}
                 {toggle(
                   'trajectories',
@@ -288,23 +323,20 @@ export default function ViewerOptions({
                       t('Input details'),
                       t('Show the recorded input source and raw mouse movement values.'),
                     )}
-                    <label className="viewer-option-select">
-                      <span>{t('Keyboard display layout')}</span>
-                      <SelectControl
-                        label={t('Keyboard display layout')}
-                        value={settings.inputLayout}
-                        onValueChange={(value) =>
-                          onChange({
-                            ...settings,
-                            inputLayout: value as ViewerSettings['inputLayout'],
-                          })
-                        }
-                        options={[
-                          { value: 'wasd', label: 'WASD' },
-                          { value: 'zqsd', label: 'ZQSD' },
-                        ]}
-                      />
-                    </label>
+                    <SelectSetting
+                      label={t('Keyboard display layout')}
+                      value={settings.inputLayout}
+                      onChange={(value) =>
+                        onChange({
+                          ...settings,
+                          inputLayout: value as ViewerSettings['inputLayout'],
+                        })
+                      }
+                      options={[
+                        { value: 'wasd', label: 'WASD' },
+                        { value: 'zqsd', label: 'ZQSD' },
+                      ]}
+                    />
                   </div>
                 )}
                 {toggle(
@@ -323,21 +355,18 @@ export default function ViewerOptions({
                   t('Show every player’s money, carried equipment value, status, and inventory.'),
                 )}
                 {settings.economy && (
-                  <label className="viewer-option-select">
-                    <span>{t('Player overview layout')}</span>
-                    <SelectControl
-                      label={t('Player overview layout')}
-                      value={settings.teamLayout}
-                      onValueChange={(value) =>
-                        onChange({ ...settings, teamLayout: value as ViewerSettings['teamLayout'] })
-                      }
-                      options={[
-                        { value: 'split', label: t('Teams on both sides') },
-                        { value: 'right', label: t('Teams on the right') },
-                      ]}
-                    />
-                    <small>{t('On narrow screens, teams share one edge.')}</small>
-                  </label>
+                  <SelectSetting
+                    label={t('Player overview layout')}
+                    value={settings.teamLayout}
+                    onChange={(value) =>
+                      onChange({ ...settings, teamLayout: value as ViewerSettings['teamLayout'] })
+                    }
+                    options={[
+                      { value: 'split', label: t('Teams on both sides') },
+                      { value: 'right', label: t('Teams on the right') },
+                    ]}
+                    description={t('On narrow screens, teams share one edge.')}
+                  />
                 )}
                 <p className="viewer-option-note">
                   {t(
@@ -357,20 +386,17 @@ export default function ViewerOptions({
                   t('Crosshair'),
                   t('Show a centered crosshair in player perspective.'),
                 )}
-                <label className="viewer-option-select">
-                  <span>{t('Crosshair source')}</span>
-                  <SelectControl
-                    label={t('Crosshair source')}
-                    value={settings.crosshairSource}
-                    onValueChange={(value) =>
-                      onChange({ ...settings, crosshairSource: value as 'custom' | 'player' })
-                    }
-                    options={[
-                      { value: 'custom', label: t('Your crosshair') },
-                      { value: 'player', label: t('Current player') },
-                    ]}
-                  />
-                </label>
+                <SelectSetting
+                  label={t('Crosshair source')}
+                  value={settings.crosshairSource}
+                  onChange={(value) =>
+                    onChange({ ...settings, crosshairSource: value as 'custom' | 'player' })
+                  }
+                  options={[
+                    { value: 'custom', label: t('Your crosshair') },
+                    { value: 'player', label: t('Current player') },
+                  ]}
+                />
                 <div className="viewer-crosshair-preview">
                   {settings.crosshairSource === 'player' ? (
                     <RecordedCrosshair code={playerCrosshairCode} preview />
@@ -528,11 +554,20 @@ export default function ViewerOptions({
                 t('Kill and death replay shortcuts'),
                 t('Offer both recorded perspectives for recent eliminations.'),
               )}
-              {toggle(
-                'autoSkip',
-                t('Skip dead time automatically'),
-                t('Skip recorded freeze periods and tactical or technical timeouts.'),
-              )}
+              <SelectSetting
+                label={t('Kill and death replay lead-in')}
+                value={String(settings.killLeadIn)}
+                options={leadInOptions(KILL_LEAD_INS)}
+                onChange={(value) => onChange({ ...settings, killLeadIn: Number(value) })}
+              />
+              <SelectSetting
+                label={t('Utility replay lead-in')}
+                value={String(settings.utilityLeadIn)}
+                options={leadInOptions(UTILITY_LEAD_INS)}
+                onChange={(value) => onChange({ ...settings, utilityLeadIn: Number(value) })}
+              />
+              {toggle('autoSkipFreeze', t('Skip freeze time automatically'))}
+              {toggle('autoSkipTimeouts', t('Skip timeouts automatically'))}
               {toggle(
                 'autoFollowDeath',
                 t('Follow another player after death'),
@@ -569,30 +604,79 @@ export default function ViewerOptions({
                 )}
                 onChange={(cameraFov) => onChange({ ...settings, cameraFov })}
               />
+              <h3>{t('Free camera')}</h3>
+              <RangeSetting
+                label={t('Look sensitivity')}
+                value={settings.lookSensitivity}
+                min={0.25}
+                max={2}
+                step={0.05}
+                display={new Intl.NumberFormat(locale()).format(settings.lookSensitivity) + '×'}
+                onChange={(lookSensitivity) => onChange({ ...settings, lookSensitivity })}
+              />
+              {toggle(
+                'invertLook',
+                t('Invert vertical look'),
+                t('Reverse vertical dragging in the free camera on recorded maps.'),
+              )}
+              <RangeSetting
+                label={t('Movement speed')}
+                value={settings.freeCameraSpeed}
+                min={2}
+                max={24}
+                step={1}
+                display={new Intl.NumberFormat(locale(), {
+                  style: 'unit',
+                  unit: 'meter-per-second',
+                }).format(settings.freeCameraSpeed)}
+                onChange={(freeCameraSpeed) => onChange({ ...settings, freeCameraSpeed })}
+              />
             </section>,
           )}
           {panel(
             'performance',
             <section className="viewer-option-section">
               <h3>{t('Rendering')}</h3>
-              <label className="viewer-option-select">
-                <span>{t('Rendering quality')}</span>
-                <SelectControl
-                  label={t('Rendering quality')}
-                  value={settings.quality}
-                  onValueChange={(value) =>
-                    onChange({ ...settings, quality: value as ViewerSettings['quality'] })
-                  }
-                  options={[
-                    { value: 'auto', label: t('Auto · mobile friendly') },
-                    { value: 'low', label: t('Low · reduced resolution, no shadows') },
-                    { value: 'high', label: t('High · shadows, higher resolution') },
-                  ]}
-                />
-              </label>
-              <p className="viewer-option-note">
-                {t('Higher resolution and shadows use more device resources.')}
-              </p>
+              <SelectSetting
+                label={t('Rendering quality')}
+                value={settings.quality}
+                onChange={(value) =>
+                  onChange({ ...settings, quality: value as ViewerSettings['quality'] })
+                }
+                options={[
+                  { value: 'auto', label: t('Auto · mobile friendly') },
+                  { value: 'low', label: t('Low · reduced resolution, no shadows') },
+                  { value: 'high', label: t('High · shadows, higher resolution') },
+                ]}
+              />
+              <RangeSetting
+                label={t('3D render resolution')}
+                value={settings.renderResolution}
+                min={RENDER_RESOLUTION_MIN}
+                max={RENDER_RESOLUTION_MAX}
+                step={5}
+                display={new Intl.NumberFormat(locale(), { style: 'percent' }).format(
+                  settings.renderResolution / 100,
+                )}
+                description={t(
+                  'Auto adjusts resolution during playback up to this limit and may pause live shadows under sustained load.',
+                )}
+                onChange={(renderResolution) => onChange({ ...settings, renderResolution })}
+              />
+              {settings.quality === 'auto' &&
+                renderResolution !== undefined &&
+                renderResolution < settings.renderResolution && (
+                  <p className="viewer-option-note">
+                    {t('Auto is rendering at {{resolution}}', {
+                      resolution: new Intl.NumberFormat(locale(), { style: 'percent' }).format(
+                        renderResolution / 100,
+                      ),
+                    })}
+                  </p>
+                )}
+              {settings.quality === 'auto' && shadowsPaused && (
+                <p className="viewer-option-note">{t('Auto has paused live shadows.')}</p>
+              )}
               <p className="viewer-option-note">
                 {t(
                   'Recorded grenades remain visible at every quality level. Paths and analytical zones have separate controls.',
@@ -600,7 +684,7 @@ export default function ViewerOptions({
               </p>
               <p className="viewer-option-note">
                 {t(
-                  'Utility zones approximate event positions and durations. They do not reproduce Source 2’s volumetric smoke simulation.',
+                  'Smoke uses recorded volume data when available. Otherwise, smoke and fire zones show approximate event locations and durations.',
                 )}
               </p>
               <p className="viewer-option-note">

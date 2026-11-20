@@ -94,12 +94,16 @@ export async function checkStorage(cache, output, needed = 0) {
 }
 /** Periodic guards check only filesystem counters, never recursively scan files. */
 export async function checkFreeReserve(cache, output, needed = 0) {
+  if (!(await hasFreeReserve(cache, output, needed)))
+    throw new Error(
+      'Insufficient free disk space for the selective asset stage and 512 MiB reserve.',
+    );
+}
+export async function hasFreeReserve(cache, output, needed) {
   for (const path of [cache, output]) {
     const disk = await statfs(path),
       available = disk.bavail * disk.bsize;
-    if (available < steamAssetLimits.reserveBytes + needed)
-      throw new Error(
-        'Insufficient free disk space for the selective asset stage and 512 MiB reserve.',
-      );
+    if (available < steamAssetLimits.reserveBytes + needed) return false;
   }
+  return true;
 }

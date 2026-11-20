@@ -94,12 +94,12 @@ export function originalAgentGLB() {
 }
 
 /** Original five-cycle one-joint fixture, explicitly not native game animations. */
-export function originalAnimatedAgentGLB(withWeaponAnchor = false) {
+export function originalAnimatedAgentGLB(anchor?: 'wpn' | 'head_0') {
   const source = originalAgentGLB(),
     length = source.readUInt32LE(12),
     json = JSON.parse(source.subarray(20, 20 + length).toString());
   const old = source.subarray(28 + length),
-    binary = Buffer.alloc(old.length + 12 + 5 * 36 + (withWeaponAnchor ? 128 : 0));
+    binary = Buffer.alloc(old.length + 12 + 5 * 36 + (anchor ? 128 : 0));
   old.copy(binary);
   [0, 0.5, 1].forEach((v, i) => binary.writeFloatLE(v, old.length + i * 4));
   const timeView = json.bufferViews.length,
@@ -145,9 +145,13 @@ export function originalAnimatedAgentGLB(withWeaponAnchor = false) {
       channels: [{ sampler: 0, target: { node: 3, path: 'translation' } }],
     };
   });
-  if (withWeaponAnchor) {
+  if (anchor) {
     json.nodes[3].children = [4];
-    json.nodes.push({ name: 'wpn', translation: [0, 1.3, 0.4], rotation: [-0.5, -0.5, -0.5, 0.5] });
+    json.nodes.push({
+      name: anchor,
+      translation: [0, 1.3, 0.4],
+      rotation: [-0.5, -0.5, -0.5, 0.5],
+    });
     json.skins[0].joints.push(4);
     const offset = old.length + 12 + 5 * 36,
       view = json.bufferViews.length,

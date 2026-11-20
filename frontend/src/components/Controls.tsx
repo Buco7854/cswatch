@@ -14,7 +14,12 @@ function floatingContainer(trigger: HTMLElement | null) {
   );
 }
 
-export type SelectOption = { value: string; label: string; disabled?: boolean };
+export type SelectOption = {
+  value: string;
+  label: string;
+  compactLabel?: string;
+  disabled?: boolean;
+};
 
 export function SelectControl({
   label,
@@ -26,6 +31,7 @@ export function SelectControl({
   disabled,
   id,
   displayValue,
+  describedBy,
 }: {
   label: string;
   value: string;
@@ -36,10 +42,12 @@ export function SelectControl({
   disabled?: boolean;
   id?: string;
   displayValue?: ReactNode;
+  describedBy?: string;
 }) {
   const trigger = useRef<HTMLButtonElement>(null);
   const [container, setContainer] = useState<HTMLElement | undefined>();
   const [viewerUI, setViewerUI] = useState(false);
+  const selected = options.find((option) => option.value === value);
   return (
     <Select.Root
       value={value}
@@ -57,10 +65,24 @@ export function SelectControl({
         id={id}
         className={'select-control ' + className}
         aria-label={label}
+        aria-describedby={describedBy}
+        title={selected ? label + ' · ' + selected.label : label}
         data-keyboard-managed="true"
       >
         {icon && <span className="select-leading-icon">{icon}</span>}
-        <Select.Value>{displayValue}</Select.Value>
+        <Select.Value className="select-value">
+          {displayValue ??
+            (selected?.compactLabel ? (
+              <>
+                <span className="select-value-long">{selected.label}</span>
+                <span
+                  className="select-value-short"
+                  aria-hidden="true"
+                  data-label={selected.compactLabel}
+                />
+              </>
+            ) : undefined)}
+        </Select.Value>
         <Select.Icon className="select-chevron">
           <ChevronDown size={14} />
         </Select.Icon>
@@ -86,10 +108,12 @@ export function SelectControl({
                 disabled={option.disabled}
                 className="select-item"
               >
-                <Select.ItemText>{option.label}</Select.ItemText>
-                <Select.ItemIndicator className="select-indicator">
-                  <Check size={15} />
-                </Select.ItemIndicator>
+                <Select.ItemText className="select-item-label">{option.label}</Select.ItemText>
+                <span className="select-item-status" aria-hidden="true">
+                  <Select.ItemIndicator className="select-indicator">
+                    <Check size={15} />
+                  </Select.ItemIndicator>
+                </span>
               </Select.Item>
             ))}
           </Select.Viewport>

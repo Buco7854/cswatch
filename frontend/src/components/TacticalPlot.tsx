@@ -6,7 +6,7 @@ import { overviewPoint, overviewRadius } from '../tactical-coordinates';
 import { tacticalPalette } from '../tactical-palette';
 import type { AssetStatus } from '../map-assets';
 import { frameAt, playbackBounds, defaultSettings, type ViewerSettings } from '../playback';
-import { buildUtilityZones, projectilesAt } from '../utility-state';
+import { buildUtilityZoneIndex, projectilesAt } from '../utility-state';
 import { hasRecordedProjectiles, indexItems, itemsAt } from '../item-state';
 import { equipmentKind, equipmentName } from '../equipment-display';
 import EquipmentGlyph from './EquipmentGlyph';
@@ -59,13 +59,14 @@ export default function TacticalPlot({
     }
     return { minX, minY, size: Math.max(maxX - minX, maxY - minY, 500) };
   }, [data.worldBounds, data.events, data.worldBounds ? null : data.frames]);
-  const zones = useMemo(
-    () => buildUtilityZones(data.events, data.tickRate),
+  const zonesAt = useMemo(
+    () => buildUtilityZoneIndex(data.events, data.tickRate),
     [data.events, data.tickRate],
   );
+  const zones = settings.utilities ? zonesAt(tick) : [];
   const projectiles = useMemo(
-    () => projectilesAt(data.grenades || [], tick, data.tickRate),
-    [data.grenades, tick, data.tickRate],
+    () => projectilesAt(data.grenades || [], tick, data.tickRate, settings.trajectories),
+    [data.grenades, tick, data.tickRate, settings.trajectories],
   );
   const itemIndex = useMemo(() => indexItems(data.itemSamples), [data.itemSamples]);
   const items = useMemo(() => itemsAt(itemIndex, tick), [itemIndex, tick]);
@@ -115,11 +116,7 @@ export default function TacticalPlot({
           : projectiles.length
       }
       data-world-item-count={items.filter((item) => item.kind !== 'projectile').length}
-      data-utility-zone-count={
-        settings.utilities
-          ? zones.filter((zone) => tick >= zone.start && tick < zone.end).length
-          : 0
-      }
+      data-utility-zone-count={zones.length}
     >
       <rect
         width="120"
@@ -157,39 +154,34 @@ export default function TacticalPlot({
         visibility={painted ? undefined : 'hidden'}
         clipPath={calibrated ? `url(#${clip})` : undefined}
       >
-        {settings.utilities &&
-          zones
-            .filter((zone) => tick >= zone.start && tick < zone.end)
-            .map((zone) => (
-              <circle
-                key={zone.id}
-                className="tactical-utility-zone"
-                data-kind={zone.kind}
-                cx={position(zone).x}
-                cy={position(zone).y}
-                r={
-                  calibrated
-                    ? overviewRadius(
-                        calibrated,
-                        zone.kind === 'smoke' ? 146 : zone.kind === 'fire' ? 126 : 35,
-                      ) * 100
-                    : Math.max(
-                        1.5,
-                        Math.min(
-                          30,
-                          ((zone.kind === 'smoke' ? 146 : zone.kind === 'fire' ? 126 : 35) /
-                            bounds.size) *
-                            100,
-                        ),
-                      )
-                }
-                fill={
-                  zone.kind === 'smoke' ? '#b5b8ad' : zone.kind === 'flash' ? '#f5f0d8' : '#e4a661'
-                }
-                fillOpacity=".35"
-                stroke="none"
-              />
-            ))}
+        {zones.map((zone) => (
+          <circle
+            key={zone.id}
+            className="tactical-utility-zone"
+            data-kind={zone.kind}
+            cx={position(zone).x}
+            cy={position(zone).y}
+            r={
+              calibrated
+                ? overviewRadius(
+                    calibrated,
+                    zone.kind === 'smoke' ? 146 : zone.kind === 'fire' ? 126 : 35,
+                  ) * 100
+                : Math.max(
+                    1.5,
+                    Math.min(
+                      30,
+                      ((zone.kind === 'smoke' ? 146 : zone.kind === 'fire' ? 126 : 35) /
+                        bounds.size) *
+                        100,
+                    ),
+                  )
+            }
+            fill={zone.kind === 'smoke' ? '#b5b8ad' : zone.kind === 'flash' ? '#f5f0d8' : '#e4a661'}
+            fillOpacity=".35"
+            stroke="none"
+          />
+        ))}
         {projectiles.map((grenade) => (
           <g key={grenade.id}>
             {settings.trajectories && grenade.trail.length > 1 && (

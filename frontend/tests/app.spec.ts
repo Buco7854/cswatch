@@ -138,7 +138,7 @@ test('account-required upload preserves route intent, registration and logout wo
   await expect(page.getByRole('form', { name: 'Create account', exact: true })).toHaveCount(0);
   await expect(page).toHaveURL(/\/library\?upload=1/);
   await page.getByRole('button', { name: 'Close upload' }).click();
-  await expect(page.getByText('Your matches belong here.')).toBeVisible();
+  await expect(page.getByText('No demos yet.')).toBeVisible();
   await page.getByRole('button', { name: new RegExp(username) }).click();
   await page
     .getByRole('menu', { name: 'Account menu' })

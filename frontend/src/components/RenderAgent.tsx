@@ -47,7 +47,7 @@ export function GenericAgentBody({ team, id, xray }: { team: number; id: string;
           <meshBasicMaterial
             color={team === 3 ? '#9ec7da' : '#e7ba73'}
             transparent
-            opacity={0.27}
+            opacity={0.42}
             depthTest
             depthFunc={GreaterDepth}
             depthWrite={false}
@@ -100,6 +100,7 @@ type AgentProps = {
   duck: number;
   xrayColor?: string;
   registerWeaponAnchor?: (bone: Object3D) => () => void;
+  registerHeadAnchor?: (bone: Bone) => () => void;
 };
 function LoadedAgent({
   url,
@@ -110,6 +111,7 @@ function LoadedAgent({
   scope,
   ready,
   registerWeaponAnchor,
+  registerHeadAnchor,
   xrayColor,
 }: AgentProps & { scope: ModelScope; ready: () => void }) {
   const gltf = useEquipmentGLTF(url),
@@ -150,6 +152,11 @@ function LoadedAgent({
     const bone = prepared.instance.getObjectByName('wpn');
     if (animation.native && bone instanceof Bone) return registerWeaponAnchor?.(bone);
   }, [animation, prepared, registerWeaponAnchor]);
+  useLayoutEffect(() => {
+    if (!registerHeadAnchor) return;
+    const bone = prepared.instance.getObjectByName('head_0');
+    if (bone instanceof Bone) return registerHeadAnchor(bone);
+  }, [prepared, registerHeadAnchor]);
   useFrame(() => {
     animation.sample(tick / rate, speed, duck);
     xray.sample(xrayColor);

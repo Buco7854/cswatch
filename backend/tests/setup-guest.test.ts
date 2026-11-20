@@ -47,9 +47,10 @@ async function fixture(env: Record<string, string> = {}, initialized = true) {
     },
   };
 }
+const longDemoName = 'long-private-demo-'.repeat(8) + 'match.DEM';
 const uploadBody = Buffer.concat([
   Buffer.from(
-    '--demo-boundary\r\nContent-Disposition: form-data; name="file"; filename="private.dem"\r\nContent-Type: application/octet-stream\r\n\r\n',
+    `--demo-boundary\r\nContent-Disposition: form-data; name="file"; filename="${longDemoName}"\r\nContent-Type: application/octet-stream\r\n\r\n`,
   ),
   Buffer.from('PBDEMS2\0synthetic-not-a-parser-fixture'),
   Buffer.from('\r\n--demo-boundary--\r\n'),
@@ -249,6 +250,7 @@ test('guest uploads use expiring private ownership with CSRF, isolation, bounded
       404,
     );
     const own = (await f.app.inject({ url: `/api/demos/${id}`, headers: { host, cookie } })).json();
+    assert.equal(own.name, longDemoName.slice(0, 116) + '.DEM');
     assert.equal(own.public, 0);
     assert.equal(own.owned, false);
     assert.equal(own.guest_owned, true);

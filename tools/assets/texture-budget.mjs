@@ -42,6 +42,8 @@ export function rgbaMipBytes(width, height) {
   return total;
 }
 const resident = (row) => row.width * row.height * 4 * row.copies;
+const bakedAtlas = (roles) =>
+  roles.includes('irradianceTexture') || roles.includes('lightingDirectionTexture');
 const higher = (a, b) =>
   resident(a) / a.priority > resident(b) / b.priority ||
   (resident(a) / a.priority === resident(b) / b.priority &&
@@ -121,7 +123,8 @@ export function planTextureBudget(images, { tier, ...overrides }) {
     throw new Error('Decoded texture budget cannot retain even one pixel per image.');
   let total = rows.reduce((sum, row) => sum + resident(row), 0);
   const heap = [];
-  for (const row of rows) if (row.width > 1 || row.height > 1) heapPush(heap, row);
+  for (const row of rows)
+    if (!bakedAtlas(row.roles) && (row.width > 1 || row.height > 1)) heapPush(heap, row);
   while (total > selected.budgetBytes) {
     const row = heapPop(heap);
     if (!row) throw new Error('Decoded texture budget is unattainable without removing images.');
@@ -190,6 +193,7 @@ export async function applyTextureBudget(document, { tier, ...overrides }) {
     const target = targets.get(String(index)),
       source = sources[index],
       input = texture.getImage();
+    const baked = bakedAtlas(target.roles);
     const alreadyWebP =
       texture.getMimeType() === 'image/webp' &&
       input.byteLength >= 12 &&
@@ -204,9 +208,13 @@ export async function applyTextureBudget(document, { tier, ...overrides }) {
             .resize(target.width, target.height, {
               fit: 'fill',
               withoutEnlargement: true,
-              kernel: 'lanczos3',
+              kernel: baked ? 'nearest' : 'lanczos3',
             })
-            .webp({ quality: 80, effort: 4 })
+            .webp(
+              baked || target.roles.includes('layerBlendTexture')
+                ? { lossless: true, effort: 4 }
+                : { quality: 80, effort: 4 },
+            )
             .toBuffer();
     const actual = await metadata(encoded);
     if (

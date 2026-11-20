@@ -101,6 +101,21 @@ export function buildReviewMoments(data: Playback, first: number, last: number):
   return result;
 }
 
+/** Lead into the selected event without crossing the recording or round boundary. */
+export function replayLeadInTick(
+  data: Playback,
+  eventTick: number,
+  seconds: number,
+  first: number,
+  last: number,
+) {
+  return Math.max(
+    first,
+    roundAt(data, eventTick, last).start,
+    Math.floor(eventTick - seconds * data.tickRate),
+  );
+}
+
 function latest<T extends { tick: number }>(
   items: T[],
   tick: number,

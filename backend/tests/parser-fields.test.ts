@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { collectColumnFrameState, collectFrameState } from '../src/frame-state.js';
-import { playerColumns, readPlayerColumns } from '../src/parser-fields.js';
+import { playerColumns, readPlayerColumns, recordedCameraFov } from '../src/parser-fields.js';
 import { columnsOf } from './fixtures/player-columns.js';
 
 const alice = '76561198000000001',
@@ -18,6 +18,47 @@ const row = (tick: number, steamid = alice, extra: Record<string, unknown> = {})
   is_alive: true,
   is_freeze_period: tick < 12,
   ...extra,
+});
+
+test('reload timing requires a recorded transition on the same active weapon handle', () => {
+  const snapshot = (tick: number, active: unknown, handle = 0x200001) =>
+    row(tick, alice, {
+      active_weapon_name: 'AK-47',
+      active_weapon: handle,
+      is_in_reload: active,
+      RELOAD: true,
+    });
+  const result = collectColumnFrameState(
+    columnsOf([
+      snapshot(4, true),
+      snapshot(8, true),
+      snapshot(12, false),
+      snapshot(16, true),
+      snapshot(20, true),
+      snapshot(24, true, 0x400001),
+      snapshot(28, false),
+      snapshot(32, null),
+      snapshot(36, true),
+      snapshot(40, false),
+      snapshot(48, true),
+    ]),
+  );
+  assert.deepEqual(
+    result.frames.map((frame) => frame.players[0].reloadStarted),
+    [
+      undefined,
+      undefined,
+      undefined,
+      16,
+      16,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    ],
+  );
 });
 
 test('column projection preserves unordered recorded frames, nulls, counters and input evidence', () => {
@@ -117,5 +158,20 @@ test('native columns reject malformed identities, unequal lengths and excess row
   assert.throws(
     () => readPlayerColumns(() => ({ tick: [4], steamid: [alice], X: [] }), ['X'], []),
     /Invalid player columns/,
+  );
+});
+
+test('scope projection requires explicit recorded FOV and a living scoped player', () => {
+  const data = columnsOf([
+    row(4, alice, { is_scoped: true, [recordedCameraFov]: 40 }),
+    row(8, alice, { is_scoped: true, [recordedCameraFov]: 10 }),
+    row(12, alice, { is_scoped: false, [recordedCameraFov]: 10 }),
+    row(16, alice, { is_scoped: true, is_alive: false, [recordedCameraFov]: 10 }),
+    row(20, alice, { is_scoped: true, [recordedCameraFov]: 0 }),
+    row(24, alice, { is_scoped: true }),
+  ]);
+  assert.deepEqual(
+    collectColumnFrameState(data).frames.map(({ players }) => players[0].scopeFov),
+    [40, 10, undefined, undefined, undefined, undefined],
   );
 });

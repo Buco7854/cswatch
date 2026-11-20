@@ -1,6 +1,7 @@
 import type { Playback, PlaybackManifest, PlaybackChunk } from '../../shared/playback';
 import { validateItemSamples, validateItemState } from './item-state';
 import { validateGameplaySoundInfo, validateGameplaySoundCues } from './gameplay-sound-assets';
+import { validSmokeTracks } from '../../shared/smoke-state.mjs';
 
 export function validateManifest(value: PlaybackManifest): PlaybackManifest {
   value.gameplaySounds = validateGameplaySoundInfo(value.gameplaySounds);
@@ -18,6 +19,7 @@ export function validateManifest(value: PlaybackManifest): PlaybackManifest {
   )
     throw new Error('Replay metadata is invalid.');
   validateItemState(value.itemState);
+  if (!validSmokeTracks(value.smokeTracks, value.lastTick)) delete value.smokeTracks;
   for (const [i, part] of value.chunks.entries()) {
     if (
       part.index !== i ||

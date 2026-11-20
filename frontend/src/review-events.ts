@@ -13,12 +13,25 @@ export type ReviewEvent = {
   headshot?: boolean;
 };
 
+// Streamed frame slices retain the same immutable round metadata.
+const sortedRounds = new WeakMap<Playback['rounds'], Playback['rounds']>();
+
 /** Inclusive boundaries assign a boundary event to one round, including the final match tick. */
 export function roundAt(data: Playback, tick: number, last: number): ReviewRound {
-  const rounds = [...data.rounds].sort((a, b) => a.tick - b.tick);
+  let rounds = sortedRounds.get(data.rounds);
+  if (!rounds) {
+    rounds = [...data.rounds].sort((a, b) => a.tick - b.tick);
+    sortedRounds.set(data.rounds, rounds);
+  }
   if (!rounds.length) return { number: 1, start: 0, end: last };
-  let index = rounds.length - 1;
-  while (index > 0 && rounds[index].tick > tick) index--;
+  let low = 0;
+  let high = rounds.length - 1;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if (rounds[middle].tick <= tick) low = middle;
+    else high = middle - 1;
+  }
+  const index = low;
   const round = rounds[index];
   return {
     number: round.number,

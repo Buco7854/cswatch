@@ -21,8 +21,30 @@ export const viewmodelSourceSeeds = Object.freeze({
   fire: 'animation/anims/viewmodel/rifle/rifle_ak/shoot1_ak.vnmclip_c',
   reload: 'animation/anims/viewmodel/rifle/rifle_ak/reload_ak.vnmclip_c',
 });
-const seeds = Object.values(viewmodelSourceSeeds),
-  fixedClips = new Set(seeds.filter((resource) => resource.endsWith('vnmclip_c')));
+export const viewmodelSources = Object.freeze({
+  ak47: viewmodelSourceSeeds,
+  m4a4: Object.freeze({
+    arms: viewmodelSourceSeeds.arms,
+    weapon: 'weapons/models/m4a4/weapon_rif_m4a4.vmdl_c',
+    idle: 'animation/anims/viewmodel/rifle/rifle_m4a4/idle_m4a4.vnmclip_c',
+    fire: 'animation/anims/viewmodel/rifle/rifle_m4a4/shoot1_m4a4.vnmclip_c',
+    reload: 'animation/anims/viewmodel/rifle/rifle_m4a4/reload_m4a4.vnmclip_c',
+  }),
+  awp: Object.freeze({
+    arms: viewmodelSourceSeeds.arms,
+    weapon: 'weapons/models/awp/weapon_snip_awp.vmdl_c',
+    idle: 'animation/anims/viewmodel/rifle/rifle_awp/idle_awp.vnmclip_c',
+    fire: 'animation/anims/viewmodel/rifle/rifle_awp/shoot1_awp.vnmclip_c',
+    reload: 'animation/anims/viewmodel/rifle/rifle_awp/reload_awp.vnmclip_c',
+  }),
+  glock: Object.freeze({
+    arms: viewmodelSourceSeeds.arms,
+    weapon: 'weapons/models/glock18/weapon_pist_glock18.vmdl_c',
+    idle: 'animation/anims/viewmodel/pistol/pistol_glock18/idle_glock.vnmclip_c',
+    fire: 'animation/anims/viewmodel/pistol/pistol_glock18/shoot1_glock.vnmclip_c',
+    reload: 'animation/anims/viewmodel/pistol/pistol_glock18/reload_glock.vnmclip_c',
+  }),
+});
 const limits = Object.freeze({
   resources: 512,
   resourceBytes: 32 * 1024 ** 2,
@@ -32,13 +54,6 @@ const limits = Object.freeze({
 });
 const integer = (value) => Number.isSafeInteger(value) && value >= 0;
 const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
-function graphDependency(resource) {
-  return (
-    /\.(?:vnmgraph|vnmclip|vanim|vagrp|vseq|vgcxdata)_c$/.test(resource) &&
-    !fixedClips.has(resource)
-  );
-}
-
 /** Payload floor only. Steam chunk transfer and converter scratch are not entry sizes. */
 export function viewmodelSourceBudget({ missingSourceBytes, availableBytes }) {
   if (!integer(missingSourceBytes) || !integer(availableBytes))
@@ -60,8 +75,11 @@ export function viewmodelSourceBudget({ missingSourceBytes, availableBytes }) {
   };
 }
 
-export async function inspectViewmodelSource({ game, manifest }, adapters = {}) {
+export async function inspectViewmodelSource({ game, manifest, weapon = 'ak47' }, adapters = {}) {
   if (typeof game !== 'string' || !game) throw Error('Provide an existing local source cache.');
+  if (!Object.hasOwn(viewmodelSources, weapon)) throw Error('Unsupported fixed weapon source.');
+  const selected = viewmodelSources[weapon];
+  const seeds = Object.values(selected);
   manifest = selectedSteamManifest(manifest);
   game = resolve(game);
   const sources = [];
@@ -90,7 +108,10 @@ export async function inspectViewmodelSource({ game, manifest }, adapters = {}) 
     overLimitBytes = 0;
   for (let cursor = 0; cursor < queue.length; cursor++) {
     const resource = queue[cursor];
-    if (graphDependency(resource)) {
+    if (
+      /\.(?:vnmgraph|vnmclip|vanim|vagrp|vseq|vgcxdata)_c$/.test(resource) &&
+      !seeds.includes(resource)
+    ) {
       excludedAnimationResources.push(resource);
       continue;
     }
@@ -141,7 +162,7 @@ export async function inspectViewmodelSource({ game, manifest }, adapters = {}) 
     availableBytes = disk.bavail * disk.bsize;
   const result = {
     schemaVersion: 1,
-    scope: 'fixed-ak47-first-person-source-plan',
+    scope: `fixed-${weapon}-first-person-source-plan`,
     source: {
       app: STEAM_APP,
       depot: STEAM_DEPOT,
@@ -155,7 +176,7 @@ export async function inspectViewmodelSource({ game, manifest }, adapters = {}) 
         entries: provenance.entries,
       })),
     },
-    seeds: viewmodelSourceSeeds,
+    seeds: selected,
     resources,
     missingFromIndex,
     excludedAnimationResources,
@@ -191,12 +212,13 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       options: {
         game: { type: 'string' },
         manifest: { type: 'string' },
+        weapon: { type: 'string' },
         help: { type: 'boolean' },
       },
     });
     if (values.help || !values.game || !values.manifest) {
       console.log(
-        'Usage: node inspect-viewmodel-source.mjs --game PRIVATE_STEAM_CACHE --manifest EXACT_MANIFEST\nRead-only fixed AK arms/idle/fire/reload source evidence and payload lower bound. No downloads or conversion.',
+        'Usage: node inspect-viewmodel-source.mjs --game PRIVATE_STEAM_CACHE --manifest EXACT_MANIFEST [--weapon ak47|m4a4|awp|glock]\nRead-only fixed arms, idle, fire and reload source evidence and payload lower bound. No downloads or conversion.',
       );
       process.exitCode = values.help ? 0 : 1;
     } else console.log(JSON.stringify(await inspectViewmodelSource(values), null, 2));

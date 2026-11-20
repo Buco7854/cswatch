@@ -22,6 +22,9 @@ import { crosshairCodePattern } from './crosshairs.js';
 import { gameplaySoundRegistry } from './gameplay-sound-registry.js';
 import { gameplaySoundLimits } from './gameplay-sounds.js';
 import { mapIdentitySchema } from './map-identity.js';
+import { validSmokeTracks } from './smoke-state-wire.js';
+import type { SmokeTrack } from '../../shared/smoke-state.mjs';
+import { recordedReloadTickLimit } from './parser-fields.js';
 import {
   ItemArtifactValidator,
   ItemSliceIndex,
@@ -171,11 +174,23 @@ const position = z
     armor: z.number().finite().optional(),
     money: z.number().finite().optional(),
     ammo: z.number().finite().optional(),
+    reloadStarted: tick.optional(),
     duck: z.number().finite().optional(),
     flash: z.number().finite().optional(),
     helmet: z.boolean().optional(),
     defuser: z.boolean().optional(),
     scoped: z.boolean().optional(),
+    scopeFov: z.number().int().min(5).max(89).optional(),
+    eyeOffset: z
+      .union([
+        z.tuple([z.number().min(1).max(96)]),
+        z.tuple([
+          z.number().min(-32).max(32),
+          z.number().min(-32).max(32),
+          z.number().min(1).max(96),
+        ]),
+      ])
+      .optional(),
     defusing: z.boolean().optional(),
     equipmentValue: z.number().int().min(0).max(1000000000).optional(),
     startMoney: z.number().int().min(0).max(1000000000).optional(),
@@ -197,7 +212,18 @@ const position = z
 const grenade = z
   .object({ id: z.string().max(100), kind: z.string().max(100), points: z.array(point).max(5000) })
   .strict();
-const frame = z.object({ tick, players: z.array(position).min(1).max(128) }).strict();
+const frame = z
+  .object({ tick, players: z.array(position).min(1).max(128) })
+  .strict()
+  .refine(({ tick, players }) =>
+    players.every(
+      (player) =>
+        player.reloadStarted === undefined ||
+        (player.alive &&
+          player.reloadStarted <= tick &&
+          tick - player.reloadStarted < recordedReloadTickLimit),
+    ),
+  );
 const mediaTick = z
   .number()
   .finite()
@@ -359,6 +385,7 @@ export const manifestSchema = z
       )
       .max(1000),
     events: z.array(event).max(100000),
+    smokeTracks: z.custom<SmokeTrack[]>().optional(),
     deadTimes: z
       .array(
         z
@@ -706,7 +733,12 @@ async function writeReplayCore(folder: string, data: Playback, written: string[]
     if (end === frames.length - 1) break;
     offset = end;
   }
-  const json = JSON.stringify(manifest, (_, v) => (typeof v === 'bigint' ? String(v) : v));
+  if (!validSmokeTracks(manifest.smokeTracks, manifest.lastTick)) delete manifest.smokeTracks;
+  let json = replayJSON(manifest);
+  if (manifest.smokeTracks && Buffer.byteLength(json) > replayLimits.manifestBytes) {
+    delete manifest.smokeTracks;
+    json = replayJSON(manifest);
+  }
   if (Buffer.byteLength(json) > replayLimits.manifestBytes)
     throw new Error('Replay metadata limit');
   writeFileSync(join(folder, 'manifest.json.gz'), gzipSync(json), { mode: 0o600, flag: 'wx' });
@@ -732,6 +764,11 @@ export function validateReplayArtifacts(folder: string): {
   const manifest = manifestSchema.parse(
     JSON.parse(decode(join(folder, files[0]), replayLimits.manifestBytes).toString('utf8')),
   );
+  if (
+    manifest.smokeTracks !== undefined &&
+    !validSmokeTracks(manifest.smokeTracks, manifest.lastTick)
+  )
+    throw new Error('Invalid recorded smoke bank');
   if (
     manifest.firstTick > manifest.lastTick ||
     manifest.chunks[0].startTick !== manifest.firstTick ||

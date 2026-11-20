@@ -8,16 +8,18 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
 import type { ReactNode } from 'react';
 import type { ListenerPose } from '../viewer-audio';
+import { AdaptiveResolution, type RenderQuality } from '../adaptive-resolution';
 import { Canvas, createPortal, useFrame, useThree } from '@react-three/fiber';
 import { Html, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import type { Playback, Position } from '../types';
 import TacticalPlot from './TacticalPlot';
 import {
-  buildUtilityZones,
+  buildUtilityZoneIndex,
   projectilesAt,
   type ProjectileState,
   type UtilityZone,
@@ -35,7 +37,15 @@ import { Line } from '@react-three/drei';
 import { freeCameraAction, typingOrDialog } from '../free-camera';
 import { installFreeCameraLook } from '../free-camera-look';
 import { thirdPersonFollow } from '../follow-camera';
-import { firstPersonView, overheadDistance } from '../pov-camera';
+import { followObstruction } from '../follow-obstruction';
+import {
+  firstPersonView,
+  overheadDistance,
+  recordedEyePosition,
+  scopedVerticalFov,
+} from '../pov-camera';
+import { useSmokeDensity } from '../smoke-render-state';
+import { RecordedSmoke } from './RecordedSmoke';
 import { mapSurface, type MapUnavailableReason } from '../map-availability';
 import MapUnavailable from './MapUnavailable';
 import { mapAcquisitionMessage, type DemoMapState } from '../demo-map-assets';
@@ -62,7 +72,6 @@ import {
   EquipmentModels,
   EquipmentModelInstance,
   HeldEquipment,
-  PovEquipment,
   RecordedEquipment,
   ProjectileFallback,
   type EquipmentInstanceStatus,
@@ -73,6 +82,7 @@ import type { MapEnvironment } from '../../../shared/map-assets';
 import { daylightFallback, mapEnvironmentKey, useMapEnvironment } from '../map-environment';
 import EquipmentFire from './EquipmentFire';
 import PovEquipmentPass from './PovEquipmentPass';
+import PovViewmodel from './PovViewmodel';
 import { useMapShadowCache } from '../useMapShadowCache';
 import SceneLighting from './SceneLighting';
 import { mapSun, type MapSun } from '../map-sun';
@@ -85,6 +95,8 @@ export type MapRenderState = {
   environment: AssetStatus;
   environmentVersion: string | null;
   landscape: AssetStatus;
+  resolution?: number;
+  shadowsPaused?: boolean;
   equipment?: EquipmentRenderState;
 };
 type MapResources = DemoMapState & {
@@ -93,6 +105,20 @@ type MapResources = DemoMapState & {
 };
 
 const UNIT = 0.0254;
+const MAX_DESKTOP_DPR = 1.75;
+const devicePixelRatio = () => window.devicePixelRatio || 1;
+
+function subscribeToDevicePixelRatio(update: () => void) {
+  let media: MediaQueryList;
+  const track = () => {
+    media?.removeEventListener('change', track);
+    media = window.matchMedia(`(resolution: ${devicePixelRatio()}dppx)`);
+    media.addEventListener('change', track);
+    update();
+  };
+  track();
+  return () => media.removeEventListener('change', track);
+}
 const vector = (p: Position) => new THREE.Vector3(p.x * UNIT, p.z * UNIT, -p.y * UNIT);
 function Box({
   position,
@@ -199,10 +225,12 @@ function Model({
   loaded,
   fogResources,
   scope,
+  registerFollowModel,
 }: {
   url: string;
   fogResources: SourceFogReference;
   scope: ModelScope;
+  registerFollowModel: (model: THREE.Group) => () => void;
   loaded: (
     url: string,
     status: 'ready' | 'error',
@@ -235,6 +263,9 @@ function Model({
     return { ...result, sun, landscape, compatibility };
   }, [gltf, fogResources]);
   useEffect(() => () => prepared.compatibility.dispose(), [prepared]);
+  useLayoutEffect(() => {
+    if (!gltf.animations.length && scope.isCurrent()) return registerFollowModel(prepared.main);
+  }, [gltf, prepared, registerFollowModel, scope]);
   useLayoutEffect(() => {
     if (scope.isCurrent()) loaded(url, 'ready', prepared.sky, prepared.landscape, prepared.sun);
   }, [url, loaded, prepared, scope]);
@@ -384,6 +415,15 @@ function Agent({
     };
   }, []);
   const ref = useRef<THREE.Group>(null);
+  const labelAnchor = useRef<THREE.Group>(null);
+  const headAnchor = useRef<THREE.Bone | null>(null);
+  const headPosition = useMemo(() => new THREE.Vector3(), []);
+  const registerHeadAnchor = useCallback((bone: THREE.Bone) => {
+    headAnchor.current = bone;
+    return () => {
+      if (headAnchor.current === bone) headAnchor.current = null;
+    };
+  }, []);
   const { camera } = useThree();
   const eye = useRef(new THREE.Vector3());
   const [nearCamera, setNearCamera] = useState(false);
@@ -392,14 +432,27 @@ function Agent({
     if (!ref.current) return;
     ref.current.position.set(pose.x * UNIT, pose.z * UNIT, -pose.y * UNIT);
     ref.current.rotation.y = THREE.MathUtils.degToRad(pose.yaw);
-    eye.current.set(pose.x * UNIT, pose.z * UNIT + 1.65 - (pose.duck ?? 0) * 0.7, -pose.y * UNIT);
-    const near = hideNearCamera && camera.position.distanceToSquared(eye.current) < 0.25;
+    const near =
+      hideNearCamera &&
+      camera.position.distanceToSquared(eye.current.fromArray(recordedEyePosition(pose))) < 0.25;
     ref.current.visible = !near;
     if (near !== priorNearCamera.current) {
       priorNearCamera.current = near;
       setNearCamera(near);
     }
   }, -3);
+  const fallbackLabelHeight = 2.08 - (pose.duck ?? 0) * 0.65;
+  useFrame(() => {
+    const group = ref.current;
+    const anchor = labelAnchor.current;
+    if (!group || !anchor) return;
+    anchor.position.set(0, fallbackLabelHeight, 0);
+    if (!headAnchor.current) return;
+    // The native locomotion pose is sampled at priority -2. Project the head from that pose.
+    const head = group.worldToLocal(headAnchor.current.getWorldPosition(headPosition));
+    if (head.y >= 0.25 && head.y <= 2.3 && Math.hypot(head.x, head.z) <= 0.8)
+      anchor.position.set(head.x, head.y + 0.24, head.z);
+  }, -1);
   const color = position.team === 3 ? '#9ec7da' : '#e7ba73';
   if (!position.alive) return null;
   return (
@@ -414,6 +467,7 @@ function Agent({
           duck={pose.duck ?? 0}
           xrayColor={xray ? color : undefined}
           registerWeaponAnchor={registerWeaponAnchor}
+          registerHeadAnchor={labels && showMarkers && name ? registerHeadAnchor : undefined}
           fallback={<GenericAgentBody team={position.team} id={position.id} xray={xray} />}
         />
       ) : (
@@ -421,32 +475,33 @@ function Agent({
       )}
       <HeldEquipment position={pose} anchor={weaponAnchor} />
       {showMarkers && labels && name && !nearCamera && (
-        <Html
-          key={xray ? 'through-walls' : 'visible-only'}
-          center
-          position={[0, 2.08 - (pose.duck ?? 0) * 0.65, 0]}
-          occlude={!xray}
-          zIndexRange={[2, 0]}
-          style={{ pointerEvents: 'none' }}
-        >
-          <div
-            className="actor-label"
-            data-team={position.team}
-            data-player={position.id}
-            role="img"
-            aria-label={t('{{name}}, {{health}} health', { name, health: position.health })}
+        <group ref={labelAnchor} position={[0, fallbackLabelHeight, 0]}>
+          <Html
+            key={xray ? 'through-walls' : 'visible-only'}
+            center
+            occlude={!xray}
+            zIndexRange={[2, 0]}
+            style={{ pointerEvents: 'none' }}
           >
-            <span className="actor-label-name">{name}</span>
-            {Number.isFinite(position.health) && position.health >= 0 && (
-              <span className="actor-label-health">
-                <span className="actor-label-track" aria-hidden="true">
-                  <span style={{ width: Math.min(100, position.health) + '%' }} />
+            <div
+              className="actor-label"
+              data-team={position.team}
+              data-player={position.id}
+              role="img"
+              aria-label={t('{{name}}, {{health}} health', { name, health: position.health })}
+            >
+              <span className="actor-label-name">{name}</span>
+              {Number.isFinite(position.health) && position.health >= 0 && (
+                <span className="actor-label-health">
+                  <span className="actor-label-track" aria-hidden="true">
+                    <span style={{ width: Math.min(100, position.health) + '%' }} />
+                  </span>
+                  <span>{position.health}</span>
                 </span>
-                <span>{position.health}</span>
-              </span>
-            )}
-          </div>
-        </Html>
+              )}
+            </div>
+          </Html>
+        </group>
       )}
       {showMarkers && !labels && (
         <mesh position={[0, 2, 0]}>
@@ -467,6 +522,8 @@ function World({
   data,
   low,
   tick,
+  playing,
+  shadows,
   mode,
   selected,
   model,
@@ -489,6 +546,8 @@ function World({
   data: Playback;
   low: boolean;
   tick: number;
+  playing: boolean;
+  shadows: boolean;
   mode: string;
   selected: string;
   model: string | null;
@@ -515,17 +574,19 @@ function World({
   onAudioListener?: (pose: ListenerPose | null) => void;
 }) {
   const { camera, gl, invalidate } = useThree();
-  useMapShadowCache(!data.sample && !low);
+  useMapShadowCache(!data.sample && shadows);
+  const [followModel, setFollowModel] = useState<THREE.Group | null>(null);
+  const registerFollowModel = useCallback((map: THREE.Group) => {
+    setFollowModel(map);
+    return () => setFollowModel((current) => (current === map ? null : current));
+  }, []);
+  const followTrace = useMemo(
+    () => (mode === 'follow' && followModel ? followObstruction(followModel) : null),
+    [mode, followModel],
+  );
   const fogResources = useRef<SourceFogResources>({ fog: null, cube: null });
   const movement = useRef(new Set<string>());
   const fastMovement = useRef(false);
-  useEffect(() => {
-    if (camera instanceof THREE.PerspectiveCamera) {
-      camera.fov = settings.cameraFov;
-      camera.updateProjectionMatrix();
-      invalidate();
-    }
-  }, [camera, settings.cameraFov, invalidate]);
   useLayoutEffect(
     () => invalidate(),
     [
@@ -536,6 +597,7 @@ function World({
       selected,
       model,
       modelReady,
+      followTrace,
       settings,
       focus,
       utilityState,
@@ -547,8 +609,23 @@ function World({
   useEffect(() => {
     if (mode !== 'orbit' || preview || data.sample || !(camera instanceof THREE.PerspectiveCamera))
       return;
-    return installFreeCameraLook(gl.domElement, camera, invalidate);
-  }, [mode, preview, data.sample, camera, gl, invalidate]);
+    return installFreeCameraLook(
+      gl.domElement,
+      camera,
+      invalidate,
+      settings.lookSensitivity,
+      settings.invertLook,
+    );
+  }, [
+    mode,
+    preview,
+    data.sample,
+    camera,
+    gl,
+    invalidate,
+    settings.lookSensitivity,
+    settings.invertLook,
+  ]);
   useEffect(() => {
     if (mode !== 'orbit' || preview) return;
     const root = gl.domElement.closest('.viewer-frame');
@@ -618,6 +695,14 @@ function World({
   const previousMode = useRef<string | undefined>(undefined);
   const { frame, next, alpha } = frameAt(data, tick);
   const viewedPlayer = frame.players.find((player) => player.id === selected);
+  const scopeFov = mode === 'pov' ? scopedVerticalFov(viewedPlayer) : undefined;
+  const fov = scopeFov ?? settings.cameraFov;
+  useLayoutEffect(() => {
+    if (!(camera instanceof THREE.PerspectiveCamera) || camera.fov === fov) return;
+    camera.fov = fov;
+    camera.updateProjectionMatrix();
+    invalidate();
+  }, [camera, fov, invalidate]);
   const poseTiming: PoseTiming = {
     fromTick: frame.tick,
     nextTick: next.tick,
@@ -722,7 +807,11 @@ function World({
         if (action === 'down') shift.y -= 1;
       }
       if (shift.lengthSq())
-        shift.normalize().multiplyScalar(Math.min(delta, 0.05) * (fastMovement.current ? 24 : 8));
+        shift
+          .normalize()
+          .multiplyScalar(
+            Math.min(delta, 0.05) * settings.freeCameraSpeed * (fastMovement.current ? 3 : 1),
+          );
       camera.position.add(shift);
       orbit.current?.target.add(shift);
       orbit.current?.update();
@@ -740,20 +829,23 @@ function World({
     }
     const p = viewedPlayer;
     if (!p) return;
-    const n = next.players.find((n) => n.id === p.id),
-      pose = playerPose(p, n, alpha, poseTiming);
+    const n = next.players.find((n) => n.id === p.id);
     if (mode === 'follow') {
       const follow = thirdPersonFollow(p, n, alpha, poseTiming);
-      if (follow) {
-        camera.position.set(...follow.position);
+      if (!follow) return;
+      const position = followTrace?.(follow) ?? follow.position;
+      const [x, y, z] = follow.target;
+      // At a fully retracted boom the camera would look through the selected model.
+      if (Math.hypot(position[0] - x, position[1] - y, position[2] - z) >= 0.65) {
+        camera.position.fromArray(position);
         camera.lookAt(...follow.target);
+        return;
       }
-    } else {
-      const view = firstPersonView(pose);
-      camera.position.set(...view.position);
-      camera.lookAt(...view.target);
     }
-  });
+    const view = firstPersonView(playerPose(p, n, alpha, poseTiming));
+    camera.position.fromArray(view.position);
+    camera.lookAt(...view.target);
+  }, -4);
   const audioForward = useRef(new THREE.Vector3());
   const audioUp = useRef(new THREE.Vector3());
   useFrame(() => {
@@ -777,7 +869,12 @@ function World({
         low={low}
       />
       {sky && <SkyPass sky={sky} sun={sun} skylight={skylight} />}
-      <SceneLighting sample={Boolean(data.sample)} sun={sun} skylight={skylight} shadows={!low} />
+      <SceneLighting
+        sample={Boolean(data.sample)}
+        sun={sun}
+        skylight={skylight}
+        shadows={shadows}
+      />
       {data.sample ? (
         <Courtyard />
       ) : (
@@ -790,6 +887,7 @@ function World({
                   scope={modelScope}
                   loaded={reportModel}
                   fogResources={fogResources}
+                  registerFollowModel={registerFollowModel}
                 />
               </Suspense>
             </MapModelBoundary>
@@ -809,7 +907,11 @@ function World({
               xray={settings.xray && !preview}
               name={data.players.find((player) => player.id === p.id)?.name}
               labels={settings.playerLabels && !preview && (Boolean(data.sample) || modelReady)}
-              hideNearCamera={mode === 'orbit' && !preview && !data.sample}
+              hideNearCamera={
+                !preview &&
+                !data.sample &&
+                (mode === 'orbit' || (mode === 'follow' && p.id === selected))
+              }
               showMarkers={!(mode === 'follow' && p.id === selected)}
               model={!preview ? (p.team === 3 ? agents.ct : agents.t) : null}
               tick={tick}
@@ -819,26 +921,33 @@ function World({
               roundBoundary={Boolean(poseTiming.roundBoundary)}
             />
           ))}
-        {!preview && mode === 'pov' && viewedPlayer && (data.sample || modelReady) && (
-          <PovEquipmentPass
-            hasSky={Boolean(sky)}
-            sample={Boolean(data.sample)}
-            sun={sun}
-            skylight={skylight}
-          >
-            <PovEquipment
-              position={viewedPlayer}
-              next={next.players.find((player) => player.id === viewedPlayer.id)}
-              alpha={alpha}
-              timing={poseTiming}
-            />
-          </PovEquipmentPass>
-        )}
+        {!preview &&
+          mode === 'pov' &&
+          scopeFov === undefined &&
+          viewedPlayer &&
+          (data.sample || modelReady) && (
+            <PovEquipmentPass
+              hasSky={Boolean(sky)}
+              sample={Boolean(data.sample)}
+              sun={sun}
+              skylight={skylight}
+            >
+              <PovViewmodel
+                native={!data.sample}
+                position={viewedPlayer}
+                next={next.players.find((player) => player.id === viewedPlayer.id)}
+                alpha={alpha}
+                timing={poseTiming}
+              />
+            </PovEquipmentPass>
+          )}
         {!preview && <RecordedEquipment items={items} />}
         {!preview && (
           <UtilityLayer
             data={data}
             tick={tick}
+            playing={playing}
+            nativeVolume={modelReady}
             selected={selected}
             settings={settings}
             utilityState={utilityState}
@@ -880,17 +989,38 @@ function World({
 function UtilityLayer({
   data,
   tick,
+  playing,
+  nativeVolume,
   selected,
   settings,
   utilityState,
 }: {
   data: Playback;
   tick: number;
+  playing: boolean;
+  nativeVolume: boolean;
   selected: string;
   settings: ViewerSettings;
   utilityState: UtilityPresentation;
 }) {
   const { zones: utility, projectiles } = utilityState;
+  const smoke = useSmokeDensity(
+    settings.utilities && nativeVolume ? data.smokeTracks : undefined,
+    tick,
+    data.tickRate,
+    playing,
+  );
+  const approximateZones = utility.filter(
+    (zone) =>
+      zone.kind !== 'smoke' ||
+      !smoke.some(
+        ({ track }) =>
+          track.entity === zone.entity &&
+          Math.abs(track.origin[0] - zone.x) <= 1 &&
+          Math.abs(track.origin[1] - zone.y) <= 1 &&
+          Math.abs(track.origin[2] - zone.z) <= 1,
+      ),
+  );
   const trail = useMemo(() => {
     if (!settings.trails) return [];
     const frames = data.frames.filter((f) => f.tick <= tick && f.tick > tick - data.tickRate * 5);
@@ -901,7 +1031,10 @@ function UtilityLayer({
   }, [data, tick, selected, settings.trails]);
   return (
     <>
-      {utility.map((zone) => (
+      {smoke.map(({ key, track, cells }) => (
+        <RecordedSmoke key={key} track={track} cells={cells} tick={tick} rate={data.tickRate} />
+      ))}
+      {approximateZones.map((zone) => (
         <mesh
           key={zone.id}
           name={'utility-zone:' + zone.kind}
@@ -973,12 +1106,43 @@ function RendererFallback({ children, report }: { children: ReactNode; report: (
   useLayoutEffect(report, [report]);
   return children;
 }
+function MeasureRenderCadence({
+  active,
+  resolution,
+  ceiling,
+  shadows,
+  allowShadows,
+  onChange,
+}: {
+  active: boolean;
+  resolution: number;
+  ceiling: number;
+  shadows: boolean;
+  allowShadows: boolean;
+  onChange: (quality: RenderQuality) => void;
+}) {
+  const monitor = useMemo(() => new AdaptiveResolution(), [active, ceiling]);
+  useEffect(() => {
+    const reset = () => monitor.reset();
+    document.addEventListener('visibilitychange', reset);
+    return () => document.removeEventListener('visibilitychange', reset);
+  }, [monitor]);
+  useFrame(() => {
+    if (!active || document.hidden) return;
+    const current = { resolution, shadows };
+    const next = monitor.sample(performance.now(), current, ceiling, allowShadows);
+    if (next !== current) onChange(next);
+  });
+  return null;
+}
+
 export default function Scene({
   data,
   tick = 400,
   mode = 'orbit',
   selected = '0',
   preview = false,
+  playing = false,
   settings = defaultSettings,
   mapAssets,
   assetScope = 'public',
@@ -991,6 +1155,7 @@ export default function Scene({
   mode?: string;
   selected?: string;
   preview?: boolean;
+  playing?: boolean;
   settings?: ViewerSettings;
   mapAssets: MapResources;
   assetScope?: string;
@@ -1101,19 +1266,42 @@ export default function Scene({
     return () => media.removeEventListener('change', update);
   }, []);
   const low = settings.quality === 'low' || (settings.quality === 'auto' && autoLow);
-  const zones = useMemo(
-    () => buildUtilityZones(data.events, data.tickRate),
+  const [adaptiveQuality, setAdaptiveQuality] = useState({
+    resolution: settings.renderResolution,
+    shadows: true,
+  });
+  useEffect(
+    () => setAdaptiveQuality({ resolution: settings.renderResolution, shadows: true }),
+    [assetScope, data.map, settings.quality, settings.renderResolution],
+  );
+  const adaptive = settings.quality === 'auto' && !preview;
+  const resolution = adaptive
+    ? Math.min(adaptiveQuality.resolution, settings.renderResolution)
+    : settings.renderResolution;
+  const shadows = !low && (!adaptive || adaptiveQuality.shadows);
+  const displayDpr = useSyncExternalStore(subscribeToDevicePixelRatio, devicePixelRatio);
+  const renderDpr =
+    (low ? 1 : Math.min(MAX_DESKTOP_DPR, Math.max(1, displayDpr))) * (resolution / 100);
+  const zonesAt = useMemo(
+    () => buildUtilityZoneIndex(data.events, data.tickRate),
     [data.events, data.tickRate],
   );
   const utilityState = useMemo(
     () => ({
-      projectiles: preview ? [] : projectilesAt(data.grenades || [], tick, data.tickRate),
-      zones:
-        preview || !settings.utilities
-          ? []
-          : zones.filter((zone) => tick >= zone.start && tick < zone.end),
+      projectiles: preview
+        ? []
+        : projectilesAt(data.grenades || [], tick, data.tickRate, settings.trajectories),
+      zones: preview || !settings.utilities ? [] : zonesAt(tick),
     }),
-    [data.grenades, data.tickRate, tick, zones, preview, settings.utilities],
+    [
+      data.grenades,
+      data.tickRate,
+      tick,
+      zonesAt,
+      preview,
+      settings.utilities,
+      settings.trajectories,
+    ],
   );
   const expectedEquipment =
     !preview && !data.sample
@@ -1286,6 +1474,8 @@ export default function Scene({
         environment: environmentStatus,
         environmentVersion: environment?.assetVersion || null,
         landscape: landscapeStatus,
+        resolution: surface === '3d' ? resolution : undefined,
+        shadowsPaused: surface === '3d' && adaptive && !low && !shadows,
         equipment: equipmentReport,
       }),
     [
@@ -1296,6 +1486,10 @@ export default function Scene({
       rendererFailure,
       environmentStatus,
       landscapeStatus,
+      resolution,
+      adaptive,
+      low,
+      shadows,
       environment?.assetVersion,
       onMapStatus,
       surface,
@@ -1348,6 +1542,8 @@ export default function Scene({
     <div
       className="scene"
       data-quality={low ? 'low' : 'high'}
+      data-render-resolution={resolution}
+      data-live-shadows={shadows}
       data-agent-model-state={agentAssets.status}
       data-agent-ready-count={agentCounts.filter((status) => status === 'ready').length}
       data-agent-fallback-count={Math.max(
@@ -1409,12 +1605,23 @@ export default function Scene({
             <Canvas
               frameloop={preview ? 'always' : 'demand'}
               onCreated={reportRendererCreated}
-              shadows={!low}
-              dpr={low ? 1 : [1, 1.75]}
+              shadows={shadows}
+              dpr={renderDpr}
               camera={{ position: [32, 36, 34], fov: settings.cameraFov, near: 0.05, far: 3000 }}
               gl={{ antialias: true, stencil: true, powerPreference: 'high-performance' }}
               fallback={<span>{t('3D rendering is unavailable.')}</span>}
             >
+              {adaptive && (
+                <MeasureRenderCadence
+                  key={`${data.map}:${model}:${mode}`}
+                  active={playing && (Boolean(data.sample) || modelStatus === 'ready')}
+                  resolution={resolution}
+                  ceiling={settings.renderResolution}
+                  shadows={shadows}
+                  allowShadows={!low}
+                  onChange={setAdaptiveQuality}
+                />
+              )}
               <EquipmentFire data={data} tick={tick} low={low} enabled={settings.shotEffects}>
                 <EquipmentModels.Provider value={equipmentContext}>
                   <AgentModels.Provider value={agentContext}>
@@ -1422,6 +1629,8 @@ export default function Scene({
                       data={data}
                       low={low}
                       tick={tick}
+                      playing={playing}
+                      shadows={shadows}
                       mode={mode}
                       selected={selected}
                       model={model}

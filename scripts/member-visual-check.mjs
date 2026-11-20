@@ -93,11 +93,26 @@ try {
           ),
           title: document.querySelector('h1')?.textContent,
           oversizedRows: [...document.querySelectorAll('.demo-row:not(.table-head)')].filter(
-            (el) => el.getBoundingClientRect().height > 120,
+            (el) => {
+              const file = el.querySelector('.match-name small');
+              const style = file && getComputedStyle(file);
+              // Phone rows deliberately allow a second line for the recording name.
+              const extraLine =
+                file && style?.webkitLineClamp === '2'
+                  ? Math.max(
+                      0,
+                      file.getBoundingClientRect().height - (parseFloat(style.lineHeight) || 0),
+                    )
+                  : 0;
+              return el.getBoundingClientRect().height > 120 + extraLine;
+            },
           ).length,
           misSizedSwitches: [...document.querySelectorAll('input[role=switch]')].filter((el) => {
-            const r = el.getBoundingClientRect();
-            return r.width > 0 && (r.height < 18 || r.height > 24);
+            const target = el.getBoundingClientRect();
+            if (!target.width || !el.checkVisibility()) return false;
+            const track = el.parentElement?.querySelector('.viewer-option-switch-track');
+            const size = track?.getBoundingClientRect() ?? target;
+            return size.height < 18 || size.height > 24 || (track && target.height < 44);
           }).length,
           viewerFit:
             !document.querySelector('.viewer-frame') ||
@@ -189,6 +204,12 @@ try {
             await page.getByRole('button', { name: 'Options', exact: true }).click();
             await inspect('options', width);
             await page
+              .getByRole('tab', {
+                name: lang === 'fr' ? 'Performances' : 'Performance',
+                exact: true,
+              })
+              .click();
+            await page
               .getByRole('combobox', {
                 name: lang === 'fr' ? 'Qualité du rendu' : 'Rendering quality',
                 exact: true,
@@ -197,9 +218,18 @@ try {
             await inspect('quality', width);
             await page.keyboard.press('Escape');
             await page.keyboard.press('Escape');
-            await page
-              .getByRole('button', { name: lang === 'fr' ? 'Joueurs' : 'Players', exact: true })
-              .click();
+            const players = lang === 'fr' ? 'Joueurs' : 'Players';
+            const playerButton = page.getByRole('button', { name: players, exact: true });
+            if (await playerButton.isVisible()) await playerButton.click();
+            else {
+              await page
+                .getByRole('button', {
+                  name: lang === 'fr' ? 'Autres commandes' : 'More controls',
+                  exact: true,
+                })
+                .click();
+              await page.getByRole('menuitem', { name: players, exact: true }).click();
+            }
             await inspect('players', width);
             await page
               .getByRole('button', {

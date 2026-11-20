@@ -1,6 +1,6 @@
 import { t } from '../i18n';
-import { useEffect, useRef, useState } from 'react';
-import { UploadCloud, ArrowUpRight, Check, FileUp } from 'lucide-react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { ChevronDown, FileUp, LockKeyhole } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { api, uploadFile } from '../api';
 import { useApp } from '../context';
@@ -13,7 +13,8 @@ export default function Upload({ compact = false }: { compact?: boolean }) {
   const input = useRef<HTMLInputElement>(null);
   const pending = useRef<AbortController | null>(null);
   const mounted = useRef(true);
-  const [source, setSource] = useState<'file' | GuidedSource>('file');
+  const hint = useId();
+  const [source, setSource] = useState<GuidedSource>('steam');
   const [busy, setBusy] = useState(false),
     [progress, setProgress] = useState(0),
     [error, setError] = useState(''),
@@ -86,114 +87,57 @@ export default function Upload({ compact = false }: { compact?: boolean }) {
       }
     }
   }
+  const uploadStatus =
+    progress === 100 ? t('Adding to processing queue…') : t('Uploading {{v0}}%', { v0: progress });
   return (
     <section
       className={'upload-panel' + (compact ? ' compact-upload' : '')}
       aria-labelledby={compact ? undefined : 'upload-title'}
       aria-label={compact ? t('Choose a CS2 demo') : undefined}
     >
-      {!compact && (
-        <>
-          <div className="panel-heading">
-            <h2 id="upload-title">{t('Bring your own match')}</h2>
-            <UploadCloud size={19} />
-          </div>
-          <p>{t('Premier, Competitive, FACEIT or pro matches. Start with a CS2 demo file.')}</p>
-        </>
-      )}
-      <div className="upload-source-choice">
-        <span id="upload-source-label" className={compact ? 'visually-hidden' : undefined}>
-          {t(compact ? 'Source' : 'Where is your demo?')}
-        </span>
-        <SelectControl
-          label={t('Demo import source')}
-          value={source}
-          onValueChange={(value) => {
-            setSource(value as 'file' | GuidedSource);
-            setError('');
-          }}
-          options={[
-            { value: 'file', label: t(compact ? 'Demo file' : 'I already have a demo file') },
-            { value: 'steam', label: t(compact ? 'Steam' : 'Premier / Competitive / Wingman') },
-            { value: 'faceit', label: 'FACEIT' },
-            { value: 'hltv', label: 'HLTV' },
-          ]}
+      {!compact && <h2 id="upload-title">{t('Upload a demo')}</h2>}
+      <div
+        className={'demo-drop-target' + (drag ? ' is-dragging' : '')}
+        onDragOver={(event) => {
+          event.preventDefault();
+          if (!busy) setDrag(true);
+        }}
+        onDragLeave={(event) => {
+          if (
+            !(event.relatedTarget instanceof Node) ||
+            !event.currentTarget.contains(event.relatedTarget)
+          )
+            setDrag(false);
+        }}
+        onDrop={(event) => {
+          event.preventDefault();
+          setDrag(false);
+          void upload(event.dataTransfer.files[0]);
+        }}
+      >
+        <button
+          type="button"
+          className="demo-file-picker"
           disabled={busy}
-        />
+          aria-describedby={hint}
+          onClick={chooseFile}
+        >
+          <span className="demo-file-action">
+            <FileUp size={18} aria-hidden="true" />
+            {t('Choose demo file')}
+          </span>
+        </button>
+        {busy ? (
+          <div className="demo-upload-status" id={hint}>
+            <span role="status">{uploadStatus}</span>
+            <progress max={100} value={progress} aria-label={t('Upload progress')} />
+          </div>
+        ) : (
+          <p className="demo-file-hint" id={hint}>
+            {t('.dem or .dem.zst · up to')} {config.max_upload_mb} {t('MB')}
+          </p>
+        )}
       </div>
-      {source === 'file' ? (
-        <>
-          <button
-            className={'dropzone ' + (drag ? 'dragging' : '')}
-            disabled={busy}
-            onClick={chooseFile}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDrag(true);
-            }}
-            onDragLeave={() => setDrag(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDrag(false);
-              void upload(e.dataTransfer.files[0]);
-            }}
-          >
-            {busy ? (
-              <Check size={compact ? 32 : 27} />
-            ) : compact ? (
-              <FileUp size={32} strokeWidth={1.4} aria-hidden="true" />
-            ) : (
-              <UploadCloud size={27} strokeWidth={1.3} />
-            )}
-            {(!compact || busy) && (
-              <strong>
-                {busy
-                  ? progress === 100
-                    ? t('Adding to processing queue…')
-                    : t('Uploading {{v0}}%', { v0: progress })
-                  : t('Drop your demo here')}
-              </strong>
-            )}
-            <span className={compact && !busy ? 'upload-file-action' : undefined}>
-              {busy
-                ? t('Keep this window open.')
-                : compact
-                  ? t('Choose demo file')
-                  : t('or choose a file')}
-              {compact && !busy && <ArrowUpRight size={15} aria-hidden="true" />}
-            </span>
-            <small>
-              {t('.dem or .dem.zst · up to')} {config.max_upload_mb} {t('MB')}
-            </small>
-            {busy && <progress max={100} value={progress} aria-label={t('Upload progress')} />}
-          </button>
-          {!compact && (
-            <button
-              type="button"
-              className="text-button upload-find-match"
-              onClick={() => setSource('steam')}
-              disabled={busy}
-            >
-              {t('Find my Premier or Competitive demo')}
-              <ArrowUpRight size={14} />
-            </button>
-          )}
-        </>
-      ) : (
-        <>
-          <ImportGuide source={source} chooseFile={chooseFile} disabled={busy} />
-          {busy && (
-            <div className="upload-guide-progress" role="status">
-              <p>
-                {progress === 100
-                  ? t('Adding to processing queue…')
-                  : t('Uploading {{v0}}%', { v0: progress })}
-              </p>
-              <progress max={100} value={progress} aria-label={t('Upload progress')} />
-            </div>
-          )}
-        </>
-      )}
       <input
         ref={input}
         type="file"
@@ -204,21 +148,41 @@ export default function Upload({ compact = false }: { compact?: boolean }) {
         disabled={busy}
       />
       {error && (
-        <p role="alert" className="error">
+        <p role="alert" className="error demo-upload-error">
           {t(error)}
         </p>
       )}
-      {!compact && (
-        <div className="upload-note">
-          <span className="status-dot" />
+      <details className="upload-help">
+        <summary>
+          {t('Where do I get a demo?')}
+          <ChevronDown size={16} aria-hidden="true" />
+        </summary>
+        <div className="upload-help-content">
+          <SelectControl
+            label={t('Demo import source')}
+            value={source}
+            onValueChange={(value) => setSource(value as GuidedSource)}
+            options={[
+              { value: 'steam', label: t('Premier / Competitive / Wingman') },
+              { value: 'faceit', label: 'FACEIT' },
+              { value: 'hltv', label: 'HLTV' },
+            ]}
+            disabled={busy}
+          />
+          <ImportGuide source={source} />
+        </div>
+      </details>
+      {(!compact || busy) && (
+        <p className="demo-upload-note">
+          {!busy && <LockKeyhole size={15} aria-hidden="true" />}
           {t(
             busy
-              ? 'Closing this dialog cancels the upload.'
-              : user
-                ? 'Private by default. Yours to share.'
-                : 'Private guest upload. Available only in this browser.',
+              ? compact
+                ? 'Keep this window open.'
+                : 'Closing this dialog cancels the upload.'
+              : 'Private by default.',
           )}
-        </div>
+        </p>
       )}
     </section>
   );

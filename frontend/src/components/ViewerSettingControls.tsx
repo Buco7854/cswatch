@@ -1,4 +1,35 @@
 import { useId } from 'react';
+import { SelectControl, type SelectOption } from './Controls';
+
+export function SelectSetting({
+  label,
+  value,
+  options,
+  description,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: SelectOption[];
+  description?: string;
+  onChange: (value: string) => void;
+}) {
+  const id = useId();
+  return (
+    <div className="viewer-option-select">
+      <label htmlFor={id}>{label}</label>
+      <SelectControl
+        id={id}
+        label={label}
+        value={value}
+        options={options}
+        describedBy={description ? id + '-description' : undefined}
+        onValueChange={onChange}
+      />
+      {description && <small id={id + '-description'}>{description}</small>}
+    </div>
+  );
+}
 
 export function RangeSetting({
   label,

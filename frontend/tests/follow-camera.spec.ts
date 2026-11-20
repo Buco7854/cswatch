@@ -3,6 +3,28 @@ import { expect, test, type Page } from '@playwright/test';
 import { originalMapGLB, originalMapReplay, qaActor } from './fixtures/original-map';
 import { originalAgentGLB } from './fixtures/original-agent';
 import { originalEquipmentCatalog, originalEquipmentGLB } from './fixtures/original-equipment';
+import { BoxGeometry, Group, Mesh, MeshBasicMaterial } from 'three';
+import { followObstruction } from '../src/follow-obstruction';
+import type { FollowCamera } from '../src/follow-camera';
+
+test('follow camera retracts at an opaque wall and reproduces its position after a seek', () => {
+  const world = new Group();
+  world.rotation.y = Math.PI / 2;
+  const wall = new Mesh(new BoxGeometry(6, 4, 0.2), new MeshBasicMaterial());
+  wall.position.set(0, 1, -1.2);
+  world.add(wall);
+  const glass = new Mesh(wall.geometry, new MeshBasicMaterial({ transparent: true }));
+  glass.position.set(0, 1, -0.5);
+  world.add(glass);
+  const trace = followObstruction(world);
+  const view: FollowCamera = { actor: '1', position: [-2.6, 1, 0], target: [0, 1, 0] };
+  const clipped = trace(view);
+  expect(clipped[0]).toBeCloseTo(-0.86, 5);
+  const clear: FollowCamera = { ...view, position: [2.6, 1, 0] };
+  expect(trace(clear)).toEqual(clear.position);
+  expect(trace(view)).toEqual(clipped);
+});
+
 async function mode(page: Page, name: string) {
   await page.getByRole('combobox', { name: 'Camera mode', exact: true }).click();
   await page.getByRole('option', { name, exact: true }).click();

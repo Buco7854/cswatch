@@ -5,12 +5,12 @@ const pitchLimit = Math.PI / 2 - 0.01;
 const clamp = (value: number, limit: number) => Math.max(-limit, Math.min(limit, value));
 
 /** Turn at the current eye position, with no orbit center or camera roll. */
-export function turnFreeCamera(camera: PerspectiveCamera, dx: number, dy: number) {
+export function turnFreeCamera(camera: PerspectiveCamera, dx: number, dy: number, sensitivity = 1) {
   if (!Number.isFinite(dx) || !Number.isFinite(dy)) return;
   const rotation = new Euler().setFromQuaternion(camera.quaternion, 'YXZ');
   camera.rotation.set(
-    clamp(rotation.x - clamp(dy, 2000) * turnRate, pitchLimit),
-    rotation.y - clamp(dx, 2000) * turnRate,
+    clamp(rotation.x - clamp(dy, 2000) * turnRate * sensitivity, pitchLimit),
+    rotation.y - clamp(dx, 2000) * turnRate * sensitivity,
     0,
     'YXZ',
   );
@@ -29,6 +29,8 @@ export function installFreeCameraLook(
   element: HTMLElement,
   camera: PerspectiveCamera,
   invalidate: () => void,
+  sensitivity = 1,
+  invertVertical = false,
 ) {
   const pointers = new Map<number, Pointer>();
   let active = true;
@@ -94,7 +96,7 @@ export function installFreeCameraLook(
       pan(dx / 2, dy / 2);
       dolly((after - before) * 0.02);
     } else if (previous.pan) pan(dx, dy);
-    else turnFreeCamera(camera, dx, dy);
+    else turnFreeCamera(camera, dx, invertVertical ? -dy : dy, sensitivity);
     previous.x = event.clientX;
     previous.y = event.clientY;
     camera.updateMatrixWorld();

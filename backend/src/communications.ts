@@ -1,6 +1,6 @@
 /** Low-level media parsing runs only in the disposable, networkless parser child. */
 import { DemoReader, EntityMode } from 'cs2parser';
-import type { GameEvent } from '../../shared/playback.js';
+import type { Frame, GameEvent } from '../../shared/playback.js';
 import { observeGameplaySounds } from './gameplay-sounds.js';
 import type { VoicePacket, ChatMessage, CommunicationInfo } from '../../shared/communications.js';
 import { voiceFrames } from './voice-packets.js';
@@ -9,6 +9,8 @@ import { observeMatchState } from './match-state.js';
 import { observeCrosshairs } from './crosshairs.js';
 import { observeItemState } from './item-state.js';
 import { observeMapIdentity } from './map-identity.js';
+import { observeSmokeTracks } from './smoke-state.js';
+import { observeRecordedEye } from './recorded-eye.js';
 
 export async function readCommunications(
   path: string,
@@ -16,6 +18,7 @@ export async function readCommunications(
   lastTick: number,
   actors: ReadonlySet<string>,
   events: GameEvent[] = [],
+  frames: Frame[] = [],
 ) {
   const voice: VoicePacket[] = [],
     chat: ChatMessage[] = [];
@@ -26,6 +29,8 @@ export async function readCommunications(
   const finishMatchState = observeMatchState(reader, tickRate, lastTick);
   const finishCrosshairs = observeCrosshairs(reader, lastTick, actors);
   const finishItems = observeItemState(reader, lastTick);
+  const finishSmokes = observeSmokeTracks(reader, lastTick, tickRate);
+  observeRecordedEye(reader, frames);
   let unsupported = 0,
     encrypted = 0,
     bytes = 0,
@@ -139,6 +144,7 @@ export async function readCommunications(
     crosshairs: finishCrosshairs(!failed),
     itemSamples: items.samples,
     itemState: { complete: items.complete, coverage: items.coverage },
+    smokeTracks: finishSmokes(!failed),
     warnings,
   };
 }

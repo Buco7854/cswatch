@@ -11,7 +11,12 @@ import { useFrame } from '@react-three/fiber';
 import { Matrix4, type Group, type Object3D } from 'three';
 import type { EquipmentModel } from '../../../shared/equipment-models';
 import type { Playback, Position } from '../types';
-import { indexWeaponFire, weaponFireAt, type WeaponFireIndex } from '../weapon-fire';
+import {
+  indexWeaponFire,
+  recentWeaponShot,
+  weaponFireAt,
+  type WeaponFireIndex,
+} from '../weapon-fire';
 import { nativeMuzzleFrame } from '../equipment-model';
 import { createMuzzleResources } from '../muzzle-resources';
 import { useReducedMotion } from '../reduced-motion';
@@ -55,6 +60,24 @@ export function useEquipmentFire(position: Position) {
     : undefined;
 }
 
+export function useNativeWeaponAction(
+  position: Position,
+  fireDuration: number,
+  reloadDuration: number,
+) {
+  const context = useContext(Context);
+  if (!context || context.reducedMotion) return;
+  const shot = context.enabled
+    ? recentWeaponShot(context.index, position, context.tick, context.rate, fireDuration)
+    : undefined;
+  const reload = position.reloadStarted;
+  if (shot && (reload === undefined || shot.tick >= reload))
+    return { type: 'fire' as const, age: shot.age };
+  if (reload === undefined) return;
+  const age = (context.tick - reload) / context.rate;
+  if (age >= 0 && age < reloadDuration) return { type: 'reload' as const, age };
+}
+
 /** Depth-tested analytical fire geometry. New prepared models carry their native
  * muzzle frame; older models explicitly retain an approximate bounds fallback. */
 export function EquipmentMuzzle({
@@ -63,7 +86,7 @@ export function EquipmentMuzzle({
   model,
   pov = false,
 }: {
-  asset: EquipmentModel;
+  asset?: EquipmentModel;
   position: Position;
   model: Object3D;
   pov?: boolean;
@@ -71,12 +94,13 @@ export function EquipmentMuzzle({
   const context = useContext(Context),
     fire = useEquipmentFire(position),
     flash = fire?.flash || 0;
-  const origin = useMemo<[number, number, number]>(
-    () => [
-      asset.bounds.max[0] + 0.015,
-      (asset.bounds.max[1] + asset.bounds.min[1]) / 2,
-      (asset.bounds.max[2] + asset.bounds.min[2]) / 2,
-    ],
+  const origin = useMemo<[number, number, number] | undefined>(
+    () =>
+      asset && [
+        asset.bounds.max[0] + 0.015,
+        (asset.bounds.max[1] + asset.bounds.min[1]) / 2,
+        (asset.bounds.max[2] + asset.bounds.min[2]) / 2,
+      ],
     [asset],
   );
   const transform = useRef<Group>(null),
@@ -94,10 +118,13 @@ export function EquipmentMuzzle({
   }, [resources, flash, fire?.tick]);
   useFrame(() => {
     if (!transform.current) return;
-    if (!nativeMuzzleFrame(matrix, model, marker)) matrix.makeTranslation(...origin);
+    const anchored = nativeMuzzleFrame(matrix, model, marker);
+    transform.current.visible = anchored || Boolean(origin);
+    if (!anchored && origin) matrix.makeTranslation(...origin);
     transform.current.matrix.copy(matrix);
     transform.current.matrixWorldNeedsUpdate = true;
   });
+  if (!marker && !origin) return null;
   // The light stays mounted at zero intensity between shots so shooting does
   // not continually change the scene's shader light count. Only one watched
   // POV gets a local light; low quality keeps visible flash geometry only.

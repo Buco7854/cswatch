@@ -5,7 +5,7 @@ import { originalMapReplay, qaActor } from './fixtures/original-map';
 import { installMapFixture } from './fixtures/map-assets';
 import { originalEquipmentCatalog, originalEquipmentGLB } from './fixtures/original-equipment';
 
-async function fixture(page: Page, id: string, gpu = false) {
+async function fixture(page: Page, id: string, gpu = false, quality: 'low' | 'auto' = 'low') {
   const data = originalMapReplay('de_pacing_qa');
   data.events = [];
   data.grenades = [];
@@ -24,13 +24,13 @@ async function fixture(page: Page, id: string, gpu = false) {
     })),
   }));
   if (gpu) data.frames[2].players = data.frames[2].players.filter((p) => p.id !== qaActor);
-  await page.addInitScript(() => {
+  await page.addInitScript((quality) => {
     localStorage.setItem('cswatch.language', 'en');
     for (const key of ['viewer-settings', 'viewer-settings-mobile'])
       localStorage.setItem(
         key,
         JSON.stringify({
-          quality: 'low',
+          quality,
           autoHideControls: false,
           autoSkip: false,
           matchScore: false,
@@ -41,7 +41,7 @@ async function fixture(page: Page, id: string, gpu = false) {
           grenadeLanding: false,
         }),
       );
-  });
+  }, quality);
   await page.route(`**/api/demos/${id}`, (route) =>
     route.fulfill({
       json: {
@@ -67,6 +67,28 @@ async function fixture(page: Page, id: string, gpu = false) {
   );
   return data;
 }
+test('Auto reduces the actual 3D drawing buffer in response to slow continuous playback', async ({
+  page,
+}) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE));
+  await page.setViewportSize({ width: 800, height: 600 });
+  await fixture(page, 'adaptive-quality', false, 'auto');
+  await page.goto('/watch/adaptive-quality');
+  const scene = page.locator('.scene');
+  const canvas = scene.locator('canvas');
+  await expect(scene).toHaveAttribute('data-map-model-state', 'ready');
+  const before = await canvas.evaluate((element) => element.width);
+  await page.clock.install();
+  await page.clock.pauseAt(new Date(Date.now() + 1000));
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  for (let frame = 0; frame < 65; frame++) await page.clock.fastForward(50);
+  await expect.poll(() => canvas.evaluate((element) => element.width)).toBeLessThan(before);
+  await page.getByRole('button', { name: 'Pause', exact: true }).click();
+  const paused = await scene.getAttribute('data-render-resolution');
+  await page.clock.fastForward(5000);
+  await expect(scene).toHaveAttribute('data-render-resolution', paused!);
+});
+
 test('visible playback follows elapsed time after a long animation frame, rebases seeks and honors speed', async ({
   page,
 }) => {

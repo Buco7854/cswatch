@@ -1,7 +1,7 @@
 import { expect, test, type Locator } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { installMemberWorkspace, memberUser } from './fixtures/member-workspace';
+import { installMemberWorkspace, memberConfig, memberUser } from './fixtures/member-workspace';
 
 const profiles = [1440, 768, 390].flatMap((width) =>
   ['en', 'fr'].flatMap((language) =>
@@ -13,6 +13,52 @@ const profiles = [1440, 768, 390].flatMap((width) =>
     })),
   ),
 );
+
+test('a FACEIT import resolving after leaving connections keeps the current page', async ({
+  page,
+}) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE) || Boolean(process.env.E2E_SETUP));
+  await installMemberWorkspace(page);
+  await page.route('**/api/config', (route) =>
+    route.fulfill({ json: { ...memberConfig, faceit_configured: true, faceit_downloads: true } }),
+  );
+  await page.route('**/api/auth/me', (route) =>
+    route.fulfill({
+      json: {
+        user: {
+          ...memberUser,
+          identities: [
+            ...memberUser.identities,
+            { provider: 'faceit', subject: 'd999aa66-f0df-41ba-857f-50de9f9b7af6' },
+          ],
+        },
+      },
+    }),
+  );
+  const wait = Promise.withResolvers<void>();
+  await page.route('**/api/connections/faceit/import', async (route) => {
+    await wait.promise;
+    await route.fulfill({ status: 202, json: { id: 'late-faceit-import' } });
+  });
+  const unexpected: string[] = [];
+  page.on('request', (request) => {
+    if (request.url().includes('/api/demos/late-faceit-import')) unexpected.push(request.url());
+  });
+  await page.goto('/account/connections');
+  await page
+    .getByLabel('FACEIT match ID or match room URL')
+    .fill('1-d999aa66-f0df-41ba-857f-50de9f9b7af8');
+  await page.getByRole('button', { name: 'Import match', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Working…', exact: true })).toBeDisabled();
+  await page.getByRole('link', { name: 'cswatch home', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Demo library', exact: true })).toBeVisible();
+  const response = page.waitForResponse('**/api/connections/faceit/import');
+  wait.resolve();
+  expect((await response).status()).toBe(202);
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+  await expect(page).toHaveURL(/\/library$/);
+  expect(unexpected).toEqual([]);
+});
 
 async function compactIcon(icon: Locator, container: Locator) {
   await expect(icon).toBeVisible();
