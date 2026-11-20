@@ -5,6 +5,7 @@ import type { GLTF } from 'three-stdlib';
 import { loadScopedGLTF } from './scoped-gltf-loader';
 import { ModelCache, type ModelScope } from './model-cache';
 import { mapModelResources } from './map-model-resources';
+import { registerMapBakedLighting } from './map-baked-lighting';
 
 const MiB = 1024 * 1024;
 const inactiveLimit = () =>
@@ -18,7 +19,8 @@ const cache = new ModelCache<GLTF>({
   maxConcurrent: 2,
   clear: (url) => useLoader.clear(MapGLTFLoader, url),
   inspect: mapModelResources,
-  load: loadScopedGLTF,
+  load: (url, callbacks) =>
+    loadScopedGLTF(url, callbacks, undefined, false, registerMapBakedLighting),
 });
 
 /** Private map loader class gives useLoader a cache namespace separate from agent assets. */

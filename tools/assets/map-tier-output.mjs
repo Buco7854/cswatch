@@ -24,6 +24,7 @@ export async function writeMapTier({
   s2v,
   geometry = 'preserved',
   budgetBytes,
+  bakedLighting,
 }) {
   if (
     !/^[a-zA-Z0-9_-]{1,80}$/.test(map) ||
@@ -69,6 +70,7 @@ export async function writeMapTier({
       geometry,
       geometryCompression: compression.report,
       textureBudget: budget.manifest,
+      ...(bakedLighting ? { bakedLighting } : {}),
       preparedAt: new Date().toISOString(),
     };
     const serialized = Buffer.from(JSON.stringify(manifest, null, 2));

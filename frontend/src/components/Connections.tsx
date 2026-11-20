@@ -1,5 +1,5 @@
 import { t, locale } from '../i18n';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { ArrowUpRight, Check, Link2, RefreshCw } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -12,7 +12,7 @@ type Match = {
   competition_name?: string;
   teams?: Record<string, { nickname: string }>;
 };
-export default function Connections({ embedded = false }: { embedded?: boolean }) {
+export default function Connections() {
   const { user, config, refresh, notify, signIn } = useApp();
   const nav = useNavigate();
   const [busy, setBusy] = useState(''),
@@ -21,52 +21,65 @@ export default function Connections({ embedded = false }: { embedded?: boolean }
     [code, setCode] = useState('');
   const steam = user?.identities?.find((i) => i.provider === 'steam'),
     faceit = user?.identities?.find((i) => i.provider === 'faceit');
-  async function task(name: string, fn: () => Promise<void>) {
+  const identity = useRef(user?.id);
+  identity.current = user?.id;
+  const active = useRef(true);
+  const pending = useRef<object | null>(null);
+  useEffect(() => {
+    active.current = true;
+    setBusy('');
+    setError('');
+    setMatches([]);
+    setCode('');
+    return () => {
+      active.current = false;
+      pending.current = null;
+    };
+  }, [user?.id]);
+  async function task(name: string, fn: (current: () => boolean) => Promise<void>) {
+    if (!user || !active.current || pending.current) return;
+    const attempt = {};
+    pending.current = attempt;
+    const current = () =>
+      active.current && identity.current === user.id && pending.current === attempt;
     setBusy(name);
     setError('');
     try {
-      await fn();
+      await fn(current);
     } catch (e) {
-      setError((e as Error).message);
+      if (current()) setError((e as Error).message);
     } finally {
-      setBusy('');
+      if (current()) {
+        pending.current = null;
+        setBusy('');
+      }
     }
   }
   async function discover(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const body = Object.fromEntries(new FormData(e.currentTarget));
-    await task('steam', async () => {
+    await task('steam', async (current) => {
       const r = await api<{ share_code: string | null; message: string }>(
         '/api/connections/steam/next-match',
         { method: 'POST', body: JSON.stringify(body) },
       );
-      setCode(r.share_code || t('No newer match is available.'));
-      notify(r.message);
+      if (current()) {
+        setCode(r.share_code || t('No newer match is available.'));
+        notify(r.message);
+      }
     });
   }
   async function importMatch(match_id: string) {
-    await task(match_id, async () => {
+    await task(match_id, async (current) => {
       const r = await api<{ id: string }>('/api/connections/faceit/import', {
         method: 'POST',
         body: JSON.stringify({ match_id }),
       });
-      nav('/watch/' + r.id);
+      if (current()) nav('/watch/' + r.id);
     });
   }
   return (
     <>
-      {!embedded && (
-        <header className="page-heading">
-          <div>
-            <h1>{t('Connected accounts')}</h1>
-            <p>{t('Less fetching. More reviewing.')}</p>
-          </div>
-          <Link className="button" to="/library">
-            {t('Back to library')}
-            <ArrowUpRight size={16} />
-          </Link>
-        </header>
-      )}
       {!user ? (
         <div className="inline-state">
           <h2>{t('Your accounts, in one place.')}</h2>
@@ -216,10 +229,10 @@ export default function Connections({ embedded = false }: { embedded?: boolean }
                     className="button provider-faceit-link"
                     disabled={!!busy || !steam || !config.faceit_configured}
                     onClick={() =>
-                      void task('faceit-link', async () => {
+                      void task('faceit-link', async (current) => {
                         await api('/api/connections/faceit/link', { method: 'POST' });
                         await refresh();
-                        notify('FACEIT profile verified.');
+                        if (current()) notify('FACEIT profile verified.');
                       })
                     }
                   >
@@ -235,10 +248,11 @@ export default function Connections({ embedded = false }: { embedded?: boolean }
                       className="button"
                       disabled={!!busy}
                       onClick={() =>
-                        void task('history', async () => {
+                        void task('history', async (current) => {
                           const r = await api<{ items: Match[] }>(
                             '/api/connections/faceit/matches',
                           );
+                          if (!current()) return;
                           setMatches(r.items || []);
                           if (!r.items?.length) notify('No recent CS2 matches found.');
                         })

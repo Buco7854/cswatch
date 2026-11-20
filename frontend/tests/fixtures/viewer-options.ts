@@ -19,7 +19,8 @@ export async function selectOptionsCategory(page: Page, category: OptionsCategor
 const playbackControls = [
   'Utility replay shortcuts',
   'Kill and death replay shortcuts',
-  'Skip dead time automatically',
+  'Skip freeze time automatically',
+  'Skip timeouts automatically',
   'Hide controls during playback',
   'Hide viewer controls',
 ];

@@ -1,0 +1,72 @@
+{
+  "materials/de_mirage/base/base_top_ver1_diffuse_color_psd_41ae5e62.vtex_c": {
+    "bytes": 590425,
+    "crc32": 460982183,
+    "role": "g_tLayer2Color"
+  },
+  "materials/de_mirage/base/base_1_diffuse_blend_psd_37bb7bd3.vtex_c": {
+    "bytes": 301605,
+    "crc32": 1811688704,
+    "role": "g_tBlendModulation"
+  },
+  "materials/detail/noise_detail_01_color_tga_b3cdd65b.vtex_c": {
+    "bytes": 89432,
+    "crc32": 2811895662,
+    "role": "g_tLayer1Detail"
+  },
+  "materials/nature/dirt_ext_02b_color_psd_907b2b26.vtex_c": {
+    "bytes": 176804,
+    "crc32": 2586793604,
+    "role": "g_tLayer2Color"
+  },
+  "materials/nature/blend_texture_01_blend_tga_190be053.vtex_c": {
+    "bytes": 897307,
+    "crc32": 1270533779,
+    "role": "g_tBlendModulation"
+  },
+  "materials/de_mirage/base/base_mid_ver1_diffuse_color_psd_a1ba91d5.vtex_c": {
+    "bytes": 611541,
+    "crc32": 3879809773,
+    "role": "g_tLayer2Color"
+  },
+  "materials/de_mirage/hr_mirage/mirage_plaster_2_color_psd_14cbd213.vtex_c": {
+    "bytes": 626625,
+    "crc32": 1355983480,
+    "role": "g_tLayer2Color"
+  },
+  "materials/de_mirage/ground/ground_tilef_diffuse_color_psd_51e48dfa.vtex_c": {
+    "bytes": 620798,
+    "crc32": 2099401130,
+    "role": "g_tLayer2Color"
+  },
+  "materials/de_mirage/ground/ground_tilec_blendmp_diffuse_blend_psd_3d2b3c8f.vtex_c": {
+    "bytes": 1013966,
+    "crc32": 1807566933,
+    "role": "g_tBlendModulation"
+  },
+  "materials/de_mirage/ground/ground_tileh_blend_psd_3bc42ec4.vtex_c": {
+    "bytes": 89572,
+    "crc32": 2673471434,
+    "role": "g_tBlendModulation"
+  },
+  "materials/de_mirage/plaster/plaster_blue1_diffuse_color_psd_c3bb4227.vtex_c": {
+    "bytes": 582395,
+    "crc32": 2442893355,
+    "role": "g_tLayer2Color"
+  },
+  "materials/detail/dt_plaster01_color_tga_892b3a45.vtex_c": {
+    "bytes": 23892,
+    "crc32": 3123257010,
+    "role": "g_tLayer1Detail"
+  },
+  "materials/de_mirage/plaster/plaster_salmon1_diffuse_color_psd_b9d02d0e.vtex_c": {
+    "bytes": 516379,
+    "crc32": 2340347457,
+    "role": "g_tLayer2Color"
+  },
+  "materials/de_mirage/brick/brick_ver3_blend_psd_6b8e9a4e.vtex_c": {
+    "bytes": 284338,
+    "crc32": 2221337009,
+    "role": "g_tBlendModulation"
+  }
+}

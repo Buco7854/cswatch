@@ -4,6 +4,7 @@ import { parseArgs } from 'node:util';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { NodeIO } from '@gltf-transform/core';
+import { MapBakedLightingExtension } from './map-baked-lighting-extension.mjs';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { localDirectory, regularFile } from './toolchain-security.mjs';
 import { readAtmosphereGlb } from './atmosphere-glb.mjs';
@@ -57,7 +58,7 @@ export async function retierPreparedMap({
     throw new Error('Prepared input GLB does not match its source manifest.');
   await MeshoptDecoder.ready;
   const io = new NodeIO()
-    .registerExtensions(ALL_EXTENSIONS)
+    .registerExtensions([...ALL_EXTENSIONS, MapBakedLightingExtension])
     .registerDependencies({ 'meshopt.decoder': MeshoptDecoder })
     .setAllowNetwork(false);
   const document = await io.read(input);

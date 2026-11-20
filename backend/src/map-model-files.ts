@@ -53,6 +53,7 @@ const reserved = new Set([
   'agents',
   'equipment',
   'equipment-models',
+  'viewmodels',
   'overviews',
   'environments',
   'previews',

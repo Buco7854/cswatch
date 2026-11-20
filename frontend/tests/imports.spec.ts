@@ -62,17 +62,16 @@ test('Premier and Competitive import guide leads to the real file picker and a p
 }) => {
   test.skip(privateInstance);
   await member(page);
-  await page
-    .getByRole('button', { name: 'Find my Premier or Competitive demo', exact: true })
-    .click();
-  await expect(
-    page.getByRole('heading', { name: 'Your Premier, Competitive or Wingman match' }),
-  ).toBeVisible();
+  const uploadButton = page.getByRole('button', { name: 'Choose demo file', exact: true });
+  await expect(uploadButton).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Demo import source' })).toHaveCount(0);
+  const help = page.getByText('Where do I get a demo?', { exact: true });
+  await help.focus();
+  await page.keyboard.press('Enter');
   await expect(
     page.getByRole('link', { name: 'Open Steam match history', exact: true }),
   ).toHaveAttribute('href', 'https://steamcommunity.com/my/gcpd/730/');
-  await expect(page.getByText(/Linking Steam is optional for this upload/)).toBeVisible();
-  await expect(page.getByText(/If Steam downloads a .bz2, .gz or archive file/)).toBeVisible();
+  await expect(page.getByText('Extract archive downloads to get the .dem file.')).toBeVisible();
   for (const theme of ['dark', 'light']) {
     await page.evaluate((value) => {
       document.documentElement.dataset.theme = value;
@@ -83,9 +82,7 @@ test('Premier and Competitive import guide leads to the real file picker and a p
         dialog.scrollTop = 0;
       });
       await fits(page, `steam-en-${theme}-${width}`);
-      const upload = await page
-        .getByRole('button', { name: 'Choose demo file', exact: true })
-        .boundingBox();
+      const upload = await uploadButton.boundingBox();
       expect(upload!.y + upload!.height).toBeLessThanOrEqual(900);
     }
   }
@@ -126,10 +123,10 @@ test('manual source help remains usable in French, both themes and narrow dialog
 }) => {
   test.skip(privateInstance);
   await member(page, true);
-  await choose(page, 'Premier / Compétitif / Wingman', true);
+  await page.getByText('Où trouver une démo ?', { exact: true }).click();
   await expect(
-    page.getByRole('heading', { name: 'Votre match Premier, Compétitif ou Wingman' }),
-  ).toBeVisible();
+    page.getByRole('combobox', { name: 'Source de la démo à importer', exact: true }),
+  ).toHaveText('Premier / Compétitif / Wingman');
   for (const theme of ['dark', 'light']) {
     await page.evaluate((value) => {
       document.documentElement.dataset.theme = value;
@@ -149,7 +146,7 @@ test('manual source help remains usable in French, both themes and narrow dialog
     page.getByRole('link', { name: 'Trouver des démos sur HLTV', exact: true }),
   ).toHaveAttribute('href', 'https://www.hltv.org/results?content=demo');
   await expect(page.getByRole('link', { name: /bibliothèque pro/i })).toHaveCount(0);
-  await choose(page, 'J’ai déjà un fichier de démo', true);
+  await expect(page.getByRole('button', { name: 'Choisir le fichier de démo' })).toBeVisible();
   await page.locator('input[type=file]').setInputFiles({ ...file, name: 'download.dem.bz2' });
   await expect(page.getByRole('alert')).toContainText('Extrayez d’abord ce téléchargement');
 });
@@ -197,8 +194,6 @@ test('malformed successful upload responses show a retryable error without hangi
   await page.route('**/api/demos', (route) => route.fulfill({ status: 200, json: null }));
   await page.locator('input[type=file]').setInputFiles(file);
   await expect(page.getByRole('alert')).toContainText('Upload failed.');
-  await expect(
-    page.getByRole('combobox', { name: 'Demo import source', exact: true }),
-  ).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Choose demo file', exact: true })).toBeEnabled();
   await expect(page).toHaveURL(/\/library$/);
 });

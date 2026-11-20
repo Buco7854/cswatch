@@ -28,12 +28,14 @@ import {
   readableDirectory,
   regular,
   checkStorage,
+  hasFreeReserve,
   checkFreeReserve,
 } from './asset-storage.mjs';
 import { publishPreparedMap } from './prepared-map-publication.mjs';
 import { resolveMapResources, exportMapGltf } from './install-map-resources.mjs';
 import { inspectInstalledEnvironment } from './install-map-environment.mjs';
 import { prepareInstalledAtmosphere } from './install-map-atmosphere.mjs';
+import { prepareInstalledBakedLighting } from './install-map-baked-lighting.mjs';
 import { localDirectory } from './toolchain-security.mjs';
 export { publishPreparedMap, validatePreparedMap } from './prepared-map-publication.mjs';
 
@@ -578,6 +580,16 @@ export async function installSteamAssets(options, adapters = {}) {
           ],
         });
         source = atmosphere.path;
+        const baked = await prepareInstalledBakedLighting({
+          map,
+          manifest: plan.manifest,
+          game,
+          stage,
+          index,
+          execute,
+          s2v: tools.s2v,
+          hasHeadroom: (needed) => hasFreeReserve(cache, output, needed),
+        });
         // The packer checks each actual encoded tier plus the reserve immediately
         // before its exclusive write. Source PNG sizes do not predict GLB bytes.
         await checkStorage(cache, output);
@@ -593,6 +605,7 @@ export async function installSteamAssets(options, adapters = {}) {
             map,
             '--asset-version',
             assetVersion,
+            ...(baked?.args ?? []),
           ],
           `${map}-pack`,
         );
@@ -611,6 +624,7 @@ export async function installSteamAssets(options, adapters = {}) {
           resolvedExternalSky: environment.skyMap,
           shaderPreflights,
           sourceImagePreparation: sourceImages,
+          ...(baked ? { bakedLighting: baked.proof } : {}),
           resourceCoverage: {
             complete:
               closure.unknown.filter((resource) => resource !== `${environment.skyMap}_c`)

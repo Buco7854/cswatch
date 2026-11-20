@@ -194,7 +194,6 @@
 }
 .viewer-frame .icon-button,
 .viewer-frame .options-button,
-.viewer-frame .select-control,
 .viewer-frame .rounds-toggle,
 .viewer-frame .skip-dead-time {
   border: 0;
@@ -610,14 +609,7 @@
   .viewer-global-actions {
     gap: 2px;
   }
-  .viewer-titlebar .camera-select {
-    width: 44px;
-    padding: 10px;
-    justify-content: center;
-  }
-  .camera-select > span:not(.select-leading-icon) {
-    display: none;
-  }
+
   .viewer-context .viewer-map-status[data-status='ready'] {
     display: none;
   }
@@ -692,14 +684,6 @@
   }
 }
 @media (max-height: 560px) {
-  .viewer-titlebar .camera-select {
-    width: 44px;
-    padding: 10px;
-    justify-content: center;
-  }
-  .viewer-titlebar .camera-select > span:not(.select-leading-icon) {
-    display: none;
-  }
   .viewer-frame:has(.viewer-drawer) .viewer-match-score {
     visibility: hidden;
   }
@@ -1021,28 +1005,53 @@
   min-width: 0;
 }
 .viewer-frame .timeline-scope-control {
-  width: 140px;
   min-height: 44px;
-  padding: 8px;
-  font-size: 12px;
-  justify-content: center;
-  gap: 6px;
+  padding: 8px 10px;
+  font-size: 13px;
 }
 .viewer-frame .timeline-context-label {
   display: none;
 }
-@media (max-width: 1360px) {
-  .viewer-frame .timeline-scope-control {
-    width: 44px;
-    min-width: 44px;
+@media (max-width: 1100px), (max-height: 560px) {
+  .viewer-titlebar .camera-select {
+    gap: 4px;
+    padding-inline: 7px;
   }
-  .viewer-frame .timeline-scope-control > span:not(.select-leading-icon) {
+  .camera-select :is(.select-leading-icon, .select-value-long) {
     display: none;
   }
+  .camera-select .select-value-short {
+    display: inline;
+  }
 }
-@media (max-width: 360px) {
+@media (max-width: 1360px), (max-height: 560px) {
+  .viewer-frame .timeline-scope-control {
+    gap: 4px;
+    padding-inline: 7px;
+  }
+  .timeline-scope-control :is(.select-leading-icon, .select-value-long) {
+    display: none;
+  }
+  .timeline-scope-control .select-value-short {
+    display: inline;
+  }
+}
+@media (max-width: 380px) {
+  .viewer-frame .timeline-scope-control {
+    padding-inline: 4px;
+    font-size: 12px;
+  }
+  .timeline-scope-control .select-chevron {
+    width: 10px;
+  }
   .viewer-frame .speed-select {
-    width: 64px;
+    right: calc(100% + 2px);
+    width: 54px;
+    padding-inline: 5px;
+    gap: 2px;
+  }
+  .speed-select .select-chevron {
+    width: 12px;
   }
 }
 .viewer-frame[data-killfeed-placed='true'] .viewer-stage .killfeed {

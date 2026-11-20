@@ -1,0 +1,54 @@
+{
+  "ak47": {
+    "sourceManifest": "8225060435969537482",
+    "sha256": "a366e58a8657c71faa0deffe3c328a1a10dfcea3dfa3a9185936deb5f3e11d8d",
+    "bytes": 1866872,
+    "decodedTextureBytes": 25165824,
+    "decodedGeometryBytes": 2250212,
+    "weaponSourceSha256": "bf0ebdf610fcd8331976dfb37676f94b7bf3e64ef8f0fc39fb835b85eedfb3b4",
+    "muzzle": {
+      "bone": "weapon_offset",
+      "sourceInches": [22.671568, 0.210674, -0.649208],
+      "quaternion": [0, 0, 0, 1]
+    }
+  },
+  "m4a4": {
+    "sourceManifest": "8225060435969537482",
+    "sha256": "582c4a02b15acdf3879952eed139effb27a6e2422895682f3651d0c7c4a3f8e1",
+    "bytes": 2473156,
+    "decodedTextureBytes": 25165824,
+    "decodedGeometryBytes": 3606760,
+    "weaponSourceSha256": "e6b3636b2e8a7cf4e4d402ebf814db7bf006be84ca85641d48d1faf6ae8ada45",
+    "muzzle": {
+      "bone": "weapon_offset",
+      "sourceInches": [18.455202, 0.193322, -0.078313],
+      "quaternion": [0, 0, 0, 1]
+    }
+  },
+  "awp": {
+    "sourceManifest": "8225060435969537482",
+    "sha256": "cca02b445a5c74f85bc3caee36e76a23a5e96fadbc87c84e0c117e0e3a7d553c",
+    "bytes": 2338108,
+    "decodedTextureBytes": 25165824,
+    "decodedGeometryBytes": 3304164,
+    "weaponSourceSha256": "e6bef8f0328dc1ae91eb631147689c4969e4b3b578497ac2398af2190a3e8b1c",
+    "muzzle": {
+      "bone": "weapon_offset",
+      "sourceInches": [37.3923, 0.193341, 0.087366],
+      "quaternion": [0, 0, 0, 1]
+    }
+  },
+  "glock": {
+    "sourceManifest": "8225060435969537482",
+    "sha256": "87396f9482d4bfb88d5d82ef083a650dca82cfb92572dd7b4eefb61679791587",
+    "bytes": 1369648,
+    "decodedTextureBytes": 25165824,
+    "decodedGeometryBytes": 1482202,
+    "weaponSourceSha256": "cae1d026df62d9139196c0e829aff556f0e81d1b29d12126896b23f2ddb0a828",
+    "muzzle": {
+      "bone": "weapon_offset",
+      "sourceInches": [4.583174, -0.001193, 0.339271],
+      "quaternion": [0, 0, 0, 1]
+    }
+  }
+}

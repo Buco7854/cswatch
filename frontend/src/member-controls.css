@@ -8,7 +8,7 @@
   min-width: 0;
   min-height: 40px;
   padding: 8px 11px;
-  border: 0;
+  border: 1px solid var(--control);
   border-radius: 6px;
   background: var(--surface);
   color: var(--text);
@@ -18,14 +18,23 @@
   text-align: left;
   cursor: pointer;
 }
-.select-control > span:not(.select-chevron, .select-leading-icon) {
+.select-value {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+.select-value-short {
+  display: none;
+}
+.select-value-short::before {
+  content: attr(data-label);
+}
 .select-control:hover,
 .select-control[data-state='open'] {
   background: var(--raised);
+}
+.select-control[data-state='open'] .select-chevron {
+  transform: rotate(180deg);
 }
 .select-control:focus-visible,
 .account-button:focus-visible {
@@ -52,7 +61,7 @@
   outline: none;
 }
 .select-content {
-  min-width: var(--radix-select-trigger-width);
+  min-width: min(max(144px, var(--radix-select-trigger-width)), calc(100vw - 24px));
   max-width: min(360px, calc(100vw - 24px));
   max-height: min(360px, var(--radix-select-content-available-height));
   overflow: hidden;
@@ -64,7 +73,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 18px;
+  gap: 12px;
   min-height: 40px;
   padding: 10px 11px;
   border-radius: 4px;
@@ -73,7 +82,9 @@
   cursor: default;
   user-select: none;
 }
-.select-item > span:first-child {
+.select-item-label,
+.action-menu-item > span {
+  min-width: 0;
   overflow-wrap: anywhere;
 }
 .select-item[data-highlighted],
@@ -83,16 +94,24 @@
   outline: none;
 }
 .select-item[data-state='checked'] {
-  font-weight: 500;
+  font-weight: 600;
+}
+.select-item[data-state='checked']:not([data-highlighted]) {
+  background: color-mix(in srgb, var(--signal) 12%, var(--surface));
 }
 .select-item[data-disabled] {
   color: var(--faint);
   opacity: 0.5;
 }
+.select-item-status {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  flex: none;
+}
 .select-indicator {
   display: flex;
-  flex-shrink: 0;
-  color: var(--text);
+  color: var(--signal);
 }
 .select-scroll {
   display: flex;
@@ -219,89 +238,6 @@
   width: 100%;
   margin-top: 8px;
 }
-.member-dialog.mobile-navigation {
-  width: min(400px, calc(100vw - 24px));
-  max-width: none;
-  max-height: calc(100dvh - 24px);
-  padding: 22px;
-  border: 1px solid var(--control);
-  border-radius: 10px;
-}
-.mobile-navigation-heading {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  padding-bottom: 24px;
-}
-.mobile-navigation-heading .brand {
-  color: var(--text);
-}
-.mobile-navigation-links {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-.mobile-navigation-links a {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 48px;
-  padding: 11px 12px;
-  border-radius: 6px;
-  color: var(--muted);
-  font-size: 15px;
-}
-.mobile-navigation-links a.active,
-.mobile-navigation-links a:hover {
-  background: var(--raised);
-  color: var(--text);
-}
-.mobile-account-link {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 24px;
-  padding-top: 20px;
-  border-top: 1px solid var(--border);
-  color: var(--text);
-}
-.mobile-account-link > span:nth-child(2) {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.mobile-account-link small {
-  display: block;
-  margin-top: 2px;
-  color: var(--faint);
-  font-size: 12px;
-}
-.mobile-navigation-footer {
-  border-top: 1px solid var(--border);
-  margin-top: 20px;
-  padding-top: 22px;
-}
-.mobile-navigation-footer .instance-identity {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  color: var(--muted);
-  font-size: 13px;
-}
-.mobile-navigation-footer small {
-  display: block;
-  color: var(--faint);
-  font-size: 12px;
-}
-.mobile-navigation-footer > a {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 20px;
-  color: var(--muted);
-  font-size: 13px;
-}
 @media (max-width: 760px) {
   .select-item,
   .action-menu-item {
@@ -327,8 +263,7 @@
     display: inline;
   }
   .app-shell .nav-actions .icon-button,
-  .app-shell .nav-actions .account-button,
-  .app-shell .workspace-location .mobile-menu {
+  .app-shell .nav-actions .account-button {
     min-width: 44px;
     min-height: 44px;
   }

@@ -215,15 +215,6 @@ function App() {
   const privateGate = !user && (!config.public_access || accountRoute);
   const publicSurface = location.pathname === '/' && !user;
   const guestPath = location.pathname + location.search + location.hash;
-  const pageTitle = location.pathname.startsWith('/watch')
-    ? t('Match review')
-    : ['/connections', '/account/connections'].includes(location.pathname)
-      ? t('Connected accounts')
-      : location.pathname === '/account'
-        ? t('Account settings')
-        : location.pathname === '/admin'
-          ? t('Administration')
-          : t('Demo library');
   return (
     <AppContext.Provider
       value={{
@@ -287,7 +278,6 @@ function App() {
         </div>
       ) : (
         <WorkspaceShell
-          title={pageTitle}
           theme={theme}
           toggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
         >

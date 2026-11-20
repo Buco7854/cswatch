@@ -72,6 +72,24 @@ Artwork preparation has a five-minute deadline, bounded attempts and the shared 
 
 The November 19 local native conversion proof used the retained CRC-verified screenshot from manifest `807392217824910805`: confined S2V and Sharp produced the exact existing 1280×720 PNG without changing installed artwork. That is cached-source conversion evidence, not a new current-manifest download. A new current-source artwork acquisition was not run on the disk-constrained host. See [verification](VERIFICATION.md) for the active revision's release gates.
 
+## Optional first-person rigs
+
+The viewer can use byte-pinned operator-prepared rigs for the AK, M4A4, AWP and Glock from Steam depot 2347770 manifest `8225060435969537482`. Each supplies the weapon's default authored hands, idle, firing and reload poses. Web serves only the sizes and hashes in `shared/viewmodels.json` through fixed routes under the ordinary instance access policy. These optional assets are prepared outside the automatic map and shared-presentation workers.
+
+From a source workspace with the reviewed prepared GLB, install it into the existing operator asset directory with Node 24.
+
+```sh
+node tools/assets/install-viewmodel.mjs m4a4 /path/to/m4a4-first-person-actions.glb /path/to/map-assets
+```
+
+The accepted IDs are `ak47`, `m4a4`, `awp` and `glock`. The original `install-ak-viewmodel.mjs` command remains available for the AK. Use the existing `MAP_ASSETS_DIR` and the usual read-only web mount. Reload animations require replay metadata from the parser that records active-weapon reload transitions. Older replays can use the new idle model and recorded firing. Missing rigs retain normal world-equipment rendering in POV.
+
+## Baked lighting on the pinned Mirage source
+
+An installation from depot 2347770 manifest `8225060435969537482` uses the native-lighting path when the official Mirage VPK matches exactly and there is 448 MiB of extra conversion space above the normal reserve. The isolated converter reads three fixed, CRC-checked atlas resources and the verified texture ranges already in that map's dependency closure. Both model tiers include the baked data within their existing texture budgets. Install the newly prepared pack in the normal way with its provenance. An existing immutable pack continues to serve its original files. Insufficient optional scratch space, other manifests and unsupported materials keep their ordinary PBR setup.
+
+Trusted operators preparing an exact S2V map-level export can provide `--irradiance-exr` and `--sun-shadow-png` to `tools/assets/prepare-map.mjs`, plus `--lighting-direction-png` when verified. All inputs must share the geometry's source version, authored atlas layout and sun channel. These switches do not infer original map identity or apply to public uploads. The pinned Mirage color layers use the separately extracted fixed `--layer-images` cohort.
+
 ## Latest official snapshots
 
 No manual map whitelist or default approval is needed. The worker lists direct map VPK entries only from fixed anonymous app `730`, depot `2347770`. A fresh inventory binds safe map basenames to one Steam manifest, SHA-1 and byte size. It is capped at 128 KiB and 256 unique names. New selections require a check within 24 hours. Failed refreshes back off rather than opening a login loop. The inventory is not a statement about an uploaded demo's original map version.

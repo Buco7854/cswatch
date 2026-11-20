@@ -5,8 +5,7 @@ import { renderPovEquipment } from '../pov-render';
 import SceneLighting from './SceneLighting';
 import type { MapSun } from '../map-sun';
 
-/** Dedicated first-person depth pass. Placement and lighting remain analytical;
- * this does not turn the static world model into native arms/action animation. */
+/** Dedicated first-person depth pass for both authored rigs and static equipment. */
 export default function PovEquipmentPass({
   hasSky,
   sample,

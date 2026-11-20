@@ -486,6 +486,10 @@ async function checkDialog(page: Page, language: Language) {
     }),
     'Viewer options must scroll internally without overflowing the tab',
   ).toBe(true);
+  expect(
+    await dialog.getByRole('tablist').evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
+    'All five settings categories fit without horizontal scrolling',
+  ).toBe(true);
   const mouseSwitch = dialog.getByRole('switch', {
     name: new RegExp('^' + message(language, 'Mouse buttons and movement')),
   });

@@ -9,6 +9,7 @@ export type ScopedGLTFJob = (
   },
   maxBytes?: number,
   embeddedOnly?: boolean,
+  configure?: (parser: GLTFLoader) => void,
 ) => () => void;
 
 /** A private manager owns only this request's cancellation, blob URLs and image bitmaps. */
@@ -17,6 +18,7 @@ export const loadScopedGLTF: ScopedGLTFJob = (
   callbacks,
   maxBytes = Infinity,
   embeddedOnly = false,
+  configure,
 ) => {
   const manager = new LoadingManager(),
     file = new FileLoader(manager),
@@ -101,6 +103,7 @@ export const loadScopedGLTF: ScopedGLTFJob = (
   parser.setMeshoptDecoder(
     typeof MeshoptDecoder === 'function' ? MeshoptDecoder() : MeshoptDecoder,
   );
+  configure?.(parser);
   file.setResponseType('arraybuffer');
   file.load(
     url,

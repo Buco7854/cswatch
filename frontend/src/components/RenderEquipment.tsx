@@ -222,17 +222,7 @@ export function HeldEquipment({
 }
 /** Static eye-relative placement with a small analytical shot kick. Native
  * first-person arm/action animation is a separate asset capability. */
-export function PovEquipment({
-  position,
-  next,
-  alpha,
-  timing,
-}: {
-  position: Position;
-  next?: Position;
-  alpha: number;
-  timing?: PoseTiming;
-}) {
+export function PovEquipment({ position, next, alpha, timing }: PovEquipmentProps) {
   const pose = playerPose(position, next, alpha, timing);
   const context = useContext(EquipmentModels),
     key = equipmentIconKey(position.weapon);
@@ -272,6 +262,12 @@ export function PovEquipment({
     </primitive>
   );
 }
+export type PovEquipmentProps = {
+  position: Position;
+  next?: Position;
+  alpha: number;
+  timing?: PoseTiming;
+};
 export function RecordedEquipment({ items }: { items: PresentItem[] }) {
   return (
     <>

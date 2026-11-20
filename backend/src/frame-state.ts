@@ -1,6 +1,11 @@
 import type { DeadTime, Frame, Player, Position } from '../../shared/playback.js';
 import { hasNetworkAliasEvidence, recordedInput } from './player-input.js';
-import { playerColumns, type PlayerColumns } from './parser-fields.js';
+import {
+  playerColumns,
+  recordedCameraFov,
+  recordedReloadTickLimit,
+  type PlayerColumns,
+} from './parser-fields.js';
 
 const finite = (value: unknown, fallback = 0) =>
   typeof value === 'number' && Number.isFinite(value) ? value : fallback;
@@ -11,6 +16,12 @@ type FrameState = {
   frames: Frame[];
   players: Player[];
   deadTimes: DeadTime[];
+};
+type ReloadObservation = {
+  tick: number;
+  handle: number;
+  active: boolean;
+  start?: number;
 };
 export function collectFrameState(rows: Record<string, unknown>[]): FrameState {
   const sorted = rows
@@ -61,6 +72,7 @@ function collectOrderedFrameState(
   const roster = new Map<string, Player>(),
     frames: Frame[] = [],
     deadTimes: DeadTime[] = [];
+  const reloads = new Map<string, ReloadObservation>();
   let frame: Frame | undefined, segment: DeadTime | undefined;
   for (const row of rows) {
     if (
@@ -110,6 +122,26 @@ function collectOrderedFrameState(
       alive: Boolean(row.is_alive),
       weapon: String(row.active_weapon_name || '').slice(0, 50),
     };
+    const previousReload = reloads.get(id);
+    const handle = row.active_weapon;
+    const active = row.is_in_reload;
+    if (
+      player.alive &&
+      id !== '0' &&
+      player.weapon &&
+      typeof handle === 'number' &&
+      Number.isSafeInteger(handle) &&
+      handle > 0 &&
+      handle < 0xffffffff &&
+      typeof active === 'boolean'
+    ) {
+      let start: number | undefined;
+      if (active && previousReload?.handle === handle && tick === previousReload.tick + 4)
+        start = previousReload.active ? previousReload.start : tick;
+      reloads.set(id, { tick, handle, active, start });
+      if (start !== undefined && tick - start < recordedReloadTickLimit)
+        player.reloadStarted = start;
+    } else reloads.delete(id);
     if (typeof row.armor_value === 'number' && Number.isFinite(row.armor_value))
       player.armor = row.armor_value;
     if (typeof row.balance === 'number' && Number.isFinite(row.balance)) player.money = row.balance;
@@ -126,6 +158,16 @@ function collectOrderedFrameState(
       ['is_defusing', 'defusing'],
     ] as const)
       if (typeof row[field] === 'boolean') player[property] = row[field];
+    const scope = row[recordedCameraFov];
+    if (
+      player.alive &&
+      player.scoped &&
+      typeof scope === 'number' &&
+      Number.isSafeInteger(scope) &&
+      scope >= 5 &&
+      scope < 90
+    )
+      player.scopeFov = scope;
     for (const [field, property] of [
       ['current_equip_value', 'equipmentValue'],
       ['start_balance', 'startMoney'],

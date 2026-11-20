@@ -92,10 +92,7 @@ export function Account({ section = 'security' }: { section?: 'security' | 'conn
   return (
     <>
       <header className="page-heading">
-        <div>
-          <h1>{t('Account settings')}</h1>
-          <p>{t('Your identity and security.')}</p>
-        </div>
+        <h1>{t(section === 'connections' ? 'Connected accounts' : 'Account settings')}</h1>
       </header>
       <nav className="account-tabs" aria-label={t('Account settings')}>
         <NavLink end to="/account">
@@ -108,7 +105,7 @@ export function Account({ section = 'security' }: { section?: 'security' | 'conn
           {t('Sign in')}
         </button>
       ) : section === 'connections' ? (
-        <Connections embedded />
+        <Connections />
       ) : (
         <>
           <div className="settings-section">

@@ -2,6 +2,14 @@
 
 The optional `matchState`, `eventAvailability` and `throwInputs` fields extend the existing playback domain and version 2 manifest. They stay global while frame, grenade, voice and gameplay-sound slices are evicted or changed. Older prepared replays remain readable; they do not gain metadata without being processed again. Missing values remain unknown.
 
+## Smoke journals and scope projection
+
+`smoke-state.ts` observes contiguous modern `CSmokeGrenadeProjectile.m_VoxelFrameData` records in the existing confined stream. The optional global `smokeTracks` bank stores entity index/serial, first/last observed interval, recorded detonation origin/color, the final byte journal and timestamped prefix boundaries. A projectile can outlive its current volume. The track therefore retires at the observed deletion or half a demo second after the last journal update, whichever arrives first. Failed or incompatible tracks leave event markers available. Shared validation caps 192 segments, 512 KiB of raw journal data and 20,000 timestamped updates before decoding. The viewer reconstructs supported density in a bundled local worker using the browser export of `cs2parser` 2.8.0, licensed MPL-2.0. [cs2parser source and license](https://github.com/osztenkurden/cs2parser)
+
+An optional `Position.scopeFov` comes from the exact player camera-service field and appears only on recorded living scoped samples. The first-person scene consumes the discrete selected sample for supported sniper rifles and returns to the configured FOV on unscope. Older artifacts use their current camera, with missing scope FOV left unknown.
+
+An optional `Position.eyeOffset` records `CCSPlayerPawn.m_vecViewOffset` on the existing sampled tick. The streaming solver requires a living pawn with the same Steam controller ID and a world position within one Source inch of the primary parser sample. Offsets quantize to 1/128 Source inch. The wire tuple stores `[height]` when both horizontal components are zero and `[x, y, height]` otherwise. Position and offset share the ordinary identity, round and teleport discontinuity checks. Older artifacts retain the existing duck-based camera estimate.
+
 ## Match state
 
 `shared/match-state.d.ts` defines complete snapshots, not patches. Each snapshot replaces the previous state at its recorded demo tick. The collector reuses the existing streaming `cs2parser` entity world and retains only changed state, up to 10,000 snapshots. `complete: false` identifies parser failure or a metadata bound; consumers must not extrapolate that state past its final recorded snapshot.

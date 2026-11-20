@@ -29,6 +29,7 @@ import { readMapPreparationState } from './map-readiness.js';
 import { gameplaySoundAssetRoutes } from './gameplay-sound-assets.js';
 import { equipmentAssetRoutes } from './equipment-assets.js';
 import { equipmentModelAssetRoutes } from './equipment-model-assets.js';
+import { viewmodelAssetRoutes } from './viewmodel-assets.js';
 import { mapAssetRoutes } from './map-assets.js';
 import { mapModelFileRoutes } from './map-model-files.js';
 import { mapPreviewRoutes } from './map-preview.js';
@@ -197,6 +198,7 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
   await equipmentAssetRoutes(app, db.root, c.mapAssetsDir, c.mapJobsDir);
   await gameplaySoundAssetRoutes(app, db.root, c.mapAssetsDir);
   await equipmentModelAssetRoutes(app, db.root, c.mapAssetsDir, c.mapJobsDir);
+  viewmodelAssetRoutes(app, c.mapAssetsDir);
   const manualMapLocation = {
     root: c.mapAssetsDir,
     parts: [],
@@ -285,13 +287,18 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
       uploadMb = r.user ? c.maxUploadMb : Math.min(c.maxUploadMb, c.guestStorageMb),
       file = await r.file({ limits: { fileSize: uploadMb * 1024 ** 2 } });
     if (!file) throw new HttpError(400, 'Choose a .dem or .dem.zst file.');
-    const name = basename(file.filename).slice(0, 120),
-      lower = name.toLowerCase(),
-      ext = lower.endsWith('.dem.zst') ? '.zst' : lower.endsWith('.dem') ? '.dem' : null;
-    if (!ext) {
+    const filename = basename(file.filename),
+      lower = filename.toLowerCase(),
+      suffix = lower.endsWith('.dem.zst') ? '.dem.zst' : lower.endsWith('.dem') ? '.dem' : null;
+    if (!suffix) {
       file.file.resume();
       throw new HttpError(400, 'Only .dem and .dem.zst files are supported.');
     }
+    const ext = suffix === '.dem.zst' ? '.zst' : '.dem';
+    const name =
+      filename.length > 120
+        ? filename.slice(0, 120 - suffix.length) + filename.slice(-suffix.length)
+        : filename;
     const quota = r.user
       ? c
       : {

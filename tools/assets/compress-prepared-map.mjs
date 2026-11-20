@@ -13,6 +13,7 @@ import { validateTexturePlan } from './texture-plan-validation.mjs';
 import { writePreparedModel } from './prepared-model-output.mjs';
 import { writeTierMetadata } from './map-tier-output.mjs';
 import { NodeIO } from '@gltf-transform/core';
+import { MapBakedLightingExtension } from './map-baked-lighting-extension.mjs';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { MeshoptDecoder } from './meshopt-glb.mjs';
 import { batchMapMeshes } from './batch-map-meshes.mjs';
@@ -59,7 +60,7 @@ export async function compressPreparedGeometry({ input, output, map, tier, batch
     if (batchStatic) {
       await MeshoptDecoder.ready;
       const io = new NodeIO()
-          .registerExtensions(ALL_EXTENSIONS)
+          .registerExtensions([...ALL_EXTENSIONS, MapBakedLightingExtension])
           .registerDependencies({ 'meshopt.decoder': MeshoptDecoder })
           .setAllowNetwork(false),
         document = await io.readBinary(bytes);

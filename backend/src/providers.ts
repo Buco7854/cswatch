@@ -1,10 +1,10 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { isIP } from 'node:net';
 import { join } from 'node:path';
 import type { Store } from './db.js';
 import type { Config } from './config.js';
-import { HttpError, requireUser, rateLimit } from './security.js';
+import { currentUser, HttpError, requireUser, rateLimit, type SessionUser } from './security.js';
 import { abandon, reserve, validateMagic } from './ingestion.js';
 import { downloadRemoteDemo, validateRemoteUrl } from './remote-download.js';
 import { readUpstreamJson } from './upstream.js';
@@ -21,7 +21,7 @@ async function faceit(c: Config, path: string, params: Record<string, string> = 
       },
     );
     if (!response.ok) throw new Error();
-    return readUpstreamJson(response);
+    return await readUpstreamJson(response);
   } catch {
     throw new HttpError(
       502,
@@ -29,6 +29,12 @@ async function faceit(c: Config, path: string, params: Record<string, string> = 
     );
   }
 }
+
+const faceitProfile = z.object({
+  player_id: z.string().uuid(),
+  nickname: z.string().min(1).max(256),
+  games: z.object({ cs2: z.object({ game_player_id: z.string().regex(/^\d{17}$/) }) }),
+});
 // URLs are accepted exclusively from FACEIT's authenticated API, never from users.
 export async function validateDownload(url: string) {
   const u = new URL(url),
@@ -54,6 +60,12 @@ export async function providerRoutes(app: FastifyInstance, db: Store, c: Config)
   const enabled = () => {
     if (!db.flag(c, 'faceit_enabled')) throw new HttpError(403, 'FACEIT integration is disabled.');
   };
+  function revalidate(request: FastifyRequest, captured: SessionUser) {
+    const live = currentUser(db, request, c);
+    if (!live || live.id !== captured.id || live.csrf !== captured.csrf)
+      throw new HttpError(401, 'Session expired. Refresh the page and try again.');
+    enabled();
+  }
   app.post('/api/connections/faceit/link', async (r) => {
     const u = requireUser(r);
     enabled();
@@ -63,11 +75,18 @@ export async function providerRoutes(app: FastifyInstance, db: Store, c: Config)
       u.id,
     );
     if (!steam) throw new HttpError(400, 'Link Steam first to verify your FACEIT account.');
-    const profile = await faceit(c, 'players', { game: 'cs2', game_player_id: steam.subject });
-    if (String(profile.games?.cs2?.game_player_id) !== steam.subject)
+    const result = await faceit(c, 'players', { game: 'cs2', game_player_id: steam.subject });
+    const profile = faceitProfile.safeParse(result);
+    if (!profile.success || profile.data.games.cs2.game_player_id !== steam.subject)
       throw new HttpError(400, 'FACEIT did not confirm a matching Steam account.');
-    const subject = z.string().uuid().parse(profile.player_id);
+    const { player_id: subject, nickname } = profile.data;
     db.transaction(() => {
+      revalidate(r, u);
+      if (
+        db.one("SELECT subject FROM identities WHERE user_id=? AND provider='steam'", u.id)
+          ?.subject !== steam.subject
+      )
+        throw new HttpError(409, 'Session expired. Refresh the page and try again.');
       const existing = db.one(
         "SELECT user_id FROM identities WHERE provider='faceit' AND subject=?",
         subject,
@@ -81,7 +100,7 @@ export async function providerRoutes(app: FastifyInstance, db: Store, c: Config)
       );
     });
     db.audit(u.id, 'faceit.linked');
-    return { nickname: profile.nickname, subject };
+    return { nickname, subject };
   });
   app.get('/api/connections/faceit/matches', async (r) => {
     const u = requireUser(r);
@@ -107,9 +126,10 @@ export async function providerRoutes(app: FastifyInstance, db: Store, c: Config)
         'Automatic downloads require an approved FACEIT Downloads API token. Upload the demo manually instead.',
       );
     const match = await faceit(c, 'matches/' + match_id);
-    const resource = z.string().url().safeParse(match.demo_url?.[0]);
+    const resource = z.string().url().safeParse(match?.demo_url?.[0]);
     if (!resource.success) throw new HttpError(404, 'FACEIT has no demo for this match yet.');
     validateRemoteUrl(resource.data, ['demos.faceit.com']);
+    revalidate(r, u);
     const { id, folder } = reserve(db, c, u.id, 'FACEIT ' + match_id, 'faceit', match_id);
     try {
       const signal = AbortSignal.timeout(180000);
@@ -137,6 +157,7 @@ export async function providerRoutes(app: FastifyInstance, db: Store, c: Config)
         signal,
       });
       validateMagic(join(folder, 'input' + suffix), suffix);
+      revalidate(r, u);
       db.run("UPDATE demos SET status='queued',size=? WHERE id=?", size, id);
       reply.code(202);
       return { id };

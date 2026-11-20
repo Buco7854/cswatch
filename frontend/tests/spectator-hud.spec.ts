@@ -66,7 +66,7 @@ function mapWithWall() {
 async function fixture(
   page: Page,
   id: string,
-  options: { wall?: boolean; death?: boolean; native?: boolean } = {},
+  options: { wall?: boolean; death?: boolean; native?: boolean | 'head'; flash?: boolean } = {},
 ) {
   const data = originalMapReplay();
   data.grenades = [];
@@ -81,8 +81,15 @@ async function fixture(
         yaw: 0,
         health: options.death && index >= 2 ? 0 : 75,
         alive: !(options.death && index >= 2),
+        flash: options.flash ? (index === 1 || index === 2 ? 1.03 : 0) : undefined,
       },
-      { ...data.frames[0].players[1], x: 200, y: 0, health: 37 },
+      {
+        ...data.frames[0].players[1],
+        x: 200,
+        y: 0,
+        health: 37,
+        duck: options.native === 'head' && index >= 2 ? 1 : 0,
+      },
       { ...data.frames[0].players[0], id: teammate, x: -200, y: 200, health: 64 },
     ],
   }));
@@ -155,7 +162,10 @@ async function fixture(
       route.fulfill({ json: { ct: '/map-assets/agents/ct.glb', t: '/map-assets/agents/t.glb' } }),
     );
     await page.route('**/map-assets/agents/*.glb', (route) =>
-      route.fulfill({ contentType: 'model/gltf-binary', body: originalAnimatedAgentGLB() }),
+      route.fulfill({
+        contentType: 'model/gltf-binary',
+        body: originalAnimatedAgentGLB(options.native === 'head' ? 'head_0' : undefined),
+      }),
     );
   }
   return data;
@@ -251,6 +261,34 @@ test('player names and real health render through an actual wall, obey X-ray and
   await option(page, 'Visuals', 'Player names and health', false);
   await expect(page.locator('.actor-label')).toHaveCount(0);
 });
+test('native labels project the posed head and restore the same placement on backward seeks', async ({
+  page,
+}) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE));
+  await page.setViewportSize({ width: 1100, height: 800 });
+  await fixture(page, 'spectator-head-label', { wall: true, native: 'head' });
+  await page.goto('/watch/spectator-head-label');
+  const scene = page.locator('.scene');
+  await expect(scene).toHaveAttribute('data-map-model-state', 'ready');
+  await camera(page, 'Player perspective');
+  await expect(scene).toHaveAttribute('data-agent-ready-count', '2');
+  const label = page.locator(`.actor-label[data-player="${opponent}"]`);
+  const offset = async () => {
+    const bounds = (await label.boundingBox())!;
+    const canvas = (await scene.locator('canvas').boundingBox())!;
+    return bounds.y + bounds.height / 2 - (canvas.y + canvas.height / 2);
+  };
+  // The fixture's posed head plus the label gap lies below the viewer's fixed eye height.
+  // The generic standing-height label would be above it.
+  await expect.poll(offset).toBeGreaterThan(5);
+  const standing = await offset();
+  const slider = page.getByRole('slider', { name: 'Playback position' });
+  await slider.fill('64');
+  await expect.poll(offset).toBeGreaterThan(standing + 35);
+  await slider.fill('0');
+  await expect.poll(async () => Math.abs((await offset()) - standing)).toBeLessThan(1);
+});
+
 test('first-person hurt feedback follows recorded ticks, remains optional and leaves no stale effect after seeking', async ({
   page,
 }, info) => {
@@ -272,6 +310,36 @@ test('first-person hurt feedback follows recorded ticks, remains optional and le
   await expect(page.locator('.spectator-damage')).toBeVisible();
   await option(page, 'Visuals', 'Damage feedback', false);
   await expect(page.locator('.spectator-damage')).toHaveCount(0);
+});
+
+test('first-person flash feedback follows recorded pawn state, presentation and reduced motion', async ({
+  page,
+}) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE));
+  await fixture(page, 'spectator-flash', { flash: true });
+  await page.goto('/watch/spectator-flash');
+  await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
+  await camera(page, 'Player perspective');
+  const slider = page.getByRole('slider', { name: 'Playback position' });
+  await slider.fill('32');
+  const indicator = page.getByText('Flashed', { exact: true });
+  const tint = page.locator('.spectator-flash-tint');
+  await expect(indicator).toBeVisible();
+  await expect(tint).toHaveCount(0);
+  await page.getByRole('button', { name: 'Options', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Flashbang feedback', exact: true }).click();
+  await page.getByRole('option', { name: 'Strong tint', exact: true }).click();
+  await page.getByRole('button', { name: 'Close viewer options', exact: true }).click();
+  await expect(tint).toBeVisible();
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(tint).toBeHidden();
+  await expect(indicator).toBeVisible();
+  await slider.fill('96');
+  await expect(indicator).toHaveCount(0);
+  await slider.fill('32');
+  await expect(indicator).toBeVisible();
+  await camera(page, 'Overhead');
+  await expect(indicator).toHaveCount(0);
 });
 
 test('prepared actors draw their skinned silhouette behind real geometry and release it when X-ray is disabled', async ({

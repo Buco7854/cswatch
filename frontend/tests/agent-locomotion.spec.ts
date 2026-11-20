@@ -163,7 +163,7 @@ test('five prepared cycles deform actual skinned actors from recorded speed and 
     route.fulfill({ json: { ct: '/map-assets/agents/ct.glb', t: null } }),
   );
   await page.route('**/map-assets/agents/ct.glb', (route) =>
-    route.fulfill({ contentType: 'model/gltf-binary', body: originalAnimatedAgentGLB(true) }),
+    route.fulfill({ contentType: 'model/gltf-binary', body: originalAnimatedAgentGLB('wpn') }),
   );
   await page.route('**/api/assets/equipment-models', (route) =>
     route.fulfill({ json: originalEquipmentCatalog(['ak47']) }),

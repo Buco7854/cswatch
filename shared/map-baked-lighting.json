@@ -1,0 +1,9 @@
+{
+  "extension": "CSWATCH_baked_lighting",
+  "schemaVersion": 1,
+  "texCoord": 1,
+  "maximumEdge": 2048,
+  "irradianceRange": 64,
+  "irradianceBias": 16,
+  "layerAttribute": "_TEXCOORD_4"
+}

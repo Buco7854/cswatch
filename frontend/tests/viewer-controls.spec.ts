@@ -356,6 +356,7 @@ test('phone defaults ignore desktop HUD opt-ins and playback range stays directl
   await range.click();
   await page.getByRole('option', { name: 'Current round', exact: true }).click();
   await expect(range).toHaveAttribute('data-state', 'closed');
+  await expect(range).toHaveText('Current round');
   await page.getByRole('button', { name: 'More controls', exact: true }).click();
   await expect(page.getByRole('menuitem', { name: 'Players', exact: true })).toBeVisible();
   await expect(
@@ -371,6 +372,40 @@ test('phone defaults ignore desktop HUD opt-ins and playback range stays directl
   await expect(page.locator('.review-inputs-panel')).toBeVisible();
   await page.reload();
   await expect(page.locator('.review-inputs-panel')).toBeVisible();
+  const camera = page.getByRole('combobox', { name: 'Camera mode', exact: true });
+  await camera.click();
+  await page.getByRole('option', { name: '2D tactical · low power', exact: true }).click();
+  await players(page);
+  await page.locator('.viewer-drawer .broadcast-player-select').nth(1).click();
+  await expect(camera).toHaveText('2D tactical · low power');
+});
+
+test('playback settings migrate the old downtime preference and keep the two switches independent', async ({
+  page,
+}) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE));
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await fixture(page, { autoSkip: true });
+  await page.getByRole('button', { name: 'Options', exact: true }).click();
+  await selectOptionsCategory(page, 'Playback');
+  const freeze = page.getByRole('switch', { name: 'Skip freeze time automatically' });
+  const timeouts = page.getByRole('switch', { name: 'Skip timeouts automatically' });
+  await expect(freeze).toBeChecked();
+  await expect(timeouts).toBeChecked();
+  await freeze.click();
+  await expect(freeze).not.toBeChecked();
+  await expect(timeouts).toBeChecked();
+  const leadIn = page.getByRole('combobox', { name: 'Kill and death replay lead-in' });
+  await leadIn.focus();
+  await page.keyboard.press('Space');
+  const selected = page.getByRole('option', { name: '3s', exact: true });
+  await expect(selected).toHaveAttribute('data-state', 'checked');
+  await expect(selected).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.getByRole('option', { name: '5s', exact: true })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(leadIn).toHaveText('5s');
+  await expect(leadIn).toBeFocused();
 });
 
 test('recorded crosshair follows exact player evidence and missing codes never use a fake fallback', async ({
@@ -462,4 +497,9 @@ test('free camera keyboard movement changes real rendered pixels and ignores key
     (await originalCameraView(page)).position,
     'Options must also preserve the actual rendered camera position',
   ).toEqual(protectedCamera.position);
+  await selectOptionsCategory(page, 'Performance');
+  await page.getByRole('slider', { name: '3D render resolution', exact: true }).press('Home');
+  await expect
+    .poll(async () => (await originalCameraView(page)).drawingBuffer)
+    .toEqual(protectedCamera.drawingBuffer.map((part) => part / 2));
 });

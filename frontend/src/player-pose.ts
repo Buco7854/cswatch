@@ -13,6 +13,7 @@ export function playerPose<
   T extends Pick<Position, 'id' | 'x' | 'y' | 'z' | 'yaw' | 'alive'> & {
     pitch?: number;
     duck?: number;
+    eyeOffset?: Position['eyeOffset'];
   },
 >(from: T, next: T | undefined, alpha: number, timing?: PoseTiming): T {
   const seconds = timing ? (timing.nextTick - timing.fromTick) / timing.tickRate : undefined;
@@ -26,12 +27,27 @@ export function playerPose<
   if (!continuous) return from;
   const blend = Number.isFinite(alpha) ? Math.min(1, Math.max(0, alpha)) : 0;
   if (!blend) return from;
+  let eyeOffset = from.eyeOffset;
+  if (from.eyeOffset && next.eyeOffset) {
+    const a = from.eyeOffset,
+      b = next.eyeOffset;
+    const height = a[a.length - 1] * (1 - blend) + b[b.length - 1] * blend;
+    eyeOffset =
+      a.length === 1 && b.length === 1
+        ? [height]
+        : [
+            (a.length === 3 ? a[0] : 0) * (1 - blend) + (b.length === 3 ? b[0] : 0) * blend,
+            (a.length === 3 ? a[1] : 0) * (1 - blend) + (b.length === 3 ? b[1] : 0) * blend,
+            height,
+          ];
+  }
   return {
     ...from,
     x: from.x + (next.x - from.x) * blend,
     y: from.y + (next.y - from.y) * blend,
     z: from.z + (next.z - from.z) * blend,
     yaw: from.yaw + shortestAngle(from.yaw, next.yaw) * blend,
+    ...(eyeOffset ? { eyeOffset } : {}),
     ...(from.pitch !== undefined && next.pitch !== undefined
       ? { pitch: from.pitch + shortestAngle(from.pitch, next.pitch) * blend }
       : {}),

@@ -13,6 +13,9 @@ import { writeMapTier } from './map-tier-output.mjs';
 import { steamAssetLimits } from './steam-assets-plan.mjs';
 import { MeshoptDecoder } from './meshopt-glb.mjs';
 import { batchMapMeshes } from './batch-map-meshes.mjs';
+import { MapBakedLightingExtension } from './map-baked-lighting-extension.mjs';
+import { bindBakedLighting, prepareBakedLightingAtlas } from './prepare-baked-lighting.mjs';
+import { readMapLayerImages } from './prepare-map-layers.mjs';
 const { values: v } = parseArgs({
   options: {
     s2v: { type: 'string' },
@@ -21,6 +24,10 @@ const { values: v } = parseArgs({
     input: { type: 'string' },
     output: { type: 'string' },
     'asset-version': { type: 'string' },
+    'irradiance-exr': { type: 'string' },
+    'sun-shadow-png': { type: 'string' },
+    'lighting-direction-png': { type: 'string' },
+    'layer-images': { type: 'string' },
     help: { type: 'boolean' },
   },
 });
@@ -31,6 +38,11 @@ if (v.help || !v.output || !v.map || (!v.input && (!v.game || !v.s2v))) {
   process.exit(v.help ? 0 : 1);
 }
 if (!/^[a-zA-Z0-9_-]{1,80}$/.test(v.map)) throw new Error('Invalid map name');
+if (
+  Boolean(v['irradiance-exr']) !== Boolean(v['sun-shadow-png']) ||
+  ((v['lighting-direction-png'] || v['layer-images']) && !v['irradiance-exr'])
+)
+  throw new Error('Supply both Source irradiance and sun-shadow inputs together.');
 const root = resolve(v.output, v.map);
 await mkdir(root, { recursive: true });
 let input = v.input ? resolve(v.input) : join(root, 'source', 'scene.gltf');
@@ -66,14 +78,30 @@ if (!v.input) {
 const source = await fileHash(input, steamAssetLimits.modelBytes);
 await MeshoptDecoder.ready;
 const io = new NodeIO()
-  .registerExtensions(ALL_EXTENSIONS)
+  .registerExtensions([...ALL_EXTENSIONS, MapBakedLightingExtension])
   .registerDependencies({ 'meshopt.decoder': MeshoptDecoder })
   .setAllowNetwork(false);
 await MeshoptSimplifier.ready;
+const layers = v['layer-images'] ? await readMapLayerImages(resolve(v['layer-images'])) : undefined;
 for (const tier of ['desktop', 'mobile']) {
   const target = join(root, tier);
   const document = await io.read(input);
-  await document.transform(dedup(), prune(), resample(), weld());
+  let bakedLighting;
+  if (v['irradiance-exr'] && v['sun-shadow-png']) {
+    const atlas = await prepareBakedLightingAtlas({
+      irradiance: resolve(v['irradiance-exr']),
+      shadow: resolve(v['sun-shadow-png']),
+      direction: v['lighting-direction-png'] ? resolve(v['lighting-direction-png']) : undefined,
+      edge: tier === 'mobile' ? 1024 : 2048,
+    });
+    bakedLighting = bindBakedLighting(document, atlas, layers);
+  }
+  await document.transform(
+    dedup(),
+    prune({ keepSolidTextures: Boolean(bakedLighting) }),
+    resample(),
+    weld(),
+  );
   if (tier === 'mobile')
     await document.transform(
       simplify({ simplifier: MeshoptSimplifier, ratio: 0.65, error: 0.005 }),
@@ -90,6 +118,7 @@ for (const tier of ['desktop', 'mobile']) {
     assetVersion: v['asset-version'] || 'unspecified',
     source: { file: basename(input), sha256: source.sha256, bytes: source.bytes },
     s2v: toolVersion,
+    ...(bakedLighting ? { bakedLighting } : {}),
     geometry:
       tier === 'mobile'
         ? 'Source geometry simplified once for mobile'

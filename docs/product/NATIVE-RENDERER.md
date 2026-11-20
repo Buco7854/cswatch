@@ -1,16 +1,20 @@
 # Native rendering follow-up
 
-This is an implementation plan, not a capability claim. The released sunlight/sky correction improves the existing PBR path. It does not close the reference viewer's native material, baked-lighting, first-person animation or visibility gaps. Keep cswatch's interface and CPU-only hosting.
+The released sunlight/sky correction improves the existing PBR path. The local follow-up adds four authored first-person rigs and an initial set of native map shaders. Keep cswatch's interface, CPU-only hosting and the existing replay-access model.
 
-## Evidence and immediate blocker
+## Source evidence
 
 The [reference review](CSDEMO-REFERENCE-REVIEW.md) identifies native irradiance/directional/shadow lightmaps, local probes, layered materials, visibility/LOD and native viewmodels. The [S2V export limitations](https://s2v.app/ValveResourceFormat/guides/format-support.html#gltf-export) explain why standard glTF cannot supply all of these automatically. Retained Ancient exports have primary UVs and four-component layer/paint attributes, but no usable secondary lightmap channel or binding. Never substitute UV0 or the blend attribute for native lightmap coordinates.
 
-The fixed arms/AK/idle/fire/reload diagnostic finds 1,163,745 indexed seed bytes without verified cached payload. Dependency closure, Steam transfer chunks and conversion scratch remain unknown. Indexed bytes are not a complete preparation estimate. The workspace filesystem is full and acquisition retains its 512 MiB reserve. Continue read-only evidence/design work while blocked. Resume source acquisition only after verifying actual free space and an explicit fixed official source, not merely a directory name or elapsed time.
+The earlier AK/arms diagnostic established 1,163,745 seed bytes while the workspace was below its 512 MiB reserve. The local worker later verified one fixed official Mirage manifest and completed the map and AK/arms packs. The ordinary viewer admits those packs in the isolated test instance. [Viewer checkpoints](VIEWER-COMPARISON.md) records the authored actions and the failed pixel gate for derived visibility.
+
+## Local baked world renderer
+
+The pinned map-level S2V export retains the authored normalized secondary UV channel with the map scale applied once. The local packer binds it for supported opaque lightmapped surfaces and stores log-encoded linear irradiance, sun shadow channel zero and a separate directional atlas. Mirage's prepared mobile and desktop tiers bind 1,990 surfaces. Two-way source color painting uses the separate four-component blend attribute with the original red/green modulation texture. The selected eleven materials cover 354 surfaces and retain authored detail where supported. The remaining layered normal/roughness channels, local probes, foliage, tonemapping and atmosphere work require separate source and visual evidence. [Verification](../VERIFICATION.md#local-native-mirage-lighting-and-layers-2026-11-20)
 
 ## First bounded map prototype
 
-1. Use one exact official Ancient source and a fresh private conversion stage. Extract native world/instance transforms, material feature/parameter evidence, lightmap UV/layout/scale, baked texture encoding, probes and visibility references from their verified resources. Keep S2V as the pinned resource reader and geometry fallback. Treat unsupported/missing fields explicitly. Do not infer atlas transforms, lighting energy, recorded revisions or dependency identity.
+1. Continue from the one verified official Mirage source and a fresh private conversion stage. Bind native world/instance transforms, material parameters, lightmap UV/layout/scale, baked texture encoding and probes from their verified resources. Keep S2V as the pinned resource reader and geometry fallback. The observed visibility grid is decodable. Its corresponding world node has empty cluster assignments and absent LOD setup references, so the decoder alone cannot authorize culling. Treat unsupported fields explicitly. Preserve source identity and camera transforms.
 2. Define a separately versioned native presentation contract only after the source spike proves those fields. Share validators between preparation and browser consumption. Bound encoded and decoded geometry, texture dimensions, shader features, entries, cells, LODs and per-resource allocations before expansion. Use fixed local names and hash-bound descriptors. Never accept arbitrary material programs or URLs from a demo.
 3. Implement the smallest evidenced material family with baked diffuse, normal/roughness, directional shadowing and appropriate colour-space/tone mapping. Add layered ground and foliage only with their real inputs. Preserve exact Source transforms once. Local probes and interior visibility must come from source evidence, not a global artistic tint or guessed occlusion. Missing native presentation can retain the existing genuine PBR/2D path with honest status.
 4. Prepare spatial chunks, authored LODs and device-compatible compressed textures in isolated CPU children. Inspect compression support in the browser. Do not require desktop BC textures on phones or silently exceed decoded-memory budgets. Pin local codecs/tools and preserve CSP restrictions. A converter may not spawn a tool to evade its sandbox. Each required tool runs under its own supervisor-owned stage boundary.
@@ -18,11 +22,17 @@ The fixed arms/AK/idle/fire/reload diagnostic finds 1,163,745 indexed seed bytes
 
 Do not vendor the competitor's renderer or hosted packs. Independently prepare official Steam resources and follow applicable S2V/code licences. Proprietary artwork remains outside Git and images. Existing cache/source proofs are preserved.
 
-## First-person prototype
+## First-person rendering
 
-Start with one source-pinned AK and default arms prototype in a separate presentation category. Verify the actual skeleton, rest transforms, skin weights, muzzle and hand attachments before publishing a runtime descriptor. Keep world weapons and first-person rigs separate. Do not attach static arms heuristically and call them native animation.
+The local runtime supports optional source-pinned AK, M4A4, AWP and Glock rigs with their authored hands and gloves. Each rig uses the first-person depth pass and portrait framing. Its fire and reload clips sample demo time. Recorded shots drive firing and an analytical flash on the exact native muzzle joint. A contiguous false-to-true observation on the same active-weapon handle drives reload, with a ceiling of 256 replay ticks. Missing reload evidence leaves the idle pose. Older replays can still drive firing from their recorded events. [Operator asset installation](../MAP-ASSETS.md)
 
-Prepare a bounded idle/fire/reload clip set without expanding the full animation graph. Drive action selection by exact recorded player/weapon/events and demo time. Arbitrary seek, pause, speed, chunk replacement, weapon switching, death follow and missing clips require deterministic behavior. Keep current analytical flash/kick and explicit unavailable states until their replacements have native evidence. The recording still does not establish exact runtime bones, spread, recoil, collision or smoke simulation.
+Other weapons retain their current first-person representation. The AWP, SSG 08, G3SG1 and SCAR-20 can use recorded camera-service FOV in scoped POV. The lens masks the viewport and suppresses the held model during a recorded scope. Native movement sway, per-player skins, recoil, lens transitions and other game-engine effects remain open.
+
+POV uses the sampled native pawn eye offset when available. A bounded shoulder-arm trace clips against supported opaque static render surfaces in follow mode and uses the same camera pose for spatial audio. Native collision hulls, invisible clip volumes and dynamic obstacles are outside this trace.
+
+## Recorded smoke
+
+The optional replay journal supplies recorded seed/rejection changes, color and origin. The browser simulates a bounded density grid off-thread and depth-tests individual instanced cells against world geometry. Older or unsupported recordings retain their event markers. The simulated density and shading are approximations. Native noise, bullet cuts and explosive dispersal remain outside supported evidence. [Verification](../VERIFICATION.md#local-recorded-smoke-and-scope-playback-2026-11-20)
 
 ## Acceptance gates
 
@@ -34,7 +44,7 @@ Prepare a bounded idle/fire/reload clip set without expanding the full animation
 
 ## Additional presentation review
 
-The retained close Ancient QA camera places name/health labels noticeably above the native head. Revisit anchoring against the posed native head and a small screen-space gap, while preserving generic fallback, crouch interpolation and immutable player identity. Static screenshots do not prove animation smoothness. Keep that issue separate from the lighting correction.
+The local viewer uses the posed `head_0` bone for player name and health labels when the prepared actor supplies that exact joint. A bounded offset clears the head and retains the former height for generic or unavailable models. The browser checks follow the prepared crouch pose and reproduce the original label placement after a backward seek.
 
 ## Maintenance limits
 

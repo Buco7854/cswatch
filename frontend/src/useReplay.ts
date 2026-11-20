@@ -6,6 +6,7 @@ import { validateItemSamples, validateItemState } from './item-state';
 import { validateGameplaySoundInfo, validateGameplaySoundCues } from './gameplay-sound-assets';
 import type { Demo, Playback } from './types';
 import type { PlaybackChunk, PlaybackManifest } from '../../shared/playback';
+import { validSmokeTracks } from '../../shared/smoke-state.mjs';
 
 export function useReplay(
   id: string | undefined,
@@ -87,6 +88,8 @@ export function useReplay(
           if (replay.version !== 1 || !replay.frames?.length)
             throw new Error('Replay metadata is invalid.');
           validateItemState(replay.itemState);
+          if (!validSmokeTracks(replay.smokeTracks, replay.frames.at(-1)!.tick))
+            delete replay.smokeTracks;
           replay.gameplaySounds = validateGameplaySoundInfo(replay.gameplaySounds);
           replay.sounds = validateGameplaySoundCues(
             replay.sounds,
