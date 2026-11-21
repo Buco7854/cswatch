@@ -2,6 +2,62 @@ import { installDemoMapDescriptor } from './fixtures/map-assets';
 import { test, expect } from '@playwright/test';
 import { sample } from '../src/sample';
 
+const queuedDemo = {
+  name: 'delete-fixture.dem',
+  mimeType: 'application/octet-stream',
+  buffer: Buffer.from('PBDEMS2\0synthetic-delete-test'),
+};
+
+test('a guest can delete a freshly queued upload without refreshing or signing in', async ({
+  page,
+}) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE));
+  await page.goto('/');
+  await page.locator('input[type=file]').setInputFiles(queuedDemo);
+  await page.waitForURL(/\/watch\/[0-9a-f]+$/);
+  const id = new URL(page.url()).pathname.split('/').pop();
+  await page.getByRole('button', { name: 'Delete demo', exact: true }).click();
+  await page
+    .getByRole('dialog', { name: 'Manage demo', exact: true })
+    .getByRole('button', { name: 'Delete permanently', exact: true })
+    .click();
+  const deleted = page.waitForResponse((response) => response.request().method() === 'DELETE');
+  await page
+    .getByRole('dialog', { name: 'Delete demo', exact: true })
+    .getByRole('button', { name: 'Delete permanently', exact: true })
+    .click();
+  expect((await deleted).status()).toBe(200);
+  await expect(page).toHaveURL(/\/$/);
+  expect((await page.request.get(`/api/demos/${id}`)).status()).toBe(404);
+});
+
+test('the library deletes an owned upload from its row without opening the viewer', async ({
+  page,
+}) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE) || process.env.E2E_REGISTRATIONS === 'false');
+  await page.goto('/');
+  const account = await page.request.post('/api/auth/register', {
+    headers: { origin: new URL(page.url()).origin },
+    data: {
+      username: `delete_${Date.now().toString(36)}`,
+      password: 'Disposable-Delete-Browser-2026!',
+    },
+  });
+  expect(account.status()).toBe(201);
+  await page.goto('/library?upload=1');
+  await page.locator('input[type=file]').setInputFiles(queuedDemo);
+  await page.waitForURL(/\/watch\/[0-9a-f]+$/);
+  const id = new URL(page.url()).pathname.split('/').pop();
+  await page.goto('/library');
+  await page.getByRole('button', { name: `Delete demo: ${queuedDemo.name}`, exact: true }).click();
+  const confirmation = page.getByRole('dialog', { name: 'Delete demo', exact: true });
+  await confirmation.getByRole('button', { name: 'Delete permanently', exact: true }).click();
+  await expect(page.locator(`a[href="/watch/${id}"]`)).toHaveCount(0);
+  await expect(page.getByRole('textbox', { name: 'Search demos' })).toBeFocused();
+  await expect(page).toHaveURL(/\/library$/);
+  expect((await page.request.get(`/api/demos/${id}`)).status()).toBe(404);
+});
+
 test('demo deletion uses an accessible reusable modal with safe cancellation and keyboard focus', async ({
   page,
 }) => {
@@ -52,7 +108,7 @@ test('demo deletion uses an accessible reusable modal with safe cancellation and
   await installDemoMapDescriptor(page, 'confirm-fixture');
   await page.goto('/watch/confirm-fixture');
   await page.getByRole('button', { name: 'Viewer menu', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Manage', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Manage demo', exact: true }).click();
   const management = page
     .getByRole('dialog')
     .filter({ has: page.getByRole('heading', { name: 'Manage demo', exact: true }) });
@@ -155,7 +211,7 @@ test('a late rename cannot overwrite a different demo after its manager closes',
   await installDemoMapDescriptor(page, 'rename-b');
   await page.goto('/watch/rename-a');
   await page.getByRole('button', { name: 'Viewer menu', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Manage', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Manage demo', exact: true }).click();
   await page.getByLabel('Demo name', { exact: true }).fill('Old response must not become B');
   await page.getByRole('button', { name: 'Save name', exact: true }).click();
   await expect.poll(() => renamed).toBe(true);
@@ -171,6 +227,6 @@ test('a late rename cannot overwrite a different demo after its manager closes',
   release();
   await complete;
   await page.getByRole('button', { name: 'Viewer menu', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Manage', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Manage demo', exact: true }).click();
   await expect(page.getByLabel('Demo name', { exact: true })).toHaveValue('Fixture B');
 });

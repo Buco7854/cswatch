@@ -45,7 +45,7 @@ import {
   scopedVerticalFov,
 } from '../pov-camera';
 import { useSmokeDensity } from '../smoke-render-state';
-import { RecordedSmoke } from './RecordedSmoke';
+import { ApproximateSmoke, RecordedSmoke } from './RecordedSmoke';
 import { mapSurface, type MapUnavailableReason } from '../map-availability';
 import MapUnavailable from './MapUnavailable';
 import { mapAcquisitionMessage, type DemoMapState } from '../demo-map-assets';
@@ -1034,32 +1034,38 @@ function UtilityLayer({
       {smoke.map(({ key, track, cells }) => (
         <RecordedSmoke key={key} track={track} cells={cells} tick={tick} rate={data.tickRate} />
       ))}
-      {approximateZones.map((zone) => (
-        <mesh
-          key={zone.id}
-          name={'utility-zone:' + zone.kind}
-          position={[
-            zone.x * UNIT,
-            zone.z * UNIT + (zone.kind === 'smoke' ? 1.7 : zone.kind === 'fire' ? 0.08 : 0.4),
-            -zone.y * UNIT,
-          ]}
-          rotation={zone.kind === 'fire' ? [-Math.PI / 2, 0, 0] : [0, 0, 0]}
-        >
-          {zone.kind === 'fire' ? (
-            <circleGeometry args={[3.2, 24]} />
-          ) : (
-            <sphereGeometry args={[zone.kind === 'smoke' ? 3.7 : 0.9, 16, 12]} />
-          )}
-          <meshStandardMaterial
-            color={
-              zone.kind === 'smoke' ? '#b5b8ad' : zone.kind === 'flash' ? '#f5f0d8' : '#e4a661'
-            }
-            transparent
-            opacity={zone.kind === 'smoke' ? 0.45 : 0.6}
-            depthWrite={false}
-          />
-        </mesh>
-      ))}
+      {approximateZones
+        .filter((zone) => zone.kind === 'smoke')
+        .slice(0, 8)
+        .map((zone) => (
+          <ApproximateSmoke key={zone.id} zone={zone} tick={tick} rate={data.tickRate} />
+        ))}
+      {approximateZones
+        .filter((zone) => zone.kind !== 'smoke')
+        .map((zone) => (
+          <mesh
+            key={zone.id}
+            name={'utility-zone:' + zone.kind}
+            position={[
+              zone.x * UNIT,
+              zone.z * UNIT + (zone.kind === 'fire' ? 0.08 : 0.4),
+              -zone.y * UNIT,
+            ]}
+            rotation={zone.kind === 'fire' ? [-Math.PI / 2, 0, 0] : [0, 0, 0]}
+          >
+            {zone.kind === 'fire' ? (
+              <circleGeometry args={[3.2, 24]} />
+            ) : (
+              <sphereGeometry args={[0.9, 16, 12]} />
+            )}
+            <meshStandardMaterial
+              color={zone.kind === 'flash' ? '#f5f0d8' : '#e4a661'}
+              transparent
+              opacity={0.6}
+              depthWrite={false}
+            />
+          </mesh>
+        ))}
       {projectiles.map((grenade) => (
         <group key={grenade.id} name={'recorded-projectile:' + grenade.id}>
           {settings.trajectories && grenade.trail.length > 1 && (
@@ -1663,11 +1669,6 @@ export default function Scene({
               </EquipmentFire>
             </Canvas>
           </SceneBoundary>
-          {!data.sample && modelStatus === 'pending' && (
-            <div className="map-loading-overlay">
-              <span>{t('Loading 3D map…')}</span>
-            </div>
-          )}
         </>
       )}
     </div>

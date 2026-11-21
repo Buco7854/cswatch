@@ -66,7 +66,7 @@ async function players(page: Page) {
   const direct = page.getByRole('button', { name: 'Players', exact: true });
   if (await direct.isVisible()) await direct.click();
   else {
-    await page.getByRole('button', { name: 'More controls', exact: true }).click();
+    await page.getByRole('button', { name: 'Replay tools', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Players', exact: true }).click();
   }
 }
@@ -357,7 +357,7 @@ test('phone defaults ignore desktop HUD opt-ins and playback range stays directl
   await page.getByRole('option', { name: 'Current round', exact: true }).click();
   await expect(range).toHaveAttribute('data-state', 'closed');
   await expect(range).toHaveText('Current round');
-  await page.getByRole('button', { name: 'More controls', exact: true }).click();
+  await page.getByRole('button', { name: 'Replay tools', exact: true }).click();
   await expect(page.getByRole('menuitem', { name: 'Players', exact: true })).toBeVisible();
   await expect(
     page.getByRole('menuitem', {

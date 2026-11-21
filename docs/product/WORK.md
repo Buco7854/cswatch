@@ -1,5 +1,7 @@
 # Active work
 
+The viewer follow-up adds direct owner deletion, guest CSRF refresh, a loading-only map stage, distinct menu selection and hover states, and clearer Replay tools. Recorded horizontal movement drives held equipment in POV. Event-only smoke softly fills and fades from the recorded detonation, while supported voxel journals retain their recorded-density path. The normal browser viewer exercised both paths on the real Mirage recording. [Viewer follow-up evidence](../VERIFICATION.md#local-viewer-usability-and-presentation-follow-up-2026-11-21)
+
 The local interface follows the supplied Refrag reference for tone and hierarchy. The public upload sits on the page with feathered official Mirage artwork. Library, upload and sign-in share the same compact controls and cswatch teal action color. The separate Steam and FACEIT link leads to Connected accounts for both guests and members. [Interface evidence](../VERIFICATION.md#local-landing-redesign-2026-11-21)
 
 The current worktree covers authored AK, M4A4, AWP and Glock POV rigs, recorded eye offsets and a wall-aware shoulder camera over prepared geometry. A true multi-draw trial was rejected after repeated comparisons. The workspace reflow and local provider checks are implemented. Live account verification and same-recording hardware fidelity remain unavailable. Read the [current evidence](../VERIFICATION.md#local-expanded-pov-and-camera-evidence-2026-11-20) before promoting asset or rendering defaults.

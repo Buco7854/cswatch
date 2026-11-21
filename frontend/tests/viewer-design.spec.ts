@@ -505,7 +505,7 @@ async function checkPlayersPanel(page: Page, language: Language, modal: boolean)
   const direct = page.getByRole('button', { name: message(language, 'Players'), exact: true });
   const trigger = (await direct.isVisible())
     ? direct
-    : page.getByRole('button', { name: message(language, 'More controls'), exact: true });
+    : page.getByRole('button', { name: message(language, 'Replay tools'), exact: true });
   await trigger.click();
   if (trigger !== direct)
     await page.getByRole('menuitem', { name: message(language, 'Players'), exact: true }).click();
@@ -585,7 +585,7 @@ for (const language of ['en', 'fr'] as const)
           for (const control of [
             page.getByRole('button', { name: 'Options', exact: true }),
             page.getByRole('button', { name: message(language, 'Play'), exact: true }),
-            page.getByRole('button', { name: message(language, 'More controls'), exact: true }),
+            page.getByRole('button', { name: message(language, 'Replay tools'), exact: true }),
             ...((await page.locator('.viewer-context-actions button').all()) || []),
           ]) {
             const box = (await control.boundingBox())!;

@@ -33,7 +33,6 @@ import {
   X,
   Sun,
   Moon,
-  ChevronDown,
   MoreHorizontal,
   MapPin,
 } from 'lucide-react';
@@ -211,6 +210,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       ? mapRender.environment
       : 'pending'
     : 'missing';
+  const mapLoading = Boolean(data && !data.sample && mapStatus === 'pending');
   const mapNoticeStatus =
     !using2D &&
     mapStatus === 'ready' &&
@@ -349,7 +349,6 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
   const stage = useRef<HTMLDivElement>(null);
   const playTrigger = useRef<HTMLButtonElement>(null);
   const mobileMoreTrigger = useRef<HTMLButtonElement>(null);
-  const momentMenuTrigger = useRef<HTMLButtonElement>(null);
   const eventMenuTrigger = useRef<HTMLElement | null>(null);
   const optionsTrigger = useRef<HTMLButtonElement>(null);
   const panelElement = useRef<HTMLElement>(null);
@@ -379,6 +378,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       buffering,
     ready: Boolean(data),
   });
+  const controlsVisible = chrome.visible && !mapLoading;
   function restoreViewerFocus(preferred: HTMLElement | null, context?: FocusReturnContext) {
     if (context && focusMovedSince(context)) return;
     const target = [preferred, optionsTrigger.current, panelClose.current].find((element) => {
@@ -656,7 +656,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
   useEffect(() => {
     function keys(e: KeyboardEvent) {
       const target = e.target as HTMLElement;
-      if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (mapLoading || e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
       const viewer = full.current;
       if (!viewer || (target !== document.body && !viewer.contains(target))) return;
       if (
@@ -734,6 +734,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     window.addEventListener('keydown', keys);
     return () => window.removeEventListener('keydown', keys);
   }, [
+    mapLoading,
     last,
     first,
     rate,
@@ -918,6 +919,12 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
         </Link>
       </div>
     );
+  if (!data && (!demo || demo.status === 'ready'))
+    return (
+      <div className="viewer-map-loading" role="status">
+        {t('Loading demo…')}
+      </div>
+    );
   if (!data)
     return (
       <>
@@ -947,11 +954,12 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
           <Link className="button" to={backTo}>
             {t(backTo === '/' ? 'Back to home' : 'Return to library')}
           </Link>
-          {demo?.owned && demo.status === 'failed' && (
-            <button className="button" onClick={() => setManage(true)}>
-              {t('Manage failed demo')}
-            </button>
-          )}
+          {(demo?.owned || demo?.guest_owned) &&
+            ['queued', 'failed', 'ready'].includes(demo.status) && (
+              <button className="button" onClick={() => setManage(true)}>
+                {t(demo.guest_owned ? 'Delete demo' : 'Manage demo')}
+              </button>
+            )}
           {manage && demo && (
             <ManageDemo demo={demo} onChange={setDemo} close={() => setManage(false)} />
           )}
@@ -1019,12 +1027,6 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       id: 'scoreboard',
       label: t('Scoreboard'),
       onSelect: () => openScoreboard(eventMenuTrigger.current),
-    },
-    {
-      id: 'round-events',
-      label: t('Current round events'),
-      icon: <ListVideo size={16} />,
-      onSelect: () => openRoundReview(eventMenuTrigger.current),
     },
     {
       id: 'previous-sample',
@@ -1128,14 +1130,18 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       icon: theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />,
       onSelect: toggleTheme,
     },
-    ...(demo?.owned
+    ...(demo?.owned || demo?.guest_owned
       ? [
           {
             id: 'manage',
-            label: t('Manage'),
+            label: t(demo.guest_owned ? 'Delete demo' : 'Manage demo'),
             onSelect: () => setManage(true),
             separatorBefore: true,
           },
+        ]
+      : []),
+    ...(demo?.owned
+      ? [
           {
             id: 'share',
             label: t(demo.public ? 'Make private' : 'Share demo'),
@@ -1160,14 +1166,14 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       ref={full}
     >
       <ObjectiveAnnouncement
-        message={chrome.visible && objective && !panel ? objectiveDescription(objective) : ''}
+        message={controlsVisible && objective && !panel ? objectiveDescription(objective) : ''}
       />
       <header
         className="viewer-titlebar"
         role="banner"
         data-viewer-chrome
-        inert={!chrome.visible || (Boolean(panel) && compactPanels)}
-        aria-hidden={!chrome.visible}
+        inert={!controlsVisible || (Boolean(panel) && compactPanels)}
+        aria-hidden={!controlsVisible}
       >
         <div className="viewer-identity">
           <Link
@@ -1317,7 +1323,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
               objective && !panel ? <ObjectiveContext value={objective} /> : undefined
             }
             objectiveDescription={objective && !panel ? objectiveDescription(objective) : undefined}
-            chromeVisible={chrome.visible && !(panel && compactPanels)}
+            chromeVisible={controlsVisible && !(panel && compactPanels)}
             onOpenScoreboard={() =>
               openScoreboard(
                 full.current?.querySelector('.viewer-match-score') as HTMLElement | null,
@@ -1331,7 +1337,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
             utilities={feedUtilities}
             activeTab={feedTab}
             onTabChange={setFeedTab}
-            chromeVisible={chrome.visible}
+            chromeVisible={controlsVisible}
             modal={compactPanels}
             focusOnOpen
             onClose={closeReviewFeed}
@@ -1364,7 +1370,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
           aria-label={t('Demo view · tap or press H to show or hide controls')}
           aria-keyshortcuts="H Enter Tab"
           aria-description={t('Hold Tab to view the scoreboard. Shift+Tab navigates to controls.')}
-          inert={Boolean(panel) && compactPanels}
+          inert={mapLoading || (Boolean(panel) && compactPanels)}
         >
           <Suspense fallback={<div className="scene-fallback">{t('Starting renderer…')}</div>}>
             <Scene
@@ -1422,8 +1428,8 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
           <div
             className="viewer-game-hud"
             data-viewer-chrome
-            inert={!chrome.visible}
-            aria-hidden={!chrome.visible}
+            inert={!controlsVisible}
+            aria-hidden={!controlsVisible}
           >
             {settings.killfeed && !settings.reviewFeed && (
               <div className="killfeed">
@@ -1598,22 +1604,22 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
           selected={selected}
           settings={settings}
           hidden={Boolean(panel) || buffering}
-          chromeVisible={chrome.visible}
+          chromeVisible={controlsVisible}
           onSelect={selectPlayer}
         />
         <div
           className="viewer-objective-layer"
           data-viewer-chrome
-          inert={!chrome.visible}
-          aria-hidden={!chrome.visible}
+          inert={!controlsVisible}
+          aria-hidden={!controlsVisible}
         >
           {!settings.matchScore && objective && !panel && <ObjectiveHud value={objective} />}
         </div>
         <div
           ref={playbackDock}
-          inert={!chrome.visible || (Boolean(panel) && compactPanels)}
+          inert={!controlsVisible || (Boolean(panel) && compactPanels)}
           data-viewer-chrome
-          aria-hidden={!chrome.visible}
+          aria-hidden={!controlsVisible}
           className={'viewer-dock' + (roundsOpen ? ' rounds-visible' : '')}
           role="region"
           aria-label={t('Playback controls')}
@@ -1628,6 +1634,8 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
             scope={timelineScope}
             onSeek={seekEvent}
             onReview={() => openRoundReview(mobileMoreTrigger.current)}
+            roundsOpen={roundsOpen}
+            onRoundsChange={setRoundsOpen}
             optionsOpen={timelineOptionsOpen}
             onCloseOptions={() => {
               setTimelineOptionsOpen(false);
@@ -1738,13 +1746,6 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
                 <FastForward size={16} />
                 <span>{t('Skip dead time')}</span>
               </button>
-              <button
-                className="button mobile-rounds-toggle"
-                aria-expanded={roundsOpen}
-                onClick={() => setRoundsOpen((v) => !v)}
-              >
-                {t('Rounds')}
-              </button>
             </div>
             <div className="viewer-panel-controls">
               <button
@@ -1789,7 +1790,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
                 <Expand size={19} />
               </button>
               <ActionMenu
-                label={t('Viewer controls')}
+                label={t('Replay tools')}
                 onOpenChange={(open) => {
                   if (open) eventMenuTrigger.current = mobileMoreTrigger.current;
                 }}
@@ -1797,7 +1798,8 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
                   <button
                     ref={mobileMoreTrigger}
                     className="icon-button mobile-viewer-menu"
-                    aria-label={t('More controls')}
+                    aria-label={t('Replay tools')}
+                    title={t('Replay tools')}
                   >
                     <MoreHorizontal size={20} />
                   </button>
@@ -1823,6 +1825,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
                     id: 'next-live-round',
                     label: t('Next live round'),
                     icon: <SkipForward size={16} />,
+                    separatorBefore: true,
                     onSelect: () => {
                       const next = data.rounds.find(
                         (round) => (round.liveTick ?? round.tick) > tick,
@@ -1840,11 +1843,6 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
                       if (target === tick) notify('No freeze period or timeout at this position.');
                       else seek(target);
                     },
-                  },
-                  {
-                    id: 'rounds',
-                    label: t('Rounds'),
-                    onSelect: () => setRoundsOpen((value) => !value),
                   },
                   ...(demo?.guest_owned
                     ? []
@@ -1880,13 +1878,6 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
                   })),
                 ]}
               />
-              <button
-                className="button rounds-toggle"
-                aria-expanded={roundsOpen}
-                onClick={() => setRoundsOpen((v) => !v)}
-              >
-                {t('Rounds')}
-              </button>
             </div>
           </div>
           <div className="viewer-review-rails">
@@ -1906,23 +1897,6 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
                     </button>
                   ))}
                 </div>
-                <ActionMenu
-                  label={t('More navigation')}
-                  className="moment-menu"
-                  onOpenChange={(open) => {
-                    if (open) eventMenuTrigger.current = momentMenuTrigger.current;
-                  }}
-                  trigger={
-                    <button
-                      ref={momentMenuTrigger}
-                      className="moment-menu-trigger desktop-moment-menu"
-                    >
-                      {t('More navigation')}
-                      <ChevronDown size={14} />
-                    </button>
-                  }
-                  items={momentActions}
-                />
               </div>
             )}
           </div>
@@ -1987,6 +1961,17 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
           setPlaying(false);
         }}
       />
+      {mapLoading && (
+        <div className="viewer-map-loading" role="status">
+          {t(
+            mapAssets.status === 'pending'
+              ? 'Loading map assets…'
+              : using2D
+                ? 'Loading map overview…'
+                : 'Loading 3D map…',
+          )}
+        </div>
+      )}
     </div>
   );
 }

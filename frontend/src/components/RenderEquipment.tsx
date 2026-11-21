@@ -13,6 +13,7 @@ import {
 import { useFrame, useThree } from '@react-three/fiber';
 import { Group, MathUtils, Matrix4, type Object3D } from 'three';
 import { playerPose, type PoseTiming } from '../player-pose';
+import type { povMovement } from '../pov-movement';
 import { nativeWeaponFrame } from '../agent-attachment';
 import {
   prepareEquipmentModel,
@@ -222,7 +223,7 @@ export function HeldEquipment({
 }
 /** Static eye-relative placement with a small analytical shot kick. Native
  * first-person arm/action animation is a separate asset capability. */
-export function PovEquipment({ position, next, alpha, timing }: PovEquipmentProps) {
+export function PovEquipment({ position, next, alpha, timing, motion }: PovEquipmentProps) {
   const pose = playerPose(position, next, alpha, timing);
   const context = useContext(EquipmentModels),
     key = equipmentIconKey(position.weapon);
@@ -234,12 +235,8 @@ export function PovEquipment({ position, next, alpha, timing }: PovEquipmentProp
     [asset, size.width, size.height],
   );
   const root = useMemo(() => new Group(), []);
-  useFrame(() => {
-    root.position.set(
-      pose.x * 0.0254,
-      pose.z * 0.0254 + 1.65 - (pose.duck ?? 0) * 0.7,
-      -pose.y * 0.0254,
-    );
+  useFrame(({ camera }) => {
+    root.position.copy(camera.position);
     root.rotation.set(0, MathUtils.degToRad(pose.yaw), -MathUtils.degToRad(pose.pitch), 'YZX');
   });
   if (!asset || !preset || !position.alive) return null;
@@ -247,8 +244,12 @@ export function PovEquipment({ position, next, alpha, timing }: PovEquipmentProp
     <primitive object={root} dispose={null} name={'pov-equipment:' + position.id + ':' + key}>
       <Preset value={preset}>
         <group
-          position={[-(fire?.kick || 0) * 0.025, 0, 0]}
-          rotation={[0, 0, (fire?.kick || 0) * 0.035]}
+          position={[
+            (motion?.depth ?? 0) - (fire?.kick || 0) * 0.025,
+            motion?.lift ?? 0,
+            motion?.side ?? 0,
+          ]}
+          rotation={[motion?.roll ?? 0, 0, (fire?.kick || 0) * 0.035]}
         >
           <EquipmentModelInstance
             equipment={position.weapon}
@@ -267,6 +268,7 @@ export type PovEquipmentProps = {
   next?: Position;
   alpha: number;
   timing?: PoseTiming;
+  motion?: ReturnType<typeof povMovement>;
 };
 export function RecordedEquipment({ items }: { items: PresentItem[] }) {
   return (

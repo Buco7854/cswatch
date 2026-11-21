@@ -78,8 +78,10 @@ test('viewer streams only nearby time slices, pauses on a failed seek, retries a
     await expect(page.getByRole('complementary', { name: 'Analysis HUD' })).toBeVisible();
     await expect.poll(async () => Number(await slider.inputValue())).toBeGreaterThan(8000);
     await page.getByRole('button', { name: 'Pause', exact: true }).click();
-    await page.getByRole('button', { name: 'More controls', exact: true }).click();
-    await page.getByRole('menuitem', { name: 'Rounds', exact: true }).click();
+    await page.getByRole('button', { name: 'Replay tools', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Timeline options', exact: true }).click();
+    await page.getByRole('switch', { name: 'Show round strip', exact: true }).check();
+    await page.getByRole('button', { name: 'Close timeline options', exact: true }).click();
     const context = page.getByRole('combobox', { name: 'Timeline range', exact: true });
     const transport = page.locator('.viewer-controlbar');
     const rail = page.locator('.viewer-rounds-rail');

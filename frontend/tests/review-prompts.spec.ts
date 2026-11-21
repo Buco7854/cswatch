@@ -72,6 +72,8 @@ async function openFixture(page: Page, current: () => Playback, language: 'en' |
 const seek = (page: Page, tick: number) =>
   page.getByRole('slider', { name: 'Playback position', exact: true }).fill(String(tick));
 async function show(page: Page) {
+  await page.locator('.viewer-frame').waitFor();
+  await expect(page.locator('.viewer-map-loading')).toHaveCount(0);
   if ((await page.locator('.viewer-frame').getAttribute('data-chrome-visible')) === 'false')
     await page.locator('.viewer-stage').press('h');
   await expect(page.locator('.viewer-frame')).toHaveAttribute('data-chrome-visible', 'true');
@@ -128,6 +130,10 @@ test('low quality renders the first recorded projectile without trails and real 
   let current = recordedReplay();
   await openFixture(page, () => current);
   await expect(page.locator('.viewer-map-status')).toBeVisible();
+  // Both captures use a fixed projection that includes the fixture's throw and
+  // detonation, regardless of which pawn supplies the initial free camera.
+  await page.getByRole('combobox', { name: 'Camera mode', exact: true }).click();
+  await page.getByRole('option', { name: 'Overhead', exact: true }).click();
   const scene = page.locator('.scene');
   await seek(page, 256);
   await expect(scene).toHaveAttribute('data-quality', 'low');
@@ -138,12 +144,14 @@ test('low quality renders the first recorded projectile without trails and real 
   // Same world bounds, actor positions, camera, theme and tick: only the recorded projectile is absent.
   await page.reload();
   await show(page);
+  await page.getByRole('combobox', { name: 'Camera mode', exact: true }).click();
+  await page.getByRole('option', { name: 'Overhead', exact: true }).click();
   await seek(page, 256);
   await expect(scene).toHaveAttribute('data-projectile-count', '0');
   const empty = await captureScene(page, info, 'low-quality-no-projectile-control');
   expect(projectile).not.toBe(empty);
   await show(page);
-  await seek(page, 513);
+  await seek(page, 576);
   const noZone = await captureScene(page, info, 'low-quality-no-utility-zone-control');
   await option(page, 'Utility zones', true);
   await expect(scene).toHaveAttribute('data-utility-zone-count', '1');

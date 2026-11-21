@@ -69,6 +69,8 @@ export default function ReplayTimeline({
   scope,
   onSeek,
   onReview,
+  roundsOpen,
+  onRoundsChange,
   optionsOpen,
   onCloseOptions,
 }: {
@@ -81,6 +83,8 @@ export default function ReplayTimeline({
   scope: 'match' | 'round';
   onSeek: (tick: number) => void;
   onReview: (trigger: HTMLButtonElement) => void;
+  roundsOpen: boolean;
+  onRoundsChange: (open: boolean) => void;
   optionsOpen: boolean;
   onCloseOptions: () => void;
 }) {
@@ -263,6 +267,16 @@ export default function ReplayTimeline({
         createPortal(
           <TimelineOptionsDialog close={onCloseOptions}>
             <div className="timeline-options-fields">
+              <label className="toggle-row">
+                <span>{t('Show round strip')}</span>
+                <input
+                  type="checkbox"
+                  role="switch"
+                  checked={roundsOpen}
+                  disabled={!data.rounds.length}
+                  onChange={(event) => onRoundsChange(event.target.checked)}
+                />
+              </label>
               <label className="timeline-options-field">
                 <span>{t('Event players')}</span>
                 <SelectControl

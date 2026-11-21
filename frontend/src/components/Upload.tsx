@@ -7,7 +7,7 @@ import { useApp } from '../context';
 import './upload.css';
 
 export default function Upload({ compact = false }: { compact?: boolean }) {
-  const { config, user, signIn } = useApp();
+  const { config, user, signIn, refresh } = useApp();
   const nav = useNavigate();
   const input = useRef<HTMLInputElement>(null);
   const pending = useRef<AbortController | null>(null);
@@ -73,6 +73,10 @@ export default function Upload({ compact = false }: { compact?: boolean }) {
         controller.signal,
         session?.csrf,
       );
+      if (controller.signal.aborted || !mounted.current) return;
+      // The guest cookie already exists. Update the app's CSRF with the current
+      // session before navigation so the viewer's owner actions can use it.
+      if (session) await refresh().catch(() => {});
       if (controller.signal.aborted || !mounted.current) return;
       nav('/watch/' + result.id, { state: { from: user ? '/library' : '/' } });
     } catch (e) {

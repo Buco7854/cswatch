@@ -1,6 +1,16 @@
 # Verification record
 
+## Local viewer usability and presentation follow-up, 2026-11-21
+
+An actual guest upload in the previous build reached private playback, but its Viewer menu lacked management because it checked member ownership only. Guest capabilities and member ownership remain separate. The local fix admits the guest-owned menu action, refreshes server identity and CSRF after upload, and reuses the same confirmed deletion request from the viewer and owned library rows. The library can remove queued, ready and failed demos. Uploading and processing remain protected by the worker-ownership boundary.
+
+The browser revisited the public Spirit–FURIA Ancient match in REFERENCE and observed its direct playback tools and download, lighting, texture and geometry phases. The earlier report contains completed playback and public asset-format observations. The new cswatch loading screen covers the stage while a supported asset is fetched and decoded. Once settled, normal controls return, including for missing/failed assets and maps with no supported discovery name. [Reference observations](product/REFERENCE-REFERENCE-REVIEW.md) [REFERENCE](the reference viewer)
+
+The pinned Mirage fixture parsed through required confinement into 31 slices with 60 smoke tracks. At the same recorded AK movement tick (10,721, observed horizontal speed 5.53 m/s), the 960×600 dark and 390×844 light browser views drew the authored arms and weapon. Changing reduced motion changed the pixels, and restoring the preference reproduced the original pixels at the same tick. Both profiles also rendered actual indexed instanced smoke at tick 11,649. A matched run suppressed the voxel journal and verified the separate depth-tested event-only fallback. These are local browser viewport checks using software rendering. Captures are under ignored `.design/viewer-follow-up/`.
+
 ## Local interface review, 2026-11-21
+
+The interface and review changes published from `3b61cada3f92a43b8d3ad6dac5b40e66c46aa1b6`, [workflow 44956223141](https://github.com/Buco7854/cswatch/actions/runs/44956223141), run 43. The predecessor's full browser run caught a test-clock race and its publish job was skipped. The corrected clock begins paused and advances only enough to bootstrap the renderer before checking catalog retry times. Cold bootstrap, public browser, both private policies, setup and both hardened images passed on the published revision. Anonymous OCI reads verified that `latest` and its immutable tag match index `sha256:f4c32c42a3b73478a1c356772ee0614996181b23e58bbf9d03d46743b506f87b`, and that `assets-latest` and its immutable tag match `sha256:d6f7c32a47b0ae411a0d4b3d6c842a9162880ee32cff8746c4b456e3a1814f0a`. Both configs identify the published commit.
 
 An independent agent reviewed the interface diff against `dd68152`. The account row uses the shared safe-return validator, the manual Steam history link uses a fixed HTTPS destination with `noreferrer`, and the landing accepts only registry-listed same-origin artwork under the existing access policy. The upload continues through the existing private ownership and Origin/CSRF checks. Four production dependency audits reported zero advisories. Thirty focused backend cases passed for auth, providers, guests, preview delivery and request policy.
 

@@ -29,21 +29,6 @@
   line-height: 1.65;
 }
 
-.map-loading-overlay {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  pointer-events: none;
-  color: #f3f4f5;
-  font-size: 14px;
-}
-.map-loading-overlay span {
-  background: #1b2023e6;
-  padding: 10px 14px;
-  border-radius: 6px;
-}
-
 .map-unavailable-action {
   margin-top: 20px;
   min-height: 44px;

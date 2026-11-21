@@ -10,12 +10,18 @@ import {
 } from './demo-map-assets';
 
 const delays = [1000, 2000, 5000, 10000];
+const missingDemoMap: DemoMapState = {
+  ...pendingDemoMap,
+  status: 'missing',
+  overviewStatus: 'missing',
+};
 /** One viewer lease observes a durable job. Cleanup cancels HTTP, never the shared job. */
 export function useDemoMapAssets(
   id: string | undefined,
   map: string | undefined,
   userId: string | undefined,
 ) {
+  const discoverable = Boolean(id && map && /^[a-zA-Z0-9_-]{1,80}$/.test(map));
   const identity = useMemo(() => ({ id, map, userId }), [id, map, userId]);
   const [snapshot, setSnapshot] = useState<{ identity: object; state: DemoMapState }>();
   const lease = useRef<{ identity: object; retry: () => void; check: () => void } | undefined>(
@@ -24,7 +30,7 @@ export function useDemoMapAssets(
   const current = useRef(identity);
   current.current = identity;
   useEffect(() => {
-    if (!id || !map || !/^[a-zA-Z0-9_-]{1,80}$/.test(map)) return;
+    if (!discoverable) return;
     let active = true,
       timeout: ReturnType<typeof setTimeout> | undefined,
       request: AbortController | undefined;
@@ -206,8 +212,12 @@ export function useDemoMapAssets(
       clearTimeout(timeout);
       request?.abort();
     };
-  }, [identity, id, map, userId]);
-  const state = snapshot?.identity === identity ? snapshot.state : pendingDemoMap;
+  }, [identity, id, map, userId, discoverable]);
+  const state = !discoverable
+    ? missingDemoMap
+    : snapshot?.identity === identity
+      ? snapshot.state
+      : pendingDemoMap;
   const reportOverview = useCallback(
     (image: string, version: string, status: 'ready' | 'error') => {
       if (current.current !== identity) return;
