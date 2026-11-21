@@ -1,9 +1,15 @@
 /** A cache owns resources, while scopes protect both the view and asynchronous renderer teardown. */
 export type ModelResource = { key: object; bytes: number; dispose?: () => void };
-type Callbacks<T> = {
+export type ModelLoadCallbacks<T> = {
   loaded: (value: T) => void;
   failed: (error: unknown) => void;
   progress?: (event: ProgressEvent) => void;
+  downloaded?: () => void;
+};
+type ModelProgress = number | 'preparing' | undefined;
+export type ModelProgressSource = {
+  subscribe: (listener: () => void) => () => void;
+  snapshot: () => ModelProgress;
 };
 type Entry<T> = {
   url: string;
@@ -14,16 +20,19 @@ type Entry<T> = {
   used: number;
   value?: T;
   resources?: ModelResource[];
-  callbacks: Callbacks<T>[];
+  callbacks: ModelLoadCallbacks<T>[];
+  progress?: ModelProgress;
+  progressListeners?: Set<() => void>;
   abort?: () => void;
 };
 export type ModelScope = {
   acquire: () => () => void;
   invalidate: () => void;
   isCurrent: () => boolean;
+  progress: ModelProgressSource;
 };
 type Options<T> = {
-  load: (url: string, callbacks: Callbacks<T>) => (() => void) | void;
+  load: (url: string, callbacks: ModelLoadCallbacks<T>) => (() => void) | void;
   inspect: (value: T) => ModelResource[];
   clear: (url: string) => void;
   inactiveBytes: () => number;
@@ -80,9 +89,17 @@ export class ModelCache<T> {
       },
       invalidate: () => this.retire(entry),
       isCurrent: () => this.current.get(url) === entry && !entry.retired,
+      progress: {
+        subscribe: (listener) => {
+          const listeners = (entry.progressListeners ??= new Set());
+          listeners.add(listener);
+          return () => listeners.delete(listener);
+        },
+        snapshot: () => entry.progress,
+      },
     };
   }
-  request(url: string, callbacks: Callbacks<T>): void {
+  request(url: string, callbacks: ModelLoadCallbacks<T>): void {
     const entry = this.entry(url);
     entry.used = ++this.clock;
     if (entry.status === 'ready') {
@@ -132,8 +149,22 @@ export class ModelCache<T> {
           loaded: (value) => this.loaded(entry, value),
           failed: (error) => this.failed(entry, error),
           progress: (event) => {
-            if (!entry.retired) for (const callback of entry.callbacks) callback.progress?.(event);
+            if (entry.retired) return;
+            const { loaded, total, lengthComputable } = event;
+            this.reportProgress(
+              entry,
+              lengthComputable &&
+                Number.isSafeInteger(loaded) &&
+                Number.isSafeInteger(total) &&
+                total > 0 &&
+                loaded >= 0 &&
+                loaded <= total
+                ? Math.floor((loaded / total) * 100)
+                : undefined,
+            );
+            for (const callback of entry.callbacks) callback.progress?.(event);
           },
+          downloaded: () => this.reportProgress(entry, 'preparing'),
         });
         if (entry.running) entry.abort = abort || undefined;
       } catch (error) {
@@ -141,11 +172,17 @@ export class ModelCache<T> {
       }
     }
   }
+  private reportProgress(entry: Entry<T>, progress: ModelProgress): void {
+    if (entry.retired || !entry.running || progress === entry.progress) return;
+    entry.progress = progress;
+    for (const listener of entry.progressListeners || []) listener();
+  }
   private retire(entry: Entry<T>): void {
     let changed = false;
     if (!entry.retired) {
       changed = true;
       entry.retired = true;
+      entry.progressListeners?.clear();
       if (this.current.get(entry.url) === entry) {
         this.current.delete(entry.url);
         this.options.clear(entry.url);

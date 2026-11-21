@@ -103,6 +103,45 @@
   color: var(--viewer-ink, var(--text));
   text-align: center;
 }
+.viewer-loading-panel {
+  width: min(280px, calc(100vw - 48px));
+  display: grid;
+  gap: 12px;
+  font-weight: 600;
+}
+.viewer-loading-track {
+  height: 5px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--viewer-line, var(--control));
+}
+.viewer-loading-track > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--signal);
+}
+.viewer-loading-track[data-indeterminate] > span {
+  width: 32%;
+  animation: viewer-loading-sweep 1.2s ease-in-out infinite alternate;
+}
+.viewer-loading-percent {
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+@keyframes viewer-loading-sweep {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(212.5%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .viewer-loading-track[data-indeterminate] > span {
+    animation: none;
+  }
+}
 .viewer-game-hud,
 .viewer-objective-layer {
   position: absolute;

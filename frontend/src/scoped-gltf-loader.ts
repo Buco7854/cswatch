@@ -1,12 +1,9 @@
 import { FileLoader, ImageBitmapLoader, LoaderUtils, LoadingManager } from 'three';
 import { GLTFLoader, MeshoptDecoder, type GLTF } from 'three-stdlib';
+import type { ModelLoadCallbacks } from './model-cache';
 export type ScopedGLTFJob = (
   url: string,
-  callbacks: {
-    loaded: (value: GLTF) => void;
-    failed: (error: unknown) => void;
-    progress?: (event: ProgressEvent) => void;
-  },
+  callbacks: ModelLoadCallbacks<GLTF>,
   maxBytes?: number,
   embeddedOnly?: boolean,
   configure?: (parser: GLTFLoader) => void,
@@ -116,6 +113,7 @@ export const loadScopedGLTF: ScopedGLTFJob = (
         if (!(data instanceof ArrayBuffer) || data.byteLength > maxBytes)
           throw new Error('Model exceeds its transfer limit');
         parsing = true;
+        callbacks.downloaded?.();
         parser.parse(
           data as ArrayBuffer,
           LoaderUtils.extractUrlBase(url),

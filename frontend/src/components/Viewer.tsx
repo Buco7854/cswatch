@@ -87,6 +87,7 @@ import DamageFeedback from './DamageFeedback';
 import FlashFeedback from './FlashFeedback';
 import Communications from './Communications';
 import ViewerOptions from './ViewerOptions';
+import ViewerLoading from './ViewerLoading';
 import Crosshair from './Crosshair';
 import { scopedVerticalFov } from '../pov-camera';
 import TacticalPlot from './TacticalPlot';
@@ -188,10 +189,19 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     user?.id,
   );
   const acquisitionNotice = mapAcquisitionMessage(mapAssets);
-  const [mapRender, setMapRender] = useState<MapRenderState>();
-  const using2D =
-    mode === '2d' ||
-    Boolean(mapRender && mapRender.map === data?.map && mapRender.renderer === '2d');
+  const [sceneAttempt, setSceneAttempt] = useState(0);
+  const sceneKey = JSON.stringify([id, user?.id, sceneAttempt]);
+  const [mapReport, setMapReport] = useState<{ key: string; value: MapRenderState }>();
+  const reportMap = useCallback(
+    (value: MapRenderState) => setMapReport({ key: sceneKey, value }),
+    [sceneKey],
+  );
+  const mapRender =
+    mapReport?.key === sceneKey && mapReport.value.map === data?.map ? mapReport.value : undefined;
+  const using2D = mode === '2d' || mapRender?.renderer === '2d';
+  const fallbackCamera = using2D && mode !== '2d';
+  const activeCamera = fallbackCamera ? 'fallback' : mode;
+  const has3DMap = Boolean(data?.sample || mapAssets.assets.model || mapAssets.assets.mobile);
   const mapStatus: AssetStatus =
     mapAssets.status === 'pending'
       ? 'pending'
@@ -199,14 +209,13 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
         ? 'error'
         : using2D
           ? mapAssets.overviewStatus
-          : mapRender && mapRender.map === data?.map
+          : mapRender
             ? mapRender.model
             : mapAssets.assets.model || mapAssets.assets.mobile
               ? 'pending'
               : 'missing';
   const environmentStatus: AssetStatus = mapAssets.assets.environment
-    ? mapRender?.map === data?.map &&
-      mapRender?.environmentVersion === mapAssets.assets.environment.assetVersion
+    ? mapRender?.environmentVersion === mapAssets.assets.environment.assetVersion
       ? mapRender.environment
       : 'pending'
     : 'missing';
@@ -225,9 +234,9 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
           ? mode === '2d'
             ? 'Map overview'
             : mapRender?.failure === 'webgl'
-              ? '2D map · 3D unavailable'
+              ? '3D unavailable'
               : mapRender?.failure === 'model'
-                ? '2D map · 3D failed'
+                ? '3D failed'
                 : '2D map fallback'
           : mapStatus === 'pending'
             ? 'Loading map overview…'
@@ -919,12 +928,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
         </Link>
       </div>
     );
-  if (!data && (!demo || demo.status === 'ready'))
-    return (
-      <div className="viewer-map-loading" role="status">
-        {t('Loading demo…')}
-      </div>
-    );
+  if (!data && (!demo || demo.status === 'ready')) return <ViewerLoading label="Loading demo…" />;
   if (!data)
     return (
       <>
@@ -1154,6 +1158,36 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       ? [{ id: 'sign-in', label: t('Sign in'), onSelect: signIn, separatorBefore: true }]
       : []),
   ];
+  const cameraOptions = [
+    ...(fallbackCamera
+      ? [{ value: 'fallback', label: t('2D map fallback'), compactLabel: '2D', disabled: true }]
+      : []),
+    {
+      value: 'orbit',
+      label: t('Free camera'),
+      compactLabel: t('Free'),
+      disabled: !has3DMap,
+    },
+    {
+      value: 'tactical',
+      label: t('Overhead'),
+      compactLabel: t('Overhead'),
+      disabled: !has3DMap,
+    },
+    { value: '2d', label: t('2D tactical · low power'), compactLabel: '2D' },
+    {
+      value: 'follow',
+      label: t('Third-person follow'),
+      compactLabel: t('Follow'),
+      disabled: !has3DMap,
+    },
+    {
+      value: 'pov',
+      label: t('Player perspective'),
+      compactLabel: 'POV',
+      disabled: !has3DMap,
+    },
+  ];
   return (
     <div
       className={'viewer-frame' + (settings.inputs || settings.economy ? ' has-review-hud' : '')}
@@ -1202,6 +1236,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
                 <span
                   className="viewer-map-status"
                   data-status={mapNoticeStatus}
+                  data-fallback={fallbackCamera || undefined}
                   title={t(mapStatusText)}
                 >
                   {t(mapStatusText)}
@@ -1253,17 +1288,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
           <span className="visually-hidden" role="status">
             {cameraNotice
               ? t('Camera changed to {{mode}}', {
-                  mode: t(
-                    mode === 'pov'
-                      ? 'Player perspective'
-                      : mode === 'follow'
-                        ? 'Third-person follow'
-                        : mode === 'orbit'
-                          ? 'Free camera'
-                          : mode === 'tactical'
-                            ? 'Overhead'
-                            : '2D tactical · low power',
-                  ),
+                  mode: cameraOptions.find((option) => option.value === activeCamera)?.label,
                 })
               : ''}
           </span>
@@ -1271,20 +1296,20 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
             label={t('Camera mode')}
             className="camera-select"
             icon={<Eye size={16} />}
-            value={mode}
+            value={activeCamera}
             onValueChange={(value) => {
               deathFollow.current.reset();
               setGrenadeFocus(undefined);
+              if (
+                value !== '2d' &&
+                using2D &&
+                (mapRender?.failure === 'model' || mapRender?.failure === 'webgl')
+              )
+                setSceneAttempt((attempt) => attempt + 1);
               setMode(value);
               cueCameraChange();
             }}
-            options={[
-              { value: 'orbit', label: t('Free camera'), compactLabel: t('Free') },
-              { value: 'tactical', label: t('Overhead'), compactLabel: t('Overhead') },
-              { value: '2d', label: t('2D tactical · low power'), compactLabel: '2D' },
-              { value: 'follow', label: t('Third-person follow'), compactLabel: t('Follow') },
-              { value: 'pov', label: t('Player perspective'), compactLabel: 'POV' },
-            ]}
+            options={cameraOptions}
           />
           <button
             ref={optionsTrigger}
@@ -1374,6 +1399,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
         >
           <Suspense fallback={<div className="scene-fallback">{t('Starting renderer…')}</div>}>
             <Scene
+              key={sceneKey}
               data={data}
               tick={tick}
               playing={playing && !buffering}
@@ -1382,7 +1408,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
               settings={settings}
               mapAssets={mapAssets}
               assetScope={user?.id || 'public'}
-              onMapStatus={setMapRender}
+              onMapStatus={reportMap}
               focus={grenadeFocus}
               onAudioListener={cameraAudio}
             />
@@ -1962,15 +1988,16 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
         }}
       />
       {mapLoading && (
-        <div className="viewer-map-loading" role="status">
-          {t(
+        <ViewerLoading
+          label={
             mapAssets.status === 'pending'
               ? 'Loading map assets…'
               : using2D
                 ? 'Loading map overview…'
-                : 'Loading 3D map…',
-          )}
-        </div>
+                : 'Loading 3D map…'
+          }
+          model={using2D ? undefined : mapRender?.modelProgress}
+        />
       )}
     </div>
   );

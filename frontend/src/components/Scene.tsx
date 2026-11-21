@@ -53,7 +53,7 @@ import type { AssetStatus } from '../map-assets';
 import { assertMapBaseColorTextures, prepareMapModel } from '../map-model';
 import { renderSkyBehindMap, skyCameraFor, updateSkyCamera } from '../sky-render';
 import { useMapGLTF, useMapModelScope } from '../map-loader';
-import type { ModelScope } from '../model-cache';
+import type { ModelProgressSource, ModelScope } from '../model-cache';
 import { useEquipmentAssets, type EquipmentRenderState } from '../equipment-assets';
 import { equipmentIconKey } from '../equipment-icons';
 import { projectileEquipment } from '../projectile-equipment';
@@ -90,6 +90,7 @@ import { useMapSkyLighting } from '../useMapSkyLighting';
 export type MapRenderState = {
   map: string;
   model: AssetStatus;
+  modelProgress?: ModelProgressSource;
   renderer: '3d' | '2d';
   failure?: 'webgl' | 'model' | 'assets';
   environment: AssetStatus;
@@ -1468,6 +1469,8 @@ export default function Scene({
       onMapStatus?.({
         map: data.map,
         model: data.sample ? 'ready' : modelStatus,
+        modelProgress:
+          surface === '3d' && modelStatus === 'pending' ? modelScope?.progress : undefined,
         renderer: surface === 'plot' ? '2d' : '3d',
         failure:
           rendererFailure === data.map
@@ -1488,6 +1491,7 @@ export default function Scene({
       data.map,
       data.sample,
       modelStatus,
+      modelScope,
       mode,
       rendererFailure,
       environmentStatus,
