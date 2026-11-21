@@ -1,5 +1,13 @@
 # Verification record
 
+## Mobile camera and map progress, 2026-11-21
+
+The earlier production build reproduced the phone issue with a failing selected mobile GLB. The viewport showed the calibrated overview while the camera picker kept its requested 3D label. The phone layout also hid the 3D failure under its normal ready-map rule. The fix displays the effective 2D fallback, keeps the reason readable and permits a fresh explicit 3D attempt on a known prepared asset. Regressions exercise a repeated failing GLB, a recovered GLB at the original playback position, recovery from forced WebGL failure, late events from the failed renderer, and 2D-to-overhead transitions with a cached map.
+
+A held two-part GLB response observes an initially indeterminate download, exactly 50% from a known byte count, and an indeterminate preparation stage while a required embedded WebP texture is gated. Playback controls stay inert until the decoded map is ready. The pin and cache tests pass for sharing, release, stale generations and failure recovery. A separate confined parse of the pinned real Mirage supports four production-browser captures with a real 62.49 MB prepared mobile map and calibrated radar at 390 × 844 touch and 1440 × 900 in both themes. Each profile samples a live transfer percentage and reaches its actual player-perspective canvas. The dark phone also aborts its first map request and recovers via an explicit 3D choice. Local captures are under ignored `.design/map-loading-check/`. These are software-rendered browser viewport checks.
+
+Three specialist studies reviewed CSDEMO’s current public client, with actual desktop and phone-browser replays, measured artifact/network evidence, and a confined local diagnostic for recorded native effect inputs. The resulting implementation order separates camera and loader work, compact 3D and visibility, typed replay slices, and recorded effects. [CSDEMO findings](product/CSDEMO-REFERENCE-REVIEW.md#public-client-follow-up-2026-11-21)
+
 ## Local viewer usability and presentation follow-up, 2026-11-21
 
 An actual guest upload in the previous build reached private playback, but its Viewer menu lacked management because it checked member ownership only. Guest capabilities and member ownership remain separate. The local fix admits the guest-owned menu action, refreshes server identity and CSRF after upload, and reuses the same confirmed deletion request from the viewer and owned library rows. The library can remove queued, ready and failed demos. Uploading and processing remain protected by the worker-ownership boundary.

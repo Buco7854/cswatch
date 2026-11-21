@@ -16,9 +16,8 @@ export function mapSurface(input: {
   modelStatus: AssetStatus;
   rendererFailed: boolean;
 }): '3d' | 'plot' | 'loading' {
-  if (input.requested2D) return 'plot';
+  if (input.requested2D || input.rendererFailed) return 'plot';
   if (input.sample) return '3d';
-  if (input.rendererFailed) return 'plot';
   if (input.discovery === 'pending') return 'loading';
   if (!input.model || input.modelStatus === 'error') return 'plot';
   return '3d';

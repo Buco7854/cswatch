@@ -558,7 +558,7 @@ test('3D map readiness waits for an actual GLB and a failed map retries without 
   await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'pending');
   release();
   await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'error');
-  await expect(page.locator('.viewer-map-status')).toHaveText('2D map · 3D failed');
+  await expect(page.locator('.viewer-map-status')).toHaveText('3D failed');
   await expect(page.locator('.viewer-map-loading')).toHaveCount(0);
   const canvas = page.locator('.scene canvas');
   await expect(canvas).toHaveCount(0);
@@ -578,6 +578,80 @@ test('3D map readiness waits for an actual GLB and a failed map retries without 
   ).toBe(false);
   expect(requests.models).toBe(2);
   await page.screenshot({ path: info.outputPath('original-QA-real-loaded-GLB.png') });
+});
+
+test('map loading shows measured byte progress and waits for decoded textures', async ({
+  page,
+}) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE));
+  await install(
+    page,
+    { model: `/map-assets/${qaMap}/desktop/scene.glb`, mobile: null, overview: qaOverview },
+    {
+      model: (route) =>
+        route.fulfill({
+          contentType: 'model/gltf-binary',
+          body: originalMapGLB(false, 'webp'),
+        }),
+    },
+  );
+  await page.addInitScript(() => {
+    const gates = {
+      start: Promise.withResolvers<void>(),
+      finish: Promise.withResolvers<void>(),
+      decode: Promise.withResolvers<void>(),
+    };
+    Object.assign(window, {
+      advanceOriginalMap: (stage: keyof typeof gates) => gates[stage].resolve(),
+    });
+    const fetch = window.fetch;
+    window.fetch = async (input, options) => {
+      const response = await fetch(input, options);
+      const url = input instanceof Request ? input.url : input.toString();
+      if (!url.endsWith('/scene.glb')) return response;
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      const halfway = Math.ceil(bytes.length / 2);
+      return new Response(
+        new ReadableStream({
+          async start(controller) {
+            await gates.start.promise;
+            controller.enqueue(bytes.subarray(0, halfway));
+            await gates.finish.promise;
+            controller.enqueue(bytes.subarray(halfway));
+            controller.close();
+          },
+        }),
+        { headers: { 'Content-Length': String(bytes.length) } },
+      );
+    };
+    const decode = window.createImageBitmap;
+    window.createImageBitmap = async (...args: Parameters<typeof decode>) => {
+      if (args[0] instanceof Blob) await gates.decode.promise;
+      return decode(...args);
+    };
+  });
+  const advance = (stage: 'start' | 'finish' | 'decode') =>
+    page.evaluate((next) => {
+      (window as unknown as { advanceOriginalMap: (stage: string) => void }).advanceOriginalMap(
+        next,
+      );
+    }, stage);
+  await page.goto('/watch/original-map-fixture');
+  const download = page.getByRole('progressbar', { name: 'Loading 3D map…' });
+  await expect(download).toBeVisible();
+  expect(await download.getAttribute('aria-valuenow')).toBeNull();
+  await advance('start');
+  await expect(download).toHaveAttribute('aria-valuenow', '50');
+  await expect(page.locator('.viewer-loading-percent')).toHaveText('50%');
+  await expect(page.getByRole('slider', { name: 'Playback position' })).toHaveCount(0);
+  await advance('finish');
+  const preparing = page.getByRole('progressbar', { name: 'Preparing 3D map…' });
+  await expect(preparing).toBeVisible();
+  expect(await preparing.getAttribute('aria-valuenow')).toBeNull();
+  await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'pending');
+  await advance('decode');
+  await expect(page.locator('.viewer-map-loading')).toHaveCount(0);
+  await expect(page.locator('.scene[data-map-model-state="ready"] canvas')).toBeVisible();
 });
 
 test('high quality accepts an installed mobile-only GLB and no WebGL still shows the aligned map overview', async ({
@@ -602,11 +676,11 @@ test('high quality accepts an installed mobile-only GLB and no WebGL still shows
   await page.reload();
   await expect(page.locator('.tactical-plot')).toHaveAttribute('data-map-image-state', 'ready');
   await expect(page.locator('.tactical-plot image')).toHaveAttribute('href', qaOverview.image);
-  await expect(page.locator('.viewer-map-status')).toHaveText('2D map · 3D unavailable');
+  await expect(page.locator('.viewer-map-status')).toHaveText('3D unavailable');
   await expect(page.locator('.position-radar')).toHaveCount(0);
 });
 
-test('a failed renderer recovers through 2D to actual 3D without stale same-map context events hiding its HUD', async ({
+test('an explicit camera retries failed WebGL and stale same-map context events leave its HUD intact', async ({
   page,
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE));
@@ -642,11 +716,10 @@ test('a failed renderer recovers through 2D to actual 3D without stale same-map 
   });
   await open(page);
   await expect(page.locator('.tactical-plot')).toHaveAttribute('data-map-image-state', 'ready');
-  await expect(page.locator('.viewer-map-status')).toHaveText('2D map · 3D unavailable');
+  await expect(page.locator('.viewer-map-status')).toHaveText('3D unavailable');
   await expect(page.locator('.position-radar')).toHaveCount(0);
   await expect(page.locator('.viewer-crosshair')).toHaveCount(0);
-  await camera(page, '2D tactical · low power');
-  await expect(page.locator('.viewer-map-status')).toHaveText('Map overview');
+  await expect(page.getByRole('combobox', { name: 'Camera mode' })).toHaveText('2D map fallback');
   await page.evaluate(() =>
     (window as unknown as { recoverOriginalQAContext: () => void }).recoverOriginalQAContext(),
   );
@@ -667,6 +740,61 @@ test('a failed renderer recovers through 2D to actual 3D without stale same-map 
   await expect(page.locator('.viewer-map-status')).toHaveText('3D map');
   await expect(page.locator('.position-radar')).toBeVisible();
   await expect(page.locator('.viewer-crosshair')).toBeVisible();
+});
+
+test.describe('touch camera recovery', () => {
+  test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } });
+
+  test('an explicit 3D camera retries a failed phone map and keeps the actual view selected', async ({
+    page,
+  }) => {
+    test.skip(Boolean(process.env.E2E_PRIVATE));
+    let available = false;
+    const requests = await install(
+      page,
+      { model: null, mobile: `/map-assets/${qaMap}/mobile/scene.glb`, overview: qaOverview },
+      {
+        model: (route) =>
+          route.fulfill({
+            contentType: 'model/gltf-binary',
+            body: available ? model : Buffer.from('Original QA bad mobile GLB'),
+          }),
+      },
+    );
+    await open(page);
+    const picker = page.getByRole('combobox', { name: 'Camera mode', exact: true });
+    const slider = page.getByRole('slider', { name: 'Playback position' });
+    const choose = async (name: string) => {
+      await picker.tap();
+      await page.getByRole('option', { name, exact: true }).tap();
+    };
+    await expect(page.locator('.tactical-plot')).toBeVisible();
+    await expect(page.locator('.viewer-map-status')).toBeVisible();
+    expect(await page.locator('.viewer-map-status').evaluate((status) => status.scrollWidth)).toBe(
+      await page.locator('.viewer-map-status').evaluate((status) => status.clientWidth),
+    );
+    await slider.fill('128');
+    await expect(picker).toHaveText('2D map fallback');
+    await choose('Player perspective');
+    await expect(page.locator('.tactical-plot')).toBeVisible();
+    await expect(picker).toHaveText('2D map fallback');
+    expect(requests.models).toBe(2);
+
+    available = true;
+    await choose('Player perspective');
+    await expect(page.locator('.scene[data-camera-mode="pov"] canvas')).toBeVisible();
+    await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
+    await expect(page.locator('.tactical-plot')).toHaveCount(0);
+    await expect(picker).toHaveText('Player perspective');
+    await expect(slider).toHaveValue('128');
+    expect(requests.models).toBe(3);
+    await choose('2D tactical · low power');
+    await expect(page.locator('.tactical-plot')).toBeVisible();
+    await choose('Overhead');
+    await expect(page.locator('.scene[data-camera-mode="tactical"] canvas')).toBeVisible();
+    await expect(page.locator('.position-radar')).toBeVisible();
+    expect(requests.models).toBe(3);
+  });
 });
 
 test('imported engine light intensity cannot wash out the original map material colors', async ({
@@ -756,7 +884,7 @@ test('embedded WebP map textures render under production CSP and missing require
   const response = await open(page);
   expect(response?.headers()['content-security-policy']).toMatch(/connect-src\s+[^;]*blob:/);
   await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'error');
-  await expect(page.locator('.viewer-map-status')).toHaveText('2D map · 3D failed');
+  await expect(page.locator('.viewer-map-status')).toHaveText('3D failed');
   await expect(page.locator('.scene canvas')).toHaveCount(0);
   await expect(page.locator('.tactical-plot')).toHaveAttribute('data-map-image-state', 'ready');
   broken = false;

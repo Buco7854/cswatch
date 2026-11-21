@@ -584,11 +584,23 @@
     gap: 2px;
   }
 
-  .viewer-context .viewer-map-status[data-status='ready'] {
+  .viewer-context .viewer-map-status[data-status='ready']:not([data-fallback]) {
     display: none;
   }
+  .viewer-context:has(> .viewer-map-status[data-fallback])
+    > :not(.viewer-map-status, .viewer-map-verification) {
+    display: none;
+  }
+  .viewer-context > .viewer-map-status[data-fallback] {
+    flex: 0 0 auto;
+    max-width: 100%;
+  }
+  .viewer-context > .viewer-map-status[data-fallback]::before {
+    content: none;
+    margin: 0;
+  }
   .viewer-frame[data-score-visible='true']
-    .viewer-context:has(.viewer-map-status[data-status='ready'])
+    .viewer-context:has(.viewer-map-status[data-status='ready']:not([data-fallback]))
     > .viewer-map-verification::before {
     content: none;
     margin: 0;

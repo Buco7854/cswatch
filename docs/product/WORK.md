@@ -1,5 +1,7 @@
 # Active work
 
+The mobile camera retains a truthful 2D fallback selection and retries 3D after an explicit camera choice. The map loader distinguishes measured transfer from discovery and decode. The three concurrent CSDEMO studies identify an official compact 3D path, GPU compressed texture and indexed visibility/LOD work, worker-decoded typed replay slices, and recorded inferno and motion evidence. Their observed data, remaining validation and implementation order are in the [current reference study](CSDEMO-REFERENCE-REVIEW.md#public-client-follow-up-2026-11-21).
+
 The viewer follow-up adds direct owner deletion, guest CSRF refresh, a loading-only map stage, distinct menu selection and hover states, and clearer Replay tools. Recorded horizontal movement drives held equipment in POV. Event-only smoke softly fills and fades from the recorded detonation, while supported voxel journals retain their recorded-density path. The normal browser viewer exercised both paths on the real Mirage recording. [Viewer follow-up evidence](../VERIFICATION.md#local-viewer-usability-and-presentation-follow-up-2026-11-21)
 
 The local interface follows the supplied Refrag reference for tone and hierarchy. The public upload sits on the page with feathered official Mirage artwork. Library, upload and sign-in share the same compact controls and cswatch teal action color. The separate Steam and FACEIT link leads to Connected accounts for both guests and members. [Interface evidence](../VERIFICATION.md#local-landing-redesign-2026-11-21)
