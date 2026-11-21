@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 
 /** Follow the same direct-or-More entry a reviewer uses at each viewport. */
-export async function activateViewerAction(page: Page, label: string, moreLabel = 'More controls') {
+export async function activateViewerAction(page: Page, label: string, moreLabel = 'Replay tools') {
   const direct = page.getByRole('button', { name: label, exact: true });
   if (await direct.isVisible()) await direct.click();
   else {

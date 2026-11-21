@@ -18,6 +18,8 @@ import type { ModelScope } from '../model-cache';
 import { assertMapBaseColorTextures } from '../map-model';
 import { disposeEquipmentInstance, prepareEquipmentModel } from '../equipment-model';
 import type { Position } from '../types';
+import { povMovement } from '../pov-movement';
+import { useReducedMotion } from '../reduced-motion';
 import { EquipmentMuzzle, useNativeWeaponAction } from './EquipmentFire';
 import { EquipmentModels, PovEquipment, type PovEquipmentProps } from './RenderEquipment';
 
@@ -30,6 +32,7 @@ function viewmodelId(weapon: string): ViewmodelId | undefined {
 const urlFor = (id: ViewmodelId) => `/api/assets/viewmodels/${id}/${viewmodels[id].sha256}.glb`;
 // The S2V viewmodel looks towards +Z. A Three camera looks towards its local -Z.
 const authoredBasis = new Quaternion(0, 1, 0, 0);
+const cameraDepthAxis = new Vector3(0, 0, -1);
 
 class ViewmodelBoundary extends Component<
   { fallback: ReactNode; scope: ModelScope; children: ReactNode },
@@ -51,10 +54,12 @@ function AuthoredViewmodel({
   position,
   scope,
   id,
+  motion,
 }: {
   position: Position;
   scope: ModelScope;
   id: ViewmodelId;
+  motion: PovEquipmentProps['motion'];
 }) {
   const gltf = useEquipmentGLTF(urlFor(id));
   const pin = viewmodels[id];
@@ -104,6 +109,8 @@ function AuthoredViewmodel({
     age = action?.age;
   const root = useRef<Group>(null);
   const framing = useMemo(() => new Vector3(), []);
+  const lean = useMemo(() => new Quaternion(), []);
+  useLayoutEffect(() => invalidate(), [motion, invalidate]);
   useLayoutEffect(() => {
     if (kind !== 'fire') rig.fire.stop();
     if (kind !== 'reload') rig.reload.stop();
@@ -125,9 +132,16 @@ function AuthoredViewmodel({
     if (!root.current) return;
     // Keep the held model in frame on tall displays without changing the map projection.
     const portrait = Math.max(0, Math.min(1, (1.2 - size.width / size.height) / 0.75));
-    framing.set(-0.09 * portrait, -0.026 * portrait, -0.14 * portrait);
+    framing.set(
+      -0.09 * portrait + (motion?.side ?? 0),
+      -0.026 * portrait + (motion?.lift ?? 0),
+      -0.14 * portrait - (motion?.depth ?? 0),
+    );
     root.current.position.copy(camera.position).add(framing.applyQuaternion(camera.quaternion));
-    root.current.quaternion.copy(camera.quaternion).multiply(authoredBasis);
+    root.current.quaternion
+      .copy(camera.quaternion)
+      .multiply(lean.setFromAxisAngle(cameraDepthAxis, motion?.roll ?? 0))
+      .multiply(authoredBasis);
   }, 1);
   return (
     <group ref={root} name={'native-' + id + '-viewmodel'}>
@@ -143,17 +157,19 @@ function AvailableViewmodel({
   position,
   fallback,
   identity,
+  motion,
 }: {
   id: ViewmodelId;
   position: Position;
   fallback: ReactNode;
   identity: object;
+  motion: PovEquipmentProps['motion'];
 }) {
   const scope = useEquipmentScope(urlFor(id), identity);
   return (
     <ViewmodelBoundary fallback={fallback} scope={scope}>
       <Suspense fallback={fallback}>
-        <AuthoredViewmodel position={position} scope={scope} id={id} />
+        <AuthoredViewmodel position={position} scope={scope} id={id} motion={motion} />
       </Suspense>
     </ViewmodelBoundary>
   );
@@ -165,6 +181,10 @@ export default function PovViewmodel({
   ...props
 }: PovEquipmentProps & { native: boolean }) {
   const context = useContext(EquipmentModels);
+  const reducedMotion = useReducedMotion();
+  const motion = reducedMotion
+    ? undefined
+    : povMovement(props.position, props.next, props.alpha, props.timing);
   const identity = context?.identity;
   const [available, setAvailable] = useState<{ identity: object; ids: ReadonlySet<ViewmodelId> }>();
   const id = native && props.position.alive ? viewmodelId(props.position.weapon) : undefined;
@@ -198,7 +218,7 @@ export default function PovViewmodel({
       controller.abort();
     };
   }, [identity, id, ready]);
-  const fallback = <PovEquipment {...props} />;
+  const fallback = <PovEquipment {...props} motion={motion} />;
   return id && identity && ready ? (
     <AvailableViewmodel
       key={id + ':' + props.position.id}
@@ -206,6 +226,7 @@ export default function PovViewmodel({
       position={props.position}
       fallback={fallback}
       identity={identity}
+      motion={motion}
     />
   ) : (
     fallback

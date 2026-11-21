@@ -35,7 +35,7 @@ test('timeline markers use recorded time positions, clustered events seek exactl
   await page.getByRole('option', { name: 'Current round', exact: true }).click();
   await expect(slider).toHaveAttribute('min', '0');
   await expect(slider).toHaveAttribute('max', '1279');
-  await page.getByRole('button', { name: 'More controls', exact: true }).click();
+  await page.getByRole('button', { name: 'Replay tools', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Timeline options', exact: true }).click();
   await page.getByRole('button', { name: /Review round 1 events/ }).click();
   await expect(page.getByRole('dialog', { name: 'Match review' })).toBeVisible();
@@ -49,7 +49,7 @@ test('timeline markers use recorded time positions, clustered events seek exactl
   await page.getByRole('option', { name: 'All players', exact: true }).click();
   await expect(page.locator('.round-review-row')).toHaveCount(7);
   await page.getByRole('button', { name: 'Close panel' }).click();
-  await expect(page.getByRole('button', { name: 'More controls', exact: true })).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Replay tools', exact: true })).toBeFocused();
   await slider.focus();
   await page.keyboard.press('ArrowRight');
   await expect(slider).toHaveValue('961');

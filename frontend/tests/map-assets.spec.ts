@@ -346,15 +346,13 @@ test('discovery and overview image decoding keep recorded markers hidden until a
       json: manualMapAssets({ model: null, mobile: null, overview: qaOverview }),
     });
   });
-  await open(page);
-  await expect(
-    page.getByRole('status', { name: 'Loading map assets…', exact: true }),
-  ).toBeVisible();
+  await page.goto('/watch/original-map-fixture');
+  await expect(page.locator('.viewer-map-loading')).toHaveText('Loading map assets…');
   await expect(page.locator('.scene canvas,.tactical-plot,.position-radar')).toHaveCount(0);
   revealAssets();
   await expect(page.locator('.tactical-plot')).toHaveAttribute('data-map-image-state', 'pending');
   await expect(page.locator('.tactical-plot [data-player-id] circle').first()).toBeHidden();
-  await expect(page.locator('.viewer-map-status')).toHaveText('Loading map overview…');
+  await expect(page.locator('.viewer-map-loading')).toHaveText('Loading map overview…');
   revealImage();
   await expect(page.locator('.tactical-plot')).toHaveAttribute('data-map-image-state', 'ready');
   await expect(page.locator('.tactical-plot [data-player-id] circle').first()).toBeVisible();
@@ -554,12 +552,14 @@ test('3D map readiness waits for an actual GLB and a failed map retries without 
       });
     },
   });
-  await open(page);
-  await expect(page.locator('.viewer-map-status')).toHaveText('Loading 3D map…');
+  await page.goto('/watch/original-map-fixture');
+  await expect(page.locator('.viewer-map-loading')).toHaveText('Loading 3D map…');
+  await expect(page.getByRole('slider', { name: 'Playback position' })).toHaveCount(0);
   await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'pending');
   release();
   await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'error');
   await expect(page.locator('.viewer-map-status')).toHaveText('2D map · 3D failed');
+  await expect(page.locator('.viewer-map-loading')).toHaveCount(0);
   const canvas = page.locator('.scene canvas');
   await expect(canvas).toHaveCount(0);
   await expect(page.locator('.tactical-plot')).toHaveAttribute('data-map-image-state', 'ready');

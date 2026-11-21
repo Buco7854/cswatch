@@ -1,4 +1,4 @@
-import registry from '../../shared/agent-animation.json';
+import registry from '../../shared/agent-animation.json' with { type: 'json' };
 import type { AgentAnimationRole } from '../../shared/agent-animation';
 import type { Position } from './types';
 export type LocomotionWeights = Record<AgentAnimationRole, number>;
@@ -35,7 +35,7 @@ export function recordedLocomotion(
     Number.isFinite(interval) &&
     interval > 0 &&
     interval <= 0.25 &&
-    Math.hypot(to.x - from.x, to.y - from.y) <= Math.max(128, 4096 * interval);
+    Math.hypot(to.x - from.x, to.y - from.y, to.z - from.z) <= Math.max(128, 4096 * interval);
   const speed = known ? (Math.hypot(to.x - from.x, to.y - from.y) * 0.0254) / interval : 0;
   const duck =
     from.duck === undefined

@@ -3,6 +3,7 @@ import { Group, Matrix4, Object3D } from 'three';
 import { indexWeaponFire, weaponFireAt } from '../src/weapon-fire';
 import { nativeMuzzleFrame } from '../src/equipment-model';
 import { createMuzzleResources } from '../src/muzzle-resources';
+import { povMovement } from '../src/pov-movement';
 import type { Playback, Position } from '../src/types';
 
 const id = '76561198000000001',
@@ -26,6 +27,18 @@ const recording = (events: Playback['events']) => ({
     { id: other, name: 'twin', team: 2 },
   ],
   events,
+});
+
+test('held rigs move with contiguous recorded motion and replay the same stride after seeking', () => {
+  const timing = { fromTick: 96, nextTick: 100, tickRate: 64 };
+  const next = { ...actor, x: 11 };
+  const movement = povMovement(actor, next, 0.25, timing);
+  expect(movement).toBeDefined();
+  expect(povMovement(actor, next, 0.75, timing)).not.toEqual(movement);
+  expect(povMovement(actor, next, 0.25, timing)).toEqual(movement);
+  expect(povMovement(actor, actor, 0.25, timing)).toBeUndefined();
+  expect(povMovement(actor, { ...next, id: other }, 0.25, timing)).toBeUndefined();
+  expect(povMovement(actor, next, 0.25, { ...timing, roundBoundary: true })).toBeUndefined();
 });
 
 test('shots require recorded firearm events, exact immutable identity and current weapon, with no input inference', () => {

@@ -354,7 +354,7 @@ test('H keeps its normal typing behavior and does not change visibility inside d
   await expect.poll(async () => (await settings(page)).controlsHidden).toBe(false);
   await dialog.getByRole('button', { name: 'Close viewer options', exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole('button', { name: 'More controls', exact: true }).click();
+  await page.getByRole('button', { name: 'Replay tools', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Players', exact: true }).click();
   const mobilePanel = page.getByRole('dialog', { name: 'Players', exact: true });
   await expect(mobilePanel).toBeVisible();
@@ -551,9 +551,9 @@ test('idle fade follows playback but respects paused state, dialogs, focus, menu
   ).toBe(true);
   await page.waitForTimeout(3300);
   await expect(frame).toHaveAttribute('data-chrome-visible', 'true');
-  await page.getByRole('button', { name: 'More controls', exact: true }).click();
+  await page.getByRole('button', { name: 'Replay tools', exact: true }).click();
   await page.waitForTimeout(3300);
-  await expect(page.getByRole('menu', { name: 'Viewer controls', exact: true })).toBeVisible();
+  await expect(page.getByRole('menu', { name: 'Replay tools', exact: true })).toBeVisible();
   await expect(frame).toHaveAttribute('data-chrome-visible', 'true');
   await page.keyboard.press('Escape');
   await stage.focus();

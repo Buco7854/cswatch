@@ -237,7 +237,7 @@
   background: transparent;
   color: var(--text);
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--control-radius);
   clip-path: none;
   box-shadow: none;
   padding: 8px 13px;
@@ -296,7 +296,7 @@
   background: transparent;
   border: 0;
   color: var(--muted);
-  border-radius: 5px;
+  border-radius: var(--control-radius);
   min-height: 38px;
   min-width: 38px;
   display: inline-flex;
@@ -433,6 +433,23 @@
 .app-shell .demo-table {
   padding: 0 20px;
 }
+.app-shell .demo-row-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  align-items: center;
+  gap: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.app-shell .demo-row-shell > .demo-row {
+  border-bottom: 0;
+}
+.app-shell .demo-row-shell:hover {
+  background: var(--raised);
+}
+.app-shell .demo-row-shell > .demo-delete:hover {
+  color: var(--text);
+  background: var(--ground);
+}
 .app-shell .demo-row {
   display: grid;
   grid-template-columns: minmax(180px, 1fr) 100px 70px 90px 115px;
@@ -443,6 +460,7 @@
   font-size: 13px;
 }
 .app-shell .demo-row.table-head {
+  margin-inline-end: 50px;
   padding: 16px 0 5px;
   font-size: 12px;
   color: var(--faint);

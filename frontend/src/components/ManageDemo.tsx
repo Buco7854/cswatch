@@ -5,7 +5,7 @@ import { X, Trash2 } from 'lucide-react';
 import type { Demo } from '../types';
 import { api } from '../api';
 import { useApp } from '../context';
-import { useConfirm } from './Confirmation';
+import { useDeleteDemo } from '../demo-deletion';
 export default function ManageDemo({
   demo,
   onChange,
@@ -21,7 +21,7 @@ export default function ManageDemo({
   const [name, setName] = useState(demo.name),
     [busy, setBusy] = useState(false),
     [error, setError] = useState('');
-  const confirm = useConfirm();
+  const deleteDemo = useDeleteDemo();
   const headingId = useId();
   const operation = useRef({ active: true });
   useEffect(() => {
@@ -58,26 +58,18 @@ export default function ManageDemo({
   }
   async function remove() {
     const scope = operation.current;
-    if (
-      !(await confirm({
-        title: t('Delete demo'),
-        description: t(
-          'Delete “{{v0}}”? This permanently removes its demo file, playback data, and all notes.',
-          { v0: demo.name },
-        ),
-        confirmLabel: t('Delete permanently'),
-        tone: 'danger',
-      })) ||
-      !scope.active
-    )
-      return;
-    setBusy(true);
     setError('');
     try {
-      await api('/api/demos/' + demo.id, { method: 'DELETE' });
-      if (!scope.active) return;
+      if (
+        !(await deleteDemo(
+          demo,
+          () => scope.active,
+          () => setBusy(true),
+        ))
+      )
+        return;
       notify(t('Demo deleted.'));
-      nav('/library');
+      nav(demo.guest_owned ? '/' : '/library', { replace: true });
     } catch (e) {
       if (scope.active) setError((e as Error).message);
     } finally {
@@ -97,26 +89,28 @@ export default function ManageDemo({
           <X size={20} />
         </button>
       </div>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void rename();
-        }}
-      >
-        <label>
-          {t('Demo name')}
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            minLength={1}
-            maxLength={120}
-            required
-          />
-        </label>
-        <button className="button primary" disabled={busy}>
-          {t('Save name')}
-        </button>
-      </form>
+      {!demo.guest_owned && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void rename();
+          }}
+        >
+          <label>
+            {t('Demo name')}
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              minLength={1}
+              maxLength={120}
+              required
+            />
+          </label>
+          <button className="button primary" disabled={busy}>
+            {t('Save name')}
+          </button>
+        </form>
+      )}
       <section className="danger-zone">
         <h3>{t('Delete demo')}</h3>
         <p>
@@ -124,7 +118,11 @@ export default function ManageDemo({
             'Deleting removes the original file, playback data, and everyone’s notes. This cannot be undone.',
           )}
         </p>
-        <button className="button" onClick={() => void remove()} disabled={busy}>
+        <button
+          className="button"
+          onClick={() => void remove()}
+          disabled={busy || demo.status === 'processing' || demo.status === 'uploading'}
+        >
           <Trash2 size={15} />
           {t('Delete permanently')}
         </button>

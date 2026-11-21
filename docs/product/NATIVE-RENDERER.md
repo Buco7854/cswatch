@@ -30,9 +30,11 @@ Other weapons retain their current first-person representation. The AWP, SSG 08,
 
 POV uses the sampled native pawn eye offset when available. A bounded shoulder-arm trace clips against supported opaque static render surfaces in follow mode and uses the same camera pose for spatial audio. Native collision hulls, invisible clip volumes and dynamic obstacles are outside this trace.
 
+POV weapon and arm placement now samples a bounded stride from contiguous recorded locomotion. The same motion applies to installed authored rigs and static equipment. Reduced motion suppresses that layer. Authored fire and reload actions still use their recorded event or active-weapon evidence.
+
 ## Recorded smoke
 
-The optional replay journal supplies recorded seed/rejection changes, color and origin. The browser simulates a bounded density grid off-thread and depth-tests individual instanced cells against world geometry. Older or unsupported recordings retain their event markers. The simulated density and shading are approximations. Native noise, bullet cuts and explosive dispersal remain outside supported evidence. [Verification](../VERIFICATION.md#local-recorded-smoke-and-scope-playback-2026-11-20)
+The optional replay journal supplies recorded seed/rejection changes, color and origin. The browser simulates a bounded density grid off-thread and depth-tests individual instanced cells against world geometry. Event-only recordings render a bounded soft cloud around the detonation, with replay-time growth and fade. The simulated density and shading are approximations. Native noise, bullet cuts and explosive dispersal remain outside supported evidence. [Verification](../VERIFICATION.md#local-viewer-usability-and-presentation-follow-up-2026-11-21)
 
 ## Acceptance gates
 

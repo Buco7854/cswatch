@@ -194,10 +194,9 @@
 }
 .viewer-frame .icon-button,
 .viewer-frame .options-button,
-.viewer-frame .rounds-toggle,
 .viewer-frame .skip-dead-time {
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--control-radius);
   background: transparent;
   color: var(--text);
   font-size: 14px;
@@ -218,7 +217,6 @@
 }
 .viewer-frame .icon-button:hover,
 .viewer-frame .options-button:hover,
-.viewer-frame .rounds-toggle:hover,
 .viewer-frame .skip-dead-time:hover,
 .viewer-frame .icon-button[aria-expanded='true'] {
   background: var(--raised);
@@ -339,8 +337,7 @@
   min-height: 44px;
   padding: 10px 12px;
 }
-.viewer-frame .skip-dead-time,
-.viewer-frame .rounds-toggle {
+.viewer-frame .skip-dead-time {
   flex: none;
   min-height: 44px;
   padding: 10px 12px;
@@ -351,11 +348,7 @@
   width: 44px;
   padding: 10px;
 }
-.viewer-panel-controls .viewer-action-label,
-.viewer-panel-controls .rounds-toggle {
-  display: none;
-}
-.mobile-rounds-toggle {
+.viewer-panel-controls .viewer-action-label {
   display: none;
 }
 .viewer-review-rails {
@@ -403,24 +396,6 @@
 }
 .viewer-rounds-rail .round-strip button.active i {
   background: var(--signal);
-}
-.moment-menu-trigger {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 44px;
-  padding: 10px;
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  font: inherit;
-  font-size: 13px;
-  white-space: nowrap;
-  cursor: pointer;
-}
-.moment-menu-trigger:focus-visible {
-  outline: 2px solid var(--signal);
-  outline-offset: 2px;
 }
 .viewer-frame .position-radar {
   top: var(--viewer-radar-top);
@@ -550,8 +525,7 @@
     display: none;
   }
   .viewer-round-controls,
-  .viewer-controlbar .desktop-viewer-action,
-  .desktop-moment-menu {
+  .viewer-controlbar .desktop-viewer-action {
     display: none;
   }
 }
@@ -624,8 +598,7 @@
     border-radius: 8px;
   }
   .viewer-controlbar .transport-step,
-  .viewer-panel-controls .labeled-viewer-action,
-  .viewer-panel-controls .rounds-toggle {
+  .viewer-panel-controls .labeled-viewer-action {
     display: none;
   }
   .viewer-transport {
@@ -699,8 +672,7 @@
     padding-block: 4px;
   }
   .viewer-round-controls,
-  .viewer-controlbar .desktop-viewer-action,
-  .desktop-moment-menu {
+  .viewer-controlbar .desktop-viewer-action {
     display: none;
   }
   .viewer-frame.has-review-hud:has(.review-inputs-panel) .position-radar {
