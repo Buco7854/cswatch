@@ -121,6 +121,8 @@ test('POV camera and equipment share interpolated recorded angles, eye height an
   page,
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE));
+  // Compare the common camera/attachment transform with the optional stride disabled.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.addInitScript(() => {
     const names = new WeakMap<WebGLUniformLocation, string>(),

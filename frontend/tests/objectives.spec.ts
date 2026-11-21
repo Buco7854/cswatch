@@ -172,7 +172,7 @@ test('broadcast objective HUD follows recorded custom timers, interruptions and 
   const slider = page.getByRole('slider', { name: 'Playback position' });
   const hud = page.getByRole('group', { name: 'Bomb objective', exact: true });
   const context = page.locator('.objective-context');
-  const announcer = page.locator('.viewer-frame > [role="status"]');
+  const announcer = page.locator('.viewer-frame > [role="status"][aria-atomic="true"]');
   await expect(announcer).toHaveText('');
   const liveRegion = await announcer.elementHandle();
   await expect(hud).toHaveCount(0);
