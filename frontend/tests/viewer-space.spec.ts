@@ -307,6 +307,7 @@ test('whole viewer controls hide without invisible focus targets and remain reco
   await hiddenChrome(page);
   await page.reload();
   await expect(frame).toHaveAttribute('data-chrome-visible', 'false');
+  await expect(page.locator('.viewer-map-loading')).toHaveCount(0);
   await expect(stage).toHaveAttribute('tabindex', '0');
   await expect(stage).toHaveAccessibleName('Demo view · tap or press H to show or hide controls');
   await expect.poll(async () => (await settings(page)).controlsHidden).toBe(true);

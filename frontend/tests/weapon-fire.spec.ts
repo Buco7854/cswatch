@@ -38,6 +38,7 @@ test('held rigs move with contiguous recorded motion and replay the same stride 
   expect(povMovement(actor, next, 0.25, timing)).toEqual(movement);
   expect(povMovement(actor, actor, 0.25, timing)).toBeUndefined();
   expect(povMovement(actor, { ...next, id: other }, 0.25, timing)).toBeUndefined();
+  expect(povMovement(actor, { ...next, z: 300 }, 0.25, timing)).toBeUndefined();
   expect(povMovement(actor, next, 0.25, { ...timing, roundBoundary: true })).toBeUndefined();
 });
 
