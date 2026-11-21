@@ -10,6 +10,7 @@ export function povMovement(
   timing?: PoseTiming,
 ) {
   if (!timing || timing.roundBoundary || !Number.isFinite(alpha)) return;
+  if (next && Math.abs(next.z - position.z) > 128) return;
   const { fromTick, nextTick, tickRate } = timing;
   const { speed, duck } = recordedLocomotion(position, next, fromTick, nextTick, tickRate, alpha);
   if (!(speed > 0.08)) return;
