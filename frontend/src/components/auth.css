@@ -1,5 +1,4 @@
-/* The auth form is a 400px column on the shared canvas, without a modal frame.
- * Desktop frame: 1200px + two equal gutters; phones: 100% - 2 × 20px. */
+/* Authentication uses the same surfaces and primary control as the workspace. */
 .auth-page {
   min-height: 100dvh;
   background: var(--ground);
@@ -7,16 +6,17 @@
 }
 
 .auth-header {
-  width: min(1200px, calc(100% - 64px));
-  min-height: 88px;
-  margin-inline: auto;
+  min-height: 64px;
+  padding: 6px clamp(20px, 3vw, 48px);
+  border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 20px;
 }
 .auth-header .brand {
-  font-size: 30px;
+  min-height: 44px;
+  font-size: 27px;
 }
 .auth-header .brand > svg {
   width: 30px;
@@ -46,8 +46,8 @@
   outline-offset: 3px;
 }
 .auth-main {
-  width: min(400px, calc(100% - 40px));
-  margin: clamp(32px, 7vh, 72px) auto 0;
+  width: min(424px, calc(100% - 40px));
+  margin: clamp(24px, 6vh, 64px) auto 0;
   padding-bottom: 48px;
 }
 .auth-back {
@@ -63,11 +63,11 @@
   color: var(--text);
 }
 .auth-intro {
-  margin-bottom: 32px;
+  margin-bottom: 26px;
 }
 .auth-intro h1 {
   font:
-    600 28px/1.25 'IBM Plex Sans',
+    600 clamp(27px, 3vw, 34px) / 1.2 'IBM Plex Sans',
     sans-serif;
   letter-spacing: -0.5px;
 }
@@ -118,8 +118,8 @@
 .auth-password {
   position: relative;
 }
-.auth-password input {
-  padding-right: 48px;
+:root .auth-page .auth-password input {
+  padding-inline-end: 48px;
 }
 .auth-password > button {
   position: absolute;
@@ -137,15 +137,14 @@
   transform: none;
 }
 .auth-page .button.primary {
-  margin-top: 28px;
+  margin-top: 24px;
   width: 100%;
-  background: var(--text);
-  color: var(--ground);
+  background: var(--primary);
+  color: var(--primary-ink);
   clip-path: none;
 }
 .auth-page .button.primary:hover {
-  filter: none;
-  background: color-mix(in srgb, var(--text) 85%, var(--ground));
+  filter: brightness(0.92);
 }
 .auth-page .button.primary:disabled {
   opacity: 1;
@@ -157,32 +156,38 @@
 }
 .auth-page .auth-steam {
   width: 100%;
-  background: var(--raised);
+  border: 1px solid var(--control);
+  background: var(--surface);
   color: var(--text);
   justify-content: center;
   min-height: 46px;
 }
-[data-theme='light'] .auth-page .auth-steam {
-  background: var(--surface);
-}
 .auth-page .auth-steam:hover {
-  background: color-mix(in srgb, var(--raised) 80%, var(--text));
+  background: var(--raised);
 }
 .auth-alternative {
-  text-align: center;
+  display: flex;
+  align-items: center;
+  gap: 12px;
   font-size: 12px;
   color: var(--faint);
-  margin: 20px 0;
+  margin: 16px 0;
+}
+.auth-alternative::before,
+.auth-alternative::after {
+  flex: 1;
+  border-top: 1px solid var(--border);
+  content: '';
 }
 .auth-switch-link {
   display: block;
-  width: fit-content;
-  margin: 20px auto 0;
+  margin-top: 20px;
   min-height: 44px;
-  padding: 10px 0;
+  padding-block: 13px 7px;
+  border-top: 1px solid var(--border);
   font-size: 14px;
   color: var(--text);
-  text-align: center;
+  text-align: start;
 }
 .auth-switch-link:hover {
   text-decoration: underline;
@@ -214,8 +219,7 @@
 }
 @media (max-width: 600px) {
   .auth-header {
-    width: calc(100% - 40px);
-    min-height: 76px;
+    min-height: 60px;
     gap: 12px;
   }
   .auth-header .brand {

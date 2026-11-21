@@ -1,5 +1,7 @@
 # Active work
 
+The local interface follows the supplied Refrag reference for tone and hierarchy. The public upload sits on the page with feathered official Mirage artwork. Library, upload and sign-in share the same compact controls and cswatch teal action color. The separate Steam and FACEIT link leads to Connected accounts for both guests and members. [Interface evidence](../VERIFICATION.md#local-landing-redesign-2026-11-21)
+
 The current worktree covers authored AK, M4A4, AWP and Glock POV rigs, recorded eye offsets and a wall-aware shoulder camera over prepared geometry. A true multi-draw trial was rejected after repeated comparisons. The workspace reflow and local provider checks are implemented. Live account verification and same-recording hardware fidelity remain unavailable. Read the [current evidence](../VERIFICATION.md#local-expanded-pov-and-camera-evidence-2026-11-20) before promoting asset or rendering defaults.
 
 The local normal viewer now draws a pinned official Mirage pack with verified baked lighting, directional and sun-occlusion textures and painted two-way color layers. The same recording verifies smoke volumes and recorded sniper projection. Next widen native weapon and map coverage and validate cross-viewer FPS on hardware before moving to the general UI. [Native rendering](NATIVE-RENDERER.md) [Evidence](../VERIFICATION.md#local-recorded-smoke-and-scope-playback-2026-11-20)

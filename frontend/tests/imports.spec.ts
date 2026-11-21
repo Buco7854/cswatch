@@ -10,15 +10,6 @@ const file = {
   buffer: Buffer.from('PBDEMS2\0synthetic-upload-test'),
 };
 
-async function choose(page: Page, option: string, french = false) {
-  await page
-    .getByRole('combobox', {
-      name: french ? 'Source de la démo à importer' : 'Demo import source',
-      exact: true,
-    })
-    .click();
-  await page.getByRole('option', { name: option, exact: true }).click();
-}
 async function member(page: Page, french = false) {
   if (french) await page.addInitScript(() => localStorage.setItem('cswatch.language', 'fr'));
   await page.route('**/api/auth/me', (route) =>
@@ -57,21 +48,17 @@ async function fits(page: Page, filename: string) {
   }
 }
 
-test('Premier and Competitive import guide leads to the real file picker and a private upload', async ({
-  page,
-}) => {
+test('the file-only dialog leads to the native picker and a private upload', async ({ page }) => {
   test.skip(privateInstance);
   await member(page);
   const uploadButton = page.getByRole('button', { name: 'Choose demo file', exact: true });
   await expect(uploadButton).toBeVisible();
-  await expect(page.getByRole('combobox', { name: 'Demo import source' })).toHaveCount(0);
-  const help = page.getByText('Where do I get a demo?', { exact: true });
-  await help.focus();
-  await page.keyboard.press('Enter');
-  await expect(
-    page.getByRole('link', { name: 'Open Steam match history', exact: true }),
-  ).toHaveAttribute('href', 'https://steamcommunity.com/my/gcpd/730/');
-  await expect(page.getByText('Extract archive downloads to get the .dem file.')).toBeVisible();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByRole('combobox')).toHaveCount(0);
+  await expect(dialog.locator('details')).toHaveCount(0);
+  await expect(dialog.getByRole('region', { name: 'Upload a demo' }).getByRole('link')).toHaveCount(
+    0,
+  );
   for (const theme of ['dark', 'light']) {
     await page.evaluate((value) => {
       document.documentElement.dataset.theme = value;
@@ -81,16 +68,11 @@ test('Premier and Competitive import guide leads to the real file picker and a p
       await page.locator('dialog[open]').evaluate((dialog) => {
         dialog.scrollTop = 0;
       });
-      await fits(page, `steam-en-${theme}-${width}`);
+      await fits(page, `upload-en-${theme}-${width}`);
       const upload = await uploadButton.boundingBox();
       expect(upload!.y + upload!.height).toBeLessThanOrEqual(900);
     }
   }
-  await page.getByText('Already downloaded it inside CS2?', { exact: true }).click();
-  await expect(page.getByText('game/csgo/replays', { exact: true })).toBeVisible();
-  await page.locator('dialog[open]').evaluate((dialog) => {
-    dialog.scrollTop = dialog.scrollHeight;
-  });
   const close = await page.getByRole('button', { name: 'Close upload', exact: true }).boundingBox();
   expect(close!.y).toBeGreaterThanOrEqual(0);
   expect(close!.y + close!.height).toBeLessThanOrEqual(900);
@@ -113,42 +95,96 @@ test('Premier and Competitive import guide leads to the real file picker and a p
     }),
   );
   const chooser = page.waitForEvent('filechooser');
-  await page.getByRole('button', { name: 'Choose demo file', exact: true }).click();
+  await uploadButton.focus();
+  await page.keyboard.press('Enter');
   await (await chooser).setFiles(file);
   await expect(page).toHaveURL(/\/watch\/uploaded-fixture$/);
 });
 
-test('manual source help remains usable in French, both themes and narrow dialogs', async ({
+test('members can open connections from a separate link beside the file picker', async ({
   page,
 }) => {
   test.skip(privateInstance);
   await member(page, true);
-  await page.getByText('Où trouver une démo ?', { exact: true }).click();
-  await expect(
-    page.getByRole('combobox', { name: 'Source de la démo à importer', exact: true }),
-  ).toHaveText('Premier / Compétitif / Wingman');
+  const connections = page.getByRole('link', { name: 'Steam et FACEIT Comptes associés' });
+  await expect(connections).toHaveAttribute('href', '/account/connections');
   for (const theme of ['dark', 'light']) {
     await page.evaluate((value) => {
       document.documentElement.dataset.theme = value;
     }, theme);
     for (const width of [320, 1440]) {
       await page.setViewportSize({ width, height: 900 });
-      await fits(page, `steam-fr-${theme}-${width}`);
+      await fits(page, `upload-fr-${theme}-${width}`);
     }
   }
-  await choose(page, 'FACEIT', true);
-  await expect(page.getByRole('link', { name: 'Ouvrir FACEIT', exact: true })).toHaveAttribute(
-    'href',
-    'https://www.faceit.com/en/cs2',
-  );
-  await choose(page, 'HLTV', true);
-  await expect(
-    page.getByRole('link', { name: 'Trouver des démos sur HLTV', exact: true }),
-  ).toHaveAttribute('href', 'https://www.hltv.org/results?content=demo');
-  await expect(page.getByRole('link', { name: /bibliothèque pro/i })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Choisir le fichier de démo' })).toBeVisible();
   await page.locator('input[type=file]').setInputFiles({ ...file, name: 'download.dem.bz2' });
   await expect(page.getByRole('alert')).toContainText('Extrayez d’abord ce téléchargement');
+  await connections.click();
+  await expect(page).toHaveURL(/\/account\/connections$/);
+  await expect(page.getByRole('heading', { name: 'Comptes associés', exact: true })).toBeVisible();
+});
+
+test('guests sign in for accounts and return directly to connections', async ({ page }) => {
+  test.skip(privateInstance || process.env.E2E_REGISTRATIONS === 'false');
+  await page.goto('/');
+  await expect(
+    page.getByRole('region', { name: 'Choose a CS2 demo' }).getByRole('link'),
+  ).toHaveCount(0);
+  await page.getByRole('link', { name: 'Steam and FACEIT Sign in to connect' }).click();
+  await expect(page).toHaveURL(/\/login\?returnTo=%2Faccount%2Fconnections$/);
+  await expect(page.getByRole('link', { name: 'Go back' })).toHaveAttribute('href', '/');
+  await page.getByRole('link', { name: 'New here? Create an account', exact: true }).click();
+  const registration = page.getByRole('form', { name: 'Create account', exact: true });
+  await registration
+    .getByLabel('Username', { exact: true })
+    .fill('connections_' + Date.now().toString(36));
+  await registration
+    .getByLabel('Password', { exact: true })
+    .fill('Disposable-browser-password-2026!');
+  await registration.getByRole('button', { name: 'Create account', exact: true }).click();
+  await expect(page).toHaveURL(/\/account\/connections$/);
+  await expect(
+    page.getByRole('heading', { name: 'Connected accounts', exact: true }),
+  ).toBeVisible();
+});
+
+test('dismissing the upload dialog returns focus unless the user has moved it', async ({
+  page,
+}) => {
+  test.skip(privateInstance);
+  await member(page);
+  const add = page.getByRole('button', { name: 'Add a demo', exact: true });
+  const dialog = page.getByRole('dialog', { name: 'Upload a demo', exact: true });
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(add).toBeFocused();
+
+  await page.goto('/library?upload=1');
+  await expect(dialog).toBeVisible();
+  await page.mouse.click(1, 1);
+  await expect(page).toHaveURL(/\/library$/);
+  await expect(add).toBeFocused();
+
+  await page.keyboard.press('Enter');
+  await expect(dialog).toBeVisible();
+  const queued = await page.evaluate(async () => {
+    const request = window.requestAnimationFrame;
+    const frames: FrameRequestCallback[] = [];
+    window.requestAnimationFrame = (callback) => frames.push(callback);
+    try {
+      document.querySelector<HTMLButtonElement>('.upload-dialog .dialog-close')!.click();
+      await new Promise<void>((resolve) => request.call(window, () => resolve()));
+      document.querySelector<HTMLInputElement>('.library-tools input')!.focus();
+      for (const frame of frames) frame(performance.now());
+      return frames.length;
+    } finally {
+      window.requestAnimationFrame = request;
+    }
+  });
+  expect(queued).toBeGreaterThan(0);
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole('textbox', { name: 'Search demos', exact: true })).toBeFocused();
 });
 
 test('closing an upload cancels the request and never redirects after unmount', async ({
@@ -179,6 +215,7 @@ test('closing an upload cancels the request and never redirects after unmount', 
   ).toBeVisible();
   await page.getByRole('button', { name: 'Close upload', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Add a demo', exact: true })).toBeFocused();
   await failed;
   release();
   await page.waitForTimeout(100);

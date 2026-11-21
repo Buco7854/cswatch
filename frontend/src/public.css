@@ -1,172 +1,161 @@
-/* One 480px upload instrument on the shared 1200px canvas. Optional map artwork
-   is page atmosphere, without a separate media panel or caption. */
 .public-site {
-  --ground: #111315;
-  --surface: #1b1e20;
-  --raised: #25292b;
-  --text: #f3f4f1;
-  --muted: #b7bdb9;
-  --faint: #a3aba6;
-  --border: #363e3b;
-  --control: #5a6860;
-  --public-pad: clamp(20px, 4vw, 64px);
-  --landing-image-opacity: 0.28;
-  min-height: 100svh;
-  position: relative;
-  isolation: isolate;
+  --public-gutter: clamp(16px, 3vw, 48px);
   display: flex;
   flex-direction: column;
-  background: var(--ground);
-  color: var(--text);
-}
-[data-theme='light'] .public-site {
-  --ground: #f2f3ef;
-  --surface: #ffffff;
-  --raised: #ecefea;
-  --text: #202622;
-  --muted: #59665d;
-  --faint: #5d6b61;
-  --border: #ced8d0;
-  --control: #97ad9e;
-  --landing-image-opacity: 0.55;
-}
-.public-header,
-.public-footer,
-.public-site > main {
-  width: min(1200px, calc(100% - var(--public-pad) * 2));
-  margin-inline: auto;
+  min-height: 100svh;
 }
 .public-header,
 .public-footer {
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 24px;
+  gap: 16px;
+  padding-inline: var(--public-gutter);
 }
 .public-header {
-  min-height: 84px;
-  padding-block: 20px;
+  min-height: 68px;
+  padding-block: 6px;
+  border-bottom: 1px solid var(--border);
+  background: var(--ground);
+}
+.public-header .brand {
+  min-height: 44px;
+  font-size: 27px;
+}
+.public-header .brand > svg {
+  width: 30px;
+  height: 30px;
 }
 .public-utilities {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   min-width: 0;
 }
-.public-utilities .button,
-.public-utilities .icon-button,
-.public-utilities .language-control {
-  min-height: 44px;
+.public-utilities .public-signin {
+  min-width: 44px;
 }
 .public-utilities .language-control {
+  min-height: 44px;
   background: transparent;
-  border: 0;
+  border-color: transparent;
   padding-inline: 8px;
 }
 .public-utilities .language-code {
   display: none;
 }
-.public-utilities .public-signin {
-  border: 0;
-  background: transparent;
-  gap: 8px;
-  padding: 10px 0 10px 8px;
-}
 .public-site > main {
+  display: grid;
   flex: 1;
-  display: flex;
-  align-items: center;
-  padding-block: 28px;
 }
 .landing-upload {
-  width: 100%;
-  padding-block: 48px;
+  --landing-art-wash: rgb(8 11 15 / 28%);
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  place-items: center start;
+  min-width: 0;
+  padding: clamp(32px, 6svh, 72px) clamp(24px, 8.5vw, 168px);
+  background: var(--ground);
+}
+[data-theme='light'] .landing-upload {
+  --landing-art-wash: rgb(246 247 250 / 13%);
 }
 .landing-backdrop {
-  position: fixed;
+  position: absolute;
   z-index: -1;
-  inset: 0;
+  inset: 0 0 0 32%;
   overflow: hidden;
   opacity: 0;
   pointer-events: none;
   user-select: none;
-  mask-image: linear-gradient(
-    90deg,
-    transparent 45%,
-    #000 85%
-  ); /* taste-skill-ignore: requested real-image fade */
-  transition: opacity 700ms ease;
+  transition: opacity 400ms ease-out;
 }
 .landing-backdrop[data-ready='true'] {
-  opacity: var(--landing-image-opacity);
+  opacity: 1;
+}
+.landing-backdrop::after {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      to right,
+      var(--ground) 0%,
+      var(--ground) 7%,
+      color-mix(in srgb, var(--ground) 87%, transparent) 21%,
+      transparent 63%
+    ),
+    linear-gradient(to top, var(--ground), transparent 43%),
+    linear-gradient(to bottom, color-mix(in srgb, var(--ground) 42%, transparent), transparent 21%),
+    var(--landing-art-wash);
+  content: '';
 }
 .landing-backdrop-image {
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: 65% 50%;
+  object-position: 53% center;
 }
 .landing-workspace {
-  width: min(480px, 100%);
+  width: min(100%, 432px);
   min-width: 0;
+  animation: landing-entry 220ms ease-out both;
+}
+@keyframes landing-entry {
+  from {
+    opacity: 0.65;
+  }
 }
 .landing-copy {
-  margin-bottom: 24px;
+  margin-bottom: 27px;
 }
 .landing-copy h1 {
+  color: var(--text);
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 32px;
+  font-size: clamp(35px, 3.6vw, 51px);
   font-weight: 600;
-  line-height: 1.1;
+  line-height: 1.06;
   letter-spacing: -0.015em;
-  margin: 0;
+  text-wrap: balance;
 }
-.landing-import .upload-panel {
-  padding: 0;
-  border: 0;
-  background: transparent;
+.landing-copy p {
+  margin-top: 11px;
+  font-size: 16px;
+  line-height: 1.45;
+}
+.landing-workspace .demo-drop-target {
+  padding-inline: 15px;
+  background: var(--surface);
+  text-align: start;
+}
+.landing-workspace .demo-file-picker {
+  justify-content: flex-start;
+}
+.landing-workspace .demo-upload-status progress {
+  margin-inline-start: 0;
 }
 .landing-privacy {
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin-top: 8px;
-  color: var(--muted);
+  align-items: center;
+  gap: 7px;
+  margin-top: 13px;
+  font-size: 13px;
 }
 .landing-privacy > svg {
-  flex: none;
-  margin-top: 2px;
+  color: var(--faint);
 }
-.landing-privacy > p {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.65;
-}
-.landing-import .upload-signin {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 20px;
-  min-height: 120px;
-  padding: 24px;
-  border-radius: 4px;
-  background: var(--raised);
-}
-.landing-import .upload-signin > svg {
-  color: var(--muted);
-}
-.landing-import .upload-signin .button.primary {
-  background: var(--text);
-  color: var(--ground);
-  border: 0;
-  border-radius: 4px;
+.landing-workspace .demo-connections-link {
+  margin-top: 21px;
+  padding-block-start: 13px;
 }
 .public-footer {
-  padding-block: 16px;
+  padding-block: 7px;
+  border-top: 1px solid var(--border);
+  background: var(--ground);
   color: var(--faint);
   font-size: 12px;
-  line-height: 1.5;
 }
 .public-footer > span {
   max-width: 380px;
@@ -176,42 +165,56 @@
   align-items: center;
   gap: 7px;
   min-height: 44px;
-  color: var(--text);
+  color: var(--muted);
   white-space: nowrap;
 }
-@media (max-width: 900px) {
-  .landing-workspace {
-    margin-inline: auto;
+.public-footer > a:hover {
+  color: var(--text);
+}
+@media (max-width: 800px) {
+  .landing-upload {
+    align-content: start;
+    padding-block: clamp(132px, 25svh, 245px) 30px;
   }
   .landing-backdrop {
-    mask-image: linear-gradient(
-      180deg,
-      #000,
-      transparent 34%
-    ); /* taste-skill-ignore: requested real-image fade */
+    inset: 0 0 auto;
+    height: clamp(250px, 47svh, 410px);
   }
-  .landing-backdrop[data-ready='true'] {
-    opacity: var(--landing-image-opacity);
+  .landing-backdrop::after {
+    background:
+      linear-gradient(
+        to top,
+        var(--ground) 12%,
+        color-mix(in srgb, var(--ground) 94%, transparent) 43%,
+        transparent 85%
+      ),
+      var(--landing-art-wash);
+  }
+  .landing-backdrop-image {
+    object-position: 55% center;
   }
 }
-@media (max-width: 600px) {
+@media (max-width: 480px) {
+  .landing-upload {
+    padding-inline: 20px;
+  }
   .public-header {
-    min-height: 72px;
-    padding-block: 14px;
-    gap: 12px;
+    min-height: 60px;
+    gap: 8px;
   }
   .public-header .brand {
-    font-size: 27px;
-    gap: 7px;
+    gap: 6px;
+    font-size: 26px;
   }
   .public-header .brand > svg {
-    width: 26px;
-    height: 26px;
+    width: 24px;
+    height: 24px;
   }
   .public-utilities {
     gap: 2px;
   }
-  .public-utilities .language-name {
+  .public-utilities .language-name,
+  .public-signin > span {
     display: none;
   }
   .public-utilities .language-code {
@@ -219,38 +222,28 @@
   }
   .public-utilities .language-control {
     padding-inline: 6px;
-    font-size: 13px;
   }
-  .public-utilities .public-signin {
-    min-width: 44px;
-    padding: 10px;
+  .public-footer {
+    gap: 12px;
   }
-  .public-signin > span {
-    display: none;
-  }
-  .public-site > main {
-    padding-block: 16px;
-    align-items: flex-start;
-  }
+}
+@media (max-height: 540px) {
   .landing-upload {
     padding-block: 32px;
   }
-  .landing-copy {
-    margin-bottom: 16px;
+}
+@media (max-width: 800px) and (max-height: 540px) {
+  .landing-backdrop::after {
+    background:
+      linear-gradient(to top, var(--ground), color-mix(in srgb, var(--ground) 88%, transparent)),
+      var(--landing-art-wash);
   }
-  .landing-copy h1 {
-    font-size: 24px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .landing-workspace {
+    animation: none;
   }
-  .landing-privacy > p {
-    font-size: 13px;
-  }
-  .public-footer {
-    align-items: flex-start;
-    gap: 16px;
-    font-size: 12px;
-    padding-block: 12px;
-  }
-  .public-footer > span {
-    max-width: 220px;
+  .landing-backdrop {
+    transition: none;
   }
 }

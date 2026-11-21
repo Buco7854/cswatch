@@ -1,12 +1,11 @@
-/* Member surfaces are deliberately isolated from the accepted public landing.
-   Brand bar, library navigation and a fluid workspace with shared gutters.
-   Neutral elevations carry structure. Brand teal is a focus/data signal only. */
+/* Shared app palette and member surfaces. */
 :is(
   .app-shell,
   .viewer-shell,
   .member-dialog,
   .member-toast,
   .member-floating,
+  .public-site,
   .auth-page,
   .confirmation-dialog
 ) {
@@ -21,6 +20,7 @@
   --signal: #9eddd0;
   --accent: #9eddd0;
   --primary: #edf0f3;
+  --primary-ink: var(--ground);
   color-scheme: dark;
   color: var(--text);
   background: var(--ground);
@@ -35,6 +35,7 @@
     .member-dialog,
     .member-toast,
     .member-floating,
+    .public-site,
     .auth-page,
     .confirmation-dialog
   ) {
@@ -51,6 +52,15 @@
   --primary: #20262e;
   color-scheme: light;
 }
+:is(.public-site, .auth-page, .member-dialog.upload-dialog, .app-shell .library-add) {
+  --primary: #37b996;
+  --primary-ink: #10201b;
+}
+[data-theme='light']
+  :is(.public-site, .auth-page, .member-dialog.upload-dialog, .app-shell .library-add) {
+  --primary: #16745c;
+  --primary-ink: #fff;
+}
 :is(.app-shell, .viewer-shell) :where(div, section, aside, form, label, span) {
   min-width: 0;
 }
@@ -64,6 +74,7 @@
 }
 .app-shell {
   --workspace-gutter: clamp(24px, 3vw, 48px);
+  --workspace-rail-width: 204px;
   display: flex;
   flex-direction: column;
   min-height: 100dvh;
@@ -77,36 +88,43 @@
   color: var(--text);
 }
 .app-shell .workspace-bar {
-  min-height: 68px;
+  display: grid;
+  grid-template-columns: var(--workspace-rail-width) minmax(0, 1fr);
+  min-height: 64px;
   height: auto;
-  padding: 6px var(--workspace-gutter);
-  background: var(--surface);
+  padding: 0;
+  gap: 0;
+  background: var(--ground);
   border-bottom: 1px solid var(--border);
   z-index: 20;
 }
 .app-shell .workspace-bar > .brand {
   display: inline-flex;
   align-items: center;
-  min-height: 44px;
+  align-self: stretch;
+  padding-inline: 22px;
+  border-inline-end: 1px solid var(--border);
+  background: var(--surface);
   font-size: 27px;
   white-space: nowrap;
 }
 .workspace-body {
   display: grid;
-  grid-template-columns: 188px minmax(0, 1fr);
+  grid-template-columns: var(--workspace-rail-width) minmax(0, 1fr);
   flex: 1;
 }
 .workspace-rail {
   background: var(--surface);
   border-right: 1px solid var(--border);
-  padding: 24px 14px;
+  padding: 16px 12px;
 }
 .workspace-rail a {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
   min-height: 44px;
-  padding: 8px 12px;
+  padding: 8px 10px 8px 12px;
   border-radius: 5px;
   color: var(--muted);
 }
@@ -117,6 +135,14 @@
 }
 .workspace-rail a[aria-current='page'] > svg {
   color: var(--signal);
+}
+.workspace-rail a[aria-current='page']::before {
+  position: absolute;
+  inset: 10px auto 10px 0;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--signal);
+  content: '';
 }
 .app-shell .workspace {
   display: flex;
@@ -145,8 +171,10 @@
   color: var(--text);
 }
 .app-shell .nav-actions {
+  justify-self: end;
   gap: 9px;
   min-width: 0;
+  padding: 6px var(--workspace-gutter);
 }
 .app-shell .account-button {
   gap: 8px;
@@ -183,12 +211,12 @@
 }
 .app-shell h1 {
   min-width: 0;
-  font-family: 'Barlow Condensed', var(--heading, sans-serif);
-  font-size: clamp(32px, 4vw, 48px);
+  font-family: inherit;
+  font-size: clamp(25px, 2.5vw, 34px);
   font-weight: 600;
-  line-height: 1.06;
-  letter-spacing: 0.01em;
-  overflow-wrap: anywhere;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  overflow-wrap: break-word;
 }
 .app-shell .page-heading p {
   font-size: 14px;
@@ -205,7 +233,7 @@
   font-size: 14px;
   line-height: 1.45;
 }
-:is(.app-shell, .viewer-shell, .member-dialog) .button {
+:is(.app-shell, .viewer-shell, .member-dialog, .public-site) .button {
   background: transparent;
   color: var(--text);
   border: 0;
@@ -223,42 +251,40 @@
   flex-shrink: 0;
   max-width: 100%;
 }
-:is(.app-shell, .viewer-shell, .member-dialog) .button.primary {
+:is(.app-shell, .viewer-shell, .member-dialog, .public-site) .button.primary {
   background: var(--primary);
   border-color: var(--primary);
-  color: var(--ground);
+  color: var(--primary-ink);
   clip-path: none;
   filter: none;
   padding: 9px 15px;
 }
 .app-shell .button:hover,
-.member-dialog .button:hover {
+.member-dialog .button:hover,
+.public-site .button:hover {
   background: var(--raised);
   opacity: 1;
   filter: none;
 }
-:is(.app-shell, .viewer-shell, .member-dialog) .button.primary:hover {
+:is(.app-shell, .viewer-shell, .member-dialog, .public-site) .button.primary:hover {
   background: var(--primary);
   filter: brightness(0.9);
 }
 .app-shell .button,
 .app-shell .icon-button,
 .app-shell .select-control,
-.app-shell .account-button {
+.app-shell .account-button,
+.public-site .button {
   min-height: 44px;
 }
-.app-shell .icon-button {
-  min-width: 44px;
-}
-.app-shell .button:not(.primary, .tertiary) {
+:is(.app-shell, .public-site) .button:not(.primary, .tertiary) {
   background: var(--raised);
 }
-.app-shell .button:not(.primary, .tertiary):hover {
+:is(.app-shell, .public-site) .button:not(.primary, .tertiary):hover {
   background: color-mix(in srgb, var(--raised) 85%, var(--text));
 }
 .app-shell .button.primary {
   background: var(--primary);
-  color: var(--ground);
   padding: 10px 16px;
 }
 :is(.app-shell, .viewer-shell, .member-dialog) .button.tertiary {
@@ -266,7 +292,7 @@
   border-color: transparent;
   color: var(--muted);
 }
-:is(.app-shell, .viewer-shell, .member-dialog) .icon-button {
+:is(.app-shell, .viewer-shell, .member-dialog, .public-site) .icon-button {
   background: transparent;
   border: 0;
   color: var(--muted);
@@ -279,15 +305,19 @@
   padding: 8px;
   flex-shrink: 0;
 }
-:is(.app-shell, .viewer-shell, .member-dialog) .icon-button:hover {
+:is(.app-shell, .public-site) .icon-button {
+  min-height: 44px;
+  min-width: 44px;
+}
+:is(.app-shell, .viewer-shell, .member-dialog, .public-site) .icon-button:hover {
   color: var(--text);
   background: var(--raised);
 }
-:is(.app-shell, .viewer-shell, .member-dialog) :focus-visible {
+:is(.app-shell, .viewer-shell, .member-dialog, .public-site) :focus-visible {
   outline: 2px solid var(--signal);
   outline-offset: 3px;
 }
-:is(.app-shell, .viewer-shell, .member-dialog) .button.primary:focus-visible {
+:is(.app-shell, .viewer-shell, .member-dialog, .public-site) .button.primary:focus-visible {
   outline: 2px solid var(--signal);
   outline-offset: 3px;
 }
@@ -1006,44 +1036,6 @@
   color: #efa3a7;
   border-color: #8d5058;
 }
-.member-dialog.upload-dialog {
-  width: 500px;
-  padding: 28px;
-}
-.member-dialog.upload-dialog .upload-panel {
-  display: flex;
-  gap: 0;
-  background: none;
-  border-radius: 0 !important;
-  border: 0;
-  padding: 0;
-  margin: 0;
-}
-.member-dialog.upload-dialog h2 {
-  font-family: inherit;
-  font-size: 21px;
-  font-weight: 500;
-  letter-spacing: -0.4px;
-}
-.member-dialog .connection-shortcut {
-  background: none;
-  border: 0;
-  border-top: 1px solid var(--border);
-  color: var(--text);
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  width: 100%;
-  padding: 20px 0 0;
-  margin: 0;
-  text-align: left;
-}
-.member-dialog .connection-shortcut small {
-  font-size: 12px;
-  margin-top: 4px;
-}
 .member-toast.toast {
   background: var(--surface) !important;
   color: var(--text) !important;
@@ -1061,6 +1053,19 @@
   }
 }
 @media (max-width: 1100px) {
+  .app-shell .workspace-bar {
+    display: flex;
+    padding-inline: var(--workspace-gutter);
+    background: var(--surface);
+  }
+  .app-shell .workspace-bar > .brand {
+    padding-inline: 0;
+    border: 0;
+    background: none;
+  }
+  .app-shell .nav-actions {
+    padding-inline: 0;
+  }
   .workspace-body {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1172,9 +1177,6 @@
     margin-bottom: 23px;
     gap: 14px;
     align-items: flex-start;
-  }
-  .app-shell h1 {
-    font-size: 34px;
   }
   .library-controls {
     padding-inline: 16px;
@@ -1349,9 +1351,10 @@
   .member-dialog .panel-heading > h2 {
     font-size: 19px;
   }
-  .member-dialog .connection-shortcut {
-    font-size: 14px;
-    gap: 18px;
+}
+@media (max-width: 400px) {
+  .app-shell .page-heading:has(> .button) {
+    flex-direction: column;
   }
 }
 @media (max-width: 360px) {

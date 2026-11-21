@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Search, RefreshCw, Lock, Globe, Upload, Play, Film, X } from 'lucide-react';
 import { useApp } from '../context';
+import { captureFocusReturn, focusMovedSince } from '../focus-return';
 import { useDemoLibrary } from '../useDemoLibrary';
 import UploadDialog from './UploadDialog';
 
@@ -11,15 +12,27 @@ export default function Library() {
   const [params, setParams] = useSearchParams();
   const [uploadOpen, setUploadOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const addDemo = useRef<HTMLButtonElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const { demos, total, loading, error, more, load } = useDemoLibrary('mine', user?.id, search);
   function closeUpload() {
+    const trigger = addDemo.current;
+    const focusReturn = captureFocusReturn();
     setUploadOpen(false);
     if (params.has('upload')) {
       const next = new URLSearchParams(params);
       next.delete('upload');
       setParams(next, { replace: true });
     }
+    requestAnimationFrame(() => {
+      if (
+        trigger?.isConnected &&
+        !trigger.closest('[inert]') &&
+        !document.querySelector('dialog[open], [role="dialog"][aria-modal="true"]') &&
+        !focusMovedSince(focusReturn)
+      )
+        trigger.focus({ preventScroll: true });
+    });
   }
   useEffect(() => {
     if (user && params.get('upload') === '1') setUploadOpen(true);
@@ -28,7 +41,11 @@ export default function Library() {
     <>
       <header className="page-heading">
         <h1 id="matches-heading">{t('Demo library')}</h1>
-        <button className="button primary" onClick={() => setUploadOpen(true)}>
+        <button
+          ref={addDemo}
+          className="button primary library-add"
+          onClick={() => setUploadOpen(true)}
+        >
           <Upload size={16} />
           {t('Add a demo')}
         </button>

@@ -3,6 +3,7 @@ import { ArrowUpRight, Github, LockKeyhole, LogIn, Moon, Sun } from 'lucide-reac
 import { t } from '../i18n';
 import { useApp } from '../context';
 import Brand from './Brand';
+import DemoConnectionsLink from './DemoConnectionsLink';
 import LanguageControl from './LanguageControl';
 import LandingBackdrop from './LandingBackdrop';
 import Upload from './Upload';
@@ -56,34 +57,26 @@ export function Landing() {
       <LandingBackdrop enabled={config.public_access && !config.setup_required} />
       <div className="landing-workspace">
         <header className="landing-copy">
-          <h1 id="landing-title">{t('Open your demo.')}</h1>
+          <h1 id="landing-title">{t('Review your CS2 demos.')}</h1>
+          <p>{t('Watch each round from any player’s perspective.')}</p>
         </header>
-        <div className="landing-import">
-          {config.guest_uploads_enabled ? (
-            <>
-              <Upload compact />
-              <div className="landing-privacy">
-                <LockKeyhole size={15} aria-hidden="true" />
-                <p>
-                  {t('Private upload · {{hours}}h maximum.', {
-                    hours: config.guest_retention_hours,
-                  })}
-                </p>
-              </div>
-            </>
-          ) : (
-            <section className="upload-panel upload-signin" aria-labelledby="upload-title">
-              <LockKeyhole size={30} strokeWidth={1.5} aria-hidden="true" />
-              <h2 id="upload-title" className="visually-hidden">
-                {t('Sign in to upload')}
-              </h2>
-              <button className="button primary" onClick={signIn}>
-                {t('Sign in to upload')}
-                <ArrowUpRight size={17} />
-              </button>
-            </section>
-          )}
-        </div>
+        {config.guest_uploads_enabled ? (
+          <>
+            <Upload compact />
+            <p className="landing-privacy">
+              <LockKeyhole size={15} aria-hidden="true" />
+              {t('Private upload · {{hours}}h maximum.', {
+                hours: config.guest_retention_hours,
+              })}
+            </p>
+          </>
+        ) : (
+          <button className="button primary" onClick={signIn}>
+            <LogIn size={16} aria-hidden="true" />
+            {t('Sign in to upload')}
+          </button>
+        )}
+        <DemoConnectionsLink />
       </div>
     </section>
   );

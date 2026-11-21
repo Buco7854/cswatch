@@ -19,7 +19,7 @@ cswatch is a public-capable, self-hostable review product with private-by-defaul
 
 ## Product surfaces
 
-**Public entry:** one compact page for logged-out visitors, centred on uploading their own demo when guest uploads are enabled. Include a GitHub link, shared language dropdown and short account/privacy information. No separate marketing pages, community catalogue or example-demo call to action. Signed-in users go directly to their library.
+**Public entry:** one compact page for logged-out visitors, centred on uploading their own demo when guest uploads are enabled. Place the left-aligned upload controls directly on the page. Fade optional local official map artwork into the background alongside them on desktop and above them on phones. Share the palette and file picker with the member workspace. Include a GitHub link, shared language dropdown and short privacy information. A separate Steam and FACEIT link returns guests to Connected accounts after sign-in. No separate marketing pages, community catalogue or example-demo call to action. Signed-in users go directly to their library.
 
 **Member workspace:** own demos first, upload/import as a clear primary task, processing state and recovery, private sharing, connections/account. Never fill it with fictional personal statistics.
 
@@ -36,11 +36,11 @@ The next design must resolve positioning, navigation, imagery, typography, shape
 
 ## Latest accepted direction — member workspace pass
 
-The current user direction replaces the old marketing site with a single smaller upload entry. Keep the restrained charcoal/paper member palette and existing brand. Their Refrag reference remains an inspiration for clear grouping, not permission to copy branding or content. Use reusable dropdowns/dialogs, restrained keyboard focus indicators, stable button geometry and consistent scrollbars.
+The current user direction uses the Refrag references for compact utility navigation, matte surfaces and a clear primary action. Keep the restrained charcoal/paper palette and cswatch’s teal identity. The workspace header aligns with the desktop side rail. Use reusable dropdowns/dialogs, restrained keyboard focus indicators, stable button geometry and consistent scrollbars.
 
 The viewer must occupy the **whole browser tab**. Render the match in a dedicated viewport with the playback/round dock inside it. Players, events, notes and advanced settings open over the scene. Browser fullscreen is additional, not the only way to get a full-sized viewer. No workspace sidebar or page footer should consume the viewing area. Test both portrait and landscape, as well as TV-sized viewports.
 
-Sign-in and registration use dedicated themed pages, with restrained neutral actions and safe return intent. Do not restore the rejected giant green authentication modal. Use small monochrome Steam/FACEIT icons beside normal localized labels, with shared component sizing and separate source/trademark notices. The full Steam OpenID sign-in banner and FACEIT raster logo tiles were explicitly rejected. FACEIT remains a data source, not a sign-in provider.
+Sign-in and registration use dedicated themed pages, with one teal submit action and safe return intent. Do not restore the rejected giant green authentication modal. Use small monochrome Steam/FACEIT icons beside normal localized labels, with shared component sizing and separate source/trademark notices. The full Steam OpenID sign-in banner and FACEIT raster logo tiles were explicitly rejected. FACEIT remains a data source, not a sign-in provider.
 
 Account settings and connected services belong in the user dropdown and account tabs. Keep the sidebar for match work. Communications, inputs and economy start disabled; the viewer's primary controls remain usable without enabling advanced overlays. Round events stay discoverable on phones, while the expanded round strip starts collapsed on narrow/short screens.
 

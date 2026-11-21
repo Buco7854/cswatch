@@ -60,7 +60,7 @@ For FACEIT, set `FACEIT_API_KEY`. Linking looks up the FACEIT CS2 account matchi
 
 ### Premier, Competitive and externally downloaded demos
 
-The Add demo dialog includes focused Steam, FACEIT and HLTV download/import guides. Premier, Competitive and Wingman replay files use the same CS2 parser. Obtain the replay at its source, extract `.bz2`, `.gz` or archives on your device when necessary, then upload `.dem` or `.dem.zst`. Steam OpenID alone does not download demos. There is no HLTV scraper, match catalog or proxy wrapper.
+Obtain Premier, Competitive and Wingman replays in CS2, or download other replays from their FACEIT or HLTV match pages. Extract `.bz2`, `.gz` or archives on your device when necessary, then use Add a demo to upload `.dem` or `.dem.zst`. Use Connected accounts for Steam match history and configured FACEIT imports. Steam OpenID alone does not download demos. There is no HLTV scraper, match catalog or proxy wrapper.
 
 Accounts use usernames, not email addresses. There is no email verification or email password reset flow. Operators can reset a password through a terminal:
 

@@ -144,7 +144,6 @@ h3 {
 .site-footer {
   margin: 32px 28px 0;
 }
-.upload-panel,
 .roster-panel,
 .round-panel,
 .playback,
@@ -153,9 +152,6 @@ h3 {
 }
 .app-shell .library-primary {
   padding-top: 3px;
-}
-.app-shell .library-rail .upload-panel {
-  border-radius: 0 !important;
 }
 .sample-thumbnail {
   border-radius: 0;
