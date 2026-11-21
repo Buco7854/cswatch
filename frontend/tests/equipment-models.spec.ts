@@ -111,7 +111,9 @@ test('model catalog completeness is strictly validated, retains partial models o
   page,
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE));
-  await page.clock.install();
+  const start = Date.UTC(2026, 0, 1);
+  await page.clock.install({ time: start });
+  await page.clock.pauseAt(start + 60_000);
   await install(page);
   let reads = 0;
   await page.route('**/api/assets/equipment-models', async (route) => {
@@ -125,9 +127,14 @@ test('model catalog completeness is strictly validated, retains partial models o
   });
   await page.goto('/watch/equipment-model-fixture');
   const scene = page.locator('.scene');
-  await expect(scene).toHaveAttribute('data-map-model-state', 'ready');
+  // Admit renderer frames under the paused clock without consuming a catalog retry.
+  await expect
+    .poll(async () => {
+      await page.clock.runFor(160);
+      return scene.getAttribute('data-map-model-state');
+    })
+    .toBe('ready');
   await expect(scene).toHaveAttribute('data-equipment-model-state', 'error');
-  await page.clock.pauseAt(new Date((await page.evaluate(() => Date.now())) + 100));
   await page.clock.runFor(2100);
   await expect.poll(() => reads).toBe(2);
   await expect(scene).toHaveAttribute('data-equipment-model-state', 'missing');
