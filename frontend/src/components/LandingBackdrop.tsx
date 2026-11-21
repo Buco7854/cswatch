@@ -82,9 +82,19 @@ export default function LandingBackdrop({ enabled }: { enabled: boolean }) {
         src={preview.image}
         alt=""
         decoding="async"
-        fetchPriority="low"
         draggable={false}
-        onLoad={() => setReadyImage(preview.image)}
+        onLoad={(event) => {
+          const image = event.currentTarget;
+          void image.decode().then(
+            () => {
+              if (image.isConnected) setReadyImage(preview.image);
+            },
+            () => {
+              if (image.isConnected)
+                setPreview((current) => (current?.image === preview.image ? null : current));
+            },
+          );
+        }}
         onError={() => {
           setPreview((current) => (current?.image === preview.image ? null : current));
         }}

@@ -1,5 +1,19 @@
 # Verification record
 
+## Local interface review, 2026-11-21
+
+An independent agent reviewed the interface diff against `dd68152`. The account row uses the shared safe-return validator, the manual Steam history link uses a fixed HTTPS destination with `noreferrer`, and the landing accepts only registry-listed same-origin artwork under the existing access policy. The upload continues through the existing private ownership and Origin/CSRF checks. Four production dependency audits reported zero advisories. Thirty focused backend cases passed for auth, providers, guests, preview delivery and request policy.
+
+Two independent production Chromium checks reproduced a pre-existing upload-dialog defect where focus returned to the page body. The same check after the fix returns focus to Add a demo after the close button, Escape, backdrop and direct query entry. A regression case controls the animation frame to verify that a newer focus destination wins. The focused production-browser run passed 46 cases with one policy skip. Both private registration policies passed separately. The review also removed twelve unused message keys per locale and corrected the live upload instructions in the README, feature status and acceptance matrix. Build, locale coverage and formatting passed.
+
+## Local landing redesign, 2026-11-21
+
+The landing uses the fixed Valve Mirage artwork from Steam depot `2347770`, manifest `8225060435969537482`. The official installer verified the package SHA-1 and native entry CRC, ran confined S2V and Sharp conversion and published a 1280×720 PNG to the ignored local asset volume. The served bytes match SHA-256 `6c49e2f0885bcb0df1c19867a496cc0c9dd7326f235ea11d541b79940086b1f1`.
+
+The dedicated UI pass follows the supplied Refrag screenshots for matte surfaces and compact navigation. The upload sits directly on the page and official art fades into it. The independent production-browser matrix captured 40 states, including 20 artwork-backed landing profiles at 320, 390, 768, 1024 and 1440 px in English and French and both themes. It also covered sign-in, the library, the authenticated upload dialog, Connected accounts, missing artwork and disabled guest uploads. The file action matches across both upload surfaces at 44 px, with the same teal action used in the library and sign-in. The normal text contrast on the primary action is 6.86:1 in dark and 5.70:1 in light. Public header controls meet the same minimum touch size. Delayed artwork leaves the file action in place. Captures are under ignored `.design/landing-ui-review/refrag-inspired/`.
+
+The upload panel only handles file selection and transfer. A separate Steam and FACEIT link sends guests to sign-in with a safe Connections return path and opens Connected accounts directly for members. The production-browser run passed 45 cases with one policy skip. Private entry passed separately with registrations open and closed. The focused provider, guest and art-delivery backend run passed 16 cases. Actual guest `.dem` and member `.dem.zst` uploads reached private playback through the required parser sandbox and published 31 chunks each.
+
 ## Local upload and ingestion check, 2026-11-20
 
 The public upload and member dialog show the file picker first. File format, size and privacy remain visible. Steam, FACEIT and HLTV download instructions are collapsed under one help control. The production-browser matrix verified keyboard help, file selection, cancellation, retry and both themes in English and French at phone and desktop widths. The focused browser run passed 17 cases with one private-policy skip. The focused backend run passed all 22 cases.

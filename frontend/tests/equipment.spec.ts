@@ -97,7 +97,9 @@ test('equipment lookup retries a denied manifest on the next viewer mount', asyn
   await expect(page.locator('.broadcast-bank .equipment-game-icon')).toHaveCount(0);
   await page.getByRole('link', { name: 'Back to home', exact: true }).click();
   await expect(page).toHaveURL('/');
-  await expect(page.getByRole('heading', { name: 'Open your demo.', exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Review your CS2 demos.', exact: true }),
+  ).toBeVisible();
   await expect(page.locator('.viewer-frame')).toHaveCount(0);
   // The practice fixture is internal. Remount it in the same app lifetime so
   // this still tests retrying the shared manifest cache after a denied read.

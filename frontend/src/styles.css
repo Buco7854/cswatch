@@ -277,13 +277,6 @@ svg {
   display: block;
   touch-action: none;
 }
-.upload-panel {
-  padding: 24px;
-  background: #111;
-  border-radius: 20px;
-  display: flex;
-  flex-direction: column;
-}
 .panel-heading {
   display: flex;
   justify-content: space-between;
@@ -293,88 +286,6 @@ svg {
 .panel-heading > span {
   font-size: 12px;
   color: var(--faint);
-}
-.upload-panel > .panel-heading svg {
-  color: var(--faint);
-}
-.upload-panel > p {
-  font-size: 12px;
-  margin: 8px 0 22px;
-  max-width: 220px;
-}
-.dropzone {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 192px;
-  padding: 20px 12px;
-  background: #171717;
-  border: 1px dashed #444;
-  border-radius: 12px;
-  text-align: center;
-}
-.dropzone:hover,
-.dropzone.dragging {
-  background: #252525;
-  border-color: #888;
-}
-.dropzone > svg {
-  margin-bottom: 16px;
-  color: #b4b4b4;
-}
-.dropzone strong {
-  font-size: 13px;
-  font-weight: 500;
-}
-.dropzone > span {
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 3px;
-}
-.dropzone small {
-  font-size: 11px;
-  margin-top: 17px;
-}
-.dropzone progress {
-  margin-top: 10px;
-  max-width: 100%;
-  height: 4px;
-  accent-color: #fff;
-}
-.upload-note {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  color: var(--faint);
-  font-size: 11px;
-  margin: 14px 0 20px;
-}
-.upload-note .status-dot {
-  background: #949494;
-  width: 4px;
-  height: 4px;
-}
-.connection-shortcut {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  border: 0;
-  border-top: 1px solid #262626;
-  background: transparent;
-  padding: 18px 0 0;
-  text-align: left;
-  margin-top: auto;
-  font-size: 12px;
-}
-.connection-shortcut:hover {
-  color: var(--muted);
-}
-.connection-shortcut small {
-  display: block;
-  font-size: 11px;
-  margin-top: 3px;
 }
 .library-section {
   margin-top: 38px;
@@ -1233,21 +1144,12 @@ details form {
     margin-left: 24px;
     margin-right: 24px;
   }
-  .upload-panel {
-    padding: 22px;
-  }
 }
 @media (max-width: 1100px) {
   .main,
   .site-footer {
     margin-left: 24px;
     margin-right: 24px;
-  }
-  .upload-panel {
-    padding: 20px;
-  }
-  .dropzone {
-    min-height: 180px;
   }
   .viewer-grid {
     grid-template-columns: minmax(0, 1fr) 240px;
@@ -1284,40 +1186,6 @@ details form {
 @media (max-width: 780px) {
   .main {
     padding-top: 22px;
-  }
-  .upload-panel {
-    display: grid;
-    grid-template-columns: 1fr 1.25fr;
-    gap: 0 24px;
-  }
-  .upload-panel > .panel-heading {
-    grid-column: 1;
-    align-self: end;
-  }
-  .upload-panel > p {
-    grid-column: 1;
-    align-self: start;
-    margin-top: 12px;
-    margin-bottom: 8px;
-  }
-  .dropzone {
-    grid-column: 2;
-    grid-row: 1/5;
-    min-height: 180px;
-  }
-  .upload-note {
-    grid-column: 1;
-    align-self: start;
-    margin: 10px 0;
-  }
-  .connection-shortcut {
-    grid-column: 1;
-    font-size: 12px;
-    margin-top: 14px;
-    padding-top: 14px;
-  }
-  .upload-panel > .error {
-    grid-column: 1/-1;
   }
   .viewer-grid {
     grid-template-columns: 1fr;
@@ -1429,34 +1297,6 @@ details form {
   }
   .scope-label {
     display: none;
-  }
-  .upload-panel {
-    display: flex;
-    padding: 20px;
-  }
-  .upload-panel > p {
-    max-width: none;
-    margin: 8px 0 18px;
-    font-size: 12px;
-  }
-  .dropzone {
-    min-height: 165px;
-  }
-  .dropzone > svg {
-    margin-bottom: 12px;
-  }
-  .dropzone small {
-    margin-top: 12px;
-  }
-  .upload-note {
-    margin: 14px 0 18px;
-    font-size: 11px;
-  }
-  .connection-shortcut {
-    width: 100%;
-    padding-top: 16px;
-    margin-top: 0;
-    font-size: 13px;
   }
   .library-section {
     margin-top: 28px;
@@ -1903,7 +1743,6 @@ details form {
 [data-theme='light'] .button.primary:hover {
   background: #333;
 }
-[data-theme='light'] .upload-panel,
 [data-theme='light'] .settings-panel,
 [data-theme='light'] .roster-panel,
 [data-theme='light'] .round-panel,
@@ -1916,19 +1755,6 @@ details form {
   background: #e4e4e4;
   color: #444;
 }
-[data-theme='light'] .dropzone {
-  background: #fafafa;
-  border-color: #bbb;
-}
-[data-theme='light'] .dropzone:hover,
-[data-theme='light'] .dropzone.dragging {
-  background: #e9e9e9;
-  border-color: #888;
-}
-[data-theme='light'] .dropzone > svg {
-  color: #555;
-}
-[data-theme='light'] .connection-shortcut,
 [data-theme='light'] .roster-foot,
 [data-theme='light'] details {
   border-color: #ddd;
@@ -2096,12 +1922,6 @@ details form {
 .search {
   flex-direction: row;
 }
-.upload-panel > .panel-heading {
-  width: 100%;
-}
-.upload-panel input[hidden] {
-  display: none;
-}
 .options-dialog > form {
   margin-top: 24px;
 }
@@ -2123,12 +1943,9 @@ details form {
 }
 /* Keep everyday reading and control labels distinct from smaller metadata. */
 .page-heading p,
-.upload-panel > p,
-.library-empty p,
-.dropzone > span {
+.library-empty p {
   font-size: 13px;
 }
-.connection-shortcut,
 .tabs button,
 .search input,
 .player-identity strong,

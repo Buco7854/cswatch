@@ -1,7 +1,7 @@
 import { t, locale } from '../i18n';
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { ArrowUpRight, Check, Link2, RefreshCw } from 'lucide-react';
+import { ArrowUpRight, Check, ExternalLink, Link2, RefreshCw } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useApp } from '../context';
@@ -131,12 +131,23 @@ export default function Connections() {
                       'Link your Steam account to use match discovery and verify your FACEIT account.',
                     )}
               </p>
-              {config.steam_enabled && (
-                <SteamSignInLink
-                  returnTo="/account/connections"
-                  label={steam ? t('Verify Steam again') : t('Connect Steam')}
-                />
-              )}
+              <div className="actions">
+                {config.steam_enabled && (
+                  <SteamSignInLink
+                    returnTo="/account/connections"
+                    label={steam ? t('Verify Steam again') : t('Connect Steam')}
+                  />
+                )}
+                <a
+                  className="button"
+                  href="https://steamcommunity.com/my/gcpd/730/"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {t('Open Steam match history')}
+                  <ExternalLink size={14} aria-hidden="true" />
+                </a>
+              </div>
               {config.steam_enabled && steam && (
                 <details>
                   <summary>{t('Discover the next match')}</summary>

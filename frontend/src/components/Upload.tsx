@@ -1,11 +1,10 @@
 import { t } from '../i18n';
 import { useEffect, useId, useRef, useState } from 'react';
-import { ChevronDown, FileUp, LockKeyhole } from 'lucide-react';
+import { FileUp, LockKeyhole } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { api, uploadFile } from '../api';
 import { useApp } from '../context';
-import { SelectControl } from './Controls';
-import ImportGuide, { type GuidedSource } from './ImportGuide';
+import './upload.css';
 
 export default function Upload({ compact = false }: { compact?: boolean }) {
   const { config, user, signIn } = useApp();
@@ -14,7 +13,6 @@ export default function Upload({ compact = false }: { compact?: boolean }) {
   const pending = useRef<AbortController | null>(null);
   const mounted = useRef(true);
   const hint = useId();
-  const [source, setSource] = useState<GuidedSource>('steam');
   const [busy, setBusy] = useState(false),
     [progress, setProgress] = useState(0),
     [error, setError] = useState(''),
@@ -91,7 +89,7 @@ export default function Upload({ compact = false }: { compact?: boolean }) {
     progress === 100 ? t('Adding to processing queue…') : t('Uploading {{v0}}%', { v0: progress });
   return (
     <section
-      className={'upload-panel' + (compact ? ' compact-upload' : '')}
+      className="upload-panel"
       aria-labelledby={compact ? undefined : 'upload-title'}
       aria-label={compact ? t('Choose a CS2 demo') : undefined}
     >
@@ -134,7 +132,9 @@ export default function Upload({ compact = false }: { compact?: boolean }) {
           </div>
         ) : (
           <p className="demo-file-hint" id={hint}>
-            {t('.dem or .dem.zst · up to')} {config.max_upload_mb} {t('MB')}
+            {t('Drop a .dem or .dem.zst file · {{size}} MB max', {
+              size: config.max_upload_mb,
+            })}
           </p>
         )}
       </div>
@@ -152,26 +152,6 @@ export default function Upload({ compact = false }: { compact?: boolean }) {
           {t(error)}
         </p>
       )}
-      <details className="upload-help">
-        <summary>
-          {t('Where do I get a demo?')}
-          <ChevronDown size={16} aria-hidden="true" />
-        </summary>
-        <div className="upload-help-content">
-          <SelectControl
-            label={t('Demo import source')}
-            value={source}
-            onValueChange={(value) => setSource(value as GuidedSource)}
-            options={[
-              { value: 'steam', label: t('Premier / Competitive / Wingman') },
-              { value: 'faceit', label: 'FACEIT' },
-              { value: 'hltv', label: 'HLTV' },
-            ]}
-            disabled={busy}
-          />
-          <ImportGuide source={source} />
-        </div>
-      </details>
       {(!compact || busy) && (
         <p className="demo-upload-note">
           {!busy && <LockKeyhole size={15} aria-hidden="true" />}

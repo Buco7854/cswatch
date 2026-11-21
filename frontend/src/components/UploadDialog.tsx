@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 import { t } from '../i18n';
+import DemoConnectionsLink from './DemoConnectionsLink';
 import Upload from './Upload';
 export default function UploadDialog({ close }: { close: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -23,6 +24,7 @@ export default function UploadDialog({ close }: { close: () => void }) {
         </button>
       </div>
       <Upload />
+      <DemoConnectionsLink />
     </dialog>
   );
 }

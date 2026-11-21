@@ -29,12 +29,12 @@ Inventory bootstrap uses private disposable HOME/CLI/bundle paths, the existing 
 ## Ingestion and replay data
 
 - `.dem` and `.dem.zst` uploads with magic validation, reservations/quotas, bounded decompression, durable queue, required Linux Landlock/seccomp parser confinement and validated output publication. Owner failures show a safe code/reference and structured server diagnostics.
-- The local public upload and member dialog prioritize file selection and collapse download help. Long filenames keep their supported extension when shortened for display. Real browser uploads of both formats reach private playback. [Verification](VERIFICATION.md#local-upload-and-ingestion-check-2026-11-20)
+- The public upload and member dialog show a file-only panel with a separate Steam and FACEIT link. Guests reach Connected accounts after sign-in and members can open it directly. Long filenames keep their supported extension when shortened for display. Real browser uploads of both formats reach private playback. [Verification](VERIFICATION.md#local-landing-redesign-2026-11-21)
 - Actual players/positions/angles/status, recorded inventory/economy, native counters/crosshair codes, events/rounds/dead time, grenade trajectories, objectives and world equipment when the recording supplies them. Missing fields remain unavailable.
 - Bounded raw recorded map identity, with explicit missing/addon/conflicting evidence and no inferred Steam manifest or map CRC.
 - Version 2 byte-adaptive replay chunks with global indexes/bounds, five seconds of spatial trail context, bounded browser caching/prefetch and cancelled irrelevant requests. Context-only samples never establish historical HUD state.
 - Three supplied complete recordings passed actual uploads, confined parsing, private transport and desktop/phone review before authorized deletion. Their position-fallback journeys are separate from game-asset validation.
-- Manual Premier/Competitive/Wingman, FACEIT and HLTV import guidance. Verified-Steam FACEIT association/history and approved-download adapters, plus Steam next-match share-code discovery, are implemented with credential/missing-access states. Live provider flows require external credentials/approval. Steam OpenID alone does not authorize automatic demo downloads.
+- Manual uploads accept source downloads from Premier/Competitive/Wingman, FACEIT and HLTV. Connected accounts provides a Steam match-history link, Steam next-match share-code discovery and verified-Steam FACEIT association, history and approved downloads. Live provider flows require external credentials/approval. Steam OpenID alone does not authorize automatic demo downloads.
 
 ## Viewer and recorded review
 
