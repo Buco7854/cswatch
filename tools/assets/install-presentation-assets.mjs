@@ -1,14 +1,26 @@
 /** Fixed shared native presentation banks. Acquisition never runs in an HTTP handler. */
 import { spawnSync } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, createHash } from 'node:crypto';
 import { chmod, lstat, mkdtemp, readdir, rename, readFile, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { selectedSteamManifest } from './steam-assets-plan.mjs';
 import { localDirectory } from './toolchain-security.mjs';
-import { exists, checkStorage, checkFreeReserve, regular } from './asset-storage.mjs';
+import {
+  exists,
+  checkStorage,
+  checkFreeReserve,
+  regular,
+  readableDirectory,
+} from './asset-storage.mjs';
 import { installEquipmentModels } from './install-equipment-models.mjs';
 import { installEquipmentIcons, equipmentIconSources } from './install-equipment-icons.mjs';
 import { equipmentModelRegistry } from './equipment-model-registry.mjs';
+import { viewmodelSources, presentationPriority } from './viewmodel-sources.mjs';
+import {
+  preparerRevision,
+  presentationDirectory,
+  viewmodelManifest,
+} from '../../backend/dist/asset-preparer.js';
 import { inspectEquipmentGltf } from './equipment-model-input.mjs';
 import contract from '../../shared/agent-animation.json' with { type: 'json' };
 import {
@@ -19,6 +31,7 @@ import { verifyPreparedGlb } from './prepared-glb.mjs';
 import { validPng } from '../../backend/dist/png.js';
 import {
   cleanPresentationStages,
+  checkPresentationRetirement,
   registerPresentationStage,
   presentationStageIdentity,
 } from './presentation-stages.mjs';
@@ -26,6 +39,7 @@ import {
   readPresentationStatus,
   writePresentationStatus,
   presentationKinds,
+  presentationParts,
 } from '../../backend/dist/presentation-assets.js';
 
 const presentationPreparationLimits = Object.freeze({
@@ -35,6 +49,12 @@ const presentationPreparationLimits = Object.freeze({
   files: 512,
   bytes: 1024 ** 3,
 });
+export const presentationItems = (kind) => {
+  const registry = kind === 'viewmodels' ? viewmodelSources : equipmentModelRegistry;
+  return [...new Set([...presentationPriority, ...Object.keys(registry)])].filter((id) =>
+    Object.hasOwn(registry, id),
+  );
+};
 const now = () => Math.floor(Date.now() / 1000);
 const markerName = '.cswatch-presentation.json';
 function failureCode(error, signal) {
@@ -48,7 +68,7 @@ function failureCode(error, signal) {
     return 'storage_limit';
   return 'preparation_failed';
 }
-async function validateBank(root, kind, manifest) {
+async function validateBank(root, kind, manifest, write = false) {
   let files = 0,
     bytes = 0;
   async function walk(path) {
@@ -61,13 +81,13 @@ async function validateBank(root, kind, manifest) {
       if (stat.isDirectory() && !stat.isSymbolicLink()) await walk(child);
       else {
         await regular(child, kind === 'equipment' ? 1024 ** 2 : 16 * 1024 ** 2);
-        await chmod(child, 0o644);
+        if (write) await chmod(child, 0o644);
         bytes += stat.size;
         if (bytes > presentationPreparationLimits.bytes)
           throw Error('Presentation byte bound exceeded.');
       }
     }
-    await chmod(path, 0o755);
+    if (write) await chmod(path, 0o755);
   }
   await walk(root);
   const verifyModel = async (modelPath, metadataPath, id) => {
@@ -103,21 +123,21 @@ async function validateBank(root, kind, manifest) {
   if (kind === 'agents') {
     for (const team of ['ct', 't'])
       await verifyModel(join(root, `${team}.glb`), join(root, `${team}.manifest.json`), team);
-  } else if (kind === 'equipment-models') {
+  } else if (kind === 'viewmodels' || kind === 'equipment-models') {
     let count = 0;
     for (const entry of await readdir(root, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
       if (!Object.hasOwn(equipmentModelRegistry, entry.name))
         throw Error('Unknown prepared native model identity.');
-      await verifyModel(
-        join(root, entry.name, 'model.glb'),
-        join(root, entry.name, 'manifest.json'),
-        entry.name,
-      );
+      await validateItem(join(root, entry.name), kind, manifest, entry.name, verifyModel);
       count++;
     }
     if (!count) throw Error('No native equipment models were prepared.');
   } else {
+    const proof = join(root, 'provenance.json');
+    await regular(proof, 1024 ** 2, 2);
+    const evidence = JSON.parse(await readFile(proof, 'utf8'));
+    const expected = new Map(Object.entries(evidence.items ?? {}));
     let count = 0;
     for (const filename of await readdir(root))
       if (filename.endsWith('.png')) {
@@ -127,14 +147,52 @@ async function validateBank(root, kind, manifest) {
         const image = await readFile(join(root, filename));
         if (
           !validPng(image, { bytes: 1024 ** 2, dimension: 256, pixels: 256 * 64 }) ||
-          image.readUInt32BE(20) > 64
+          image.readUInt32BE(20) > 64 ||
+          expected.get(id)?.pngSha256 !== createHash('sha256').update(image).digest('hex')
         )
           throw Error('Invalid bounded native equipment artwork.');
         count++;
       }
-    if (!count) throw Error('No native equipment artwork was prepared.');
+    if (!count || count !== expected.size) throw Error('Incomplete native equipment artwork.');
   }
   if (!files) throw Error('Empty native presentation bank.');
+}
+
+async function validateItem(root, kind, manifest, id, verifyModel) {
+  const modelPath = join(root, 'model.glb'),
+    metadataPath = join(root, 'manifest.json');
+  if (kind !== 'viewmodels' && verifyModel) return verifyModel(modelPath, metadataPath, id);
+  await localDirectory(root);
+  await regular(metadataPath, 16384, 2);
+  const metadata = JSON.parse(await readFile(metadataPath, 'utf8'));
+  const verified = await verifyPreparedGlb(modelPath);
+  if (verified.bytes !== metadata.bytes || verified.sha256 !== metadata.sha256)
+    throw Error('Prepared item differs from its manifest.');
+  if (kind === 'equipment-models') {
+    if (metadata.id !== id || metadata.assetVersion !== `steam-2347770-${manifest}`)
+      throw Error('Prepared equipment differs from its selected source.');
+    return;
+  }
+  const rig = viewmodelManifest.parse(metadata),
+    { json } = await inspectEquipmentGltf(modelPath);
+  const roles = Object.keys(rig.actions);
+  if (
+    rig.id !== id ||
+    rig.manifest !== manifest ||
+    roles.length !== Object.keys(viewmodelSources[id]).length - 3 ||
+    !json.nodes.some((node) => node.name === 'root_motion') ||
+    json.animations.length !== roles.length ||
+    roles.some(
+      (role) =>
+        !json.animations.some(
+          (animation) =>
+            animation.name === id + '-' + role &&
+            animation.channels.length > 0 &&
+            animation.channels.length <= 384,
+        ),
+    )
+  )
+    throw Error('Prepared first-person model differs from its fixed identity.');
 }
 
 /** One idle category per call, with a persisted three-attempt generation budget. */
@@ -146,8 +204,15 @@ export async function installPresentationAssets(options, manifest, kind, adapter
     typeof options.cacheRoot !== 'string'
   )
     throw Error('Fixed native presentation kind and confinement are required.');
-  const output = resolve(options.assets),
+  const assets = resolve(options.assets),
+    output = join(assets, presentationDirectory),
     target = join(output, kind);
+  const itemBank = kind === 'equipment-models' || kind === 'viewmodels';
+  const ids = itemBank ? presentationItems(kind) : [];
+  const operatorPresent =
+    kind !== 'viewmodels' &&
+    (await exists(join(assets, kind))) &&
+    (await presentationParts(assets, kind))[0] === kind;
   const cacheRoot = resolve(options.cacheRoot);
   if (
     cacheRoot === '/' ||
@@ -157,7 +222,8 @@ export async function installPresentationAssets(options, manifest, kind, adapter
   )
     throw Error('Keep native sources separate from served assets.');
   await localDirectory(cacheRoot);
-  await localDirectory(output);
+  await localDirectory(assets);
+  await readableDirectory(output);
   await localDirectory(options.jobs);
   const stageOptions = {
     jobs: options.jobs,
@@ -170,17 +236,39 @@ export async function installPresentationAssets(options, manifest, kind, adapter
   const probe = spawnSync(options.networkDeny, ['--check'], { stdio: 'ignore', timeout: 5000 });
   if (probe.error || probe.status !== 0)
     throw Error('Required native presentation confinement is unavailable.');
-  const status = (await readPresentationStatus(options.jobs, true)) || {
-    schemaVersion: 1,
+  const status = (await readPresentationStatus(options.jobs)) || {
+    schemaVersion: preparerRevision,
     categories: {},
   };
   const previous = status.categories[kind];
   // A selected category is one immutable native-source generation, including
   // continuation after an inventory refresh or an acknowledged retry restart.
   manifest = previous?.manifest || manifest;
-  const targetExists = await exists(target);
+  let targetExists = await exists(target);
   let owned = false,
     installedManifest;
+  const retire = async (path, item) => {
+    const retired = join(
+      dirname(path),
+      `.retired-${item || kind}-${randomBytes(12).toString('hex')}`,
+    );
+    await checkPresentationRetirement(path, kind, item);
+    await registerPresentationStage(stageOptions, retired, {
+      manifest,
+      kind,
+      location: item ? 'models' : 'assets',
+      retirement: path,
+    });
+    const outcome = spawnSync(options.networkDeny, ['--retire-presentation', path, retired], {
+      stdio: 'ignore',
+      timeout: 10000,
+    });
+    if (outcome.error || outcome.status !== 0)
+      throw Error('Exclusive presentation retirement failed.');
+    if (await cleanPresentationStages(stageOptions))
+      throw Error('Presentation retirement requires operator review.');
+  };
+  let repairingBank = false;
   if (targetExists) {
     await localDirectory(target);
     const marker = join(target, markerName);
@@ -189,7 +277,9 @@ export async function installPresentationAssets(options, manifest, kind, adapter
       const text = await readFile(marker, 'utf8');
       const value = JSON.parse(text);
       selectedSteamManifest(value.manifest);
-      if (text === JSON.stringify({ schemaVersion: 1, kind, manifest: value.manifest }))
+      if (
+        text === JSON.stringify({ schemaVersion: preparerRevision, kind, manifest: value.manifest })
+      )
         installedManifest = value.manifest;
     }
     owned = Boolean(installedManifest);
@@ -209,43 +299,67 @@ export async function installPresentationAssets(options, manifest, kind, adapter
       return { status: 'failed' };
     }
     manifest = installedManifest || manifest;
-    if (kind !== 'equipment-models' || !owned) {
-      const state = owned ? 'ready' : 'preserved';
-      status.categories[kind] = {
-        manifest: installedManifest || previous?.manifest || manifest,
-        generation: previous?.generation || randomBytes(12).toString('hex'),
-        status: state,
-        attempts: previous?.attempts || 0,
-        updatedAt: now(),
-        ...(previous?.counts ? { counts: previous.counts } : {}),
-        ...(previous?.unsupported ? { unsupported: previous.unsupported } : {}),
-      };
-      await writePresentationStatus(options.jobs, status);
-      return { status: state === 'ready' ? 'installed' : 'preserved' };
+    if (!itemBank || !owned) {
+      if (owned) {
+        try {
+          await validateBank(target, kind, manifest);
+        } catch {
+          repairingBank = true;
+          await retire(target);
+          owned = targetExists = false;
+        }
+      }
+      if (targetExists) {
+        const state = owned ? 'ready' : 'preserved';
+        status.categories[kind] = {
+          manifest: installedManifest || previous?.manifest || manifest,
+          generation: previous?.generation || randomBytes(12).toString('hex'),
+          status: state,
+          ...(operatorPresent ? { operatorPresent: true } : {}),
+          attempts: previous?.attempts || 0,
+          updatedAt: now(),
+          ...(previous?.counts ? { counts: previous.counts } : {}),
+          ...(previous?.unsupported ? { unsupported: previous.unsupported } : {}),
+        };
+        await writePresentationStatus(options.jobs, status);
+        return { status: state === 'ready' ? 'installed' : 'preserved' };
+      }
     }
+  }
+  if (!targetExists && operatorPresent && !repairingBank) {
+    status.categories[kind] = {
+      manifest,
+      generation: previous?.generation || randomBytes(12).toString('hex'),
+      status: 'preserved',
+      operatorPresent: true,
+      attempts: 0,
+      updatedAt: now(),
+    };
+    await writePresentationStatus(options.jobs, status);
+    return { status: 'preserved' };
   }
   options = { ...options, cache: join(cacheRoot, 'sources', `steam-${manifest}`) };
   const existing = new Set();
-  if (kind === 'equipment-models' && owned) {
+  if (itemBank && owned) {
     const entries = await readdir(target, { withFileTypes: true });
     if (entries.length > 128) throw Error('Native model directory scan exceeds its bound.');
     for (const entry of entries)
-      if (Object.hasOwn(equipmentModelRegistry, entry.name)) {
-        await localDirectory(join(target, entry.name));
-        existing.add(entry.name);
+      if (ids.includes(entry.name)) {
+        const path = join(target, entry.name);
+        try {
+          await validateItem(path, kind, manifest, entry.name);
+          existing.add(entry.name);
+        } catch {
+          await retire(path, entry.name);
+        }
       }
   }
   let unsupported =
-    kind === 'equipment-models' && previous?.manifest === manifest
-      ? previous.unsupported || []
+    itemBank && previous?.manifest === manifest
+      ? (previous.unsupported || []).filter((id) => ids.includes(id) && !existing.has(id))
       : [];
-  const missing =
-    kind === 'equipment-models'
-      ? Object.keys(equipmentModelRegistry).filter(
-          (id) => !existing.has(id) && !unsupported.includes(id),
-        )
-      : [];
-  if (kind === 'equipment-models' && !missing.length) {
+  const missing = ids.filter((id) => !existing.has(id) && !unsupported.includes(id));
+  if (itemBank && !missing.length) {
     status.categories[kind] = {
       manifest,
       generation: previous?.generation || randomBytes(12).toString('hex'),
@@ -253,50 +367,108 @@ export async function installPresentationAssets(options, manifest, kind, adapter
       attempts: 0,
       updatedAt: now(),
       unsupported,
+      ...(kind === 'viewmodels' && unsupported.length
+        ? { unsupportedCode: 'missing_official_resource' }
+        : {}),
       counts: {
         ready: existing.size,
         unavailable: unsupported.length,
-        total: Object.keys(equipmentModelRegistry).length,
+        total: ids.length,
       },
     };
     await writePresentationStatus(options.jobs, status);
     return { status: 'installed' };
   }
-  const sameWork =
-    previous?.manifest === manifest &&
-    (kind !== 'equipment-models' || !previous.item || missing.includes(previous.item));
-  if (sameWork && previous.attempts >= presentationPreparationLimits.attempts)
+  const sameSource = previous?.manifest === manifest;
+  if (sameSource && previous.status === 'failed' && previous.code === 'source_mismatch')
     return { status: 'failed' };
+  const itemRetries = Object.fromEntries(
+    Object.entries(sameSource ? previous.itemRetries || {} : {}).filter(([id]) =>
+      missing.includes(id),
+    ),
+  );
+  if (itemBank && sameSource && previous.attempts && missing.includes(previous.item)) {
+    const { attempts, generation, updatedAt, retryAt, code } = previous;
+    itemRetries[previous.item] = {
+      attempts,
+      generation,
+      updatedAt,
+      ...(retryAt === undefined ? {} : { retryAt }),
+      ...(code ? { code } : {}),
+    };
+  }
+  const item = missing.find(
+    (id) =>
+      !(itemRetries[id]?.attempts >= presentationPreparationLimits.attempts) &&
+      !(itemRetries[id]?.retryAt > now()),
+  );
+  if (itemBank && !item) {
+    const retryable = missing.filter(
+      (id) => itemRetries[id].attempts < presentationPreparationLimits.attempts,
+    );
+    const held = retryable.length
+      ? retryable.reduce((earliest, id) =>
+          itemRetries[id].retryAt < itemRetries[earliest].retryAt ? id : earliest,
+        )
+      : missing[0];
+    const failure = itemRetries[held];
+    status.categories[kind] = {
+      manifest,
+      ...failure,
+      status: 'failed',
+      item: held,
+      itemRetries,
+      code: failure.code || 'interrupted',
+      unsupported,
+      counts: { ready: existing.size, unavailable: unsupported.length, total: ids.length },
+    };
+    await writePresentationStatus(options.jobs, status);
+    return retryable.length
+      ? { status: 'backoff', retryAt: failure.retryAt }
+      : { status: 'failed' };
+  }
+  const previousAttempt = itemBank ? itemRetries[item] : sameSource && previous;
+  if (!itemBank && previousAttempt && !repairingBank && previous.status !== 'ready') {
+    if (previous.attempts >= presentationPreparationLimits.attempts) return { status: 'failed' };
+    if (previous.retryAt > now()) return { status: 'backoff', retryAt: previous.retryAt };
+  }
   const controller = options.signal
     ? AbortSignal.any([
         options.signal,
         AbortSignal.timeout(
-          kind === 'equipment-models'
+          itemBank
             ? presentationPreparationLimits.modelDeadlineMs
             : presentationPreparationLimits.deadlineMs,
         ),
       ])
     : AbortSignal.timeout(
-        kind === 'equipment-models'
+        itemBank
           ? presentationPreparationLimits.modelDeadlineMs
           : presentationPreparationLimits.deadlineMs,
       );
-  const attempts = sameWork ? previous.attempts + 1 : 1;
-  const generation = sameWork ? previous.generation : randomBytes(12).toString('hex');
+  const attempts =
+    (previousAttempt && (itemBank || previous?.status !== 'ready') ? previousAttempt.attempts : 0) +
+    1;
+  const generation = previousAttempt?.generation || randomBytes(12).toString('hex');
+  if (itemBank) delete itemRetries[item];
   const update = async (value) => {
     status.categories[kind] = {
       manifest,
       generation,
       attempts,
       updatedAt: now(),
-      ...(kind === 'equipment-models'
+      ...(itemBank
         ? {
-            item: missing[0],
+            item,
+            ...(Object.keys(itemRetries).length ? { itemRetries } : {}),
             unsupported,
+            ...(kind === 'viewmodels' && unsupported.length
+              ? { unsupportedCode: 'missing_official_resource' }
+              : {}),
             counts: {
               ready: existing.size,
               unavailable: unsupported.length,
-              total: Object.keys(equipmentModelRegistry).length,
+              total: ids.length,
             },
           }
         : {}),
@@ -325,6 +497,7 @@ export async function installPresentationAssets(options, manifest, kind, adapter
     const installerAdapters = {
       ...adapters.installAdapters,
       ...(adapters.run ? { run: adapters.run } : {}),
+      ...(options.pinnedIndexes ? { pinnedIndexes: options.pinnedIndexes } : {}),
     };
     options.log?.({ event: 'presentation.preparing', kind, manifest, attempt: attempts });
     let installation;
@@ -339,7 +512,9 @@ export async function installPresentationAssets(options, manifest, kind, adapter
           ...common,
           ...(kind === 'agents'
             ? { agents: ['ct', 't'] }
-            : { items: missing, allowMissing: true, firstItemOnly: true }),
+            : kind === 'viewmodels'
+              ? { viewmodel: item }
+              : { items: [item], allowMissing: true, firstItemOnly: true }),
           cleanup: true,
         },
         installerAdapters,
@@ -358,33 +533,44 @@ export async function installPresentationAssets(options, manifest, kind, adapter
     )
       throw Error('Invalid fixed icon coverage.');
     let modelId;
-    if (kind === 'equipment-models') {
+    if (itemBank) {
       if (
         !Array.isArray(installation?.unsupported) ||
-        installation.unsupported.some((id) => !missing.includes(id)) ||
+        installation.unsupported.some((id) => id !== item) ||
         !Array.isArray(installation.installed) ||
         installation.installed.length > 1 ||
-        installation.installed.some((id) => !missing.includes(id))
+        installation.installed.some((id) => id !== item)
       )
         throw Error('Invalid fixed native-model installation result.');
       unsupported = [...new Set([...unsupported, ...installation.unsupported])];
       modelId = installation.installed[0];
       if (!modelId) {
-        if (missing.some((id) => !unsupported.includes(id)))
+        if (!unsupported.includes(item))
           throw Error('Native model preparation produced no available model.');
-        await update({ status: 'ready' });
-        return { status: 'checked' };
+        const remaining = missing.some((id) => !unsupported.includes(id));
+        await update({
+          status: remaining ? 'preparing' : 'ready',
+          attempts: 0,
+          ...(remaining ? { stage: 'acquiring' } : {}),
+        });
+        options.log?.({
+          event: 'presentation.item_unsupported',
+          kind,
+          item,
+          code: 'missing_official_resource',
+        });
+        return { status: 'checked', remaining };
       }
     }
     await update({ status: 'preparing', stage: 'publishing' });
     const categoryBank = join(stage, kind);
-    await validateBank(categoryBank, kind, manifest);
-    const extending = kind === 'equipment-models' && owned;
+    await validateBank(categoryBank, kind, manifest, true);
+    const extending = itemBank && owned;
     const bank = extending ? join(categoryBank, modelId) : categoryBank;
     if (!extending)
       await writeFile(
         join(bank, markerName),
-        JSON.stringify({ schemaVersion: 1, kind, manifest }),
+        JSON.stringify({ schemaVersion: preparerRevision, kind, manifest }),
         {
           flag: 'wx',
           mode: 0o600,
@@ -418,13 +604,10 @@ export async function installPresentationAssets(options, manifest, kind, adapter
     if (result.error || result.status !== 0) throw Error('Native presentation publication failed.');
     publishing = undefined;
     if (modelId) existing.add(modelId);
-    const remaining =
-      kind === 'equipment-models' &&
-      Object.keys(equipmentModelRegistry).some(
-        (id) => !existing.has(id) && !unsupported.includes(id),
-      );
+    const remaining = itemBank && ids.some((id) => !existing.has(id) && !unsupported.includes(id));
     await update({
       status: remaining ? 'preparing' : 'ready',
+      attempts: itemBank ? 0 : attempts,
       ...(kind === 'equipment'
         ? {
             counts: {
@@ -442,7 +625,7 @@ export async function installPresentationAssets(options, manifest, kind, adapter
             counts: {
               ready: existing.size,
               unavailable: unsupported.length,
-              total: Object.keys(equipmentModelRegistry).length,
+              total: ids.length,
             },
           }
         : {}),

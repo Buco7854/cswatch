@@ -1057,5 +1057,8 @@
   "The demo download is unavailable or has expired. Try again or upload manually.": "Le téléchargement de la démo est indisponible ou a expiré. Réessayez ou ajoutez la démo manuellement.",
   "Your game authentication code is saved encrypted for future syncs. You can remove it here or revoke it on Steam Support.": "Votre code d’authentification du jeu est chiffré pour les prochaines synchronisations. Vous pouvez le supprimer ici ou le révoquer sur le Support Steam.",
   "Remove the saved game authentication code and discovered match list? Uploaded demos stay in your library.": "Supprimer le code d’authentification du jeu et la liste des matchs détectés ? Les démos ajoutées restent dans votre bibliothèque.",
-  "Steam linking was cancelled. Start again.": "L’association à Steam a été annulée. Recommencez."
+  "Steam linking was cancelled. Start again.": "L’association à Steam a été annulée. Recommencez.",
+  "Preparing map again": "Nouvelle préparation de la carte",
+  "The prepared map is incomplete or damaged. The worker will rebuild it.": "La carte préparée est incomplète ou endommagée. Le service va la reconstruire.",
+  "First-person rigs": "Modèles à la première personne"
 }

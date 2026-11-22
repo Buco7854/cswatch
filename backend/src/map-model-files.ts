@@ -1,3 +1,5 @@
+import { join } from 'node:path';
+import { presentationParts } from './presentation-assets.js';
 import type { FastifyInstance } from 'fastify';
 import type { FileHandle } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
@@ -151,7 +153,11 @@ export async function mapModelFileRoutes(
       reply.raw.once('close', closed);
       try {
         connected();
-        model = await openMapModel(location.root, path.parts, path.filename, location.parts);
+        const parts =
+          path.parts[0] === 'agents' && location.key === 'manual'
+            ? await presentationParts(join(location.root, ...location.parts), 'agents')
+            : path.parts;
+        model = await openMapModel(location.root, parts, path.filename, location.parts);
         if (!model) throw new HttpError(404, 'Map model not found.');
         connected();
         // Fresh content proof also prevents same-size/same-timestamp rewrites from satisfying an old ETag.

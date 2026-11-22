@@ -1,3 +1,4 @@
+import { presentationDirectory } from '../../backend/dist/asset-preparer.js';
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -60,8 +61,15 @@ async function fixture(t) {
   };
   for (const path of [options.assets, options.cache])
     await mkdir(path, { recursive: true, mode: 0o700 });
+  const output = join(options.assets, presentationDirectory);
+  await mkdir(output);
   await prepareMapJobs(options.jobs);
-  return { root, options, stageOptions: { ...options, cache: options.cacheRoot } };
+  return {
+    root,
+    options,
+    output,
+    stageOptions: { ...options, assets: output, cache: options.cacheRoot },
+  };
 }
 const noStorage = async () => {};
 const adapters = { storage: noStorage, reserve: noStorage };
@@ -145,7 +153,7 @@ async function preparedModel(output, id, agent = false) {
   );
 }
 test('presentation banks publish both original agent fixtures atomically and reuse the installed bank without acquisition', async (t) => {
-  const { options } = await fixture(t);
+  const { options, output } = await fixture(t);
   let calls = 0;
   const fake = {
     ...adapters,
@@ -165,18 +173,18 @@ test('presentation banks publish both original agent fixtures atomically and reu
     },
   };
   assert.equal((await installPresentationAssets(options, '1', 'agents', fake)).status, 'prepared');
-  const installed = await readFile(join(options.assets, 'agents/ct.glb'));
+  const installed = await readFile(join(output, 'agents/ct.glb'));
   assert.equal((await readPresentationStatus(options.jobs)).categories.agents.status, 'ready');
   assert.equal((await installPresentationAssets(options, '1', 'agents', fake)).status, 'installed');
   assert.equal(calls, 1);
-  assert.deepEqual(await readFile(join(options.assets, 'agents/ct.glb')), installed);
+  assert.deepEqual(await readFile(join(output, 'agents/ct.glb')), installed);
   assert.deepEqual(
-    (await readdir(options.assets)).filter((name) => name.startsWith('.presentation-')),
+    (await readdir(output)).filter((name) => name.startsWith('.presentation-')),
     [],
   );
 });
 test('interrupted agent validation leaves no published bank and retains the retry cooldown', async (t) => {
-  const { options } = await fixture(t);
+  const { options, output } = await fixture(t);
   const controller = new AbortController();
   await assert.rejects(
     installPresentationAssets(
@@ -197,7 +205,7 @@ test('interrupted agent validation leaves no published bank and retains the retr
     ),
     { name: 'AbortError' },
   );
-  assert.deepEqual(await readdir(options.assets), []);
+  assert.deepEqual(await readdir(output), []);
   const status = (await readPresentationStatus(options.jobs)).categories.agents;
   assert.equal(status.status, 'failed');
   assert.equal(status.code, 'interrupted');
@@ -206,7 +214,7 @@ test('interrupted agent validation leaves no published bank and retains the retr
 });
 
 test('native model preparation yields after one fixed item and extends only immutable registry identities', async (t) => {
-  const { options } = await fixture(t);
+  const { options, output } = await fixture(t);
   const items = [];
   const fake = {
     ...adapters,
@@ -222,14 +230,11 @@ test('native model preparation yields after one fixed item and extends only immu
   };
   const first = await installPresentationAssets(options, '1', 'equipment-models', fake);
   assert.equal(first.remaining, true);
-  const firstBytes = await readFile(join(options.assets, 'equipment-models/ak47/model.glb'));
+  const firstBytes = await readFile(join(output, 'equipment-models/ak47/model.glb'));
   const second = await installPresentationAssets(options, '2', 'equipment-models', fake);
   assert.equal(second.remaining, true);
-  assert.deepEqual(items, ['ak47', 'aug']);
-  assert.deepEqual(
-    await readFile(join(options.assets, 'equipment-models/ak47/model.glb')),
-    firstBytes,
-  );
+  assert.deepEqual(items, ['ak47', 'm4a1']);
+  assert.deepEqual(await readFile(join(output, 'equipment-models/ak47/model.glb')), firstBytes);
   assert.equal(
     (await readPresentationStatus(options.jobs)).categories['equipment-models'].counts.ready,
     2,
@@ -239,15 +244,45 @@ test('native model preparation yields after one fixed item and extends only immu
     '1',
   );
   assert.equal(
-    JSON.parse(
-      await readFile(join(options.assets, 'equipment-models/.cswatch-presentation.json'), 'utf8'),
-    ).manifest,
+    JSON.parse(await readFile(join(output, 'equipment-models/.cswatch-presentation.json'), 'utf8'))
+      .manifest,
     '1',
   );
 });
 
+test('one unavailable item waits for its own retry without blocking later fixed equipment', async (t) => {
+  const { options } = await fixture(t);
+  const calls = [];
+  const adapter = {
+    ...adapters,
+    installModels: async (settings) => {
+      const [id] = settings.items;
+      calls.push(id);
+      if (id === 'ak47' && calls.length === 1) throw Error('original temporary failure');
+      await preparedModel(settings.output, id);
+      return { installed: [id], unsupported: [] };
+    },
+  };
+  await assert.rejects(installPresentationAssets(options, '1', 'equipment-models', adapter));
+  assert.equal(
+    (await installPresentationAssets(options, '1', 'equipment-models', adapter)).status,
+    'prepared',
+  );
+  assert.deepEqual(calls, ['ak47', 'm4a1']);
+  const state = await readPresentationStatus(options.jobs);
+  const category = state.categories['equipment-models'];
+  assert.equal(category.itemRetries.ak47.attempts, 1);
+  assert.ok(category.itemRetries.ak47.retryAt > category.updatedAt);
+  category.itemRetries.ak47.retryAt = 1;
+  await writePresentationStatus(options.jobs, state);
+  assert.equal(
+    (await installPresentationAssets(options, '1', 'equipment-models', adapter)).status,
+    'prepared',
+  );
+  assert.deepEqual(calls, ['ak47', 'm4a1', 'ak47']);
+});
 test('explicit native retry retains source A through inventory B and restart before actual preparation', async (t) => {
-  const { options } = await fixture(t),
+  const { options, output } = await fixture(t),
     initial = {
       manifest: '1',
       generation: 'a'.repeat(24),
@@ -257,7 +292,7 @@ test('explicit native retry retains source A through inventory B and restart bef
       code: 'preparation_failed',
     };
   await writePresentationStatus(options.jobs, {
-    schemaVersion: 1,
+    schemaVersion: 2,
     categories: { agents: initial },
   });
   assert.equal(await enqueuePresentationRetry(options.jobs, 'agents'), 'queued');
@@ -338,7 +373,7 @@ test('explicit native retry retains source A through inventory B and restart bef
 });
 
 test('conflicting retained native source and owned bank persist a terminal diagnostic without modifying artwork', async (t) => {
-  const { options } = await fixture(t);
+  const { options, output } = await fixture(t);
   await installPresentationAssets(options, '1', 'equipment-models', {
     ...adapters,
     installModels: async (settings) => {
@@ -346,11 +381,11 @@ test('conflicting retained native source and owned bank persist a terminal diagn
       return { installed: ['ak47'], unsupported: [] };
     },
   });
-  const bank = join(options.assets, 'equipment-models'),
+  const bank = join(output, 'equipment-models'),
     installed = await readFile(join(bank, 'ak47/model.glb')),
     marker = await readFile(join(bank, '.cswatch-presentation.json'));
   await writePresentationStatus(options.jobs, {
-    schemaVersion: 1,
+    schemaVersion: 2,
     categories: {
       'equipment-models': {
         manifest: '2',
@@ -391,9 +426,9 @@ test('conflicting retained native source and owned bank persist a terminal diagn
 });
 
 test('retained native retries require fresh observed inventory and survive a stale refresh failure', async (t) => {
-  const { options } = await fixture(t);
+  const { options, output } = await fixture(t);
   await writePresentationStatus(options.jobs, {
-    schemaVersion: 1,
+    schemaVersion: 2,
     categories: {
       agents: {
         manifest: '1',
@@ -463,7 +498,7 @@ test('retained native retries require fresh observed inventory and survive a sta
 });
 
 test('a newly observed inventory cannot reset exhausted or integrity-failed native source authority', async (t) => {
-  const { options } = await fixture(t);
+  const { options, output } = await fixture(t);
   for (const code of ['preparation_failed', 'source_mismatch']) {
     const failed = {
       manifest: '1',
@@ -474,7 +509,7 @@ test('a newly observed inventory cannot reset exhausted or integrity-failed nati
       code,
     };
     await writePresentationStatus(options.jobs, {
-      schemaVersion: 1,
+      schemaVersion: 2,
       categories: { agents: failed },
     });
     let acquisitions = 0;
@@ -495,7 +530,7 @@ test('a newly observed inventory cannot reset exhausted or integrity-failed nati
 });
 
 test('retry consumption rejects a renewed failure, terminal evidence or cooldown even within the same second and generation', async (t) => {
-  const { options } = await fixture(t);
+  const { options, output } = await fixture(t);
   for (const change of [
     { code: 'source_mismatch', attempts: 3 },
     { retryAt: Math.floor(Date.now() / 1000) + 300 },
@@ -514,13 +549,13 @@ test('retry consumption rejects a renewed failure, terminal evidence or cooldown
       item: 'ak47',
     };
     await writePresentationStatus(options.jobs, {
-      schemaVersion: 1,
+      schemaVersion: 2,
       categories: { 'equipment-models': failed },
     });
     assert.equal(await enqueuePresentationRetry(options.jobs, 'equipment-models'), 'queued');
     const renewed = { ...failed, ...change };
     await writePresentationStatus(options.jobs, {
-      schemaVersion: 1,
+      schemaVersion: 2,
       categories: { 'equipment-models': renewed },
     });
     assert.deepEqual(await consumePresentationRetries(options.jobs), []);
@@ -529,14 +564,14 @@ test('retry consumption rejects a renewed failure, terminal evidence or cooldown
       renewed,
     );
     assert.equal(
-      (await readdir(options.jobs)).includes('presentation-retry-equipment-models.json'),
+      (await readdir(options.jobs)).includes('presentation-retry-v2-equipment-models.json'),
       false,
     );
   }
 });
 
 test('enqueue revalidates the complete failure snapshot and current cooldown after asynchronous intent writes', async (t) => {
-  const { options } = await fixture(t);
+  const { options, output } = await fixture(t);
   for (const change of [
     { code: 'source_mismatch', attempts: 3 },
     { retryAt: Math.floor(Date.now() / 1000) + 300 },
@@ -551,7 +586,7 @@ test('enqueue revalidates the complete failure snapshot and current cooldown aft
       code: 'preparation_failed',
     };
     await writePresentationStatus(options.jobs, {
-      schemaVersion: 1,
+      schemaVersion: 2,
       categories: { agents: failed },
     });
     let enter,
@@ -584,7 +619,7 @@ test('enqueue revalidates the complete failure snapshot and current cooldown aft
         }),
       ]);
       await writePresentationStatus(options.jobs, {
-        schemaVersion: 1,
+        schemaVersion: 2,
         categories: { agents: { ...failed, ...change } },
       });
     } finally {
@@ -592,11 +627,14 @@ test('enqueue revalidates the complete failure snapshot and current cooldown aft
     }
     assert.equal(await operation, 'stale');
     assert.equal(authorized, 0);
-    assert.equal((await readdir(options.jobs)).includes('presentation-retry-agents.json'), false);
+    assert.equal(
+      (await readdir(options.jobs)).includes('presentation-retry-v2-agents.json'),
+      false,
+    );
   }
 });
 test('presentation failures retain a durable three-attempt budget and require explicit generation-safe admin retry', async (t) => {
-  const { options } = await fixture(t);
+  const { options, output } = await fixture(t);
   let calls = 0;
   const failure = {
     ...adapters,
@@ -607,8 +645,18 @@ test('presentation failures retain a durable three-attempt budget and require ex
       });
     },
   };
-  for (let index = 0; index < 3; index++)
+  for (let index = 0; index < 3; index++) {
     await assert.rejects(installPresentationAssets(options, '1', 'agents', failure));
+    if (index < 2) {
+      assert.equal(
+        (await installPresentationAssets(options, '1', 'agents', failure)).status,
+        'backoff',
+      );
+      const state = await readPresentationStatus(options.jobs);
+      state.categories.agents.retryAt = 1;
+      await writePresentationStatus(options.jobs, state);
+    }
+  }
   assert.equal((await installPresentationAssets(options, '1', 'agents', failure)).status, 'failed');
   assert.equal(calls, 3);
   const failed = await readPresentationStatus(options.jobs);
@@ -626,7 +674,7 @@ test('presentation failures retain a durable three-attempt budget and require ex
     /session revoked/,
   );
   assert.equal(
-    (await readdir(options.jobs)).some((name) => name === 'presentation-retry-agents.json'),
+    (await readdir(options.jobs)).some((name) => name === 'presentation-retry-v2-agents.json'),
     false,
   );
   assert.equal(
@@ -649,9 +697,9 @@ test('presentation failures retain a durable three-attempt budget and require ex
   assert.equal(calls, 4);
 });
 test('stale retry intents cannot reset a newer presentation generation and strict status rejects contradictory counts', async (t) => {
-  const { options } = await fixture(t);
+  const { options, output } = await fixture(t);
   const status = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     categories: {
       agents: {
         manifest: '1',
@@ -694,7 +742,7 @@ test('stale retry intents cannot reset a newer presentation generation and stric
   );
 });
 test('native source-integrity failures remain terminal for the selected source and cannot use admin retry to bypass evidence', async (t) => {
-  const { options } = await fixture(t);
+  const { options, output } = await fixture(t);
   let calls = 0;
   const integrity = {
     ...adapters,
@@ -714,29 +762,37 @@ test('native source-integrity failures remain terminal for the selected source a
   );
   assert.equal(calls, 1);
 });
-test('malformed private native status cannot reset durable preparation budgets or be overwritten as a new cache', async (t) => {
-  const { options } = await fixture(t);
+test('unknown native status is replaced and the agent bank is repaired after damage', async (t) => {
+  const { options, output } = await fixture(t);
+  const status = join(options.jobs, 'presentation-status-v2.json');
+  await writeFile(status, '{"schemaVersion":2,"categories":{},"unknown":true}', { mode: 0o600 });
   let acquisitions = 0;
-  await writeFile(
-    join(options.jobs, 'presentation-status.json'),
-    '{"schemaVersion":1,"categories":{"agents":{"attempts":-1}}}',
-    { mode: 0o600 },
+  const installer = {
+    ...adapters,
+    installModels: async (settings) => {
+      acquisitions++;
+      await preparedModel(settings.output, 'ct', true);
+      await preparedModel(settings.output, 't', true);
+    },
+  };
+  assert.equal(
+    (await installPresentationAssets(options, '1', 'agents', installer)).status,
+    'prepared',
   );
-  const before = await readFile(join(options.jobs, 'presentation-status.json'));
-  await assert.rejects(
-    installPresentationAssets(options, '1', 'agents', {
-      ...adapters,
-      installModels: async () => {
-        acquisitions++;
-      },
-    }),
-    /status is invalid/,
+  assert.equal((await readPresentationStatus(options.jobs)).categories.agents.status, 'ready');
+  await writeFile(join(output, 'agents/ct.glb'), 'damaged');
+  assert.equal(
+    (await installPresentationAssets(options, '1', 'agents', installer)).status,
+    'prepared',
   );
-  assert.equal(acquisitions, 0);
-  assert.deepEqual(await readFile(join(options.jobs, 'presentation-status.json')), before);
+  assert.equal(acquisitions, 2);
+  assert.deepEqual(
+    (await readdir(output)).filter((name) => name.startsWith('.retired-')),
+    [],
+  );
 });
 test('operator-owned presentation directories and linked decoder output are preserved without publication', async (t) => {
-  const { root, options } = await fixture(t);
+  const { root, options, output } = await fixture(t);
   await mkdir(join(options.assets, 'agents'));
   await writeFile(join(options.assets, 'agents/operator.txt'), 'preserve operator content');
   assert.equal(
@@ -774,11 +830,11 @@ test('operator-owned presentation directories and linked decoder output are pres
   );
 });
 test('crash journal recovers work, pre-rename claims and renamed publishing banks without deleting unknown or published directories', async (t) => {
-  const { options, stageOptions } = await fixture(t);
-  const unknown = await mkdtemp(join(options.assets, '.presentation-'));
+  const { options, output, stageOptions } = await fixture(t);
+  const unknown = await mkdtemp(join(output, '.presentation-'));
   await writeFile(join(unknown, 'operator.txt'), 'unknown');
   for (const renamed of [false, true]) {
-    const work = await mkdtemp(join(options.assets, '.presentation-'));
+    const work = await mkdtemp(join(output, '.presentation-'));
     await registerPresentationStage(stageOptions, work, {
       manifest: '1',
       kind: 'agents',
@@ -787,7 +843,7 @@ test('crash journal recovers work, pre-rename claims and renamed publishing bank
     const bank = join(work, 'agents');
     await mkdir(bank);
     await writeFile(join(bank, 'original.txt'), 'original');
-    const publishing = await mkdtemp(join(options.assets, '.presentation-'));
+    const publishing = await mkdtemp(join(output, '.presentation-'));
     await registerPresentationStage(stageOptions, publishing, {
       manifest: '1',
       kind: 'agents',
@@ -796,7 +852,7 @@ test('crash journal recovers work, pre-rename claims and renamed publishing bank
     });
     if (renamed) await rename(bank, publishing);
     assert.equal(await cleanPresentationStages(stageOptions), 0);
-    assert.equal((await readdir(options.assets)).includes(publishing.split('/').at(-1)), false);
+    assert.equal((await readdir(output)).includes(publishing.split('/').at(-1)), false);
   }
   assert.equal(await readFile(join(unknown, 'operator.txt'), 'utf8'), 'unknown');
   const nativeControl = await mkdtemp(join(options.cache, 'equipment-install-'));
@@ -810,10 +866,10 @@ test('crash journal recovers work, pre-rename claims and renamed publishing bank
   assert.equal((await readdir(options.cache)).includes(nativeControl.split('/').at(-1)), false);
 });
 test('coarse catalog completion exposes no diagnostics and startup cleanup removes only recognized private web orphans', async (t) => {
-  const { options } = await fixture(t);
+  const { options, output } = await fixture(t);
   assert.equal(await presentationCatalogComplete(options.jobs, 'equipment', 0), undefined);
   const status = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     categories: {
       equipment: {
         manifest: '1',
@@ -845,22 +901,22 @@ test('coarse catalog completion exposes no diagnostics and startup cleanup remov
   assert.equal(await readFile(unknown, 'utf8'), 'operator');
 });
 test('compiled publication modes reject replacement, arbitrary IDs, linked stages and different parents', async (t) => {
-  const { options } = await fixture(t);
-  const stage = await mkdtemp(join(options.assets, '.presentation-'));
+  const { options, output } = await fixture(t);
+  const stage = await mkdtemp(join(output, '.presentation-'));
   await writeFile(join(stage, 'original.txt'), 'original');
   const publish = (source, target, mode = '--publish-presentation') =>
     spawnSync(boundary, [mode, source, target], { stdio: 'ignore', timeout: 5000 }).status;
-  assert.equal(publish(stage, join(options.assets, 'agents')), 0);
-  const rejected = await mkdtemp(join(options.assets, '.presentation-'));
-  assert.equal(publish(rejected, join(options.assets, 'agents')), 125);
+  assert.equal(publish(stage, join(output, 'agents')), 0);
+  const rejected = await mkdtemp(join(output, '.presentation-'));
+  assert.equal(publish(rejected, join(output, 'agents')), 125);
   assert.equal(publish(rejected, join(options.assets, 'arbitrary')), 125);
-  const linked = join(options.assets, '.presentation-ABC123');
+  const linked = join(output, '.presentation-ABC123');
   await symlink(rejected, linked);
   assert.equal(publish(linked, join(options.assets, 'equipment')), 125);
   const other = join(options.assets, 'other');
   await mkdir(other);
   assert.equal(publish(rejected, join(other, 'equipment')), 125);
-  const models = join(options.assets, 'equipment-models');
+  const models = join(output, 'equipment-models');
   await mkdir(models);
   const item = await mkdtemp(join(models, '.equipment-'));
   assert.equal(publish(item, join(models, 'ak47'), '--publish-equipment'), 0);

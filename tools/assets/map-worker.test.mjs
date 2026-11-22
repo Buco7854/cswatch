@@ -558,7 +558,7 @@ async function writePackMarker(f) {
   await writeFile(
     join(f.target, 'pack.json'),
     JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
       packId: f.packId,
       approval: canonicalMapApproval(f.entry),
       preparedAt: 1,
@@ -768,7 +768,7 @@ test('processing recovery validates an already-published pack and never overwrit
   await originalPack(join(f.target, 'maps'), f.entry);
   await writePackMarker(f);
   await writeMapJobResult(f.options.jobs, {
-    schemaVersion: 1,
+    schemaVersion: 2,
     packId: f.packId,
     status: 'processing',
     updatedAt: 1,
@@ -791,6 +791,35 @@ test('processing recovery validates an already-published pack and never overwrit
     (await validatePreparedMap(join(f.target, 'maps'), f.entry.identity.map, versionOf(f.entry)))
       .length >= 15,
   );
+});
+
+test('a changed worker-owned ready pack is retired and rebuilt through the normal queue', async (t) => {
+  const f = await fixture(t);
+  const prepare = async (options) => {
+    await originalPack(options.output, f.entry);
+  };
+  assert.equal(await processOneMapRequest(f.options, { prepare }), true);
+  assert.equal((await readMapResult(f.options.jobs, f.packId)).status, 'ready');
+  const model = join(f.target, 'maps', f.entry.identity.map, 'desktop', 'scene.glb');
+  await writeFile(model, 'damaged model');
+  let conversions = 0;
+  assert.equal(
+    await processOneMapRequest(f.options, {
+      prepare: async (options) => {
+        const current = await readMapResult(f.options.jobs, f.packId);
+        assert.equal(current.status, 'processing');
+        assert.equal(current.repairing, true);
+        assert.equal(await absent(f.target), true);
+        conversions++;
+        await prepare(options);
+      },
+    }),
+    true,
+  );
+  assert.equal(conversions, 1);
+  assert.equal((await readMapResult(f.options.jobs, f.packId)).status, 'ready');
+  assert.equal(await processOneMapRequest(f.options, { prepare }), false);
+  assert.deepEqual(await readdir(join(f.options.assets, 'packs')), [f.packId]);
 });
 
 test('a pre-existing incomplete immutable pack is never repaired in place or marked ready', async (t) => {
@@ -959,7 +988,7 @@ test(
       unmarked = await mkdtemp(join(packs, `.preparing-${f.packId}-`)),
       foreign = await mkdtemp(join(packs, `.preparing-${f.packId}-`));
     const content = JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
       packId: f.packId,
       kind: 'cswatch-official-map-preparation',
     });
@@ -976,7 +1005,7 @@ test(
     await mkdir(published);
     await writeFile(join(published, 'operator.txt'), 'immutable published bytes');
     await writeMapJobResult(f.options.jobs, {
-      schemaVersion: 1,
+      schemaVersion: 2,
       packId: f.packId,
       status: 'processing',
       updatedAt: 1,
@@ -1089,7 +1118,7 @@ test('durable crash attempts stop repeated conversion and a cooled authorized re
   for (let attempt = 0; attempt < 3; attempt++) {
     // A killed worker leaves this durable processing state instead of entering catch.
     await writeMapJobResult(f.options.jobs, {
-      schemaVersion: 1,
+      schemaVersion: 2,
       packId: f.packId,
       status: 'processing',
       updatedAt: Math.floor(Date.now() / 1000),
@@ -1097,7 +1126,7 @@ test('durable crash attempts stop repeated conversion and a cooled authorized re
     assert.equal(await processOneMapRequest(f.options, failedConversion), true);
   }
   await writeMapJobResult(f.options.jobs, {
-    schemaVersion: 1,
+    schemaVersion: 2,
     packId: f.packId,
     status: 'processing',
     updatedAt: Math.floor(Date.now() / 1000),
@@ -1106,7 +1135,7 @@ test('durable crash attempts stop repeated conversion and a cooled authorized re
   assert.equal(preparations, 3, 'a fourth restart must not run a doomed converter again');
   assert.equal((await readMapResult(f.options.jobs, f.packId)).code, 'worker_interrupted');
   await writeMapJobResult(f.options.jobs, {
-    schemaVersion: 1,
+    schemaVersion: 2,
     packId: f.packId,
     status: 'failed',
     code: 'worker_interrupted',

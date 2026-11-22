@@ -168,6 +168,7 @@ export default function AdminMapReadiness({
                 ['agents', 'Player models'],
                 ['equipment', 'Weapon icons'],
                 ['equipment-models', 'Weapon models'],
+                ['viewmodels', 'First-person rigs'],
               ] as [PresentationKind, string][]
             ).map(([kind, label]) => {
               const category = presentation?.categories[kind];
@@ -209,7 +210,9 @@ export default function AdminMapReadiness({
                         })}
                       </small>
                     )}
-                    {state === 'preparing' && category?.item && <small>{category.item}</small>}
+                    {(state === 'preparing' || state === 'failed') && category?.item && (
+                      <small>{category.item}</small>
+                    )}
                     {category?.counts && (
                       <small>
                         {t('{{ready}} / {{total}} prepared', {
@@ -222,6 +225,11 @@ export default function AdminMapReadiness({
                       <details className="shared-assets-unavailable">
                         <summary>{t('Unavailable models')}</summary>
                         <p>{category!.unsupported!.join(', ')}</p>
+                        {category?.unsupportedCode && (
+                          <small>
+                            {t('Diagnostic code: {{code}}', { code: category.unsupportedCode })}
+                          </small>
+                        )}
                       </details>
                     )}
                     {state === 'failed' && category?.code !== 'source_mismatch' && retryAsset && (

@@ -12,11 +12,9 @@ The viewer follow-up adds direct owner deletion, guest CSRF refresh, a loading-o
 
 The local interface follows the supplied Refrag reference for tone and hierarchy. The public upload sits on the page with feathered official Mirage artwork. Library, upload and sign-in share the same compact controls and cswatch teal action color. The separate Steam and FACEIT link leads to Connected accounts for both guests and members. [Interface evidence](../VERIFICATION.md#local-landing-redesign-2026-11-21)
 
-The current worktree covers authored AK, M4A4, AWP and Glock POV rigs, recorded eye offsets and a wall-aware shoulder camera over prepared geometry. A true multi-draw trial was rejected after repeated comparisons. The workspace reflow and local provider checks are implemented. Live account verification and same-recording hardware fidelity remain unavailable. Read the [current evidence](../VERIFICATION.md#local-expanded-pov-and-camera-evidence-2026-11-20) before promoting asset or rendering defaults.
+The first-person worker follow-up adds a fixed official resource registry and per-item manifests. A versioned output namespace keeps incompatible earlier worker files out of discovery. Keep [current verification](../VERIFICATION.md#local-automatic-first-person-preparation) separate from earlier operator-prepared POV evidence.
 
 The local normal viewer now draws a pinned official Mirage pack with verified baked lighting, directional and sun-occlusion textures and painted two-way color layers. The same recording verifies smoke volumes and recorded sniper projection. Next widen native weapon and map coverage and validate cross-viewer FPS on hardware before moving to the general UI. [Native rendering](NATIVE-RENDERER.md) [Evidence](../VERIFICATION.md#local-recorded-smoke-and-scope-playback-2026-11-20)
-
-The first-person follow-up integrates the fixed AK rig and replays authored firing and reloads in the normal viewer. Continue the world-rendering work and native coverage for other weapons before widening the UI scope. [Native renderer](NATIVE-RENDERER.md)
 
 The active local viewer review now covers game presentation, player readability and automatically adapting render quality, followed by general app UI and Steam/FACEIT verification. Use the [viewer comparison and checkpoints](VIEWER-COMPARISON.md) for the current workflow matrix and native benchmark inputs.
 

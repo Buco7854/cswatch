@@ -199,7 +199,7 @@ export async function createApp(
   await equipmentAssetRoutes(app, db.root, c.mapAssetsDir, c.mapJobsDir);
   await gameplaySoundAssetRoutes(app, db.root, c.mapAssetsDir);
   await equipmentModelAssetRoutes(app, db.root, c.mapAssetsDir, c.mapJobsDir);
-  viewmodelAssetRoutes(app, c.mapAssetsDir);
+  viewmodelAssetRoutes(app, c.mapAssetsDir, c.mapJobsDir);
   const manualMapLocation = {
     root: c.mapAssetsDir,
     parts: [],

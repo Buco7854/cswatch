@@ -29,25 +29,36 @@ async function fixture(t) {
   await prepareMapJobs(options.jobs);
   return options;
 }
-test('core native actors and HUD icons precede preview/audio while each bulk model yields to queued maps', async (t) => {
+test('actors and HUD icons precede alternating static and first-person models, which yield to queued maps', async (t) => {
   const options = await fixture(t),
     controller = new AbortController(),
     sequence = [];
   let maps = 0,
-    models = 0;
+    models = 0,
+    rigs = 0;
   await runMapWorker(
     { ...options, signal: controller.signal },
     {
       refreshInventory: async () => ({ manifest: '1', maps: [{}] }),
       processRequest: async () => {
         sequence.push('map');
-        if (++maps === 8) controller.abort();
+        if (++maps === 9) controller.abort();
         return false;
       },
       preparePresentation: async (_options, manifest, kind) => {
         assert.equal(manifest, '1');
-        sequence.push(kind === 'equipment-models' ? `model${++models}` : kind);
-        return { status: 'prepared', remaining: kind === 'equipment-models' && models < 2 };
+        sequence.push(
+          kind === 'equipment-models'
+            ? `model${++models}`
+            : kind === 'viewmodels'
+              ? `rig${++rigs}`
+              : kind,
+        );
+        return {
+          status: 'prepared',
+          remaining:
+            (kind === 'equipment-models' && models < 2) || (kind === 'viewmodels' && rigs < 2),
+        };
       },
       preparePreview: async () => {
         sequence.push('preview');
@@ -64,50 +75,45 @@ test('core native actors and HUD icons precede preview/audio while each bulk mod
     'map',
     'equipment',
     'map',
+    'model1',
+    'map',
+    'rig1',
+    'map',
+    'model2',
+    'map',
+    'rig2',
+    'map',
     'preview',
     'map',
     'sounds',
     'map',
-    'model1',
-    'map',
-    'model2',
-    'map',
-    'map',
   ]);
 });
-test('a failed idle native task backs off other optional downloads while map checks and heartbeats continue', async (t) => {
+test('a transient native failure preserves its retry backoff while other presentation categories can publish', async (t) => {
   const options = await fixture(t),
     controller = new AbortController();
   let clock = 1000,
-    calls = 0,
-    maps = 0;
+    maps = 0,
+    agentAttempts = 0;
+  const attempts = [];
   await runMapWorker(
     { ...options, signal: controller.signal },
     {
       now: () => clock,
       refreshInventory: async () => ({ manifest: '1', maps: [{}] }),
       processRequest: async () => {
-        maps++;
-        if (maps > 200) {
-          controller.abort();
-          throw Error('Native idle fixture never reached its bounded recovery turn.');
-        }
+        if (++maps > 170) throw Error('Native idle fixture exceeded the retry window.');
         return false;
       },
       preparePresentation: async (_options, _manifest, kind) => {
-        calls++;
-        if (kind === 'agents') throw Error('original transient fixture failure');
-        assert.equal(kind, 'equipment');
-        assert.ok(clock >= 1300);
+        attempts.push([kind, clock]);
+        if (kind !== 'agents') return { status: 'installed' };
+        if (++agentAttempts === 1) throw Error('original transient fixture failure');
         controller.abort();
         return { status: 'installed' };
       },
-      preparePreview: async () => {
-        throw Error('Preview must wait for idle backoff');
-      },
-      prepareSounds: async () => {
-        throw Error('Sounds must wait for idle backoff');
-      },
+      preparePreview: async () => ({ status: 'installed' }),
+      prepareSounds: async () => ({ status: 'installed' }),
       delay: async (milliseconds) => {
         assert.ok(milliseconds > 0 && milliseconds <= 2000);
         const state = JSON.parse(await readFile(join(options.jobs, 'worker-status.json'), 'utf8'));
@@ -116,7 +122,13 @@ test('a failed idle native task backs off other optional downloads while map che
       },
     },
   );
-  assert.equal(calls, 2);
+  assert.deepEqual(attempts, [
+    ['agents', 1000],
+    ['equipment', 1000],
+    ['equipment-models', 1000],
+    ['viewmodels', 1000],
+    ['agents', 1300],
+  ]);
   assert.ok(maps >= 150);
 });
 test('small native artwork yields to maps, runs before sounds and rechecks newly queued maps after preparing it', async (t) => {

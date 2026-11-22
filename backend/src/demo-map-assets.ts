@@ -92,9 +92,9 @@ export async function demoMapAssetRoutes(
         result = await readMapResult(c.mapJobsDir, requestId);
       if (
         !queued ||
-        result?.status !== 'ready' ||
-        !latestMapResultMatches(queued, result) ||
-        !(await latestReadyPack(result.assetPackId!, demo.map))
+        !result ||
+        !['ready', 'processing'].includes(result.status) ||
+        !latestMapResultMatches(queued, result)
       )
         return exact;
     }
@@ -182,21 +182,22 @@ export async function demoMapAssetRoutes(
           code: 'removed_by_admin',
           assets: emptyAssets,
         };
+      const repairing: DemoMapAssets = {
+        resolution,
+        acquisition: 'processing',
+        canAcquire: false,
+        verification: 'unavailable',
+        packId: resolution.status === 'approved' ? resolution.packId : null,
+        code: 'pack_invalid',
+        assets: emptyAssets,
+      };
       if (result?.status === 'ready') {
         if (
           !assetPackId ||
           (resolution.status === 'latest' &&
             !(await latestReadyPack(assetPackId, resolution.selection.map)))
         )
-          return {
-            resolution,
-            acquisition: 'failed',
-            canAcquire: false,
-            verification: 'unavailable',
-            packId: null,
-            code: 'preparation_failed',
-            assets: emptyAssets,
-          };
+          return repairing;
         const assets = await repository.describe(
           resolution.status === 'approved'
             ? resolution.approval.identity.map
@@ -213,16 +214,9 @@ export async function demoMapAssetRoutes(
             packId: assetPackId,
             assets,
           };
-        return {
-          resolution,
-          acquisition: 'failed',
-          canAcquire: false,
-          verification: 'unavailable',
-          packId: assetPackId,
-          code: 'preparation_failed',
-          assets: emptyAssets,
-        };
+        return repairing;
       }
+      if (result?.repairing) return repairing;
       if (result)
         return {
           resolution,

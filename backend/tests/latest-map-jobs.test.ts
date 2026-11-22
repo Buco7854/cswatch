@@ -132,7 +132,7 @@ test('latest queue deduplicates a pinned selection, preserves string IDs and use
     if (first?.kind !== 'latest-official') throw Error('Missing latest request');
     assert.deepEqual(first.selection, selection);
     await writeMapJobResult(f.root, {
-      schemaVersion: 1,
+      schemaVersion: 2,
       packId: queueId,
       status: 'failed',
       code: 'source_unavailable',
@@ -149,7 +149,7 @@ test('latest queue deduplicates a pinned selection, preserves string IDs and use
 
 test('latest publication identity requires pinned membership selection and complete post-download source proof', () => {
   const request = {
-    schemaVersion: 1 as const,
+    schemaVersion: 2 as const,
     kind: 'latest-official' as const,
     packId: queueId,
     generation: 'a'.repeat(32),
@@ -163,7 +163,7 @@ test('latest publication identity requires pinned membership selection and compl
   );
   assert.equal(mapJobRequestSchema.safeParse({ ...request, approval: {} }).success, false);
   const result = {
-    schemaVersion: 1 as const,
+    schemaVersion: 2 as const,
     packId: queueId,
     status: 'ready' as const,
     updatedAt: at,
@@ -180,7 +180,7 @@ test('latest publication identity requires pinned membership selection and compl
   );
   assert.equal(latestMapResultMatches(request, { ...result, assetPackId: 'f'.repeat(64) }), false);
   const marker = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     kind: 'latest-official',
     packId: assetId,
     requestId: queueId,
@@ -208,7 +208,7 @@ test('explicit latest retry preserves verified content proof after publishing a 
     await enqueueLatestMapRequest(f.root, selection);
     const previous = await readMapRequest(f.root, queueId);
     await writeMapJobResult(f.root, {
-      schemaVersion: 1,
+      schemaVersion: 2,
       packId: queueId,
       status: 'failed',
       code: 'worker_interrupted',

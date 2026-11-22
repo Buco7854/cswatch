@@ -19,7 +19,7 @@ import { readMapRequest, readMapResult, writeMapJobResult } from '../../backend/
 import { withDirectory, regularFile, bytesFrom } from '../../backend/dist/map-asset-files.js';
 const defaultNetworkDeny = fileURLToPath(new URL('./bin/asset-network-deny', import.meta.url));
 
-function pathsFor(map) {
+export function managedMapPaths(map) {
   const files = new Set(['pack.json', '.preparation.json', `maps/${map}/installation.json`]);
   for (const tier of ['desktop', 'mobile'])
     for (const name of ['scene.glb', 'manifest.json', 'texture-plan.json'])
@@ -55,6 +55,7 @@ async function walk(
   prefix = '',
   state = { count: 0, bytes: 0 },
   signal,
+  last = 'pack.json',
 ) {
   signal?.throwIfAborted();
   const info = await directory.stat();
@@ -68,7 +69,7 @@ async function walk(
     names.push(entry.name);
   }
   // Keep the immutable authorization marker until every other owned file is gone.
-  names.sort((a, b) => (a === 'pack.json' ? 1 : b === 'pack.json' ? -1 : a.localeCompare(b)));
+  names.sort((a, b) => (a === last ? 1 : b === last ? -1 : a.localeCompare(b)));
   for (const name of names) {
     signal?.throwIfAborted();
     const relative = prefix ? `${prefix}/${name}` : name;
@@ -79,7 +80,7 @@ async function walk(
         constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
       );
       try {
-        await walk(child, allowed, remove, relative, state, signal);
+        await walk(child, allowed, remove, relative, state, signal, last);
       } finally {
         await child.close();
       }
@@ -136,6 +137,88 @@ async function markerMatches(directory, expected, allowEmpty) {
 const changed = () =>
   Object.assign(Error('Map removal identity changed'), { removalCode: 'request_changed' });
 
+/** Repair uses the same bounded allowlist and no-replace retirement as admin removal. */
+export async function retireInvalidMapPack(options, request, packId, signal, ownedMarker) {
+  const map =
+    request.kind === 'latest-official' ? request.selection.map : request.approval.identity.map;
+  const quarantine = `.removing-${packId}-${request.generation}`;
+  if (!/^[a-f0-9]{64}$/.test(packId)) throw Error('Invalid repair identity.');
+  let failure;
+  const retired = await withDirectory(options.assets, ['packs'], async (packs) => {
+    const parent = `/proc/self/fd/${packs.fd}`;
+    const openDirectory = (name) =>
+      open(
+        `${parent}/${name}`,
+        constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+      ).catch((error) => {
+        if (error.code !== 'ENOENT') throw error;
+      });
+    const verifyOwnership = async (directory, recovery = false) => {
+      let file;
+      try {
+        file = await regularFile(directory, '.preparation.json', 2, 512);
+        if (
+          !file ||
+          (await file.stat()).uid !== process.getuid() ||
+          (await bytesFrom(file, (await file.stat()).size, 512)).toString() !== ownedMarker
+        )
+          throw Error('Map repair ownership differs.');
+      } catch (error) {
+        if (error.code !== 'ENOENT' || !recovery) throw error;
+        for await (const _ of await opendir(`/proc/self/fd/${directory.fd}`)) throw error;
+      } finally {
+        await file?.close();
+      }
+    };
+    let target, staged;
+    try {
+      target = await openDirectory(packId);
+      if (target) {
+        await verifyOwnership(target);
+        await walk(target, managedMapPaths(map), false, '', { count: 0, bytes: 0 }, signal);
+        signal.throwIfAborted();
+        const boundary = options.networkDeny || defaultNetworkDeny;
+        await regular(boundary, 1024 * 1024);
+        const moved = spawnSync(
+          boundary,
+          [
+            '--retire-map-pack',
+            join(options.assets, 'packs', packId),
+            join(options.assets, 'packs', quarantine),
+          ],
+          { stdio: 'ignore', timeout: 10000 },
+        );
+        if (moved.error || moved.status !== 0)
+          throw Error('Exclusive map repair retirement failed.');
+        await packs.sync();
+      }
+      staged = await openDirectory(quarantine);
+      if (staged) {
+        await verifyOwnership(staged, true);
+        await walk(staged, managedMapPaths(map), false, '', { count: 0, bytes: 0 }, signal);
+        await walk(
+          staged,
+          managedMapPaths(map),
+          true,
+          '',
+          { count: 0, bytes: 0 },
+          signal,
+          '.preparation.json',
+        );
+        await rmdir(`${parent}/${quarantine}`);
+        await packs.sync();
+      }
+      return true;
+    } catch (error) {
+      failure = error;
+    } finally {
+      await target?.close();
+      await staged?.close();
+    }
+  });
+  if (!retired) throw failure || Error('Map repair storage unavailable.');
+}
+
 export async function processOneMapRemoval(options) {
   for (const id of await mapQueueIds(options.jobs, 'removals')) {
     const removal = await readMapRemoval(options.jobs, id),
@@ -181,7 +264,14 @@ export async function processOneMapRemoval(options) {
               pack.manifest !== removal.manifest
             )
               throw changed();
-            await walk(target, pathsFor(removal.map), false, '', { count: 0, bytes: 0 }, signal);
+            await walk(
+              target,
+              managedMapPaths(removal.map),
+              false,
+              '',
+              { count: 0, bytes: 0 },
+              signal,
+            );
             if (!(await markerMatches(target, removal.markerSha256, false))) throw changed();
             signal.throwIfAborted();
             // One no-replace syscall retires the pack. There is no mkdir/journal
@@ -226,7 +316,14 @@ export async function processOneMapRemoval(options) {
             ))
           )
             throw changed();
-          await walk(quarantined, pathsFor(removal.map), false, '', { count: 0, bytes: 0 }, signal);
+          await walk(
+            quarantined,
+            managedMapPaths(removal.map),
+            false,
+            '',
+            { count: 0, bytes: 0 },
+            signal,
+          );
           options.log?.({ event: 'map.removing', packId: removal.packId });
           signal.throwIfAborted();
           // Revoke future delivery/reacquisition before erasing the private tree.
@@ -237,7 +334,14 @@ export async function processOneMapRemoval(options) {
             code: 'removed_by_admin',
             updatedAt: Math.floor(Date.now() / 1000),
           });
-          await walk(quarantined, pathsFor(removal.map), true, '', { count: 0, bytes: 0 }, signal);
+          await walk(
+            quarantined,
+            managedMapPaths(removal.map),
+            true,
+            '',
+            { count: 0, bytes: 0 },
+            signal,
+          );
           await rmdir(`${parent}/${quarantineName}`);
           await packs.sync();
           return true;

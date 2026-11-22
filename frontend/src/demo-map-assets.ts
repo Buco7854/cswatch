@@ -69,6 +69,7 @@ const codes = new Set([
   'worker_interrupted',
   'removed_by_admin',
   'queue_full',
+  'pack_invalid',
 ]);
 const readinessReasons = new Set([
   'automatic_disabled',
@@ -318,6 +319,11 @@ export function mapAcquisitionMessage(
         info.resolution === 'latest'
           ? 'The latest official map is waiting for the preparation worker. Its layout may differ from this recording.'
           : 'The approved map is waiting for the preparation worker. You can leave this viewer and return later.',
+    };
+  if (info.acquisition === 'processing' && info.code === 'pack_invalid')
+    return {
+      title: 'Preparing map again',
+      description: 'The prepared map is incomplete or damaged. The worker will rebuild it.',
     };
   if (info.acquisition === 'processing')
     return {

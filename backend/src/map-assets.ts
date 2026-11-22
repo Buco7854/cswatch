@@ -1,3 +1,5 @@
+import { join } from 'node:path';
+import { presentationParts } from './presentation-assets.js';
 import type { FastifyInstance } from 'fastify';
 import type { FileHandle } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
@@ -183,9 +185,15 @@ export async function mapAssetRoutes(
     if (!item) throw new HttpError(404, 'Map overview not found.');
     return reply.header('Cache-Control', 'private, no-store').type('image/png').send(item.image);
   });
-  app.get('/api/assets/agents', async () => ({
-    ct: (await hasGlb(defaultLocation, ['agents'], 'ct.glb')) ? '/map-assets/agents/ct.glb' : null,
-    t: (await hasGlb(defaultLocation, ['agents'], 't.glb')) ? '/map-assets/agents/t.glb' : null,
-  }));
+  app.get('/api/assets/agents', async () => {
+    const parts = await presentationParts(
+      join(defaultLocation.root, ...defaultLocation.parts),
+      'agents',
+    );
+    return {
+      ct: (await hasGlb(defaultLocation, parts, 'ct.glb')) ? '/map-assets/agents/ct.glb' : null,
+      t: (await hasGlb(defaultLocation, parts, 't.glb')) ? '/map-assets/agents/t.glb' : null,
+    };
+  });
   return { describe, loadOverview, loadEnvironment };
 }

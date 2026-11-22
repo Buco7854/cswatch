@@ -137,6 +137,7 @@ if (inContainer) {
     );
   assert.deepEqual((await readdir(join(root, 'backend/dist'))).sort(), [
     'asset-content.js',
+    'asset-preparer.js',
     'map-asset-files.js',
     'map-catalog.js',
     'map-identity.js',

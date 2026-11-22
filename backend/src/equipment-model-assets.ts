@@ -13,7 +13,7 @@ import {
   withDirectory,
 } from './map-asset-files.js';
 import { HttpError } from './security.js';
-import { presentationCatalogComplete } from './presentation-assets.js';
+import { presentationCatalogComplete, presentationParts } from './presentation-assets.js';
 
 const registry = JSON.parse(
   readFileSync(
@@ -26,7 +26,7 @@ const registry = JSON.parse(
     'utf8',
   ),
 );
-const equipmentModelKeys = Object.freeze(Object.keys(registry.items) as string[]);
+export const equipmentModelKeys = Object.freeze(Object.keys(registry.items) as string[]);
 if (
   registry.schemaVersion !== 1 ||
   equipmentModelKeys.length < 1 ||
@@ -147,8 +147,8 @@ export async function equipmentModelAssetRoutes(
     if (previous) cachedBytes -= previous.data.length;
     cache.delete(id);
   };
-  const withPack = <T>(id: string, read: (directory: FileHandle) => Promise<T>) =>
-    withDirectory(mapsRoot, ['equipment-models', id], read);
+  const withPack = async <T>(id: string, read: (directory: FileHandle) => Promise<T>) =>
+    withDirectory(mapsRoot, [...(await presentationParts(mapsRoot, 'equipment-models')), id], read);
   const descriptor = async (id: string, directory: FileHandle) => {
     let file: FileHandle | undefined, model: FileHandle | undefined;
     try {

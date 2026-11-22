@@ -41,7 +41,7 @@ export type ApprovedMapEntry = {
 };
 export type MapCatalog = { schemaVersion: 1; entries: ApprovedMapEntry[] };
 type MapJobIdentity = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   /** Queue identity. Latest jobs acquire a separate content pack ID after download. */
   packId: string;
   /** Server-issued retry generation, deliberately independent of pack identity. */
@@ -61,7 +61,8 @@ type MapJobFailureCode =
   | 'worker_interrupted'
   | 'removed_by_admin';
 export type MapJobResult = {
-  schemaVersion: 1;
+  schemaVersion: 2;
+  repairing?: true;
   packId: string;
   status: 'processing' | 'ready' | 'failed';
   updatedAt: number;
@@ -87,7 +88,7 @@ export type DemoMapAssets = {
   /** Why a source cannot currently be prepared, separate from historical matching. */
   readinessReason?: MapReadinessReason;
   acquisition: 'disabled' | 'unavailable' | 'queued' | 'processing' | 'ready' | 'failed';
-  code?: MapJobFailureCode | 'queue_full';
+  code?: MapJobFailureCode | 'queue_full' | 'pack_invalid';
   verification: 'operator-approved' | 'latest-official' | 'version-unverified' | 'unavailable';
   packId: string | null;
   assets: MapAssets;
