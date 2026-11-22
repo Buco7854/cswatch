@@ -6,9 +6,16 @@ import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { frameAt } from '../playback';
 import { playerPose } from '../player-pose';
-import { firstPersonView, povProjection } from '../pov-camera';
+import { firstPersonView } from '../pov-camera';
 import { recentWeaponShot } from '../weapon-fire';
-import { createShotRayCache, shotTracerSpan, tracerLifetime, tracerReach } from '../shot-tracer';
+import {
+  createShotRayCache,
+  povMuzzleScale,
+  shotMuzzleWeight,
+  shotTracerSpan,
+  tracerLifetime,
+  traceRecordedShot,
+} from '../shot-tracer';
 import type { followObstruction } from '../follow-obstruction';
 import type { Playback } from '../types';
 import { useTracerEvidence } from './EquipmentFire';
@@ -64,7 +71,7 @@ export default function ShotTracers({
   }, [data, evidence?.index, evidence?.reducedMotion, pov, tick]);
 
   const rays = useMemo(
-    () => createShotRayCache<{ origin: Vector3; direction: Vector3; stop: number } | null>(),
+    () => createShotRayCache<ReturnType<typeof traceRecordedShot>>(),
     [trace, evidence?.index],
   );
   const pool = useMemo(() => {
@@ -91,22 +98,7 @@ export default function ShotTracers({
     });
     return { group, lines, resolution };
   }, []);
-  const vectors = useMemo(
-    () => ({
-      eye: new Vector3(),
-      direction: new Vector3(),
-      right: new Vector3(),
-      up: new Vector3(),
-      origin: new Vector3(),
-      tip: new Vector3(),
-      anchor: new Vector3(),
-      currentEye: new Vector3(),
-      currentDirection: new Vector3(),
-      currentRight: new Vector3(),
-      currentUp: new Vector3(),
-    }),
-    [],
-  );
+  const anchor = useMemo(() => new Vector3(), []);
 
   useEffect(() => invalidate(), [active, invalidate]);
   useEffect(
@@ -119,19 +111,6 @@ export default function ShotTracers({
     [pool],
   );
   useFrame(({ camera, size }) => {
-    const {
-      eye,
-      direction,
-      right,
-      up,
-      origin,
-      tip,
-      anchor,
-      currentEye,
-      currentDirection,
-      currentRight,
-      currentUp,
-    } = vectors;
     pool.resolution.set(size.width, size.height);
     for (let i = 0; i < pool.lines.length; i++) {
       const shot = active[i];
@@ -141,58 +120,37 @@ export default function ShotTracers({
       if (!shot) continue;
       const ray = rays.resolve(shot.id, shot.tick, () => {
         const view = viewAt(data, shot.id, shot.tick);
-        if (!view) return null;
-        eye.fromArray(view.position);
-        direction.fromArray(view.target).sub(eye).normalize();
-        right.set(-direction.z, 0, direction.x).normalize();
-        up.crossVectors(right, direction).normalize();
-        const firstPerson = shot.id === pov;
-        const hasAnchor = evidence?.muzzles?.get(shot.id)?.read(anchor);
-        // The visual weapon anchor may move since release. Keep its hand offset
-        // in the shot's recorded eye basis, with a bounded proxy for missing packs.
-        origin
-          .copy(eye)
-          .addScaledVector(direction, 0.68)
-          .addScaledVector(right, 0.17)
-          .addScaledVector(up, -0.18);
-        const currentView = hasAnchor ? (viewAt(data, shot.id, tick) ?? view) : null;
-        if (
-          currentView &&
-          anchor.distanceToSquared(currentEye.fromArray(currentView.position)) < 2.25
-        ) {
-          currentDirection.fromArray(currentView.target).sub(currentEye).normalize();
-          currentRight.set(-currentDirection.z, 0, currentDirection.x).normalize();
-          currentUp.crossVectors(currentRight, currentDirection).normalize();
-          anchor.sub(currentEye);
-          let lateralScale = 1;
-          if (firstPerson && 'fov' in camera && typeof camera.fov === 'number') {
-            const lens = povProjection(size.width / size.height);
-            lateralScale =
-              Math.tan((camera.fov * Math.PI) / 360) / Math.tan((lens.fov * Math.PI) / 360);
-          }
-          origin
-            .copy(eye)
-            .addScaledVector(direction, anchor.dot(currentDirection))
-            .addScaledVector(right, anchor.dot(currentRight) * lateralScale)
-            .addScaledVector(up, anchor.dot(currentUp) * lateralScale);
-        }
-        // Also test eye-to-muzzle so a pose overlapping a wall cannot emit out of its far side.
-        const originPosition = origin.toArray();
-        if (trace({ target: view.position, position: originPosition }) !== originPosition)
-          return null;
-        tip.copy(origin).addScaledVector(direction, tracerReach);
-        tip.fromArray(trace({ target: originPosition, position: tip.toArray() }));
-        const stop = tip.sub(origin).dot(direction);
-        return { origin: origin.clone(), direction: direction.clone(), stop };
+        return view ? traceRecordedShot(view, trace) : null;
       });
       if (!ray) continue;
       const span = shotTracerSpan(shot.age, ray.stop);
       if (!span) continue;
       const { head, tail } = span;
+      const tailWeight = shotMuzzleWeight(tail, ray.stop);
+      const headWeight = shotMuzzleWeight(head, ray.stop);
+      const hasAnchor = tailWeight > 0 && evidence?.muzzles?.get(shot.id)?.read(anchor);
+      if (
+        hasAnchor &&
+        Math.hypot(anchor.x - ray.origin[0], anchor.y - ray.origin[1], anchor.z - ray.origin[2]) <
+          1.5
+      ) {
+        if (shot.id === pov && 'fov' in camera && typeof camera.fov === 'number') {
+          camera.worldToLocal(anchor);
+          const scale = povMuzzleScale(size.width / size.height, camera.fov);
+          anchor.x *= scale;
+          anchor.y *= scale;
+          camera.localToWorld(anchor);
+        }
+        anchor.set(anchor.x - ray.origin[0], anchor.y - ray.origin[1], anchor.z - ray.origin[2]);
+      } else {
+        anchor.set(0, 0, 0);
+      }
       for (let axis = 0; axis < 3; axis++) {
-        positions[axis] = ray.origin.getComponent(axis) + ray.direction.getComponent(axis) * tail;
-        positions[axis + 3] =
-          ray.origin.getComponent(axis) + ray.direction.getComponent(axis) * head;
+        const from = ray.origin[axis];
+        const component = ray.direction[axis];
+        const muzzleOffset = anchor.getComponent(axis);
+        positions[axis] = from + component * tail + muzzleOffset * tailWeight;
+        positions[axis + 3] = from + component * head + muzzleOffset * headWeight;
       }
       // instanceStart and instanceEnd share the same interleaved buffer.
       buffer.needsUpdate = true;

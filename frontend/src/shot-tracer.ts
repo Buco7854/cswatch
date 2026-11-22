@@ -1,3 +1,5 @@
+import { povProjection, type CameraView } from './pov-camera';
+
 export const tracerLifetime = 0.082;
 export const tracerReach = 28;
 
@@ -24,4 +26,42 @@ export function createShotRayCache<T>(capacity = 128) {
       return ray;
     },
   };
+}
+
+/** Reproject the independent viewmodel lens into the world camera's eye space. */
+export function povMuzzleScale(aspect: number, worldFov: number) {
+  return (
+    Math.tan((worldFov * Math.PI) / 360) / Math.tan((povProjection(aspect).fov * Math.PI) / 360)
+  );
+}
+
+/** Blend the live muzzle into the shot ray near its start. Its map-clipped end stays fixed. */
+export function shotMuzzleWeight(distance: number, clip: number) {
+  return Math.max(0, 1 - distance / Math.min(1.25, clip));
+}
+
+type Point = CameraView['position'];
+type ShotTrace = (ray: CameraView) => Point;
+
+/** The map ray uses a fixed muzzle proxy in the shot's recorded eye basis. */
+export function traceRecordedShot(view: CameraView, trace: ShotTrace) {
+  const [dx, dy, dz] = view.target.map((value, axis) => value - view.position[axis]);
+  const length = Math.hypot(dx, dy, dz);
+  if (!length || !Number.isFinite(length)) return null;
+  const direction: Point = [dx / length, dy / length, dz / length];
+  const horizontal = Math.hypot(dx, dz) || 1;
+  const right: Point = [-dz / horizontal, 0, dx / horizontal];
+  const up: Point = [
+    -right[2] * direction[1],
+    right[2] * direction[0] - right[0] * direction[2],
+    right[0] * direction[1],
+  ];
+  const origin = view.position.map(
+    (value, axis) => value + direction[axis] * 0.68 + right[axis] * 0.17 - up[axis] * 0.18,
+  ) as Point;
+  if (trace({ target: view.position, position: origin }) !== origin) return null;
+  const destination = origin.map((value, axis) => value + direction[axis] * tracerReach) as Point;
+  const clipped = trace({ target: origin, position: destination });
+  const stop = Math.hypot(clipped[0] - origin[0], clipped[1] - origin[1], clipped[2] - origin[2]);
+  return { origin, direction, stop };
 }

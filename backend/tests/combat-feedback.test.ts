@@ -4,7 +4,13 @@ import { sample } from '../../frontend/src/sample.js';
 import { readSettings, shotTracersEnabled } from '../../frontend/src/playback.js';
 import { damageFeedbackAt, indexSpectatorEvents } from '../../frontend/src/spectator-state.js';
 import { flashFeedbackAt } from '../../frontend/src/flash-feedback.js';
-import { createShotRayCache, shotTracerSpan } from '../../frontend/src/shot-tracer.js';
+import {
+  createShotRayCache,
+  povMuzzleScale,
+  shotMuzzleWeight,
+  shotTracerSpan,
+  traceRecordedShot,
+} from '../../frontend/src/shot-tracer.js';
 import {
   grenadePathEvents,
   grenadePathOpacity,
@@ -12,6 +18,7 @@ import {
   revealedPoints,
   visibleGrenadePaths,
 } from '../../frontend/src/grenade-paths.js';
+import { povProjection, type CameraView } from '../../frontend/src/pov-camera.js';
 import { tacticalPalette } from '../../frontend/src/tactical-palette.js';
 import type { GameEvent, Grenade, Playback } from '../../shared/playback.js';
 
@@ -192,4 +199,39 @@ test('shot tracers inherit desktop quality defaults and preserve explicit stored
     if (original) Object.defineProperty(globalThis, 'localStorage', original);
     else Reflect.deleteProperty(globalThis, 'localStorage');
   }
+});
+
+test('a cached tracer reprojects the muzzle after resize and FOV changes in either seek order', () => {
+  const shot: CameraView = { position: [0, 1, 0], target: [8, 1, 0] };
+  const profiles = [
+    { aspect: 1440 / 900, fov: 48, age: 0 },
+    { aspect: 768 / 900, fov: 48, age: 0 },
+    { aspect: 768 / 900, fov: 75, age: 0.04 },
+  ];
+  const render = (order: typeof profiles) => {
+    const rays = createShotRayCache<ReturnType<typeof traceRecordedShot>>();
+    let traces = 0;
+    for (const { aspect, fov, age } of order) {
+      const ray = rays.resolve('actor', 64, () =>
+        traceRecordedShot(shot, (segment) => {
+          traces++;
+          return segment.position;
+        }),
+      )!;
+      assert.ok(ray.origin.every((v, axis) => Math.abs(v - [0.68, 0.82, 0.17][axis]) < 1e-12));
+      assert.deepEqual(ray.direction, [1, 0, 0]);
+      const modelX = age ? 0.23 : 0.18;
+      const depth = 0.7;
+      const s = povMuzzleScale(aspect, fov);
+      const projected = (modelX * s) / (depth * Math.tan((fov * Math.PI) / 360) * aspect);
+      const modelProjection =
+        modelX / (depth * Math.tan((povProjection(aspect).fov * Math.PI) / 360) * aspect);
+      assert.ok(Math.abs(projected - modelProjection) < 1e-12);
+      assert.equal(shotMuzzleWeight(0, ray.stop), 1);
+      assert.equal(shotMuzzleWeight(ray.stop, ray.stop), 0);
+    }
+    assert.equal(traces, 2);
+  };
+  render(profiles);
+  render([...profiles].reverse());
 });
