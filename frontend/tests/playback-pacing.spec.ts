@@ -1,9 +1,15 @@
 import { test, expect, type Page } from '@playwright/test';
-import { Matrix4, Vector3 } from 'three';
+import { Matrix4, PerspectiveCamera, Vector3 } from 'three';
 import { createHash } from 'node:crypto';
+import { povFar, povNear, povOffset, povProjection } from '../src/pov-camera';
 import { originalMapReplay, qaActor } from './fixtures/original-map';
 import { installMapFixture } from './fixtures/map-assets';
 import { originalEquipmentCatalog, originalEquipmentGLB } from './fixtures/original-equipment';
+
+type PoseCapture = {
+  view: number[] | null;
+  equipment: { modelView: number[]; projection: number[] }[];
+};
 
 async function fixture(page: Page, id: string, gpu = false, quality: 'low' | 'auto' = 'low') {
   const data = originalMapReplay('de_pacing_qa');
@@ -134,9 +140,10 @@ test('POV camera and equipment share interpolated recorded angles, eye height an
       drawIndexed = WebGL2RenderingContext.prototype.drawElements,
       clear = WebGL2RenderingContext.prototype.clear,
       colors = new WeakMap<WebGLProgram, boolean>(),
-      modelViews = new WeakMap<WebGLProgram, number[]>();
+      modelViews = new WeakMap<WebGLProgram, number[]>(),
+      projections = new WeakMap<WebGLProgram, number[]>();
     let program: WebGLProgram | null = null;
-    const state = { view: null as number[] | null, modelViews: [] as number[][] };
+    const state: PoseCapture = { view: null, equipment: [] };
     (window as unknown as { qaPoseGPU: typeof state }).qaPoseGPU = state;
     WebGL2RenderingContext.prototype.getUniformLocation = function (program, name) {
       const location = get.call(this, program, name);
@@ -148,7 +155,7 @@ test('POV camera and equipment share interpolated recorded angles, eye height an
       return use.call(this, value);
     };
     WebGL2RenderingContext.prototype.clear = function (mask) {
-      if (mask & this.COLOR_BUFFER_BIT) state.modelViews = [];
+      if (mask & this.COLOR_BUFFER_BIT) state.equipment = [];
       return clear.call(this, mask);
     };
     WebGL2RenderingContext.prototype.uniform3f = function (location, x, y, z) {
@@ -165,6 +172,7 @@ test('POV camera and equipment share interpolated recorded angles, eye height an
       const name = location && names.get(location);
       if (name === 'viewMatrix') state.view = Array.from(value);
       if (name === 'modelViewMatrix' && program) modelViews.set(program, Array.from(value));
+      if (name === 'projectionMatrix' && program) projections.set(program, Array.from(value));
       return mat.call(this, location, transpose, value, ...rest);
     };
     const capture = (count: number) => {
@@ -193,8 +201,9 @@ test('POV camera and equipment share interpolated recorded angles, eye height an
           m[15],
         ];
       }
-      if (program && colors.get(program) && currentModelView)
-        state.modelViews.push([...currentModelView]);
+      const projection = program && projections.get(program);
+      if (program && colors.get(program) && currentModelView && projection)
+        state.equipment.push({ modelView: currentModelView, projection });
     };
     WebGL2RenderingContext.prototype.drawArrays = function (...args) {
       capture(args[2]);
@@ -218,35 +227,46 @@ test('POV camera and equipment share interpolated recorded angles, eye height an
     new RegExp('pov:' + qaActor + ':ak47'),
   );
   const pose = () =>
-    page.evaluate(
-      () =>
-        (window as unknown as { qaPoseGPU: { view: number[] | null; modelViews: number[][] } })
-          .qaPoseGPU,
-    );
+    page.evaluate(() => (window as unknown as { qaPoseGPU: PoseCapture }).qaPoseGPU);
+  const expectedEye = new Vector3(0.1016, 1.3254, -0.0508);
   await expect
     .poll(async () => {
       const p = await pose();
       if (!p.view) return Infinity;
       const camera = new Matrix4().fromArray(p.view).invert(),
         v = new Vector3().setFromMatrixPosition(camera);
-      return v.distanceTo(new Vector3(0.1016, 1.3254, -0.0508));
+      return v.distanceTo(expectedEye);
     })
     .toBeLessThan(1e-5);
   const matrices = await pose(),
     camera = new Matrix4().fromArray(matrices.view!).invert();
   const direction = new Vector3(0, 0, -1).transformDirection(camera);
   expect(direction.distanceTo(new Vector3(1, 0, 0))).toBeLessThan(1e-5);
+  const [forward, up, right] = originalEquipmentCatalog(['ak47']).items.ak47.attachments.pov
+    .position;
+  // At recorded yaw/pitch zero the player faces world +X, with +Z to their right.
+  const expectedProp = expectedEye
+    .clone()
+    .add(new Vector3(forward + povOffset.forward, up + povOffset.up, right + povOffset.right));
+  const { aspect, fov } = povProjection(1440 / 900);
+  const projection = new PerspectiveCamera(fov, aspect, povNear, povFar).projectionMatrix.elements;
   await expect
     .poll(async () => {
       const p = await pose();
-      if (!p.modelViews.length || !p.view) return Infinity;
+      if (!p.equipment.length || !p.view) return Infinity;
       const viewInverse = new Matrix4().fromArray(p.view).invert();
       return Math.min(
-        ...p.modelViews.map((m) =>
-          new Vector3()
-            .setFromMatrixPosition(viewInverse.clone().multiply(new Matrix4().fromArray(m)))
-            .distanceTo(new Vector3(0.7516, 1.0954, 0.1492)),
-        ),
+        ...p.equipment
+          .filter((draw) =>
+            draw.projection.every((value, index) => Math.abs(value - projection[index]) < 1e-5),
+          )
+          .map(({ modelView }) =>
+            new Vector3()
+              .setFromMatrixPosition(
+                viewInverse.clone().multiply(new Matrix4().fromArray(modelView)),
+              )
+              .distanceTo(expectedProp),
+          ),
       );
     })
     .toBeLessThan(1e-5);

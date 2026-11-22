@@ -1,4 +1,5 @@
 import type { Position } from './types';
+import type { EquipmentModelTransform } from '../../shared/equipment-models';
 import { canonicalEquipmentKey } from './equipment-key';
 export type CameraView = { position: [number, number, number]; target: [number, number, number] };
 const sniperRifles = new Set(['awp', 'ssg08', 'scar20', 'g3sg1']);
@@ -15,6 +16,19 @@ export function povProjection(viewportAspect: number) {
   const tangent = 0.75 * Math.tan((68 * Math.PI) / 360);
   const fov = (2 * Math.atan(tangent / Math.min(1, aspect)) * 180) / Math.PI;
   return { aspect, fov };
+}
+
+/** Bring the static fallback in from the right edge on narrow canvases. */
+export function fitPovAttachment(
+  preset: EquipmentModelTransform,
+  viewportAspect: number,
+): EquipmentModelTransform {
+  const { aspect } = povProjection(viewportAspect);
+  const lateral = Math.min(1, Math.max(0.1, aspect) / 1.6);
+  return {
+    ...preset,
+    position: [preset.position[0], preset.position[1], preset.position[2] * lateral],
+  };
 }
 
 /** Convert the recorded Source horizontal reference to Three.js vertical degrees. */
