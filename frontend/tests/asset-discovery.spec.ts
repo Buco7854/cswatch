@@ -1,7 +1,7 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { originalMapReplay } from './fixtures/original-map';
 import { installMapFixture } from './fixtures/map-assets';
-import { originalAgentGLB } from './fixtures/original-agent';
+import { originalAnimatedAgentGLB } from './fixtures/original-agent';
 
 async function viewer(page: Page, catalog: (route: Route) => Promise<unknown>) {
   const data = originalMapReplay();
@@ -31,7 +31,7 @@ async function viewer(page: Page, catalog: (route: Route) => Promise<unknown>) {
   await installMapFixture(page, data.map, 'discovery-fixture');
   await page.route('**/api/assets/agents', catalog);
   await page.route('**/map-assets/agents/*.glb', (route) =>
-    route.fulfill({ contentType: 'model/gltf-binary', body: originalAgentGLB() }),
+    route.fulfill({ contentType: 'model/gltf-binary', body: originalAnimatedAgentGLB() }),
   );
   await page.goto('/watch/discovery-fixture');
   await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');

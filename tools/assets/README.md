@@ -170,24 +170,13 @@ Equipment geometry receives one offline +90° Y rotation into viewer meters/Y-up
 
 New firearm preparation also inspects bounded native mesh metadata for an exact supported single-bone `muzzle_flash` attachment. Matching variants retain a named GLB marker and private source evidence, with one bone-local inches-to-metres conversion. Missing or unsupported attachment evidence is unavailable rather than guessed as native. The browser can use this marker for its recorded-event analytical flash. Existing operator packs are preserved and use a bounds-based analytical fallback. A small optional shot kick and separate first-person depth pass do not establish native arms or native recoil/reload animation.
 
-The default agent installation prepares the existing five-cycle rifle pack. To acquire the directional pack, pass `--agents ct,t --directional-agents` with the explicit available manifest and a fresh output directory. The [fixed clip registry](agent-animation-registry.mjs) selects 87 full-pose resources for rifle, pistol, knife and shared death clips. The installer holds the same manifest through exact selection, VPK CRC checks and conversion. Each clip is exported independently. Agent tracks from action exports are kept and tracks for their separate weapon skins are discarded.
+The automatic assets worker prepares the directional CT/T bank. To prepare it manually, pass `--agents ct,t` with the explicit available manifest and a fresh output directory. The fixed registry selects all 87 full-pose resources for rifle, pistol, knife and shared deaths. The installer keeps one manifest through exact selection, VPK CRC checks and conversion. Each clip exports independently. The packer retains agent tracks from action exports and discards tracks for their separate weapon skins.
 
-Version 2 retargets by exact joint name. It verifies each moving clip's direction from root travel or, for in-place clips, the planted foot trajectories. The pack records stride in metres and the normalized foot-cycle offset. Retargeting is capped at 8,192 samples, 1,000,000 sampled joints and 64,000,000 posed vertices per agent. Decoded geometry and animation data remain below 8 MiB, encoded GLB and decoded texture RGBA below 16 MiB each. Rotation and translation keys use quantized values in glTF float accessors with Meshopt transport. Both pack versions retain S2V axes so the viewer applies the +90° Y correction once.
+Retargeting uses exact joint names. It verifies each moving clip's direction from root travel or, for in-place clips, the planted foot trajectories. The pack records stride in metres and the normalized foot-cycle offset. Retargeting is capped at 8,192 samples, 1,000,000 sampled joints and 64,000,000 posed vertices per agent. Decoded geometry and animation data remain below 8 MiB, encoded GLB and decoded texture RGBA below 16 MiB each. Rotation and translation keys use quantized values in glTF float accessors with Meshopt transport. Agent packs retain S2V axes so the viewer applies the +90° Y correction once.
 
 ## Prepare existing native agent exports
 
-Agent outputs are `agents/ct.glb` and `t.glb` with bounded manifests/provenance. Use a fresh output directory. Existing local full-pose exports can be packed with:
-
-```sh
-node tools/assets/prepare-agent-model.mjs \
-  --input /tmp/native-agent/ct.gltf --idle /tmp/native-clips/idle.gltf \
-  --walk /tmp/native-clips/walk.gltf --run /tmp/native-clips/run.gltf \
-  --crouch-idle /tmp/native-clips/crouch-idle.gltf \
-  --crouch-walk /tmp/native-clips/crouch-walk.gltf \
-  --team ct --output /tmp/new-agent-pack/agents --asset-version CS2_BUILD
-```
-
-All five short role names are required for the version 1 locomotion pack. An idle-only input keeps a static pose. Version 2 takes local exports as flags named after their roles, for example `--rifle-walk-w WALK_LEFT.gltf`. Supply all 26 rifle roles, any complete pistol or knife sets, and the supported action and death roles you have. Use the exact role names in the [shared contract](../../shared/agent-animation-contract.mjs). The pack reports all source files and versions in private provenance. Validate the genuine models in the browser before switching the installed pack.
+Agent outputs are `agents/ct.glb` and `t.glb` with bounded manifests and provenance. Use a fresh output directory. For local full-pose exports, run `node tools/assets/prepare-agent-model.mjs --help` and supply all 87 roles as flags, for example `--rifle-walk-w WALK_LEFT.gltf`. The shared contract defines the exact roles. The pack records the source files and versions in private provenance. [Shared agent contract](../../shared/agent-animation-contract.mjs)
 
 ## Native gameplay sounds
 
@@ -279,8 +268,6 @@ The parallel `asset-bootstrap` CI job builds the actual assets image and starts 
 ## Automatic native player and equipment presentation
 
 A clean assets volume now receives shared native presentation assets too. Previously only operator-prepared local packs supplied these files, so a fresh Docker instance could render maps while still showing capsule players and generic weapon artwork. The isolated worker uses its validated official inventory manifest to prepare fixed CT/T agents and fixed HUD artwork. It checks map/removal work between tasks, prepares these core assets before decorative work, then prepares the landing preview and sound bank before individual equipment models. Each equipment model yields back to the map queue and has a fifteen-minute cap. CT/T preparation has the existing finite forty-five-minute conversion budget. No full-game acquisition, uploaded assets or client-selected source exists.
-
-The agent installer selects the fixed five native rifle clips when they exist. If optional locomotion clips are absent or cannot export, it can preserve the verified native rifle idle pose. An absent idle or invalid native source remains unavailable. Static idle is explicitly recorded as `native-idle` in administrator diagnostics, rather than called complete animation. Generic locomotion remains an approximation from recorded movement and does not reproduce recorded bones, skins, grips or the engine animation graph.
 
 SVG resources are selected as exact fixed `.vsvg_c` entries, hash/CRC checked, decoded and rasterized inside required Landlock/seccomp conversion. Only bounded validated PNGs publish. Model export and offline packing also run confined, with private HOME/TMP and fresh unpublished output roots. The packing children skip metadata changes that seccomp forbids. The supervisor validates bounded geometry before decoding, checks content/manifest identities and normalizes final permissions. Whole actor/artwork banks and each subsequent fixed equipment ID publish through descriptor-anchored no-replace native modes. Existing operator banks are preserved without modification.
 

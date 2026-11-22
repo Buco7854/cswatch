@@ -12,7 +12,7 @@ import { installDemoMapDescriptor } from './fixtures/map-assets';
 import { originalEquipmentCatalog, originalEquipmentGLB } from './fixtures/original-equipment';
 import { Matrix4, Vector3 } from '../node_modules/three/build/three.module.js';
 
-test('five prepared cycles deform actual skinned actors from recorded speed and duck on desktop and phone with deterministic seek recovery', async ({
+test('directional clips deform skinned actors from recorded speed and duck on desktop and phone with deterministic seek recovery', async ({
   page,
 }, info) => {
   test.skip(Boolean(process.env.E2E_PRIVATE));
@@ -127,7 +127,8 @@ test('five prepared cycles deform actual skinned actors from recorded speed and 
           y: 0,
           z: 0,
           yaw: 0,
-          duck: tick >= 128 && tick < 256 ? 1 : 0,
+          // Change stance after stopping to leave the previous run phase intact.
+          duck: tick >= 136 && tick < 256 ? 1 : 0,
         },
       ],
     };
@@ -238,7 +239,9 @@ test('five prepared cycles deform actual skinned actors from recorded speed and 
     await check(208, -0.55);
     await check(272, 0);
     await check(16, 0.04);
-    await page.screenshot({ path: info.outputPath(`original-native-cycle-${theme}-${width}.png`) });
+    await page.screenshot({
+      path: info.outputPath(`original-directional-agent-${theme}-${width}.png`),
+    });
     await page.getByRole('combobox', { name: 'Camera mode', exact: true }).click();
     await page.getByRole('option', { name: '2D tactical · low power', exact: true }).click();
     await expect(page.locator('.tactical-plot')).toBeVisible();

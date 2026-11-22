@@ -1,3 +1,7 @@
+import {
+  directionalMovementRoles,
+  directionalRoles,
+} from '../../../shared/agent-animation-contract.mjs';
 import { originalEquipmentGLB } from './original-equipment';
 
 /** Original asymmetric one-joint QA actor in raw S2V axes, not a game character. */
@@ -93,13 +97,13 @@ export function originalAgentGLB() {
   return output;
 }
 
-/** Original five-cycle one-joint fixture, explicitly not native game animations. */
+/** Original one-joint fixture exercising every prepared role. */
 export function originalAnimatedAgentGLB(anchor?: 'wpn' | 'head_0') {
   const source = originalAgentGLB(),
     length = source.readUInt32LE(12),
     json = JSON.parse(source.subarray(20, 20 + length).toString());
   const old = source.subarray(28 + length),
-    binary = Buffer.alloc(old.length + 12 + 5 * 36 + (anchor ? 128 : 0));
+    binary = Buffer.alloc(old.length + 12 + directionalRoles.length * 36 + (anchor ? 128 : 0));
   old.copy(binary);
   [0, 0.5, 1].forEach((v, i) => binary.writeFloatLE(v, old.length + i * 4));
   const timeView = json.bufferViews.length,
@@ -113,18 +117,18 @@ export function originalAnimatedAgentGLB(anchor?: 'wpn' | 'head_0') {
     min: [0],
     max: [1],
   });
-  const roles = ['idle', 'walk', 'run', 'crouch-idle', 'crouch-walk'];
-  json.animations = roles.map((role, index) => {
-    const ys =
-      role === 'idle'
-        ? [0, 0, 0]
-        : role === 'walk'
-          ? [0, 0.08, 0]
-          : role === 'run'
-            ? [0, 0.3, 0]
-            : role === 'crouch-idle'
-              ? [-0.6, -0.6, -0.6]
-              : [-0.6, -0.5, -0.6];
+  json.animations = directionalRoles.map((role, index) => {
+    const moving = directionalMovementRoles.has(role);
+    const gait = role.split('-')[1];
+    const ys = moving
+      ? gait === 'walk'
+        ? [0, 0.08, 0]
+        : gait === 'run'
+          ? [0, 0.3, 0]
+          : [-0.6, -0.5, -0.6]
+      : role.endsWith('-crouch-idle')
+        ? [-0.6, -0.6, -0.6]
+        : [0, 0, 0];
     const offset = old.length + 12 + index * 36,
       view = json.bufferViews.length,
       accessor = json.accessors.length;
@@ -135,10 +139,12 @@ export function originalAnimatedAgentGLB(anchor?: 'wpn' | 'head_0') {
       name: 'cswatch:' + role,
       extras: {
         cswatch: {
-          kind: 'native-locomotion',
-          schemaVersion: 1,
+          kind: 'native-agent',
+          schemaVersion: 2,
           role,
           rootMotion: 'recorded-position',
+          // Match eight recorded intervals after gait history quantizes metres to millimetres.
+          ...(moving ? { strideMeters: gait === 'run' ? 6.504 : 1.624, phaseOffset: 0 } : {}),
         },
       },
       samplers: [{ input: timeAccessor, output: accessor, interpolation: 'LINEAR' }],
@@ -153,7 +159,7 @@ export function originalAnimatedAgentGLB(anchor?: 'wpn' | 'head_0') {
       rotation: [-0.5, -0.5, -0.5, 0.5],
     });
     json.skins[0].joints.push(4);
-    const offset = old.length + 12 + 5 * 36,
+    const offset = old.length + 12 + directionalRoles.length * 36,
       view = json.bufferViews.length,
       accessor = json.accessors.length;
     const inverse = [

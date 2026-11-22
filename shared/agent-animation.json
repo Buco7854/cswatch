@@ -1,12 +1,5 @@
 {
   "schemaVersion": 2,
-  "clips": {
-    "idle": "cswatch:idle",
-    "walk": "cswatch:walk",
-    "run": "cswatch:run",
-    "crouch-idle": "cswatch:crouch-idle",
-    "crouch-walk": "cswatch:crouch-walk"
-  },
   "weaponClasses": ["rifle", "pistol", "knife"],
   "gaits": ["walk", "run", "crouch"],
   "directions": ["n", "nw", "w", "sw", "s", "se", "e", "ne"],
@@ -14,6 +7,7 @@
   "deaths": ["death-a", "death-b"],
   "limits": {
     "seconds": 30,
+    "maxChannels": 1024,
     "maxStrideMeters": 12,
     "maxSpeedMetersPerSecond": 20
   }

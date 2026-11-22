@@ -172,11 +172,9 @@ function Preset({ value, children }: { value: EquipmentModelTransform; children:
 export function HeldEquipment({
   position,
   anchor,
-  posedByAgent,
 }: {
   position: Position;
   anchor?: RefObject<Object3D | null>;
-  posedByAgent?: RefObject<boolean>;
 }) {
   const context = useContext(EquipmentModels),
     key = equipmentIconKey(position.weapon);
@@ -193,7 +191,7 @@ export function HeldEquipment({
       const [x, y, z] = asset.attachments.hold.position;
       matrix.makeTranslation(x, y - (position.duck ?? 0) * 0.7, z);
     }
-    const rigid = posedByAgent?.current && anchor?.current;
+    const rigid = Boolean(anchor?.current);
     if (pitch.current) pitch.current.rotation.z = rigid ? 0 : -MathUtils.degToRad(position.pitch);
     if (recoil.current) {
       const kick = rigid ? 0 : fire?.kick || 0;

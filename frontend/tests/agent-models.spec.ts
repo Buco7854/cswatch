@@ -2,7 +2,7 @@ import { manualMapAssets } from './fixtures/map-assets';
 import { originalOverviewPNG, qaOverview } from './fixtures/original-map';
 import { expect, test, type Page } from '@playwright/test';
 import { originalMapGLB, originalMapReplay } from './fixtures/original-map';
-import { originalAgentGLB } from './fixtures/original-agent';
+import { originalAgentGLB, originalAnimatedAgentGLB } from './fixtures/original-agent';
 
 async function camera(page: Page, name: string) {
   await page.getByRole('combobox', { name: 'Camera mode', exact: true }).click();
@@ -79,8 +79,7 @@ async function install(page: Page, badT = false) {
     requests[team]++;
     return route.fulfill({
       contentType: 'model/gltf-binary',
-      body:
-        team === 't' && badT ? Buffer.from('Original malformed agent QA GLB') : originalAgentGLB(),
+      body: team === 't' && badT ? originalAgentGLB() : originalAnimatedAgentGLB(),
     });
   });
   return { requests, hideT: () => (missingT = true) };
@@ -90,7 +89,7 @@ async function open(page: Page) {
   await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
 }
 
-test('failed and missing native actors retain generic bodies while another actor and the actual3Dmap stay available', async ({
+test('invalid directional packs and missing native actors retain generic bodies while another actor and the actual3Dmap stay available', async ({
   page,
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE));

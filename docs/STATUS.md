@@ -1,10 +1,10 @@
 # Feature status
 
+- The directional agent pack supports CT/T rifle, pistol and knife locomotion with eight directions per gait, pitch aim and rigid weapon carry. Shot events, recorded reload starts and observed weapon changes drive class-based upper-body poses. Recorded deaths use an authored pose through round end when a nearby living anchor is available. The automatic presentation worker prepares both teams on a fresh installation. [Directional agent evidence](VERIFICATION.md#local-directional-agents-2026-11-22)
+
 - The 3D viewer uses one smoke volume renderer. Missing recorded density and failed workers use the analytic field. A failed volume target is reported and checked again after WebGL restoration.
 
 - Quality-independent recorded projectile visibility, interpolation without extrapolation and independent path controls. Local 3D utility effects include recorded inferno footprints, event-only fire patches and short HE and flash bursts. The flames, scorch and burst shaders are procedural. The 2D view retains analytical utility markers.
-
-- The local, unreleased directional agent pack supports CT/T rifle, pistol and knife locomotion with eight directions per gait, pitch aim and rigid weapon carry. Shot events, recorded reload starts and observed weapon changes drive class-based upper-body poses. Recorded deaths use an authored pose through round end when a nearby living anchor is available. Five-cycle packs remain supported. [Directional agent evidence](VERIFICATION.md#local-directional-agents-2026-11-22)
 
 - Optional prepared environment version 2 supplies an authored exposure range, tone curve and hash-bound 3D color LUT for the detailed WebGL viewer. The graded path uses the minimum authored exposure for deterministic seeks. Version 1 environments continue through the legacy renderer. [Mirage verification](VERIFICATION.md#local-authored-mirage-grading-2026-11-22)
 

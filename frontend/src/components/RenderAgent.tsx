@@ -10,7 +10,6 @@ import {
 } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import {
-  AnimationMixer,
   Bone,
   GreaterDepth,
   MathUtils,
@@ -26,13 +25,11 @@ import {
   createDirectionalAgent,
   agentStrideProfile,
   directionalClips,
-  reservedDirectionalClip,
   type DirectionalSample,
 } from '../directional-agent';
 import type { GaitHistory } from '../../../shared/agent-gait-history.mjs';
 import { agentPoseVisibility } from '../agent-culling';
 import { agentCenteredMotionAt, agentPhaseAt } from '../agent-phase';
-import { agentAnimation } from '../agent-animation';
 import { disposeEquipmentInstance } from '../equipment-model';
 import { assertMapBaseColorTextures } from '../map-model';
 import type { AgentDeathSample } from '../agent-replay';
@@ -109,12 +106,11 @@ type AgentProps = {
   tick: number;
   rate: number;
   speed: number;
-  travelMeters?: number;
   gaitHistory?: GaitHistory;
-  directional?: DirectionalSample;
+  directional: DirectionalSample;
   duck: number;
   xrayColor?: string;
-  registerWeaponAnchor?: (bone: Object3D, directional: boolean) => () => void;
+  registerWeaponAnchor?: (bone: Object3D) => () => void;
   registerHeadAnchor?: (bone: Bone) => () => void;
 };
 function LoadedAgent({
@@ -125,7 +121,6 @@ function LoadedAgent({
   rate,
   speed,
   duck,
-  travelMeters,
   directional,
   scope,
   ready,
@@ -136,67 +131,39 @@ function LoadedAgent({
   const gltf = useEquipmentGLTF(url),
     { invalidate } = useThree();
   useLayoutEffect(() => scope.acquire(), [scope]);
-  const prepared = useMemo(() => {
-    const value = prepareAgentModel(gltf.scene);
-    assertMapBaseColorTextures({ scene: value.instance, parser: gltf.parser });
-    return value;
+  const { prepared, pose, strideProfile } = useMemo(() => {
+    const clips = directionalClips(gltf.animations, gltf.parser.json.animations);
+    if (!clips) throw Error('Agent model requires the complete directional animation set.');
+    const prepared = prepareAgentModel(gltf.scene);
+    try {
+      assertMapBaseColorTextures({ scene: prepared.instance, parser: gltf.parser });
+      const pose = createDirectionalAgent(prepared.instance, clips);
+      if (!pose) throw Error('Agent model has unsupported directional tracks.');
+      return { prepared, pose, strideProfile: agentStrideProfile(clips) };
+    } catch (error) {
+      disposeEquipmentInstance(prepared.root);
+      throw error;
+    }
   }, [gltf]);
-  const mixer = useMemo(() => new AnimationMixer(prepared.instance), [prepared]);
   const xrayEnabled = xrayColor !== undefined;
   const xray = useMemo(
     () => (xrayEnabled ? agentXray(prepared.instance) : undefined),
     [prepared, xrayEnabled],
   );
   useLayoutEffect(() => xray?.acquire(), [xray]);
-  const clips = useMemo(
-    () => directionalClips(gltf.animations, gltf.parser.json.animations),
-    [gltf],
-  );
-  const directionalPose = useMemo(
-    () => clips && createDirectionalAgent(prepared.instance, clips),
-    [clips, prepared],
-  );
-  const strideProfile = useMemo(() => clips && agentStrideProfile(clips), [clips]);
   const phaseAt = useMemo(
-    () => gaitHistory && strideProfile && agentPhaseAt(gaitHistory, id, rate, strideProfile),
+    () => gaitHistory && agentPhaseAt(gaitHistory, id, rate, strideProfile),
     [gaitHistory, id, rate, strideProfile],
   );
   const motionAt = useMemo(
-    () => strideProfile && gaitHistory && agentCenteredMotionAt(gaitHistory, id, rate),
-    [strideProfile, gaitHistory, id, rate],
+    () => gaitHistory && agentCenteredMotionAt(gaitHistory, id, rate),
+    [gaitHistory, id, rate],
   );
   const poseVisible = useMemo(agentPoseVisibility, []);
-  const animation = useMemo(
-    () =>
-      agentAnimation(
-        mixer,
-        gltf.animations.filter((clip) => !reservedDirectionalClip(clip.name)),
-        gltf.parser.json.animations,
-      ),
-    [mixer, gltf],
-  );
   useLayoutEffect(() => {
     invalidate();
-  }, [
-    animation,
-    directional,
-    phaseAt,
-    tick,
-    rate,
-    speed,
-    duck,
-    travelMeters,
-    invalidate,
-    xrayColor,
-  ]);
-  useEffect(
-    () => () => {
-      animation.stop();
-      mixer.uncacheRoot(prepared.instance);
-      disposeEquipmentInstance(prepared.root);
-    },
-    [mixer, prepared, animation],
-  );
+  }, [pose, directional, phaseAt, motionAt, tick, rate, speed, duck, invalidate, xrayColor]);
+  useEffect(() => () => disposeEquipmentInstance(prepared.root), [prepared]);
   useLayoutEffect(() => {
     if (scope.isCurrent()) {
       ready();
@@ -205,9 +172,8 @@ function LoadedAgent({
   }, [scope, ready, invalidate]);
   useLayoutEffect(() => {
     const bone = prepared.instance.getObjectByName('wpn');
-    if ((directionalPose || animation.native) && bone instanceof Bone)
-      return registerWeaponAnchor?.(bone, Boolean(directionalPose));
-  }, [animation, directionalPose, prepared, registerWeaponAnchor]);
+    if (bone instanceof Bone) return registerWeaponAnchor?.(bone);
+  }, [prepared, registerWeaponAnchor]);
   useLayoutEffect(() => {
     if (!registerHeadAnchor) return;
     const bone = prepared.instance.getObjectByName('head_0');
@@ -215,25 +181,17 @@ function LoadedAgent({
   }, [prepared, registerHeadAnchor]);
   useFrame(({ camera }) => {
     if (!poseVisible(camera, prepared.root, xrayEnabled)) return;
-    if (directionalPose && directional) {
-      const motion = directional.death ? undefined : motionAt?.(tick);
-      prepared.root.visible = directionalPose.sample(
-        tick / rate,
-        motion?.speed ?? speed,
-        duck,
-        phaseAt
-          ? phaseAt(tick)
-          : travelMeters === undefined
-            ? (tick / rate) * 1.4
-            : travelMeters / 3.1,
-        motion ? { ...directional, ...motion } : directional,
-      );
-    } else if (!directional?.death) animation.sample(tick / rate, speed, duck, travelMeters);
+    const motion = directional.death ? undefined : motionAt?.(tick);
+    pose.sample(
+      tick / rate,
+      motion?.speed ?? speed,
+      duck,
+      phaseAt?.(tick),
+      motion ? { ...directional, ...motion } : directional,
+    );
     xray?.sample(xrayColor);
   }, -2);
-  return directional?.death && !directionalPose ? null : (
-    <primitive object={prepared.root} dispose={null} />
-  );
+  return <primitive object={prepared.root} dispose={null} />;
 }
 function PendingAgent({ id, children }: { id: string; children: ReactNode }) {
   const context = useContext(AgentModels)!;

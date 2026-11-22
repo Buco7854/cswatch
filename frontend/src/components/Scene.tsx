@@ -416,7 +416,6 @@ function Agent({
   tick,
   timing,
   previous,
-  travelMeters,
   gaitHistory,
   action,
 }: {
@@ -434,21 +433,17 @@ function Agent({
   tick: number;
   timing: PoseTiming;
   previous?: PreviousPose;
-  travelMeters?: number;
   gaitHistory?: GaitHistory;
   action?: DirectionalSample['action'];
 }) {
   const pose = playerPose(position, next, alpha, timing);
   const motion = recordedMotion(position, next, alpha, timing, previous);
   const weaponAnchor = useRef<THREE.Object3D | null>(null);
-  const posedByAgent = useRef(false);
-  const registerWeaponAnchor = useCallback((bone: THREE.Object3D, directional: boolean) => {
-    posedByAgent.current = directional;
+  const registerWeaponAnchor = useCallback((bone: THREE.Object3D) => {
     weaponAnchor.current = bone;
     return () => {
       if (weaponAnchor.current === bone) {
         weaponAnchor.current = null;
-        posedByAgent.current = false;
       }
     };
   }, []);
@@ -516,7 +511,6 @@ function Agent({
           tick={tick}
           rate={timing.tickRate}
           speed={motion.speed}
-          travelMeters={travelMeters}
           gaitHistory={gaitHistory}
           directional={{
             yaw: pose.yaw,
@@ -535,7 +529,7 @@ function Agent({
       ) : (
         <GenericAgentBody team={position.team} id={position.id} xray={xray} />
       )}
-      <HeldEquipment position={pose} anchor={weaponAnchor} posedByAgent={posedByAgent} />
+      <HeldEquipment position={pose} anchor={weaponAnchor} />
       {showMarkers && labels && name && !nearCamera && (
         <group ref={labelAnchor} position={[0, fallbackLabelHeight, 0]}>
           <Html
@@ -1050,7 +1044,6 @@ function World({
               tick={tick}
               timing={poseTiming}
               previous={previousPlayers?.get(p.id)}
-              travelMeters={recordedTravel?.(frame, next, p.id, alpha)}
               gaitHistory={gaitHistory}
               action={agentActionAt(
                 agentEvents,

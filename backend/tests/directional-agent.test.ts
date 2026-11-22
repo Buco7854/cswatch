@@ -29,7 +29,7 @@ import {
   indexAgentEvents,
 } from '../../frontend/src/agent-replay.js';
 import {
-  directionalClassRoles,
+  directionalRoles,
   directionalMovementRoles,
 } from '../../shared/agent-animation-contract.mjs';
 import type { DirectionalAgentRole } from '../../shared/agent-animation.js';
@@ -43,9 +43,7 @@ import { replayAgentDeaths, validAgentDeaths } from '../src/replay-agent-deaths.
 import { validateReplayArtifacts, writeReplay } from '../src/replay.js';
 
 const idle = { yaw: 0, pitch: 0, velocityX: 0, velocityY: 0, weapon: 'ak47' };
-function fixture(
-  roles: DirectionalAgentRole[] = [...directionalClassRoles('rifle'), 'rifle-fire', 'death-a'],
-) {
+function fixture(roles: readonly DirectionalAgentRole[] = directionalRoles) {
   const clips: AnimationClip[] = [];
   const declarations = roles.map((role, i) => {
     const strideMeters = role.includes('-run-') ? 4 : role.includes('-crouch-') ? 1 : 2;
@@ -103,20 +101,19 @@ test('directional sets use authored speed, stride, and Source yaw handedness at 
   assert.ok(Math.abs(blend.phase - 0.37) < 1e-10);
 });
 
-test('complete class sets are optional as a unit, with strict clip names and metadata', () => {
-  const rifle = directionalClassRoles('rifle');
-  const pack = fixture(rifle);
+test('requires the complete role set and exact metadata for all authored clips', () => {
+  const pack = fixture();
   assert.equal(agentWeaponClass('weapon_glock'), 'pistol');
   assert.equal(agentWeaponClass('weapon_smokegrenade'), 'knife');
   assert.equal(agentWeaponClass('weapon_c4'), 'knife');
   const sample = { ...idle, weapon: 'glock', velocityX: 3 };
-  assert.equal(directionalGait(pack.validated, sample, 3, 0, 1).weapon, 'rifle');
-  const pistol = fixture([...rifle, ...directionalClassRoles('pistol')]).validated;
-  assert.equal(directionalGait(pistol, sample, 3, 0, 1).weapon, 'pistol');
-  assert.equal(fixture([...rifle, 'pistol-idle']).validated, undefined);
-  assert.equal(fixture(rifle.slice(1)).validated, undefined);
+  assert.equal(directionalGait(pack.validated, sample, 3, 0, 1).weapon, 'pistol');
   assert.equal(
-    directionalClips(pack.clips, [...pack.declarations, pack.declarations[0]]),
+    fixture(directionalRoles.filter((role) => role !== 'knife-draw')).validated,
+    undefined,
+  );
+  assert.equal(
+    directionalClips(pack.clips, [...pack.declarations.slice(1), pack.declarations[1]]),
     undefined,
   );
   pack.declarations[2].extras.cswatch.strideMeters = Infinity;

@@ -12,11 +12,8 @@ import { equipmentModelRegistry, selectedEquipmentModels } from './equipment-mod
 import { inspectEquipmentSourceModel } from './equipment-source-model.mjs';
 import { inspectNativeMuzzle } from './native-weapon-muzzle.mjs';
 import { scanEquipmentDependencies } from './equipment-dependencies.mjs';
-import {
-  agentAnimationRegistry,
-  agentAnimationRoles,
-  directionalAgentRegistry,
-} from './agent-animation-registry.mjs';
+import { directionalAgentRegistry } from './agent-animation-registry.mjs';
+import { directionalRoles } from '../../shared/agent-animation-contract.mjs';
 import { readVpkDirectory } from './source2-dependencies.mjs';
 import { preflightMaterialShaders } from './shader-preflight.mjs';
 import { checkedBatch, parseSteamListing, STEAM_APP, STEAM_DEPOT } from './steam-assets-plan.mjs';
@@ -35,15 +32,6 @@ import { markSteamRateLimit } from './official-map-inventory.mjs';
 const MiB = 1024 ** 2;
 const agentScript = fileURLToPath(new URL('./prepare-agent-model.mjs', import.meta.url));
 const prepareScript = fileURLToPath(new URL('./prepare-equipment-model.mjs', import.meta.url));
-export function agentRolesForIndex(index, allowIdleFallback = false) {
-  const roles = [...agentAnimationRoles];
-  if (allowIdleFallback && roles.some((role) => !index.entries.has(agentAnimationRegistry[role]))) {
-    if (!index.entries.has(agentAnimationRegistry.idle))
-      throw Error('The fixed native idle clip is unavailable.');
-    return ['idle'];
-  }
-  return roles;
-}
 export async function installEquipmentModels(options, adapters = {}) {
   const agents =
     options.agents === undefined
@@ -189,7 +177,7 @@ export async function installEquipmentModels(options, adapters = {}) {
       JSON.stringify({ [STEAM_DEPOT]: records.map((x) => x.selector) }),
       { mode: 0o600 },
     );
-    await execute(
+    const transfer = await execute(
       tools.downloader,
       ['track', STEAM_APP, '--anonymous', '--output', game, '--manifests', pins, '--save-manifest'],
       label,
@@ -199,6 +187,11 @@ export async function installEquipmentModels(options, adapters = {}) {
       label,
       entries: records.length,
       selectedBytes: records.reduce((s, r) => s + r.bytes, 0),
+      reportedTransfers: [
+        ...(transfer.stdout + transfer.stderr).matchAll(
+          /Downloaded (\d+) bytes \((\d+) bytes uncompressed\)/g,
+        ),
+      ].map((match) => ({ compressed: Number(match[1]), uncompressed: Number(match[2]) })),
     });
   };
   try {
@@ -219,12 +212,17 @@ export async function installEquipmentModels(options, adapters = {}) {
       throw Object.assign(Error('Equipment depot manifest mismatch.'), {
         code: 'SOURCE_MAP_MISMATCH',
       });
+    const matchesIndex = async (file) =>
+      (await fileHash(join(game, file.file), 'sha1', file.bytes).catch(() => undefined)) ===
+      file.sha1;
+    const missingIndexes = [];
+    for (const file of plan.files) if (!(await matchesIndex(file))) missingIndexes.push(file);
     await download(
-      plan.files.map((file) => ({ selector: file.file, bytes: file.bytes })),
+      missingIndexes.map((file) => ({ selector: file.file, bytes: file.bytes })),
       'equipment-indexes',
     );
-    for (const file of plan.files)
-      if ((await fileHash(join(game, file.file), 'sha1', file.bytes)) !== file.sha1)
+    for (const file of missingIndexes)
+      if (!(await matchesIndex(file)))
         throw Object.assign(Error('Equipment source index hash mismatch.'), {
           code: 'SOURCE_MAP_MISMATCH',
         });
@@ -248,29 +246,21 @@ export async function installEquipmentModels(options, adapters = {}) {
         ...agents.map((team) => agentSourceRegistry[team]),
       ]),
     ];
-    const animationRegistry = options.directionalAgents
-      ? directionalAgentRegistry
-      : agentAnimationRegistry;
-    let animationRoles = !agents.length
-      ? []
-      : options.directionalAgents
-        ? Object.keys(directionalAgentRegistry)
-        : agentRolesForIndex(csgo, options.allowIdleFallback);
     const closureSeeds = [
       ...resources,
-      ...(agents.length ? animationRoles.map((role) => animationRegistry[role]) : []),
+      ...(agents.length ? Object.values(directionalAgentRegistry) : []),
     ];
-    await download(
-      closureSeeds.map((resource) => {
-        const entry = csgo.entries.get(resource);
-        if (!entry) throw Error('Selected native model is missing from pinned index.');
-        return {
+    const missingSeeds = [];
+    for (const resource of closureSeeds) {
+      const entry = csgo.entries.get(resource);
+      if (!entry) throw Error('Selected native model or clip is missing from pinned index.');
+      if (!(await csgo.readEntry(resource)))
+        missingSeeds.push({
           selector: `game/csgo/pak01_dir.vpk:${resource}`,
           bytes: entry.length + entry.preloadBytes,
-        };
-      }),
-      'equipment-model-metadata',
-    );
+        });
+    }
+    await download(missingSeeds, 'equipment-model-metadata');
     const modelSelections = new Map();
     for (const [i, resource] of resources.entries()) {
       const bytes = await csgo.readEntry(resource);
@@ -399,10 +389,10 @@ export async function installEquipmentModels(options, adapters = {}) {
       await rm(exportRoot, { recursive: true, force: true });
     }
     if (agents.length) {
-      const animationRoot = join(conversion, 'native-locomotion');
+      const animationRoot = join(conversion, 'agent-animations');
       await mkdir(animationRoot);
       const animations = {};
-      for (const role of animationRoles) {
+      for (const role of directionalRoles) {
         const path = join(animationRoot, `${role}.gltf`);
         const result = await execute(
           tools.s2v,
@@ -412,7 +402,7 @@ export async function installEquipmentModels(options, adapters = {}) {
             '--game',
             join(game, 'game/csgo'),
             '--vpk_filepath',
-            animationRegistry[role],
+            directionalAgentRegistry[role],
             '--output',
             path,
             '--gltf_export_format',
@@ -428,18 +418,7 @@ export async function installEquipmentModels(options, adapters = {}) {
           !(await exists(path)) ||
           /(?:Failed to|Could not|Unable to|Exception|Error:)/i.test(result.stdout + result.stderr)
         ) {
-          if (
-            !options.directionalAgents &&
-            role !== 'idle' &&
-            options.allowIdleFallback &&
-            animations.idle
-          ) {
-            animationRoles = ['idle'];
-            break;
-          }
-          throw Error(
-            'The selected native locomotion clip could not be exported without a full graph.',
-          );
+          throw Error(`The selected native animation could not be exported: ${role}.`);
         }
         animations[role] = path;
       }
@@ -481,7 +460,7 @@ export async function installEquipmentModels(options, adapters = {}) {
             agentScript,
             '--input',
             input,
-            ...animationRoles.flatMap((role) => [`--${role}`, animations[role]]),
+            ...directionalRoles.flatMap((role) => [`--${role}`, animations[role]]),
             '--output',
             agentOutput,
             '--team',
@@ -502,20 +481,16 @@ export async function installEquipmentModels(options, adapters = {}) {
       items: ids,
       agents,
       unsupported,
-      ...(agents.length
-        ? { animation: animationRoles.length > 1 ? 'native-locomotion' : 'native-idle' }
-        : {}),
+      ...(agents.length ? { exportedClips: directionalRoles.length } : {}),
       modelSelections: Object.fromEntries(modelSelections),
       closure,
       shaders,
       downloads,
       tools: tools.provenance,
       limitations: [
-        agents.length && animationRoles.length === 1
-          ? 'Weapons are static; agents use a prepared native rifle idle pose because locomotion clips are unavailable'
-          : options.directionalAgents
-            ? 'Agent animations use measured strides and class-based native poses from recorded evidence'
-            : 'Weapons are static; agent locomotion uses five native rifle cycles, not the native animation graph',
+        ...(agents.length
+          ? ['Agents use measured strides and class-based native poses from recorded evidence']
+          : []),
         'C4 planted state uses the static C4 model; no native digits or arming animation',
       ],
     };
@@ -543,9 +518,7 @@ export async function installEquipmentModels(options, adapters = {}) {
       agents,
       assetVersion,
       unsupported,
-      ...(agents.length
-        ? { animation: animationRoles.length > 1 ? 'native-locomotion' : 'native-idle' }
-        : {}),
+      ...(agents.length ? { exportedClips: directionalRoles.length } : {}),
       report: join(root, 'installation.json'),
     };
   } catch (error) {
@@ -569,7 +542,6 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     options: {
       items: { type: 'string' },
       agents: { type: 'string' },
-      'directional-agents': { type: 'boolean' },
       output: { type: 'string' },
       cache: { type: 'string' },
       manifest: { type: 'string' },
@@ -580,13 +552,12 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   });
   if (values.help) {
     console.log(
-      'Usage: node install-equipment-models.mjs --items ak47,smokegrenade or all [--agents ct,t [--directional-agents]] --manifest PINNED_UINT64 --output DATA_DIR/maps --cache PRIVATE_CACHE [--s2v ABS_PATH --downloader ABS_PATH]',
+      'Usage: node install-equipment-models.mjs [--items ak47,smokegrenade|all] [--agents ct,t] --manifest PINNED_UINT64 --output DATA_DIR/maps --cache PRIVATE_CACHE [--s2v ABS_PATH --downloader ABS_PATH]',
     );
     process.exit(0);
   }
   const result = await installEquipmentModels({
     ...values,
-    directionalAgents: values['directional-agents'],
     signal: controller.signal,
     onProgress: (event) => console.log(JSON.stringify(event)),
   });

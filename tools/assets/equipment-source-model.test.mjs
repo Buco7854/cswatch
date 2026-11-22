@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { inspectEquipmentSourceModel, staticModelDependency } from './equipment-source-model.mjs';
 import { scanEquipmentDependencies } from './equipment-dependencies.mjs';
-import { agentAnimationRegistry } from './agent-animation-registry.mjs';
+import { directionalAgentRegistry } from './agent-animation-registry.mjs';
 function metadata({ groups = '2,1', mask = '1', lod = '255,255' } = {}) {
   return {
     data: `--- Data for block "DATA" ---\nm_refMeshes = [ ]\nm_refMeshGroupMasks = [${groups}]\nm_refLODGroupMasks = [${lod}]\nm_nDefaultMeshGroupMask = ${mask}\n`,
@@ -35,8 +35,8 @@ test('native uint64 default groups and first actual LOD select only authored mes
   duplicate.control = duplicate.control.replace('m_nMeshIndex = 1', 'm_nMeshIndex = 0');
   assert.throws(() => inspectEquipmentSourceModel(duplicate), /inconsistent/);
 });
-test('locomotion closure accepts only the five fixed clips and their skeleton, never other clips or animation graphs', async () => {
-  const seeds = Object.values(agentAnimationRegistry),
+test('locomotion closure accepts only the 87 fixed clips and their skeleton, never other clips or animation graphs', async () => {
+  const seeds = Object.values(directionalAgentRegistry),
     skeleton = 'animation/skeletons/characters/worldmodel.vnmskel_c',
     graph = 'animation/graphs/unselected.vnmgraph_c';
   const clip = resource([skeleton, graph]),

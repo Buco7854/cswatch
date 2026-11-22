@@ -23,7 +23,6 @@ const category = z
     updatedAt: z.number().int().min(0).max(253402300799),
     retryAt: z.number().int().min(0).max(253402300799).optional(),
     stage: z.enum(['acquiring', 'converting', 'publishing']).optional(),
-    animation: z.enum(['native-locomotion', 'native-idle']).optional(),
     item: z
       .string()
       .regex(/^[a-z0-9]{1,40}$/)
@@ -134,7 +133,6 @@ function failureSnapshot(category: PresentationCategory) {
         retryAt: category.retryAt ?? null,
         item: category.item ?? null,
         stage: category.stage ?? null,
-        animation: category.animation ?? null,
         counts: category.counts
           ? {
               ready: category.counts.ready,
