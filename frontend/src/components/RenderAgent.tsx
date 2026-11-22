@@ -35,6 +35,9 @@ import type { AgentDeathSample } from '../agent-replay';
 import { weaponAnchor, type WeaponAnchor } from '../agent-attachment';
 import { agentXray } from '../agent-xray';
 
+/** A stable reference: inline userData redraws a paused scene on every React update. */
+const playerShadowCaster = { playerShadowCaster: true };
+
 export type AgentInstanceStatus = 'pending' | 'ready' | 'error';
 export const AgentModels = createContext<{
   identity: object;
@@ -80,7 +83,7 @@ export function GenericAgentBody({
       <mesh
         position={[0, 0.91, 0]}
         castShadow={castStatic}
-        userData={{ playerShadowCaster: true }}
+        userData={playerShadowCaster}
         renderOrder={renderOrder}
       >
         <capsuleGeometry args={[0.23, 0.65, 4, 8]} />
@@ -89,7 +92,7 @@ export function GenericAgentBody({
       <mesh
         position={[0, 1.6, 0]}
         castShadow={castStatic}
-        userData={{ playerShadowCaster: true }}
+        userData={playerShadowCaster}
         renderOrder={renderOrder}
       >
         <sphereGeometry args={[0.18, 12, 12]} />
@@ -100,7 +103,7 @@ export function GenericAgentBody({
           key={x}
           position={[x, 0.32, 0]}
           castShadow={castStatic}
-          userData={{ playerShadowCaster: true }}
+          userData={playerShadowCaster}
           renderOrder={renderOrder}
         >
           <capsuleGeometry args={[0.095, 0.45, 4, 8]} />

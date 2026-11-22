@@ -61,7 +61,15 @@ function useViewmodelAssets(identity: string, enabled: boolean) {
       read: async (signal) =>
         validateViewmodels(await readAssetJSON('/api/assets/viewmodels', 32768, signal)),
       complete: (catalog) => catalog.complete === true,
-      changed: ({ items }) => setState({ identity, items }),
+      changed: ({ items }) =>
+        setState((previous) => {
+          const ids = Object.keys(items);
+          const installed = previous?.identity === identity ? previous.items : emptyRigs;
+          return Object.keys(installed).length === ids.length &&
+            ids.every((id) => JSON.stringify(installed[id]) === JSON.stringify(items[id]))
+            ? previous
+            : { identity, items };
+        }),
     });
   }, [identity, enabled]);
   return enabled && state?.identity === identity ? state.items : emptyRigs;
