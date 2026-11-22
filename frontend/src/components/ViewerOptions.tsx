@@ -10,6 +10,7 @@ import {
 import { MessageSquareText, X } from 'lucide-react';
 import {
   KILL_LEAD_INS,
+  shotTracersEnabled,
   UTILITY_LEAD_INS,
   RENDER_RESOLUTION_MIN,
   RENDER_RESOLUTION_MAX,
@@ -36,7 +37,7 @@ import './viewer-options.css';
 
 type Category = 'visuals' | 'crosshair' | 'playback' | 'camera' | 'performance';
 type BooleanSetting = {
-  [Key in keyof ViewerSettings]: ViewerSettings[Key] extends boolean ? Key : never;
+  [Key in keyof ViewerSettings]-?: ViewerSettings[Key] extends boolean ? Key : never;
 }[keyof ViewerSettings];
 const categories = [
   { id: 'visuals', label: 'Visuals' },
@@ -48,6 +49,7 @@ const categories = [
 
 export default function ViewerOptions({
   settings,
+  compactProfile,
   onChange,
   close,
   openCommunications,
@@ -61,6 +63,7 @@ export default function ViewerOptions({
   gameAudio,
 }: {
   settings: ViewerSettings;
+  compactProfile?: boolean;
   onChange: (s: ViewerSettings) => void;
   close: () => void;
   openCommunications: () => void;
@@ -271,6 +274,12 @@ export default function ViewerOptions({
                   t('Shot effects'),
                   t('Show muzzle flashes and weapon movement from recorded shots.'),
                 )}
+                <ToggleSetting
+                  label={t('Shot tracers')}
+                  description={t('Show illustrative streaks for recorded shots.')}
+                  checked={shotTracersEnabled(settings, Boolean(compactProfile))}
+                  onChange={(checked) => onChange({ ...settings, shotTracers: checked })}
+                />
                 {toggle(
                   'trails',
                   t('Movement trails'),
@@ -296,11 +305,18 @@ export default function ViewerOptions({
                     'Show recorded detonation markers, available smoke volumes and approximate fire zones.',
                   ),
                 )}
-                {toggle(
-                  'trajectories',
-                  t('Grenade paths'),
-                  t('Show the recorded flight paths. Grenade projectiles stay visible.'),
-                )}
+                <SelectSetting
+                  label={t('Grenade paths')}
+                  value={settings.trajectories}
+                  options={[
+                    { value: 'all', label: t('All players') },
+                    { value: 'selected', label: t('Followed player') },
+                    { value: 'off', label: t('Off') },
+                  ]}
+                  onChange={(value) =>
+                    onChange({ ...settings, trajectories: value as ViewerSettings['trajectories'] })
+                  }
+                />
               </section>
               <section className="viewer-option-section">
                 <h3>{t('Analysis HUD')}</h3>

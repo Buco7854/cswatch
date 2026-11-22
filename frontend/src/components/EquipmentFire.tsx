@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Matrix4, type Group, type Object3D } from 'three';
+import { Matrix4, Vector3, type Group, type Object3D } from 'three';
 import type { EquipmentModel } from '../../../shared/equipment-models';
 import type { Playback, Position } from '../types';
 import {
@@ -21,7 +21,9 @@ import { nativeMuzzleFrame } from '../equipment-model';
 import { createMuzzleResources } from '../muzzle-resources';
 import { useReducedMotion } from '../reduced-motion';
 
+type Muzzle = { read: (out: Vector3) => boolean };
 type FireContext = {
+  muzzles: Map<string, Muzzle> | undefined;
   index: WeaponFireIndex;
   tick: number;
   rate: number;
@@ -36,21 +38,31 @@ export default function EquipmentFire({
   tick,
   low,
   enabled = true,
+  tracers = false,
   children,
 }: {
   data: Playback;
   tick: number;
   low: boolean;
   enabled?: boolean;
+  tracers?: boolean;
   children: ReactNode;
 }) {
   const index = useMemo(() => indexWeaponFire(data), [data.events, data.players, data.sample]);
   const reducedMotion = useReducedMotion();
+  const muzzles = useMemo(
+    () => (tracers && !reducedMotion ? new Map<string, Muzzle>() : undefined),
+    [tracers, reducedMotion],
+  );
   const value = useMemo(
-    () => ({ index, tick, rate: data.tickRate, low, enabled, reducedMotion }),
-    [index, tick, data.tickRate, low, enabled, reducedMotion],
+    () => ({ index, tick, rate: data.tickRate, low, enabled, reducedMotion, muzzles }),
+    [index, tick, data.tickRate, low, enabled, reducedMotion, muzzles],
   );
   return <Context.Provider value={value}>{children}</Context.Provider>;
+}
+
+export function useTracerEvidence() {
+  return useContext(Context);
 }
 
 export function useEquipmentFire(position: Position) {
@@ -109,6 +121,26 @@ export function EquipmentMuzzle({
       return node?.userData.cswatchNativeAttachment === 'muzzle_flash' ? node : undefined;
     }, [model]),
     matrix = useMemo(() => new Matrix4(), []);
+  const muzzles = context?.muzzles;
+  useLayoutEffect(() => {
+    if (!muzzles || (!marker && !origin)) return;
+    const muzzle: Muzzle = {
+      read: (out) => {
+        if (marker && nativeMuzzleFrame(matrix, model, marker)) {
+          out.setFromMatrixPosition(marker.matrixWorld);
+          return true;
+        }
+        if (!origin) return false;
+        out.fromArray(origin);
+        model.localToWorld(out);
+        return true;
+      },
+    };
+    muzzles.set(position.id, muzzle);
+    return () => {
+      if (muzzles.get(position.id) === muzzle) muzzles.delete(position.id);
+    };
+  }, [marker, matrix, model, muzzles, origin, position.id]);
   const resources = useMemo(createMuzzleResources, []);
   useEffect(() => resources.acquire(), [resources]);
   useLayoutEffect(() => {

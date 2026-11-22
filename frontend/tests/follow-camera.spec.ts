@@ -21,6 +21,9 @@ test('follow camera retracts at an opaque wall and reproduces its position after
   const clipped = trace(view);
   expect(clipped[0]).toBeCloseTo(-0.86, 5);
   const clear: FollowCamera = { ...view, position: [2.6, 1, 0] };
+  const tracerTrace = trace.fork();
+  expect(tracerTrace(clear)).toEqual(clear.position);
+  expect(trace(view)).toBe(clipped);
   expect(trace(clear)).toEqual(clear.position);
   expect(trace(view)).toEqual(clipped);
 });

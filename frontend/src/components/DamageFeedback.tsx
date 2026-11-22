@@ -1,11 +1,16 @@
+import type { CSSProperties } from 'react';
 import type { DamageFeedbackState } from '../spectator-state';
 import './spectator-hud.css';
 
-/** Analytical hurt cue, rather than a claim to reproduce native postprocessing. */
 export default function DamageFeedback({ value }: { value?: DamageFeedbackState }) {
   if (!value) return null;
   return (
-    <div className="spectator-damage" aria-hidden="true" style={{ opacity: value.opacity }}>
+    <div
+      className="spectator-damage"
+      aria-hidden="true"
+      style={{ '--hurt-opacity': value.opacity } as CSSProperties}
+    >
+      <div className="spectator-damage-frame" />
       {value.direction !== undefined && (
         <svg
           className="spectator-damage-direction"

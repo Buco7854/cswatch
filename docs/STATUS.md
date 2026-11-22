@@ -1,5 +1,9 @@
 # Feature status
 
+- Recorded damage uses a crisp POV edge frame, a center-clear glow and the recorded attacker direction when available. POV flash feedback uses the sampled pawn state and offers Off, Indicator only, Reduced tint and Strong tint. The default is Indicator only. Reduced motion keeps the hurt frame steady and shows a flash indicator.
+- Optional shot tracers sample recorded weapon-fire events and aim in 3D. The streak uses the rendered muzzle when available and clips against prepared opaque map surfaces. Tracers default on for desktop High and Auto profiles, default off for compact and mobile profiles, and are hidden under reduced motion. Saved choices override the profile default.
+- Recorded projectile visibility remains quality-independent. The 3D and 2D path preference supports all players, the followed player and off. Paths reveal sampled points, mark sharp turns and fade for five demo seconds after a matched detonation. Unidentified throwers use a neutral path color.
+
 - Local T6 adds bounded optional per-tick yaw and pitch to new chunked replays. Camera and rendered actors use the shared pose sampler. Older replays retain their existing interpolation. [Fixture verification](VERIFICATION.md#local-per-tick-aim-t6-2026-11-22)
 
 The local first-person pass has an independent lens for authored and static weapons. Recorded yaw, pitch and travel drive weapon motion, with a landing cue inferred from vertical samples. Prepared static geometry can attenuate POV sunlight indoors. [Verification](VERIFICATION.md#first-person-lens-and-motion-2026-11-22)
@@ -49,12 +53,10 @@ Inventory bootstrap uses private disposable HOME/CLI/bundle paths, the existing 
 - Full-tab scene, responsive desktop/tablet/phone controls and optional browser fullscreen. Overhead, player POV, guarded WASD/ZQSD free camera and calibrated 2D fallback. Third-person follow preserves selected identity, recorded transforms, seek behavior and configured FOV. It retracts against supported opaque static mesh surfaces in the prepared map. Dynamic objects and native clip hulls are outside that estimate.
 - Seeking/speeds, match/round timeline range, round jumps, manual/automatic dead-time skipping, exact recorded event markers/clusters/filters and private timestamp notes.
 - Local viewer follow-up adds separate automatic skip preferences for recorded freeze time and timeouts, configurable kill/death and utility replay lead-ins, and free-camera sensitivity, vertical inversion and movement speed. Camera and timeline range show the current choice at compact sizes. Picking a player in full 2D keeps the 2D view.
-- The local follow-up strengthens recorded hurt tint and through-wall legibility. POV flash feedback uses the recorded pawn field, with Off, Indicator only, Reduced tint and Strong tint. Reduced motion shows the indicator without a screen tint.
 - Optional edge-based CT/T rosters with independent identity/equipment/health rows, native equipment glyphs, full inventory drawer and selected-player POV feedback. Compact layouts retain complete-row scrolling and primary touch targets. Display options live in Options, and closing an overlay updates its preference.
 - Viewport-centered score/clock, native-counter scoreboard and focus-safe held-Tab access. Bomb planting/fuse/defusing instruments use recorded clocks, actors and outcomes. Unknown deadlines stay elapsed/unavailable, never guessed.
 - Custom local crosshair geometry or supported observed-player static crosshairs decoded from recorded native codes. Dynamic native recoil/spread/scope crosshairs are not reproduced.
 - Compact symmetric kill/death review, round Kills/Utility lists, recorded throw inputs and genuine landing/detonation navigation. Actions use ordinary seek/camera changes at the current speed, with no clip/return flow. Player/event matching uses immutable IDs.
-- Quality-independent recorded projectile visibility, interpolation without extrapolation, independent path controls and analytical utility zones in 3D/2D. Effects are approximations of recorded events, not native smoke/fire physics.
 - Optional compact ZQSD/WASD/modifier and mouse visualization when command evidence exists. Physical bindings cannot be inferred. Phone preferences are separate and optional input/mouse/full round lists default off.
 - Tap/H/idle chrome fading with inert hidden controls, focus/typing/dialog guards and independent captions. A labeled synthetic practice scene remains separate from uploaded history.
 

@@ -36,6 +36,7 @@ const spatial = (frame: Frame): Frame => ({
     team: player.team,
     alive: player.alive,
     weapon: player.weapon,
+    flash: player.flash,
   })),
 });
 
@@ -309,6 +310,39 @@ test('byte packing fails closed when one shared boundary and its complete contex
       false,
       'No complete manifest can publish truncated context',
     );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a cold seek across a chunk boundary retains flight and post-detonation samples', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'cswatch-combat-'));
+  try {
+    const original = fixture();
+    // Flight starts before the five-second spatial context in chunk 1.
+    const path = {
+      id: '72-1456',
+      kind: 'CHEGrenadeProjectile',
+      points: Array.from({ length: 102 }, (_, index) => ({
+        tick: 1456 + index * 4,
+        x: index * 2,
+        y: 0,
+        z: 100,
+      })),
+    };
+    original.grenades = [path];
+    original.frames[475].players = original.frames[475].players.map((pawn) => ({
+      ...pawn,
+      flash: 1.03,
+    }));
+    // Decline the aim slice to exercise the first whole-recording fallback.
+    await writeReplay(dir, original, false, () => null);
+    const { manifest } = validateReplayArtifacts(dir);
+    const chunk = decode(join(dir, 'chunks', '1.json.gz')) as PlaybackChunk;
+    assert.ok(manifest.chunks[1].firstFrameTick > path.points[0].tick);
+    assert.ok(manifest.chunks[1].startTick > path.points.at(-1)!.tick);
+    assert.deepEqual(chunk.grenades, [path]);
+    assert.equal(chunk.frames.find((frame) => frame.tick === 1900)?.players[0].flash, 1.03);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

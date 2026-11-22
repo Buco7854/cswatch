@@ -497,10 +497,29 @@ export const chunkSchema = z
   })
   .strict();
 
-function* grenadeSlice(paths: Grenade[], start: number, end: number): Generator<Grenade> {
+function* grenadeSlice(
+  paths: Grenade[],
+  start: number,
+  end: number,
+  primaryStart: number,
+  presentationRate: number,
+): Generator<Grenade> {
   for (const path of paths) {
-    if (!path.points.length || path.points[0].tick > end || path.points.at(-1)!.tick < start)
+    const firstPoint = path.points[0],
+      lastPoint = path.points.at(-1);
+    if (!firstPoint || !lastPoint || firstPoint.tick > end) continue;
+    // Keep the original samples for bounded grenade lifetimes. Smoke entities
+    // may still be sampled after detonation, so their raw lifetime can exceed flight.
+    if (
+      presentationRate > 0 &&
+      path.points.length <= 512 &&
+      lastPoint.tick - firstPoint.tick <= 32 * presentationRate &&
+      lastPoint.tick + 5.25 * presentationRate >= primaryStart
+    ) {
+      yield path;
       continue;
+    }
+    if (lastPoint.tick < start) continue;
     const first = path.points.findIndex((p) => p.tick >= start);
     const after = path.points.findIndex((p) => p.tick > end);
     yield {
@@ -513,23 +532,26 @@ function* grenadeSlice(paths: Grenade[], start: number, end: number): Generator<
 const replayJSON = (value: unknown) =>
   JSON.stringify(value, (_, item) => (typeof item === 'bigint' ? String(item) : item));
 
-/** Preceding samples support movement trails only. Their canonical chunk keeps
- * all metadata and is loaded whenever playback seeks into that earlier time. */
-function trailFrame(frame: Frame): Frame {
+/** Preceding samples support movement trails and flash-envelope continuity.
+ * The canonical chunk keeps all other metadata for a seek into that time. */
+function trailFrame(frame: Frame, combatContext: boolean): Frame {
   return {
     tick: frame.tick,
-    players: frame.players.map(({ id, x, y, z, yaw, pitch, health, team, alive, weapon }) => ({
-      id,
-      x,
-      y,
-      z,
-      yaw,
-      pitch,
-      health,
-      team,
-      alive,
-      weapon,
-    })),
+    players: frame.players.map(
+      ({ id, x, y, z, yaw, pitch, health, team, alive, weapon, flash }) => ({
+        id,
+        x,
+        y,
+        z,
+        yaw,
+        pitch,
+        health,
+        team,
+        alive,
+        weapon,
+        ...(combatContext && flash !== undefined ? { flash } : {}),
+      }),
+    ),
   };
 }
 
@@ -540,29 +562,34 @@ export async function writeReplay(
   includeStride = false,
   aim?: AimSlices,
 ): Promise<void> {
+  const limits = [
+    'Replay output limit',
+    'Stored replay limit',
+    'Replay has too many chunks',
+    'Replay metadata limit',
+  ];
   const written: string[] = [];
+  let combatContext = true;
   let droppedAudio = false;
   for (;;) {
     try {
-      await writeReplayCore(folder, data, written, includeStride, aim);
+      await writeReplayCore(folder, data, written, includeStride, combatContext, aim);
       return;
     } catch (error) {
       if (
-        (!aim && (data.sounds === undefined || droppedAudio)) ||
+        (!aim && !combatContext && (data.sounds === undefined || droppedAudio)) ||
         !(error instanceof Error) ||
-        ![
-          'Replay output limit',
-          'Stored replay limit',
-          'Replay has too many chunks',
-          'Replay metadata limit',
-        ].includes(error.message)
+        !limits.includes(error.message)
       )
         throw error;
       for (const path of written.splice(0)) unlinkSync(path);
-      // Retry without optional aim before considering a downgrade to audio.
-      // Drop aim across the entire recording so shared boundary coverage agrees.
+      // Downgrade whole recordings so shared boundaries retain consistent coverage.
       if (aim) {
         aim = undefined;
+        continue;
+      }
+      if (combatContext) {
+        combatContext = false;
         continue;
       }
       droppedAudio = true;
@@ -590,6 +617,7 @@ async function writeReplayCore(
   data: Playback,
   written: string[],
   includeStride: boolean,
+  combatContext: boolean,
   aim?: AimSlices,
 ): Promise<void> {
   if (!data.frames.length) throw new Error('No replay frames');
@@ -616,7 +644,9 @@ async function writeReplayCore(
     if (bytes > replayLimits.chunkBytes) throw new Error('Replay output limit');
     frameBytes[index + 1] = frameBytes[index] + bytes + 1;
     trailBytes[index + 1] =
-      trailBytes[index] + Buffer.byteLength(replayJSON(trailFrame(frames[index]))) + 1;
+      trailBytes[index] +
+      Buffer.byteLength(replayJSON(trailFrame(frames[index], combatContext))) +
+      1;
     if (frameBytes[index + 1] - 1 > replayLimits.totalBytes) throw new Error('Replay output limit');
   }
   const manifest: PlaybackManifest = {
@@ -650,7 +680,9 @@ async function writeReplayCore(
   for (let offset = 0, index = 0; offset < frames.length; index++) {
     if (index >= replayLimits.chunks) throw new Error('Replay has too many chunks');
     const contextStart = Math.max(0, offset - replayLimits.contextFrames);
-    const context = frames.slice(contextStart, offset).map(trailFrame);
+    const context = frames
+      .slice(contextStart, offset)
+      .map((frame) => trailFrame(frame, combatContext));
     const hasVoice = Boolean(voice?.length);
     const hasSounds = sounds !== undefined;
     const hasItems = itemSamples !== undefined;
@@ -684,7 +716,13 @@ async function writeReplayCore(
         if (bytes > replayLimits.chunkBytes) return null;
       }
       const paths: Grenade[] = [];
-      for (const path of grenadeSlice(grenades || [], startTick, endTick)) {
+      for (const path of grenadeSlice(
+        grenades || [],
+        startTick,
+        endTick,
+        frames[offset].tick,
+        combatContext ? data.tickRate : 0,
+      )) {
         bytes += Buffer.byteLength(replayJSON(path)) + (paths.length ? 1 : 0);
         if (bytes > replayLimits.chunkBytes) return null;
         paths.push(path);

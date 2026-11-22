@@ -18,6 +18,8 @@ import { Html, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import type { Playback, Position } from '../types';
 import TacticalPlot from './TacticalPlot';
+import GrenadePaths from './GrenadePaths';
+import ShotTracers from './ShotTracers';
 import {
   buildUtilityZoneIndex,
   projectilesAt,
@@ -36,7 +38,13 @@ export type SceneFocus = {
   fromTick?: number;
   untilTick?: number;
 };
-import { frameAt, playbackBounds, defaultSettings, type ViewerSettings } from '../playback';
+import {
+  frameAt,
+  playbackBounds,
+  defaultSettings,
+  shotTracersEnabled,
+  type ViewerSettings,
+} from '../playback';
 import { Line } from '@react-three/drei';
 import { freeCameraAction, typingOrDialog } from '../free-camera';
 import { installFreeCameraLook } from '../free-camera-look';
@@ -98,6 +106,7 @@ export type MapRenderState = {
   map: string;
   model: AssetStatus;
   compact?: boolean;
+  compactTracerProfile?: boolean;
   modelProgress?: ModelProgressSource;
   renderer: '3d' | '2d';
   failure?: 'webgl' | 'model' | 'assets';
@@ -540,6 +549,7 @@ function World({
   reportEnvironment,
   preview,
   settings,
+  tracers,
   agents,
   focus,
   utilityState,
@@ -570,6 +580,7 @@ function World({
   reportEnvironment: (identity: string | null, status: AssetStatus, skylight?: boolean) => void;
   preview: boolean;
   settings: ViewerSettings;
+  tracers: boolean;
   agents: { ct: string | null; t: string | null };
   focus?: SceneFocus;
   utilityState: UtilityPresentation;
@@ -583,10 +594,14 @@ function World({
     setFollowModel(map);
     return () => setFollowModel((current) => (current === map ? null : current));
   }, []);
+  const traceMap = mode === 'follow' || mode === 'pov' || tracers;
   const followTrace = useMemo(
-    () =>
-      (mode === 'follow' || mode === 'pov') && followModel ? followObstruction(followModel) : null,
-    [mode, followModel],
+    () => (traceMap && followModel ? followObstruction(followModel) : null),
+    [traceMap, followModel],
+  );
+  const tracerTrace = useMemo(
+    () => (tracers ? followTrace?.fork() : undefined),
+    [followTrace, tracers],
   );
   const fogResources = useRef<SourceFogResources>({ fog: null, cube: null });
   const movement = useRef(new Set<string>());
@@ -966,6 +981,14 @@ function World({
               />
             </PovEquipmentPass>
           )}
+        {!preview && tracers && tracerTrace && (
+          <ShotTracers
+            data={data}
+            tick={tick}
+            pov={mode === 'pov' ? selected : undefined}
+            trace={tracerTrace}
+          />
+        )}
         {!preview && <RecordedEquipment items={items} />}
         {!preview && (
           <UtilityLayer
@@ -1092,17 +1115,11 @@ function UtilityLayer({
             />
           </mesh>
         ))}
+      {settings.trajectories !== 'off' && (
+        <GrenadePaths data={data} tick={tick} selected={selected} mode={settings.trajectories} />
+      )}
       {projectiles.map((grenade) => (
         <group key={grenade.id} name={'recorded-projectile:' + grenade.id}>
-          {settings.trajectories && grenade.trail.length > 1 && (
-            <Line
-              points={grenade.trail.map(
-                (point) => new THREE.Vector3(point.x * UNIT, point.z * UNIT, -point.y * UNIT),
-              )}
-              color="#e4b575"
-              lineWidth={1.5}
-            />
-          )}
           {!hasRecordedProjectiles(data) && (
             <group
               position={[grenade.point.x * UNIT, grenade.point.z * UNIT, -grenade.point.y * UNIT]}
@@ -1174,6 +1191,7 @@ export default function Scene({
   mode = 'orbit',
   selected = '0',
   preview = false,
+  mobile = false,
   playing = false,
   settings = defaultSettings,
   mapAssets,
@@ -1187,6 +1205,7 @@ export default function Scene({
   mode?: string;
   selected?: string;
   preview?: boolean;
+  mobile?: boolean;
   playing?: boolean;
   settings?: ViewerSettings;
   mapAssets: MapResources;
@@ -1334,11 +1353,12 @@ export default function Scene({
     [data.events, data.tickRate],
   );
   const reducedMotion = useReducedMotion();
+  const compactTracerProfile =
+    mobile || compact || (model !== null && model === mapAssets.assets.mobile);
+  const tracers = !preview && !reducedMotion && shotTracersEnabled(settings, compactTracerProfile);
   const utilityState = useMemo(
     () => ({
-      projectiles: preview
-        ? []
-        : projectilesAt(data.grenades || [], tick, data.tickRate, settings.trajectories),
+      projectiles: preview ? [] : projectilesAt(data.grenades || [], tick, data.tickRate, false),
       zones: preview || !settings.utilities ? [] : zonesAt(tick),
       bombWave:
         preview || !settings.utilities || reducedMotion ? undefined : bombWaveAt(tick, itemIndex),
@@ -1353,7 +1373,6 @@ export default function Scene({
       reducedMotion,
       preview,
       settings.utilities,
-      settings.trajectories,
     ],
   );
   const expectedEquipment =
@@ -1515,6 +1534,7 @@ export default function Scene({
         map: data.map,
         model: data.sample ? 'ready' : modelStatus,
         compact,
+        compactTracerProfile,
         modelProgress:
           surface === '3d' && modelStatus === 'pending' ? modelScope?.progress : undefined,
         renderer: surface === 'plot' ? '2d' : '3d',
@@ -1538,6 +1558,7 @@ export default function Scene({
       data.sample,
       modelStatus,
       compact,
+      compactTracerProfile,
       modelScope,
       mode,
       rendererFailure,
@@ -1680,7 +1701,13 @@ export default function Scene({
                   onChange={setAdaptiveQuality}
                 />
               )}
-              <EquipmentFire data={data} tick={tick} low={low} enabled={settings.shotEffects}>
+              <EquipmentFire
+                data={data}
+                tick={tick}
+                low={low}
+                enabled={settings.shotEffects}
+                tracers={tracers}
+              >
                 <EquipmentModels.Provider value={equipmentContext}>
                   <AgentModels.Provider value={agentContext}>
                     <World
@@ -1710,6 +1737,7 @@ export default function Scene({
                       reportEnvironment={reportEnvironment}
                       preview={preview}
                       settings={settings}
+                      tracers={tracers}
                       agents={agents}
                       focus={focus}
                       utilityState={utilityState}
