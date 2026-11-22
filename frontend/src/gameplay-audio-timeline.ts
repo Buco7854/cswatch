@@ -1,6 +1,6 @@
 import type { GameplaySoundCue } from '../../shared/gameplay-sounds';
 
-export type PlannedSound = { cue: GameplaySoundCue; delay: number };
+type PlannedSound = { cue: GameplaySoundCue; delay: number };
 /** Bounded look-ahead on recorded time, independent of render-frame cadence.
  * Resets establish a new floor so seeking never replays earlier sound cues. */
 export class GameplayAudioTimeline {

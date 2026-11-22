@@ -75,7 +75,7 @@ function supportedNode(node, animated) {
 }
 
 /** Derive a texture-free, spatially batched world from a prepared Source map. */
-export async function buildCompactMap(source) {
+async function buildCompactMap(source) {
   const original = source.getRoot(),
     scene = original.getDefaultScene() ?? original.listScenes()[0];
   if (!scene) return;

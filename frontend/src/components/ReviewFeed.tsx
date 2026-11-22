@@ -6,7 +6,7 @@ import EquipmentGlyph from './EquipmentGlyph';
 import ReviewEventGlyph from './ReviewEventGlyph';
 import './review-feed.css';
 
-export type ReviewFeedPlayer = { id: string; name: string; team?: number };
+type ReviewFeedPlayer = { id: string; name: string; team?: number };
 type RecordedRow = {
   id: string;
   tick: number;
@@ -14,13 +14,13 @@ type RecordedRow = {
   actor: ReviewFeedPlayer;
   weapon?: string;
 };
-export type ReviewFeedKill = RecordedRow & {
+type ReviewFeedKill = RecordedRow & {
   target: ReviewFeedPlayer;
   headshot?: boolean;
   canReplayAttacker: boolean;
   canReplayVictim: boolean;
 };
-export type ReviewFeedUtility = RecordedRow & {
+type ReviewFeedUtility = RecordedRow & {
   canReplayThrow: boolean;
   canViewLanding: boolean;
   inputBadges?: ReactNode;

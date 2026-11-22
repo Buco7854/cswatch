@@ -39,7 +39,8 @@ async function fixture(page: Page, id: string, gpu = false, quality: 'low' | 'au
         JSON.stringify({
           quality,
           autoHideControls: false,
-          autoSkip: false,
+          autoSkipFreeze: false,
+          autoSkipTimeouts: false,
           matchScore: false,
           economy: false,
           xray: false,

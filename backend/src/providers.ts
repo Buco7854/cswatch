@@ -36,7 +36,7 @@ const faceitProfile = z.object({
   games: z.object({ cs2: z.object({ game_player_id: z.string().regex(/^\d{17}$/) }) }),
 });
 // URLs are accepted exclusively from FACEIT's authenticated API, never from users.
-export async function validateDownload(url: string) {
+async function validateDownload(url: string) {
   const u = new URL(url),
     host = u.hostname;
   if (

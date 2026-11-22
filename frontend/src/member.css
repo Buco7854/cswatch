@@ -277,20 +277,15 @@
 .public-site .button {
   min-height: 44px;
 }
-:is(.app-shell, .public-site) .button:not(.primary, .tertiary) {
+:is(.app-shell, .public-site) .button:not(.primary) {
   background: var(--raised);
 }
-:is(.app-shell, .public-site) .button:not(.primary, .tertiary):hover {
+:is(.app-shell, .public-site) .button:not(.primary):hover {
   background: color-mix(in srgb, var(--raised) 85%, var(--text));
 }
 .app-shell .button.primary {
   background: var(--primary);
   padding: 10px 16px;
-}
-:is(.app-shell, .viewer-shell, .member-dialog) .button.tertiary {
-  background: none;
-  border-color: transparent;
-  color: var(--muted);
 }
 :is(.app-shell, .viewer-shell, .member-dialog, .public-site) .icon-button {
   background: transparent;
@@ -572,34 +567,6 @@
 .app-shell .load-more {
   margin: 20px auto;
 }
-.app-shell .practice-entry {
-  margin-top: 20px;
-  display: flex;
-  align-items: flex-start;
-  gap: 11px;
-  padding: 10px 2px;
-  color: var(--faint);
-}
-.app-shell .practice-entry > svg {
-  margin-top: 3px;
-  color: var(--faint);
-}
-.app-shell .practice-entry a {
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--muted);
-}
-.app-shell .practice-entry a:hover {
-  color: var(--text);
-}
-.app-shell .practice-entry small {
-  display: block;
-  font-size: 12px;
-  margin-top: 3px;
-}
 /* Accounts, integrations and administration: a clear label column and one form surface. */
 .app-shell .settings-section {
   display: grid;
@@ -874,23 +841,6 @@
 .app-shell .audit-panel > h2 {
   margin-bottom: 15px;
 }
-.app-shell .account-gate {
-  margin: 60px auto 80px;
-  max-width: 520px;
-  gap: 22px;
-}
-.app-shell .account-gate h1 {
-  font-family: inherit;
-  font-size: 28px;
-  line-height: 1.25;
-}
-.app-shell .account-gate p {
-  font-size: 15px;
-  line-height: 1.75;
-}
-.app-shell .account-gate > svg {
-  color: var(--faint);
-}
 /* Dialogs scroll as a unit, including expanded French descriptions. */
 .member-dialog.options-dialog {
   background: var(--surface);
@@ -1036,9 +986,6 @@
 .member-dialog form > .button {
   align-self: flex-start;
 }
-.member-dialog form > .button.wide {
-  align-self: stretch;
-}
 .member-dialog .dialog-close {
   right: 12px;
   top: 12px;
@@ -1152,9 +1099,6 @@
   .app-shell .admin-grid {
     grid-template-columns: 1fr;
     gap: 20px;
-  }
-  .app-shell .account-gate {
-    margin: 40px 0 70px;
   }
   .member-dialog.options-dialog > .panel-heading {
     top: -24px;
@@ -1299,12 +1243,6 @@
     font-size: 14px;
     line-height: 1.7;
   }
-  .app-shell .practice-entry {
-    margin-top: 17px;
-  }
-  .app-shell .practice-entry small {
-    font-size: 11px;
-  }
   .app-shell .settings-section {
     padding: 23px 0;
     gap: 17px;
@@ -1341,13 +1279,6 @@
   }
   .app-shell .audit-panel .kv-row time {
     text-align: left;
-  }
-  .app-shell .account-gate h1 {
-    font-size: 26px;
-  }
-  .app-shell .account-gate p {
-    font-size: 15px;
-    line-height: 1.75;
   }
   .member-dialog.options-dialog {
     padding: 24px !important;
@@ -1391,7 +1322,7 @@
     transition: none;
   }
 }
-/* Prevent legacy state names from becoming layout classes and keep switches compact. */
+/* Keep status-specific styling separate from layout and keep switches compact. */
 .app-shell .demo-state.status-ready {
   color: var(--text);
 }

@@ -20,7 +20,7 @@ async function pinnedBytes(path, pin) {
     await handle.close();
   }
 }
-export async function installViewmodel({ equipment, input, maps }) {
+async function installViewmodel({ equipment, input, maps }) {
   if (!Object.hasOwn(viewmodels, equipment)) throw Error('Unsupported fixed first-person model.');
   const pin = viewmodels[equipment];
   const data = await pinnedBytes(resolve(input), pin);

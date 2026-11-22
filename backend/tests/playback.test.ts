@@ -23,7 +23,7 @@ test('dead-time skip respects freeze and timeout boundaries', () => {
   assert.equal(skipDeadTime(sample, 1792), 1792);
 });
 
-test('saved display settings validate new fields and keep older preferences', () => {
+test('saved display settings validate current fields and default invalid preferences', () => {
   const original = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
   let stored = '{}';
   Object.defineProperty(globalThis, 'localStorage', {
@@ -32,12 +32,12 @@ test('saved display settings validate new fields and keep older preferences', ()
   });
   try {
     stored = JSON.stringify({ economy: true, quality: 'low', inputLayout: 'wasd' });
-    const legacy = readSettings();
-    assert.equal(legacy.economy, true);
-    assert.equal(legacy.inputLayout, 'wasd');
-    assert.equal(legacy.quality, 'low');
-    assert.equal(legacy.teamLayout, 'split');
-    assert.equal(legacy.cameraFov, 48);
+    const settings = readSettings();
+    assert.equal(settings.economy, true);
+    assert.equal(settings.inputLayout, 'wasd');
+    assert.equal(settings.quality, 'low');
+    assert.equal(settings.teamLayout, 'split');
+    assert.equal(settings.cameraFov, 48);
     stored = JSON.stringify({
       teamLayout: 'right',
       cameraFov: 110,

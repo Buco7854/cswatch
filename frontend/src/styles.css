@@ -125,9 +125,6 @@ svg {
   background: #ddd;
   border-color: #ddd;
 }
-.button.tertiary {
-  border: 0;
-}
 .icon-button {
   display: inline-flex;
   align-items: center;
@@ -154,21 +151,10 @@ svg {
 .text-button:hover {
   text-decoration: underline;
 }
-.wide {
-  width: 100%;
-}
 .actions {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
-}
-.status-dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #e4b575;
-  flex-shrink: 0;
 }
 .tag {
   display: inline-flex;
@@ -187,9 +173,6 @@ svg {
   gap: 10px;
   align-items: center;
   margin-left: auto;
-}
-.mobile-menu {
-  display: none;
 }
 .account-button {
   display: flex;
@@ -214,41 +197,11 @@ svg {
   text-transform: uppercase;
   font-size: 12px;
 }
-.menu-panel {
-  position: absolute;
-  top: 64px;
-  right: 0;
-  padding: 8px;
-  min-width: 210px;
-  background: #222;
-  border-radius: 12px;
-  box-shadow: 0 10px 30px #0008;
-}
-.menu-panel a,
-.menu-panel button {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  padding: 12px 14px;
-  border: 0;
-  border-radius: 7px;
-  background: none;
-  width: 100%;
-  text-align: left;
-  font-size: 13px;
-}
-.menu-panel a:hover,
-.menu-panel button:hover {
-  background: #333;
-}
 .main {
   max-width: 1208px;
   margin: 0 auto;
   min-height: calc(100vh - 230px);
   padding: 30px 0 0;
-}
-.wide-main {
-  max-width: 1340px;
 }
 .page-heading {
   display: flex;
@@ -260,13 +213,6 @@ svg {
 .page-heading p {
   margin-top: 8px;
   font-size: 13px;
-}
-.scope-label {
-  display: flex;
-  gap: 9px;
-  align-items: center;
-  font-size: 12px;
-  color: var(--faint);
 } /* 1208 = 854 + 14 + 340. All subsequent blocks share these outer edges. */
 .scene {
   height: 100%;
@@ -289,13 +235,6 @@ svg {
 }
 .library-section {
   margin-top: 38px;
-}
-.section-heading {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: center;
-  border-bottom: 1px solid #252525;
 }
 .tabs {
   display: flex;
@@ -464,30 +403,6 @@ svg {
   display: flex;
   margin: 20px auto;
 }
-.site-footer {
-  max-width: 1208px;
-  margin: 60px auto 0;
-  padding: 24px 0 30px;
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  border-top: 1px solid #1a1a1a;
-}
-.site-footer p {
-  font-size: 11px;
-}
-.site-footer > span:last-child {
-  margin-left: auto;
-  font-size: 11px;
-  color: var(--faint);
-}
-.viewer-heading {
-  display: flex;
-  justify-content: space-between;
-  gap: 20px;
-  align-items: center;
-  margin-bottom: 24px;
-}
 .back-link {
   display: inline-flex;
   gap: 7px;
@@ -499,52 +414,11 @@ svg {
 .back-link:hover {
   color: #fff;
 }
-.viewer-heading h1 {
-  text-transform: capitalize;
-}
-.viewer-heading p {
-  font-size: 12px;
-  margin-top: 6px;
-}
-.viewer-heading-actions {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-.viewer-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 282px;
-  gap: 14px;
-  align-items: start;
-}
 .playback {
   background: #111;
   border-radius: 14px;
   overflow: hidden;
   min-width: 0;
-}
-.viewer-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 18px;
-}
-.viewer-toolbar > span {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-}
-.viewer-toolbar small {
-  margin-left: 8px;
-  font-size: 11px;
-}
-.camera-label {
-  display: flex;
-  gap: 7px;
-  align-items: center;
-  color: var(--muted);
 }
 select {
   background: #232323;
@@ -555,55 +429,8 @@ select {
   color: white;
   min-width: 0;
 }
-.camera-label select {
-  border: 0;
-  background: transparent;
-}
-.view-hint {
-  position: absolute;
-  bottom: 12px;
-  left: 16px;
-  max-width: calc(100% - 32px);
-  font-size: 11px;
-  color: #ddd;
-  background: #111d;
-  padding: 4px 8px;
-  border-radius: 4px;
-  pointer-events: none;
-}
-.map-notice {
-  position: absolute;
-  top: 12px;
-  left: 16px;
-  background: #111e;
-  padding: 6px 10px;
-  font-size: 11px;
-  color: #ddd;
-  border-radius: 4px;
-  pointer-events: none;
-}
 .controls {
   padding: 14px 18px;
-}
-.scrubber {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 11px;
-  color: #b4b4b4;
-}
-.scrubber input {
-  width: 100%;
-  height: 4px;
-  accent-color: #e4b575;
-  cursor: pointer;
-}
-.control-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  margin-top: 10px;
 }
 .transport {
   display: flex;
@@ -617,80 +444,6 @@ select {
 .transport .button {
   font-size: 12px;
 }
-.roster-panel {
-  padding: 18px;
-  background: #111;
-  border-radius: 14px;
-}
-.roster-panel > .panel-heading {
-  margin-bottom: 18px;
-}
-.team-roster + .team-roster {
-  margin-top: 20px;
-}
-.team-roster h3 {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 11px;
-  color: #b4b4b4;
-  margin-bottom: 8px;
-}
-.team-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  display: inline-block;
-}
-.team-dot.team-3 {
-  background: #9ec7da;
-}
-.team-dot.team-2 {
-  background: #e7ba73;
-}
-.player-row {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  gap: 10px;
-  border: 0;
-  background: none;
-  border-radius: 6px;
-  text-align: left;
-  padding: 7px 8px;
-  margin: 1px -2px;
-}
-.player-row:hover,
-.player-row.selected {
-  background: #292929;
-}
-.player-number {
-  font-size: 11px;
-  width: 14px;
-  color: #b4b4b4;
-}
-.player-number.team-3 {
-  color: #9ec7da;
-}
-.player-number.team-2 {
-  color: #e7ba73;
-}
-.player-identity {
-  min-width: 0;
-}
-.player-identity strong {
-  display: block;
-  font-size: 12px;
-  font-weight: 500;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  overflow: hidden;
-}
-.player-identity small {
-  display: block;
-  font-size: 11px;
-  color: var(--faint);
-}
 .health {
   font-size: 12px;
   margin-left: auto;
@@ -701,19 +454,6 @@ select {
 }
 .health.dead {
   color: #949494;
-}
-.roster-foot {
-  border-top: 1px solid #262626;
-  padding-top: 14px;
-  margin-top: 14px;
-  font-size: 11px;
-  color: var(--faint);
-}
-.round-panel {
-  background: #111;
-  border-radius: 14px;
-  padding: 20px;
-  margin-top: 14px;
 }
 .round-strip {
   display: flex;
@@ -810,11 +550,6 @@ select {
 .panel-empty {
   padding: 28px 0;
   font-size: 13px;
-}
-.keyboard-help {
-  color: var(--faint);
-  font-size: 11px;
-  margin-top: 24px;
 }
 .scene-fallback {
   height: 100%;
@@ -918,9 +653,6 @@ input::placeholder {
 }
 form > .button {
   align-self: flex-start;
-}
-form > .button.wide {
-  align-self: stretch;
 }
 form > small {
   margin-top: -10px;
@@ -1114,112 +846,31 @@ details form {
   top: 12px;
 }
 @media (min-width: 1800px) {
-  .main,
-  .site-footer {
+  .main {
     max-width: 1500px;
-  }
-  .wide-main {
-    max-width: 1740px;
-  }
-  .viewer-grid {
-    grid-template-columns: minmax(0, 1fr) 340px;
-  }
-  .roster-panel {
-    padding: 24px;
-  }
-  .player-row {
-    padding: 12px 8px;
-  }
-  .player-identity strong {
-    font-size: 14px;
   }
 }
 @media (max-width: 1400px) {
-  .main,
-  .site-footer {
+  .main {
     margin-left: 32px;
     margin-right: 32px;
   }
-  .wide-main {
-    margin-left: 24px;
-    margin-right: 24px;
-  }
 }
 @media (max-width: 1100px) {
-  .main,
-  .site-footer {
+  .main {
     margin-left: 24px;
     margin-right: 24px;
-  }
-  .viewer-grid {
-    grid-template-columns: minmax(0, 1fr) 240px;
-  }
-  .roster-panel {
-    padding: 14px;
-  }
-  .player-row {
-    gap: 7px;
-    padding: 6px;
-  }
-  .roster-foot {
-    font-size: 10px;
-  }
-  .viewer-toolbar small {
-    display: none;
   }
   .settings-section {
     gap: 32px;
   }
-  .site-footer {
-    flex-wrap: wrap;
-  }
-  .site-footer > span:last-child {
-    margin-left: auto;
-  }
   .event-list {
     column-gap: 14px;
-  }
-  .roster-foot {
-    font-size: 11px;
   }
 }
 @media (max-width: 780px) {
   .main {
     padding-top: 22px;
-  }
-  .viewer-grid {
-    grid-template-columns: 1fr;
-  }
-  .roster-panel {
-    padding: 20px;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 14px;
-  }
-  .roster-panel > .panel-heading,
-  .roster-foot {
-    grid-column: 1/-1;
-  }
-  .roster-panel > .panel-heading {
-    margin-bottom: 0;
-  }
-  .team-roster + .team-roster {
-    margin-top: 0;
-  }
-  .roster-foot {
-    margin-top: 0;
-  }
-  .player-row {
-    padding: 8px;
-  }
-  .viewer-heading h1 {
-    font-size: 22px;
-  }
-  .viewer-heading-actions {
-    gap: 8px;
-  }
-  .viewer-heading-actions .button {
-    font-size: 11px;
   }
   .settings-section {
     grid-template-columns: 1fr 1.2fr;
@@ -1234,15 +885,8 @@ details form {
   .event-list {
     grid-template-columns: 1fr;
   }
-  .site-footer > span:last-child {
-    flex-basis: 100%;
-    margin: 0;
-  }
   .library-empty p {
     max-width: 300px;
-  }
-  .scope-label {
-    font-size: 11px;
   }
   .library-tools input {
     width: 150px;
@@ -1254,14 +898,9 @@ details form {
   }
 }
 @media (max-width: 540px) {
-  .main,
-  .site-footer,
-  .wide-main {
+  .main {
     margin-left: 16px;
     margin-right: 16px;
-  }
-  .mobile-menu {
-    display: flex;
   }
   .nav-actions > .button {
     min-height: 36px;
@@ -1278,9 +917,6 @@ details form {
     gap: 7px;
     padding-right: 0;
   }
-  .menu-panel {
-    top: 56px;
-  }
   .main {
     padding-top: 24px;
   }
@@ -1295,15 +931,8 @@ details form {
     font-size: 12px;
     margin-top: 7px;
   }
-  .scope-label {
-    display: none;
-  }
   .library-section {
     margin-top: 28px;
-  }
-  .section-heading {
-    gap: 10px;
-    align-items: center;
   }
   .tabs {
     gap: 20px;
@@ -1347,17 +976,6 @@ details form {
   .library-meta > span:last-child {
     text-align: right;
     max-width: 185px;
-  }
-  .site-footer {
-    margin-top: 38px;
-    padding: 22px 0;
-    gap: 12px;
-  }
-  .site-footer p {
-    font-size: 11px;
-  }
-  .site-footer > span:last-child {
-    font-size: 11px;
   }
   .table-head {
     display: none;
@@ -1407,55 +1025,8 @@ details form {
     grid-row: 1;
     font-size: 11px;
   }
-  .viewer-heading {
-    gap: 10px;
-    align-items: flex-start;
-    margin-bottom: 20px;
-  }
-  .viewer-heading h1 {
-    font-size: 20px;
-  }
-  .viewer-heading p {
-    font-size: 11px;
-    overflow-wrap: anywhere;
-  }
-  .viewer-heading-actions {
-    flex-direction: column;
-    align-items: flex-end;
-    padding-top: 6px;
-  }
-  .viewer-heading-actions .tag {
-    font-size: 11px;
-  }
-  .viewer-heading-actions .button {
-    padding: 8px 10px;
-  }
-  .viewer-toolbar {
-    padding: 10px 12px;
-  }
-  .viewer-toolbar > span {
-    font-size: 11px;
-  }
-  .camera-label {
-    gap: 3px;
-  }
-  .camera-label select {
-    font-size: 11px;
-    max-width: 155px;
-  }
-  .view-hint {
-    font-size: 11px;
-    left: 10px;
-    bottom: 10px;
-  }
   .controls {
     padding: 12px;
-  }
-  .scrubber {
-    gap: 9px;
-  }
-  .control-row {
-    gap: 6px;
   }
   .transport {
     gap: 4px;
@@ -1473,48 +1044,11 @@ details form {
     min-width: 40px;
     min-height: 40px;
   }
-  .scrubber input {
-    min-height: 24px;
-  }
-  .roster-panel {
-    padding: 18px 12px;
-    gap: 10px;
-  }
-  .roster-panel > .panel-heading {
-    padding: 0 6px;
-  }
-  .player-row {
-    padding: 7px 4px;
-    gap: 5px;
-    min-height: 48px;
-  }
-  .player-number {
-    width: 12px;
-    font-size: 11px;
-  }
-  .player-identity strong {
-    font-size: 11px;
-    max-width: 84px;
-  }
-  .player-identity small {
-    font-size: 11px;
-  }
   .health {
     font-size: 11px;
   }
-  .team-roster h3 {
-    font-size: 11px;
-    gap: 4px;
-    padding-left: 4px;
-  }
   .health small {
     font-size: 11px;
-  }
-  .roster-foot {
-    padding-left: 6px;
-  }
-  .round-panel {
-    padding: 18px 14px;
   }
   .round-strip {
     gap: 6px;
@@ -1527,10 +1061,6 @@ details form {
     font-size: 12px;
     gap: 12px;
     min-height: 48px;
-  }
-  .keyboard-help {
-    font-size: 11px;
-    line-height: 1.7;
   }
   .settings-section {
     grid-template-columns: 1fr;
@@ -1604,11 +1134,6 @@ details form {
     scroll-behavior: auto !important;
   }
 }
-.viewer-toolbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
 .position-radar {
   position: absolute;
   left: 12px;
@@ -1652,22 +1177,6 @@ details form {
 .killfeed span {
   margin: 0 10px;
   color: #c9b28c;
-}
-.review-navigation {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 16px;
-  flex-wrap: wrap;
-}
-.review-navigation .button {
-  font-size: 12px;
-}
-.review-navigation > span {
-  margin-left: auto;
-  font-size: 11px;
-  color: var(--faint);
-  text-transform: capitalize;
 }
 .options-dialog {
   background: #171717;
@@ -1714,19 +1223,8 @@ details form {
   font-size: 11px;
   margin-top: 16px;
 }
-.player-identity strong,
-.player-identity small {
-  max-width: 160px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-[data-theme='light'] .main,
-[data-theme='light'] .site-footer {
+[data-theme='light'] .main {
   color: #151515;
-}
-[data-theme='light'] .status-dot {
-  background: #93631b;
 }
 [data-theme='light'] .button {
   border-color: #bbb;
@@ -1744,8 +1242,6 @@ details form {
   background: #333;
 }
 [data-theme='light'] .settings-panel,
-[data-theme='light'] .roster-panel,
-[data-theme='light'] .round-panel,
 [data-theme='light'] .playback {
   background: #f4f4f4;
 }
@@ -1755,13 +1251,10 @@ details form {
   background: #e4e4e4;
   color: #444;
 }
-[data-theme='light'] .roster-foot,
 [data-theme='light'] details {
   border-color: #ddd;
 }
-[data-theme='light'] .section-heading,
 [data-theme='light'] .library-meta,
-[data-theme='light'] .site-footer,
 [data-theme='light'] .settings-section,
 [data-theme='light'] .event-panel > .tabs,
 [data-theme='light'] .kv-row,
@@ -1810,25 +1303,8 @@ details form {
 [data-theme='light'] input::placeholder {
   color: #666;
 }
-[data-theme='light'] .transport select,
-[data-theme='light'] .camera-label select {
+[data-theme='light'] .transport select {
   background: transparent;
-}
-[data-theme='light'] .scrubber {
-  color: #555;
-}
-[data-theme='light'] .player-row.selected,
-[data-theme='light'] .player-row:hover {
-  background: #e5e5e5;
-}
-[data-theme='light'] .player-number.team-3 {
-  color: #21688c;
-}
-[data-theme='light'] .player-number.team-2 {
-  color: #8f5d13;
-}
-[data-theme='light'] .team-roster h3 {
-  color: #555;
 }
 [data-theme='light'] .round-strip button {
   background: #e9e9e9;
@@ -1849,15 +1325,10 @@ details form {
 [data-theme='light'] .options-dialog section > h3 {
   border-color: #ddd;
 }
-[data-theme='light'] .menu-panel,
 [data-theme='light'] .toast {
   background: #fff;
   color: #111;
   border-color: #bbb;
-}
-[data-theme='light'] .menu-panel a:hover,
-[data-theme='light'] .menu-panel button:hover {
-  background: #eee;
 }
 [data-theme='light'] .error {
   color: #a02732;
@@ -1869,15 +1340,6 @@ details form {
   outline-color: #111;
 }
 @media (max-width: 540px) {
-  .viewer-toolbar-actions {
-    gap: 2px;
-  }
-  .camera-label {
-    gap: 2px;
-  }
-  .camera-label > svg {
-    display: none;
-  }
   .position-radar {
     width: 76px;
     height: 76px;
@@ -1896,15 +1358,6 @@ details form {
   .killfeed span {
     margin: 0 5px;
   }
-  .review-navigation .button {
-    font-size: 11px;
-    padding: 8px 12px;
-    min-height: 44px;
-  }
-  .review-navigation > span {
-    flex-basis: 100%;
-    margin-left: 0;
-  }
   .options-dialog {
     padding: 20px;
   }
@@ -1913,10 +1366,6 @@ details form {
   }
   .options-dialog .toggle-row small {
     max-width: 250px;
-  }
-  .player-identity strong,
-  .player-identity small {
-    max-width: 80px;
   }
 }
 .search {
@@ -1948,38 +1397,6 @@ details form {
 }
 .tabs button,
 .search input,
-.player-identity strong,
 .event-row {
   font-size: 13px;
-}
-.player-identity small,
-.roster-foot {
-  font-size: 12px;
-}
-@media (max-width: 540px) {
-  .player-identity strong {
-    font-size: 12px;
-  }
-  .player-identity small {
-    font-size: 11px;
-  }
-}
-.moment-navigation {
-  margin: 14px 0 0;
-  border: 0;
-  padding-top: 0;
-}
-.moment-navigation summary {
-  color: var(--muted);
-  font-size: 12px;
-}
-.moment-navigation .actions {
-  margin-top: 14px;
-}
-.moment-navigation .button {
-  font-size: 12px;
-  min-height: 40px;
-}
-.camera-label {
-  flex-direction: row;
 }

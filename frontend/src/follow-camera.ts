@@ -1,6 +1,6 @@
 import { playerPose, type PoseTiming } from './player-pose';
 /** Approximate spectator follow camera. Inputs are recorded Source inches/Z-up, output is viewer meters/Y-up. */
-export type FollowSample = {
+type FollowSample = {
   id: string;
   x: number;
   y: number;

@@ -2,9 +2,9 @@ import registry from '../../shared/equipment-models.json' with { type: 'json' };
 import { canonicalEquipmentKey } from './equipment-key';
 import type { Playback, Position } from './types';
 
-export type RecordedShot = { tick: number; weapon: string };
+type RecordedShot = { tick: number; weapon: string };
 export type WeaponFireIndex = ReadonlyMap<string, readonly RecordedShot[]>;
-export type WeaponFireState = {
+type WeaponFireState = {
   tick: number;
   /** Demo seconds since the recorded shot, never wall-clock time. */
   age: number;

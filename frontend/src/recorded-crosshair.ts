@@ -2,7 +2,7 @@ import { decodeCrosshairShareCode } from 'csgo-sharecode';
 import type { Playback } from '../../shared/playback';
 import type { CrosshairSample } from '../../shared/crosshairs';
 
-export type RecordedCrosshairTimeline = {
+type RecordedCrosshairTimeline = {
   actors: ReadonlyMap<string, readonly CrosshairSample[]>;
   complete: boolean;
   lastTick: number;

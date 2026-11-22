@@ -1,5 +1,5 @@
 /** Operator-prepared static equipment. No native arm, bone or recoil pose is implied. */
-export type EquipmentModelVector = [number, number, number];
+type EquipmentModelVector = [number, number, number];
 export type EquipmentModelTransform = {
   position: EquipmentModelVector;
   /** XYZ Euler radians within the recorded aim frame. */
@@ -10,12 +10,12 @@ export type EquipmentModelTransform = {
  * Hold translation is relative to player feet after yaw, followed by pitch at
  * that attachment point. POV translation is relative to the recorded eye in
  * the full yaw/pitch aim frame. Both are approximate static presets. */
-export type EquipmentModelAttachments = {
+type EquipmentModelAttachments = {
   approximate: true;
   hold: EquipmentModelTransform;
   pov: EquipmentModelTransform;
 };
-export type EquipmentModelBounds = {
+type EquipmentModelBounds = {
   min: EquipmentModelVector;
   max: EquipmentModelVector;
 };
@@ -36,10 +36,4 @@ export type EquipmentModelCatalog = {
   schemaVersion: 1;
   complete?: boolean;
   items: Record<string, EquipmentModel>;
-};
-/** Private prepared-pack identity. Source/tool provenance is a separate file. */
-export type EquipmentModelManifest = Omit<EquipmentModel, 'model'> & {
-  schemaVersion: 1;
-  id: string;
-  coordinateSystem: 'viewer-meters-y-up-x-forward';
 };

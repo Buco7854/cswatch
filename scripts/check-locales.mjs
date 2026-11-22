@@ -37,6 +37,9 @@ for (const path of files('frontend/src').filter((p) => p.endsWith('.tsx'))) {
   }
   walk(sf);
 }
+// The worker stores these sentences and the viewer translates them as they are.
+for (const path of files('backend/src').filter((p) => p.endsWith('.ts')))
+  for (const [, text] of readFileSync(path, 'utf8').matchAll(/\berror='([^'?]+)'/g)) message(text);
 if (missing.size) {
   console.error('Untranslated UI messages:', [...missing]);
   process.exit(1);

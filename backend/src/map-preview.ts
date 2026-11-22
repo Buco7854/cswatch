@@ -16,7 +16,7 @@ import { HttpError } from './security.js';
 import type { MapPreview } from '../../shared/map-assets.js';
 
 /** Public artwork identities are fixed in code. No directory listing, URL or filename is accepted. */
-export const mapPreviewMaps = Object.freeze(
+const mapPreviewMaps = Object.freeze(
   z
     .object({
       schemaVersion: z.literal(1),

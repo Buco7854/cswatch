@@ -1,7 +1,7 @@
 import { FileLoader, ImageBitmapLoader, LoaderUtils, LoadingManager } from 'three';
 import { GLTFLoader, MeshoptDecoder, type GLTF } from 'three-stdlib';
 import type { ModelLoadCallbacks } from './model-cache';
-export type ScopedGLTFJob = (
+type ScopedGLTFJob = (
   url: string,
   callbacks: ModelLoadCallbacks<GLTF>,
   maxBytes?: number,

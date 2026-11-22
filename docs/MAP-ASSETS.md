@@ -17,7 +17,7 @@ docker compose up -d web worker assets
 
 Set `AUTO_OFFICIAL_MAPS_ENABLED=true` in `.env` to lock the feature on, or leave it empty and enable it in the admin UI. An empty value permits UI management and initially defaults off. The worker refreshes bounded official map metadata at startup and about hourly. With automatic acquisition enabled, a known official name can use the disclosed latest mode without any catalog entries. Optional catalog approvals remain preferred for established historical sources. Steam/FACEIT credentials and `.env` are never passed to this service.
 
-The assets service is long-running, not a one-shot download, and no longer requires a Compose profile. Keep it running for metadata refreshes, eligible map jobs and optional native artwork/sounds. Map acquisition still defaults off independently of service startup. Explicit service names in the commands above also start it when upgrading with an older Compose file that used a profile, and ensure its separately published image is updated. Add the optional `transcription` service and its profile when using subtitles.
+The long-running assets service starts with the normal Compose stack. Keep it running for metadata refreshes, eligible map jobs and optional native artwork/sounds. Map acquisition still defaults off independently of service startup. Update its separately published image alongside the application image. Add the optional `transcription` service and its profile when using subtitles.
 
 Compose keeps these stores separate:
 
@@ -82,7 +82,7 @@ From a source workspace with the reviewed prepared GLB, install it into the exis
 node tools/assets/install-viewmodel.mjs m4a4 /path/to/m4a4-first-person-actions.glb /path/to/map-assets
 ```
 
-The accepted IDs are `ak47`, `m4a4`, `awp` and `glock`. The original `install-ak-viewmodel.mjs` command remains available for the AK. Use the existing `MAP_ASSETS_DIR` and the usual read-only web mount. Reload animations require replay metadata from the parser that records active-weapon reload transitions. Older replays can use the new idle model and recorded firing. Missing rigs retain normal world-equipment rendering in POV.
+The accepted IDs are `ak47`, `m4a4`, `awp` and `glock`. Use the existing `MAP_ASSETS_DIR` and the usual read-only web mount. Reload animations require replay metadata from the parser that records active-weapon reload transitions. When reload evidence is unavailable, the rig can still show its idle pose and recorded firing. Missing rigs retain normal world-equipment rendering in POV.
 
 ## Baked lighting on the pinned Mirage source
 

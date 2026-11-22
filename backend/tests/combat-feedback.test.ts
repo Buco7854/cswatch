@@ -99,7 +99,7 @@ test('grenade paths reveal only samples, mark sharp turns, and fade after the re
   assert.deepEqual(visibleGrenadePaths(paths, 240, 64, 'off', owner.id), []);
 });
 
-test('legacy grenade booleans migrate without changing the flash default', () => {
+test('unsupported grenade preferences use the current default', () => {
   const original = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
   let saved: unknown;
   Object.defineProperty(globalThis, 'localStorage', {
@@ -109,8 +109,9 @@ test('legacy grenade booleans migrate without changing the flash default', () =>
   try {
     for (const [input, expected] of [
       [true, 'all'],
-      [false, 'off'],
+      [false, 'all'],
       ['selected', 'selected'],
+      ['off', 'off'],
       ['bad', 'all'],
     ]) {
       saved = input;
@@ -142,6 +143,9 @@ test('blind uses a constant-duration positive run with a smooth, seek-safe relea
   assert.equal(at(60), middle);
   assert.equal(flashFeedbackAt({ ...data, frames: data.frames.slice(2) }, pawn.id, 60), middle);
   assert.equal(flashFeedbackAt(data, 'missing', 16), undefined);
+  const activeAtStart = { ...data, frames: data.frames.slice(4, 10) };
+  assert.equal(flashFeedbackAt(activeAtStart, pawn.id, 16), 0.97);
+  assert.ok(flashFeedbackAt(activeAtStart, pawn.id, 36)! < 0.97);
 });
 
 test('a presentation tracer advances from the muzzle, stops at geometry, and expires by demo time', () => {

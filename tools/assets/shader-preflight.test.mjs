@@ -62,11 +62,11 @@ async function fixture() {
       'csgo',
       {
         entries,
-        readEntry: async (resource) => {
+        verifyEntry: async (resource) => {
           reads.push(resource);
           assert.ok(!resource.startsWith('shaders/vfx/unrelated_'));
           assert.ok(!resource.startsWith('shaders/vfx/csgo_used_vulkan_50_'));
-          return missing.has(resource) ? undefined : Buffer.from('CRC-valid shader');
+          return !missing.has(resource);
         },
       },
     ],
@@ -182,14 +182,11 @@ test('large authored shader programs use streamed verification before and after 
     const large = 'shaders/vfx/csgo_used_vulkan_60_ps.vcs',
       bytes = 330897636;
     s.entries.get(large).length = bytes;
-    const directory = s.context.shaderIndexes[0][1],
-      originalRead = directory.readEntry;
+    const directory = s.context.shaderIndexes[0][1];
     const verified = [],
       missing = new Set([large]);
-    directory.readEntry = async (resource) => {
-      assert.notEqual(resource, large, 'large program may never use allocating readEntry');
-      return originalRead(resource);
-    };
+    directory.readEntry = async () =>
+      assert.fail('Shader verification must use the streamed reader');
     directory.verifyEntry = async (resource) => {
       verified.push(resource);
       return !missing.has(resource);
@@ -209,13 +206,12 @@ test('large authored shader programs use streamed verification before and after 
   }
 });
 
-test('legacy index adapters cannot allocate an oversized shader when streamed verification is absent', async () => {
+test('shader preflight requires streamed CRC verification', async () => {
   const s = await fixture();
   try {
-    const large = 'shaders/vfx/csgo_used_vulkan_60_ps.vcs';
-    s.entries.get(large).length = 330897636;
+    delete s.context.shaderIndexes[0][1].verifyEntry;
     await assert.rejects(preflightMaterialShaders(s.context), /require bounded streaming CRC/);
-    assert.equal(s.reads.includes(large), false);
+    assert.deepEqual(s.reads, []);
     assert.equal(s.downloads.length, 0);
   } finally {
     await s.close();

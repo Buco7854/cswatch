@@ -221,6 +221,16 @@ The [field audit](REPLAY-METADATA.md#replay-v3-fields) records why each evidence
 - Removed the database bootstrap's table-existence guards, column probes and ALTERs, and the `schema_version` table and updates. Removed the generation-less map-request branch and the `initial` sentinel in attempt and removal state.
 - Replaced the Architecture replay-domain and loading paragraphs, the Replay metadata introduction and travel/scope/eye/projectile compatibility statements, and the replay compatibility wording in Handoff and Status. Kept historical release evidence and operator-managed asset formats.
 
+## Residual settings and compatibility cleanup
+
+Current settings validation ignores retired preference fields and defaults unsupported values. The current parser can report incomplete projectile capture, so the viewer keeps the independent recorded-trajectory fallback in that case.
+
+On Node 22.23.5, both production builds, formatting and English/French message coverage passed. All 425 backend tests passed with the checksum-pinned Mirage recording and offline speech fixtures, with zero skips.
+
+Public Chromium passed 243 tests with the private-entry and first-admin cases skipped. Each private registration policy passed 53 tests with 192 environment skips. First-admin enrollment passed four tests with the environment-credential case covered by the public run. All seven shader-preflight tests passed. Production-browser screenshots of the synthetic QA map were inspected in both themes at 1440 × 900, 768 × 1024 and 390 × 844, covering the 3D radar and 2D overview under software rendering.
+
+The additional backend unused-local check reported two baseline imports in the replay and server modules. Those files are part of the replay-format work.
+
 ## Replay motion, texture detail and C4 wave, 2026-11-22
 
 Runtime `b4cbe2209eba91fbce8e3732717a5d1820e1e9bf` passed [workflow 44975440124](https://github.com/Buco7854/cswatch/actions/runs/44975440124), run 50. CI passed 389 backend, 296 asset and 230 public browser cases, both private registration policies, first-admin setup, cold bootstrap and both hardened images. Anonymous registry checks matched the revision and digests for both latest and immutable tags. The application index is `sha256:1466ed03c6736088480ab78d7426d829d9326c111f5468a207c94ea6fb01662c` and the assets index is `sha256:22a54e5c4649d3aa859c3c4f1013e6579c24224ddee7079ecc2fc8c09ef95cb5`.

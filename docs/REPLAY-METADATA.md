@@ -107,7 +107,7 @@ Entity identities include the recorded index, 17-bit serial and creation tick. I
 
 The collector bounds 128 tracked entities and 250,000 changed samples, reserving space for final removals. Per-tick coalescing removes states that were born and deleted within the same tick. Each streamed chunk carries the last live state into its start and includes subsequent changes/removals under the existing 4 MiB decoded limit. Seeking never resurrects a removed serial or interpolates through a tombstone. There is no inference of a dropped weapon from a death, inventory change or nickname.
 
-The renderer uses authoritative projectile bodies only when projectile coverage is complete. Otherwise it preserves recorded trajectories and fallback bodies without attempting a positional identity match. This avoids duplicates while retaining visibility when native body evidence is missing. Recorded world transforms are distinct from the explicitly approximate static hold/POV model presets. Native hand poses, recoil and first-person animation are not implied.
+The renderer uses authoritative projectile bodies only when projectile coverage is complete. When projectile coverage is incomplete, it uses the independently recorded grenade paths to place projectile bodies. It avoids duplicates by withholding incomplete native projectile samples. Recorded world transforms are distinct from the explicitly approximate static hold/POV model presets. Native hand poses, recoil and first-person animation are not implied.
 
 ## Gameplay sound evidence
 

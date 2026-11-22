@@ -4,7 +4,7 @@ import { eventPlayer } from './review-events';
 import { playerPose } from './player-pose';
 
 type ParticipantEvents = Map<string, GameEvent[]>;
-export type SpectatorEvents = { damage: ParticipantEvents; deaths: ParticipantEvents };
+type SpectatorEvents = { damage: ParticipantEvents; deaths: ParticipantEvents };
 export function indexSpectatorEvents(data: Playback): SpectatorEvents {
   const index: SpectatorEvents = { damage: new Map(), deaths: new Map() };
   for (const event of data.events) {

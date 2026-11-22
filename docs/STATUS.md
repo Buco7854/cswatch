@@ -1,5 +1,9 @@
 # Feature status
 
+- Device-local viewer preferences use current fields and values. Unsupported saved values fall back to the current defaults.
+
+Docker/Compose runs TypeScript services behind the operator's reverse proxy, without Caddy. The default image is `ghcr.io/buco7854/cswatch:latest` with `CSWATCH_IMAGE` override. Weekly rebuild/publication and dependency-update workflows exist, including the separately published `assets` image target. The normal Compose stack starts this isolated worker by default. Both release images passed their hardened checks and published in runtime workflow `44482972828`. Docker was unavailable locally; CI supplies the container evidence.
+
 - Local T6 adds bounded optional per-tick yaw and pitch to new chunked replays. Camera and rendered actors use the shared pose sampler. Missing per-tick angle evidence uses sparse-frame interpolation. [Fixture verification](VERIFICATION.md#local-per-tick-aim-t6-2026-11-22)
 - Version 3 byte-adaptive replay chunks with global indexes/bounds, five seconds of spatial trail context, bounded browser caching/prefetch and cancelled irrelevant requests. Context-only samples never establish historical HUD state.
 
@@ -91,8 +95,6 @@ Inventory bootstrap uses private disposable HOME/CLI/bundle paths, the existing 
 - Separate fixed native equipment/review icon registry, safe PNG preparation, hash-bound delivery and actual local artwork checks. No proprietary map/model/icon content is bundled in Git or images.
 
 ## Deployment and limits
-
-Docker/Compose runs TypeScript services behind the operator's reverse proxy, without Caddy. The default image is `ghcr.io/buco7854/cswatch:latest` with `CSWATCH_IMAGE` override. Weekly rebuild/publication and dependency-update workflows exist, including the separately published `assets` image target. The normal Compose stack starts this isolated worker by default; existing profile-based deployments can explicitly target `assets` when updating. Both release images passed their hardened checks and published in runtime workflow `44482972828`. Docker was unavailable locally; CI supplies the container evidence.
 
 [Automatic official map preparation](product/MAP-ACQUISITION.md) remains behind `AUTO_OFFICIAL_MAPS_ENABLED` (default off, environment override/admin policy) and a running isolated `assets` service. Prefer a unique operator-approved source. Otherwise safe non-addon recordings may use current worker-observed official map membership. A terminal unavailable historical source can select latest; integrity failures do not silently switch. Fixed anonymous Steam app 730/depot 2347770 metadata refreshes hourly without downloading the game. Each request pins the manifest and file SHA-1/size; downloaded content gets SHA-256 and a distinct immutable pack ID. Newly shipped official map names need no code whitelist or historical catalog entry. Owner/guest authorization, Origin/CSRF, rates and bounded deduplication remain. No arbitrary URL or uploaded-map conversion exists.
 

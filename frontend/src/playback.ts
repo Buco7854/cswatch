@@ -191,12 +191,6 @@ export function readSettings(key = 'viewer-settings'): ViewerSettings {
     const saved = JSON.parse(localStorage.getItem(key) || '{}');
     const settings = { ...defaultSettings };
     if (typeof saved.shotTracers === 'boolean') settings.shotTracers = saved.shotTracers;
-    if (typeof saved.trajectories === 'boolean')
-      settings.trajectories = saved.trajectories ? 'all' : 'off';
-    if (saved.autoSkip === true) {
-      settings.autoSkipFreeze = true;
-      settings.autoSkipTimeouts = true;
-    }
     for (const k of Object.keys(defaultSettings) as (keyof ViewerSettings)[]) {
       if (
         k !== 'crosshairStyle' &&

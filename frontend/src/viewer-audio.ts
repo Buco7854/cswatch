@@ -5,7 +5,7 @@ export type ListenerPose = {
   forward: [number, number, number];
   up: [number, number, number];
 };
-export type ViewerAudioState = 'locked' | 'running' | 'unavailable' | 'closed';
+type ViewerAudioState = 'locked' | 'running' | 'unavailable' | 'closed';
 const volume = (value: number) => (Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0);
 
 /** One lazy context per viewer identity. Voice and gameplay own separate gains,

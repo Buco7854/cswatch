@@ -1221,7 +1221,7 @@ function UtilityLayer({
             >
               <EquipmentModelInstance
                 equipment={projectileEquipment(grenade.kind) || ''}
-                instance={'legacy-projectile:' + grenade.id}
+                instance={'trajectory-projectile:' + grenade.id}
                 fallback={<ProjectileFallback />}
               />
             </group>

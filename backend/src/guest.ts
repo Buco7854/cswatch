@@ -7,7 +7,7 @@ import { Store, now } from './db.js';
 import { digest, HttpError, rateLimit, token } from './security.js';
 import { setupRequired } from './setup.js';
 
-export type GuestSession = { id: string; csrf: string; expires_at: number };
+type GuestSession = { id: string; csrf: string; expires_at: number };
 declare module 'fastify' {
   interface FastifyRequest {
     guest: GuestSession | null;

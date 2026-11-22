@@ -47,7 +47,7 @@ async function install(
             crosshair: false,
             xray: false,
             utilities: false,
-            trajectories: false,
+            trajectories: 'off',
           }),
         );
     },
@@ -227,7 +227,7 @@ for (const theme of ['dark', 'light'])
       for (const id of ['flashbang', 'hegrenade', 'smokegrenade', 'molotov', 'incgrenade', 'decoy'])
         expect(await scene.getAttribute('data-equipment-ready-instances')).toContain(':' + id);
       expect(await scene.getAttribute('data-equipment-ready-instances')).not.toContain(
-        'legacy-projectile:',
+        'trajectory-projectile:',
       );
       expect(counts.get('ak47'), 'two held and one dropped instance share one decoded asset').toBe(
         1,
@@ -319,7 +319,7 @@ test('failed equipment is isolated from map and other models, retains low-tier g
   expect(counts.get('smokegrenade')).toBe(2);
 });
 
-test('missing model packs expose availability without fake bodies and incomplete projectile coverage preserves the legacy body', async ({
+test('missing model packs expose availability without fake bodies and incomplete projectile coverage preserves the trajectory-based body', async ({
   page,
 }, info) => {
   test.skip(Boolean(process.env.E2E_PRIVATE));

@@ -32,7 +32,7 @@ async function openFixture(page: Page, current: () => Playback, language: 'en' |
           key,
           JSON.stringify({
             quality: 'low',
-            trajectories: false,
+            trajectories: 'off',
             utilities: false,
             radar: false,
             killfeed: false,

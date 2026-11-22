@@ -68,4 +68,3 @@ export function accessDemo(
     throw new HttpError(404, 'Demo not found.');
   return d;
 }
-export const credentialsSchema = { username: /^[A-Za-z0-9_-]{3,32}$/ };

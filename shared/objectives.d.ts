@@ -1,5 +1,5 @@
 /** Source objective state, captured at recorded demo ticks. Deadline values are demo ticks. */
-export type PlantObjectiveSample = {
+type PlantObjectiveSample = {
   kind: 'plant';
   tick: number;
   entity: string;
@@ -9,7 +9,7 @@ export type PlantObjectiveSample = {
   /** Recorded CC4.m_fArmedTime mapped from server time; not a default plant duration. */
   endTick?: number;
 };
-export type BombObjectiveSample = {
+type BombObjectiveSample = {
   kind: 'bomb';
   tick: number;
   entity: string;

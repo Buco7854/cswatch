@@ -27,7 +27,7 @@ const manifestSchema = z
   })
   .strict();
 /** Reads every immutable descriptor and payload through one directory descriptor. No stat-only trust. */
-export async function readGameplaySound(root: string, id: string, descriptorOnly = false) {
+async function readGameplaySound(root: string, id: string, descriptorOnly = false) {
   if (!Object.hasOwn(gameplaySoundRegistry.items, id)) return;
   return withDirectory(root, ['sounds', id], async (directory) => {
     const metadata = await regularFile(directory, 'manifest.json', 2, 4096);

@@ -71,16 +71,13 @@ test('the single public page uploads a private guest demo into the whole-tab vie
   );
   await expect(page.locator('select')).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Try the viewer', exact: true })).toHaveCount(0);
-  await expect(
-    page.locator('a[href^="/features"],a[href="/explore"],a[href="/watch/sample"]'),
-  ).toHaveCount(0);
+  await expect(page.locator('a[href="/watch/sample"]')).toHaveCount(0);
   const picker = page.waitForEvent('filechooser');
   await page.getByRole('button', { name: /Choose demo file/ }).click();
   await (await picker).setFiles(file);
   await expect(page).toHaveURL(/\/watch\/guest-fixture$/);
   await expect(page.getByRole('heading', { name: 'guest_fixture', exact: true })).toBeVisible();
   await expect(page.locator('.auth-page')).toHaveCount(0);
-  await expect(page.locator('.site-sidebar')).toHaveCount(0);
   expect(
     await page
       .locator('.viewer-frame')
@@ -159,8 +156,6 @@ test('account-required upload preserves route intent, registration and logout wo
   await page.getByRole('link', { name: 'Connected accounts', exact: true }).click();
   await expect(page).toHaveURL(/\/account\/connections$/);
   await expect(page.getByRole('heading', { name: 'Steam identity' })).toBeVisible();
-  await page.goto('/connections');
-  await expect(page).toHaveURL(/\/account\/connections$/);
   await page.getByRole('button', { name: new RegExp(username) }).click();
   await page.getByRole('menuitem', { name: 'Sign out' }).click();
   await expect(page.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible();
@@ -177,7 +172,6 @@ test('French covers public pages, viewer, auth errors and saved language choice'
   await expect(page.getByRole('heading', { name: 'Revoyez vos démos CS2.' })).toBeVisible();
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Revoyez vos démos CS2.' })).toBeVisible();
-  await expect(page.locator('a[href^="/features"],a[href="/explore"]')).toHaveCount(0);
   // The internal practice fixture still exercises French viewer states without
   // presenting an example demo as the anonymous upload feature.
   await page.goto('/watch/sample');
@@ -204,7 +198,7 @@ test('private entry gates feature and demo routes and respects registrations pol
   request,
 }) => {
   test.skip(!privateInstance);
-  for (const path of ['/', '/features/viewer', '/library', '/watch/sample']) {
+  for (const path of ['/', '/account/connections', '/library', '/watch/sample']) {
     await page.goto(path);
     await expect(page.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible();
     await expect(
@@ -245,7 +239,6 @@ test('private entry gates feature and demo routes and respects registrations pol
     await page.getByRole('button', { name: 'Create account', exact: true }).click();
     await expect(page).toHaveURL(/\/library$/);
     await expect(page.getByRole('heading', { name: 'Demo library', exact: true })).toBeVisible();
-    await expect(page.locator('a[href="/explore"]')).toHaveCount(0);
     await page.goto('/');
     await expect(page).toHaveURL(/\/library$/);
   }
@@ -587,5 +580,4 @@ test('personal library search keeps the complete placeholder readable and keyboa
       }
     }
   }
-  await expect(page.locator('a[href="/explore"],.workspace-label')).toHaveCount(0);
 });

@@ -1,7 +1,7 @@
 import type { ReviewEvent } from './review-events';
 
 export type TimelineWindow = { start: number; end: number };
-export type TimelineGroup = {
+type TimelineGroup = {
   id: string;
   anchor: number;
   events: ReviewEvent[];
