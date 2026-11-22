@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { FileHandle } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { mapGradeBytes, mapGradeFile, validMapGrade } from '../../shared/map-grade.mjs';
+import { mapGradeBytes, mapGradeFile, validMapGrade } from './map-grade-wire.js';
 import type { MapEnvironment } from '../../shared/map-assets.js';
 import {
   bytesFrom,

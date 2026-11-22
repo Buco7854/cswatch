@@ -1,4 +1,4 @@
-import { mapGradeFile } from '../../shared/map-grade.mjs';
+import { mapGradeFile } from './map-grade-wire.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { MapAssets } from '../../shared/map-assets.js';
