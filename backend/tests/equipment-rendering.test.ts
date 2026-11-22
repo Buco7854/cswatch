@@ -12,12 +12,19 @@ import {
   Bone,
   Skeleton,
   SkinnedMesh,
+  PerspectiveCamera,
 } from '../../frontend/node_modules/three/build/three.module.js';
 import {
   prepareEquipmentModel,
   disposeEquipmentInstance,
-  fitPovAttachment,
 } from '../../frontend/src/equipment-model.js';
+import {
+  fitPovAttachment,
+  povFar,
+  povNear,
+  povOffset,
+  povProjection,
+} from '../../frontend/src/pov-camera.js';
 import { validateEquipmentAssets } from '../../frontend/src/equipment-assets.js';
 import { projectileEquipment } from '../../frontend/src/projectile-equipment.js';
 import { equipmentIconKey } from '../../frontend/src/equipment-icons.js';
@@ -173,7 +180,8 @@ test('cloned skinned equipment releases only instance bone textures while retain
 });
 
 test('portrait static POV attachment retains native scale/depth while moving lateral offset inside the narrower field of view', () => {
-  const preset = originalEquipmentCatalog(['ak47']).items.ak47.attachments.pov;
+  const asset = originalEquipmentCatalog(['ak47']).items.ak47,
+    preset = asset.attachments.pov;
   const before = structuredClone(preset),
     portrait = fitPovAttachment(preset, 390 / 900),
     desktop = fitPovAttachment(preset, 1440 / 900);
@@ -183,4 +191,22 @@ test('portrait static POV attachment retains native scale/depth while moving lat
   assert.equal(portrait.position[0], preset.position[0]);
   assert.equal(portrait.position[1], preset.position[1]);
   assert.ok(portrait.position[2] < preset.position[2] * 0.3);
+  const { aspect, fov } = povProjection(390 / 900);
+  const camera = new PerspectiveCamera(fov, aspect, povNear, povFar);
+  const offset = new Vector3(povOffset.right, povOffset.up, -povOffset.forward);
+  const position = new Vector3(...portrait.position);
+  const basis = new Euler(0, Math.PI / 2, 0);
+  for (const x of [asset.bounds.min[0], asset.bounds.max[0]])
+    for (const y of [asset.bounds.min[1], asset.bounds.max[1]])
+      for (const z of [asset.bounds.min[2], asset.bounds.max[2]]) {
+        const corner = new Vector3(x, y, z)
+          .multiplyScalar(portrait.scale)
+          .add(position)
+          .applyEuler(basis)
+          .add(offset)
+          .project(camera);
+        assert.ok(corner.x > 0 && corner.x < 1, 'every corner is inside the right half');
+        assert.ok(corner.y > -1 && corner.y < 0, 'every corner is inside the lower half');
+        assert.ok(Math.abs(corner.z) < 1, 'every corner is between the clip planes');
+      }
 });

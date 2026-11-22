@@ -14,6 +14,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { Group, MathUtils, Matrix4, type Object3D } from 'three';
 import type { PoseTiming } from '../player-pose';
 import type { PreviousPose } from '../recorded-motion';
+import { fitPovAttachment } from '../pov-camera';
 import { nativeWeaponFrame } from '../agent-attachment';
 import { prepareEquipmentModel, disposeEquipmentInstance } from '../equipment-model';
 import type {
@@ -224,10 +225,11 @@ export function PovEquipment({ position }: { position: Position }) {
     key = equipmentIconKey(position.weapon);
   const asset = key && context?.catalog.items[key];
   const fire = useEquipmentFire(position);
+  const aspect = useThree(({ size }) => size.width / size.height);
   if (!asset || !position.alive) return null;
   return (
     <group rotation-y={Math.PI / 2} name={'pov-equipment:' + position.id + ':' + key}>
-      <Preset value={asset.attachments.pov}>
+      <Preset value={fitPovAttachment(asset.attachments.pov, aspect)}>
         <group position-x={-(fire?.kick ?? 0) * 0.025} rotation-z={(fire?.kick ?? 0) * 0.035}>
           <EquipmentModelInstance
             equipment={position.weapon}
