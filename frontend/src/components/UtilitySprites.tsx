@@ -74,10 +74,7 @@ export default function UtilitySprites({
     const previous = gl.getRenderTarget();
     const linear = new WebGLRenderTarget(1, 1);
     try {
-      // The same scene-linear shader writes either display sRGB or a linear
-      // render target for the authored grade. Reserve both program variants.
-      gl.setRenderTarget(null);
-      gl.compile(mesh.current, camera, scene);
+      // Warm the scene-linear program before the first visible effect.
       gl.setRenderTarget(linear);
       gl.compile(mesh.current, camera, scene);
     } finally {

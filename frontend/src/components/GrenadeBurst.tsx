@@ -1,6 +1,6 @@
 import { useThree } from '@react-three/fiber';
 import { useLayoutEffect, useMemo, useRef } from 'react';
-import { Vector2, Vector4, type Group, type PointLight, type ShaderMaterial } from 'three';
+import { Vector4, type Group, type PointLight, type ShaderMaterial } from 'three';
 import { mapGradeBurstLights } from '../map-grade';
 import { maxBursts, maxImpactSprites, sampleGrenadeBursts } from '../grenade-burst';
 import { impactPlaneCount, impactSurfaces } from '../impact-surfaces';
@@ -12,6 +12,7 @@ const vertexShader = `
   ${spriteVertexInputs}
   varying vec3 spriteWorld;
   varying float centerDepth;
+  varying vec3 contactClip;
   void main() {
     spriteUv = position.xy;
     effect = aEffect;
@@ -31,6 +32,7 @@ const vertexShader = `
     // Retain the unshifted position for the world-plane contact fade.
     centerDepth = center.z;
     gl_Position = projectionMatrix * (center + vec4(offset, 0.0, 0.0));
+    contactClip = gl_Position.xyw;
   }
 `;
 
@@ -39,9 +41,9 @@ const fragmentShader = `
   ${effectNoise}
   varying vec3 spriteWorld;
   varying float centerDepth;
+  varying vec3 contactClip;
   uniform mat4 projectionMatrix;
   uniform sampler2D contactDepth;
-  uniform vec2 contactViewport;
   uniform bool contactDepthReady;
   uniform vec4 contactPlanes[${maxBursts * impactPlaneCount}];
   void main() {
@@ -86,7 +88,9 @@ const fragmentShader = `
       contact = min(contact,smoothstep(-0.10,max(0.12,effect.x*0.45),d));
     }
     if (contactDepthReady) {
-      float depth = texture2D(contactDepth, gl_FragCoord.xy / contactViewport).r;
+      // The world output can be smaller than the contact prepass viewport.
+      vec2 contactUv = contactClip.xy / contactClip.z * 0.5 + 0.5;
+      float depth = texture2D(contactDepth, contactUv).r;
       if (depth < 0.999999) {
         float ndc = depth*2.0-1.0;
         float a = projectionMatrix[2][2], b = projectionMatrix[3][2];
@@ -135,7 +139,6 @@ export default function GrenadeBurst({
   const depthUniforms = useMemo<ContactDepthUniforms>(
     () => ({
       contactDepth: { value: null },
-      contactViewport: { value: new Vector2(1, 1) },
       contactDepthReady: { value: false },
     }),
     [],

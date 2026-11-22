@@ -267,7 +267,7 @@ test('the production WebGL viewer submits only active, depth-tested utility spri
     }, reset);
   const slider = page.getByRole('slider', { name: 'Playback position' });
   await slider.fill('99');
-  await expect.poll(async () => (await inspect()).burstCompiles).toBeGreaterThanOrEqual(2);
+  await expect.poll(async () => (await inspect()).burstCompiles).toBe(1);
   await page.evaluate(
     () =>
       new Promise<void>((resolve) =>

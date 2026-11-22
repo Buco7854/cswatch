@@ -255,6 +255,19 @@ The target keeps the drawing-buffer resolution as long as a single-sample alloca
 
 The production build, formatting, English and French locale checks, and runtime image-layout smoke check passed on Node 22.23.5. Node 24 is the project target. The backend passed all 425 tests with the pinned demo and offline speech model. The asset suite passed 302. Playwright passed 243 public cases with two configured skips, 53 cases for each private registration policy with 192 configured skips each, and four first-admin setup cases with one configured skip.
 
+## Mobile antialiasing follow-up
+
+The production build rendered the pinned Mirage replay at tick 29520 from the same free-camera pose at 390 × 844 and 820 × 1180 drawing-buffer pixels. Chromium SwiftShader exposed only 4× as a common sample count for RGBA16F and DEPTH24_STENCIL8. The 66 × 66 phone crop shows smoother diagonal railing and roof edges. The before and after captures and the nearest-neighbor enlargement are under ignored `var/grade-work/mobile-msaa/`.
+
+| Drawing buffer | Before, single sample | After, observed 4× | Estimated 2×     |
+| -------------- | --------------------- | ------------------ | ---------------- |
+| 390 × 844      | 3,949,920 bytes       | 19,749,600 bytes   | 11,849,760 bytes |
+| 820 × 1180     | 11,611,200 bytes      | 58,056,000 bytes   | 34,833,600 bytes |
+
+The attachment estimates use the observed allocations and include the resolved attachments. On both sizes the browser observed color-only blits, followed by depth and stencil invalidation on the bound multisampled framebuffer, without GL errors. In a 390 × 844 smoke frame, a foreground opaque witness stayed RGB (186, 12, 42) with and without smoke. The stencil witness also stayed (186, 12, 42), then changed to (210, 204, 198) when its stencil write was disabled. This covers the sampled opaque depth and x-ray stencil before discard. Physical mobile GPU bandwidth and frame time remain unmeasured.
+
+The simulated no-float phone rendered with zero HDR attachment allocations. The Mirage smoke checks passed for recorded and event-only smoke, a failed density worker, and framebuffer loss and recovery. The 72 selected Playwright cases passed, including one warmed burst shader and no shader compilation when the burst appeared. All 423 backend tests passed with the pinned replay and offline speech model. The production build, formatting and locales passed on Node 22.23.5.
+
 The separate reviewed desktop, tablet and phone matrix exercised both themes and reduced motion. At 75% render resolution, the six targets used 4× MSAA at 720 × 405, 576 × 675 and 292 × 633, matching their drawing buffers. A visible through-wall silhouette issued its stencil test with 8 stencil bits and 4 samples on the graded framebuffer. The build, ramp, formatting, 42 backend cases and 22 asset cases passed. Local probes, bloom, automatic exposure metering, physical GPUs and a newly downloaded sparse post-processing entry remain unverified. The runtime is Node 22.23.5.
 
 ## Replay motion, texture detail and C4 wave, 2026-11-22
