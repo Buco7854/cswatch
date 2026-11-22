@@ -162,8 +162,7 @@ test('POV equipment only requests the current rig advertised by the authorized c
     return route.fulfill({ status: 404 });
   });
   await viewer(page, (route) => route.fulfill({ json: { ct: null, t: null } }));
-  await page.getByRole('combobox', { name: 'Camera mode', exact: true }).click();
-  await page.getByRole('option', { name: 'Player perspective', exact: true }).click();
+  await chooseCameraControl(page, 'Player perspective');
   await page.clock.runFor(100);
   expect(requests).toEqual([]);
   advertised = true;
