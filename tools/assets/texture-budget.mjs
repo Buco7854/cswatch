@@ -172,7 +172,7 @@ async function metadata(image) {
   return { width: info.width, height: info.height, bytes: image.byteLength, sha256: sha(image) };
 }
 
-/** Serial encodes avoid the old hundreds-of-images Promise.all decode peak. */
+/** Serial encodes keep only one image decode live at a time. */
 export async function applyTextureBudget(document, { tier, ...overrides }) {
   const textures = document.getRoot().listTextures();
   if (textures.length > textureBudgetLimits.images) throw new Error('Too many map texture images.');

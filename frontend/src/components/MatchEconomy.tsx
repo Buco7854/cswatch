@@ -13,7 +13,7 @@ const number = (value: number | undefined) => known(value)?.toLocaleString(local
 const money = (value: number | undefined) =>
   known(value) === undefined ? '-' : '$' + number(value);
 const yesNo = (value: boolean | undefined) => (value === undefined ? '-' : t(value ? 'Yes' : 'No'));
-export type LoadoutMember = { player: Player; state: Position | undefined };
+type LoadoutMember = { player: Player; state: Position | undefined };
 
 function UtilityInventory({ state }: { state: Position | undefined }) {
   const items = utilityInventory(state?.inventory);

@@ -381,7 +381,7 @@ test('phone defaults ignore desktop HUD opt-ins and playback range stays directl
   await expect(camera).toHaveText('2D tactical · low power');
 });
 
-test('playback settings migrate the old downtime preference and keep the two switches independent', async ({
+test('playback settings ignore unsupported preferences and keep the two switches independent', async ({
   page,
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE));
@@ -391,9 +391,9 @@ test('playback settings migrate the old downtime preference and keep the two swi
   await selectOptionsCategory(page, 'Playback');
   const freeze = page.getByRole('switch', { name: 'Skip freeze time automatically' });
   const timeouts = page.getByRole('switch', { name: 'Skip timeouts automatically' });
-  await expect(freeze).toBeChecked();
-  await expect(timeouts).toBeChecked();
-  await freeze.click();
+  await expect(freeze).not.toBeChecked();
+  await expect(timeouts).not.toBeChecked();
+  await timeouts.click();
   await expect(freeze).not.toBeChecked();
   await expect(timeouts).toBeChecked();
   const leadIn = page.getByRole('combobox', { name: 'Kill and death replay lead-in' });

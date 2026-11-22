@@ -18,7 +18,7 @@ type ObjectiveState = {
   actor?: Actor;
   notice?: Actor & { kind: 'plant-aborted' | 'defuse-aborted'; tick: number };
 };
-export type ObjectiveTimeline = {
+type ObjectiveTimeline = {
   tickRate: number;
   states: ObjectiveState[];
   complete: boolean;

@@ -8,7 +8,7 @@ import sharp from 'sharp';
 import { localDirectory } from './toolchain-security.mjs';
 import { checkFreeReserve } from './asset-storage.mjs';
 
-export const sourceImageLimits = Object.freeze({
+const sourceImageLimits = Object.freeze({
   bytes: 64 * 1024 ** 2,
   pixels: 64 * 1024 ** 2,
   edge: 16384,

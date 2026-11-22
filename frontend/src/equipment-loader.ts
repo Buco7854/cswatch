@@ -18,7 +18,7 @@ const cache = new ModelCache<GLTF>({
   clear: (url) => useLoader.clear(EquipmentGLTFLoader, url),
   load: (url, callbacks) => loadScopedGLTF(url, callbacks, 16 * MiB, true),
 });
-export class EquipmentGLTFLoader extends Loader<GLTF> {
+class EquipmentGLTFLoader extends Loader<GLTF> {
   constructor() {
     super(new LoadingManager());
   }

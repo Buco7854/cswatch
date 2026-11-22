@@ -121,7 +121,7 @@ function addAction({ clip, arms, armRig, weaponRig, rest, mount, weaponBasis, we
 }
 
 /** Operator-only packing of bounded named S2V exports. Keeps the official bone frame and existing POV basis. */
-export async function prepareViewmodel({ equipment, input, output }) {
+async function prepareViewmodel({ equipment, input, output }) {
   if (!Object.hasOwn(viewmodelSources, equipment))
     throw Error('Unsupported first-person equipment.');
   output = resolve(output);

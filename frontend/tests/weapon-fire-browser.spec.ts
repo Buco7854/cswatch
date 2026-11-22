@@ -75,7 +75,7 @@ async function fixture(page: Page, wall = false) {
           radar: false,
           economy: false,
           utilities: false,
-          trajectories: false,
+          trajectories: 'off',
           matchScore: false,
           xray: false,
           crosshair: false,

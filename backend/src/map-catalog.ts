@@ -18,7 +18,7 @@ const decimal64 = z
   .string()
   .regex(/^[1-9][0-9]{0,19}$/)
   .refine((v) => BigInt(v) <= 18446744073709551615n);
-export const approvedIdentitySchema = mapIdentitySchema
+const approvedIdentitySchema = mapIdentitySchema
   .required()
   .omit({ conflicted: true })
   .extend({ map: officialMapName, addonPresence: z.literal('none') });

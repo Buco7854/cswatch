@@ -70,7 +70,7 @@ export function validateRemoteUrl(value: string, allowedHosts: readonly string[]
 }
 
 type Address = { address: string; family: number };
-export type DownloadLookup = (hostname: string) => Promise<Address[]>;
+type DownloadLookup = (hostname: string) => Promise<Address[]>;
 
 export async function resolveRemoteAddress(
   url: URL,
@@ -98,7 +98,7 @@ type Request = (
   options: RequestOptions,
   callback: (response: IncomingMessage) => void,
 ) => Pick<ClientRequest, 'on' | 'end' | 'destroy'>;
-export type RemoteDownloadOptions = {
+type RemoteDownloadOptions = {
   allowedHosts: readonly string[];
   maxBytes: number;
   signal: AbortSignal;

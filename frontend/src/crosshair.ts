@@ -48,7 +48,6 @@ export const crosshairPresets = Object.freeze({
     tStyle: true,
   }),
 }) satisfies Readonly<Record<string, Readonly<CrosshairStyle>>>;
-export type CrosshairPreset = keyof typeof crosshairPresets;
 
 const colorPattern = /^#[\da-f]{6}$/i;
 const safeColor = (value: unknown): value is string =>
@@ -124,14 +123,14 @@ export function parseCrosshairPreset(text: string): CrosshairStyle | null {
   }
 }
 
-export type CrosshairRect = {
+type CrosshairRect = {
   id: 'left' | 'right' | 'top' | 'bottom' | 'dot';
   x: number;
   y: number;
   width: number;
   height: number;
 };
-export type CrosshairGeometry = {
+type CrosshairGeometry = {
   size: 96;
   color: string;
   opacity: number;

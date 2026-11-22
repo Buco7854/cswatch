@@ -90,8 +90,8 @@ export function useNativeWeaponPose(
   );
 }
 
-/** Depth-tested analytical fire geometry. New prepared models carry their native
- * muzzle frame; older models explicitly retain an approximate bounds fallback. */
+/** Depth-tested analytical fire geometry. An admitted native muzzle
+ * frame supplies the anchor. Missing attachment data uses the model bounds. */
 export function EquipmentMuzzle({
   asset,
   position,

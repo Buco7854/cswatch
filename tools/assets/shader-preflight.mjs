@@ -9,7 +9,7 @@ import { checkedBatch, steamAssetLimits } from './steam-assets-plan.mjs';
 const models = ['60', '50', '41', '40', '31', '30', '2b'];
 const stages = ['features', 'vs', 'ps', 'gs', 'hs', 'ds', 'cs', 'psrs', 'rtx', 'ms'];
 const maximum = 128 * 1024 ** 2;
-export const shaderVerificationLimits = Object.freeze({
+const shaderVerificationLimits = Object.freeze({
   entryBytes: 512 * 1024 ** 2,
   totalBytes: 16 * 1024 ** 3,
 });
@@ -211,11 +211,9 @@ export async function preflightMaterialShaders({
     verifiedBytes += bytes;
     if (verifiedBytes > shaderVerificationLimits.totalBytes)
       throw new Error('Shader preflight exceeds the cumulative verification budget.');
-    if (typeof directory.verifyEntry === 'function')
-      return (await directory.verifyEntry(resource)) === true;
-    if (bytes > maximum)
-      throw new Error('Large shader programs require bounded streaming CRC verification.');
-    return Boolean(await directory.readEntry(resource));
+    if (typeof directory.verifyEntry !== 'function')
+      throw new Error('Shader programs require bounded streaming CRC verification.');
+    return (await directory.verifyEntry(resource)) === true;
   };
   for (const family of families)
     for (const program of family.programs) {

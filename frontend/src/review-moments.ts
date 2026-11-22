@@ -18,7 +18,7 @@ export type CombatMoment = {
   weapon?: string;
   headshot: boolean;
 };
-export type ReviewMomentIndex = {
+type ReviewMomentIndex = {
   kills: CombatMoment[];
   utilities: ThrowPrompt[];
   byPlayer: Map<string, { kills: CombatMoment[]; utilities: ThrowPrompt[] }>;

@@ -772,68 +772,6 @@
   min-height: 0;
   padding: 18px;
 }
-.viewer-drawer .roster-panel {
-  display: block;
-  background: none;
-  border: 0;
-  border-radius: 0;
-  padding: 0;
-}
-.viewer-drawer .team-roster {
-  margin: 0 0 23px;
-}
-.viewer-drawer .team-roster h3 {
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--muted);
-  margin-bottom: 8px;
-  min-height: 0;
-  align-items: center;
-}
-.viewer-drawer .team-dot {
-  margin: 0;
-}
-.viewer-drawer .player-row {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  min-height: 52px;
-  padding: 8px;
-  border-radius: 5px;
-  gap: 10px;
-  margin: 0;
-  background: none;
-  color: var(--text);
-}
-.viewer-drawer .player-row:hover,
-.viewer-drawer .player-row.selected {
-  background: var(--raised);
-}
-.viewer-drawer .player-number {
-  font-size: 11px;
-  width: 15px;
-  flex-shrink: 0;
-}
-.viewer-drawer .player-identity {
-  flex: 1;
-  min-width: 0;
-}
-.viewer-drawer .player-identity strong {
-  font-size: 13px;
-  font-weight: 500;
-  max-width: 190px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.viewer-drawer .player-identity small {
-  font-size: 11px;
-  line-height: 1.5;
-  max-width: 190px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 .viewer-drawer .health {
   font-size: 12px;
   flex-shrink: 0;
@@ -842,13 +780,6 @@
 }
 .viewer-drawer .health small {
   font-size: 11px;
-}
-.viewer-drawer .roster-foot {
-  font-size: 12px;
-  line-height: 1.6;
-  border-color: var(--border);
-  padding-top: 14px;
-  margin: 0;
 }
 .viewer-drawer .note-form {
   display: flex;

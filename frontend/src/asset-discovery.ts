@@ -1,6 +1,6 @@
 import { readMapJSON } from './demo-map-assets';
 
-export const assetDiscoveryLimits = Object.freeze({
+const assetDiscoveryLimits = Object.freeze({
   durationMs: 45 * 60 * 1000,
   requestMs: 10000,
   delaysMs: [2000, 5000, 15000, 30000] as readonly number[],

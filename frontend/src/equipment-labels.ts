@@ -15,6 +15,3 @@ export function equipmentLabel(value: string) {
   const key = name.replace(/[\s-]/g, '').toLowerCase();
   return utilityNames[key] ? t(utilityNames[key]) : name;
 }
-export function isUtilityItem(value: string) {
-  return /grenade|flash|smoke|molotov|incendiary|decoy/i.test(value);
-}

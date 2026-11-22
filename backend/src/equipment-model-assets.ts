@@ -26,7 +26,7 @@ const registry = JSON.parse(
     'utf8',
   ),
 );
-export const equipmentModelKeys = Object.freeze(Object.keys(registry.items) as string[]);
+const equipmentModelKeys = Object.freeze(Object.keys(registry.items) as string[]);
 if (
   registry.schemaVersion !== 1 ||
   equipmentModelKeys.length < 1 ||

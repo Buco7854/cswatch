@@ -135,7 +135,7 @@ test('original static POV preset leaves positive eye clearance in every recorded
     }
 });
 
-test('legacy grenade models accept exact native/canonical kinds and keep ambiguous incendiary classes unknown', () => {
+test('trajectory-based grenade models accept exact native/canonical kinds and keep ambiguous incendiary classes unknown', () => {
   assert.equal(projectileEquipment('CSmokeGrenadeProjectile'), 'smokegrenade');
   assert.equal(projectileEquipment('CHEGrenadeProjectile'), 'hegrenade');
   assert.equal(projectileEquipment('CFlashbangProjectile'), 'flashbang');

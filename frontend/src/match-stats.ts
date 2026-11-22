@@ -1,7 +1,7 @@
 import type { Frame, Playback, Player, Position } from './types';
 import type { MatchStateData, MatchStateSample } from '../../shared/match-state';
 
-export type MatchStatValues = {
+type MatchStatValues = {
   kills?: number;
   deaths?: number;
   assists?: number;
@@ -9,7 +9,7 @@ export type MatchStatValues = {
   headshotPercent?: number;
   damage?: number;
 };
-export type MatchStatsIndex = { players: Player[] };
+type MatchStatsIndex = { players: Player[] };
 export type MatchStatsRow = {
   player: Player;
   state?: Position;
@@ -18,12 +18,12 @@ export type MatchStatsRow = {
   stats: MatchStatValues;
   source: 'recorded-counters' | 'unavailable';
 };
-export type MatchTimeline = {
+type MatchTimeline = {
   samples: MatchStateSample[];
   tickRate: number;
   complete: boolean;
 };
-export type MatchView = {
+type MatchView = {
   ctScore?: number;
   tScore?: number;
   roundNumber?: number;

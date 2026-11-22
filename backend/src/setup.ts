@@ -22,7 +22,7 @@ import {
   token,
 } from './security.js';
 
-export const adminCredentials = z.object({
+const adminCredentials = z.object({
   username: z.string().regex(/^[A-Za-z0-9_-]{3,32}$/),
   password: z.string().min(12).max(128),
 });

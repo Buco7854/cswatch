@@ -213,10 +213,10 @@ export function originalEquipmentReplay() {
     ),
     { id: 'item:1:0:0', tick: 64, present: false },
   ];
-  // Intentionally nearby legacy path with unrelated identity must not add a second body.
+  // Intentionally nearby trajectory with unrelated identity must not add a second body.
   replay.grenades = [
     {
-      id: 'legacy-without-serial',
+      id: 'trajectory-without-serial',
       kind: 'smokegrenade',
       points: [
         { tick: 0, x: 100, y: -100, z: 60 },

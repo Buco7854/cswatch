@@ -28,11 +28,6 @@ small {
   grid-template-columns: 228px minmax(0, 1fr);
   min-height: 100vh;
 }
-.brand-symbol {
-  color: var(--accent);
-  display: grid;
-  place-items: center;
-}
 .instance-identity {
   display: flex;
   gap: 10px;
@@ -63,8 +58,7 @@ small {
   background: var(--ground);
   z-index: 15;
 }
-.main,
-.wide-main {
+.main {
   max-width: none;
   width: 100%;
   margin: 0 !important;
@@ -83,40 +77,9 @@ small {
 .page-heading > .button {
   font-size: 13px;
 }
-.scope-label {
-  font-size: 12px;
-}
-.site-footer {
-  max-width: none;
-  margin: 36px 24px 0;
-  padding: 18px 0 22px;
-  border-top: 1px solid var(--border);
-  display: flex;
-  justify-content: space-between;
-  gap: 20px;
-  color: var(--faint);
-  font-size: 11px;
-}
-.site-footer > span:last-child {
-  font-size: 11px;
-  margin: 0;
-  color: var(--faint);
-}
 .nav-actions {
   gap: 10px;
   margin-left: auto;
-}
-.language-select {
-  display: block;
-}
-.language-select select {
-  background: transparent !important;
-  color: var(--muted) !important;
-  border: 0 !important;
-  padding: 6px 17px 6px 6px;
-  font-size: 12px;
-  min-height: 36px;
-  width: auto;
 }
 .theme-toggle {
   border-radius: 6px;
@@ -132,25 +95,6 @@ small {
   border-radius: 6px !important;
   background: var(--border) !important;
   color: var(--text) !important;
-}
-.menu-panel {
-  top: 56px;
-  right: 20px;
-  background: var(--surface) !important;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 6px;
-  color: var(--text) !important;
-  box-shadow: 0 12px 32px #0002;
-}
-.menu-panel a,
-.menu-panel button {
-  color: var(--text);
-  min-height: 40px;
-}
-.menu-panel a:hover,
-.menu-panel button:hover {
-  background: var(--raised) !important;
 }
 [data-theme] .button {
   border: 1px solid var(--control);
@@ -175,11 +119,6 @@ small {
 }
 [data-theme] .button.primary:hover {
   opacity: 0.88;
-}
-[data-theme] .button.tertiary {
-  border-color: transparent;
-  background: transparent;
-  color: var(--muted);
 }
 [data-theme] .icon-button {
   color: var(--muted);
@@ -216,24 +155,8 @@ small {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
-[data-theme] .status-dot {
-  background: var(--accent);
-}
-.library-workspace {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
-  gap: 24px;
-  align-items: start;
-}
-.library-primary {
-  min-width: 0;
-}
 .library-section {
   margin-top: 0;
-}
-.section-heading {
-  border-bottom: 1px solid var(--border);
-  gap: 16px;
 }
 .tabs {
   gap: 23px;
@@ -356,91 +279,6 @@ small {
 .added {
   color: var(--faint);
 }
-.workflow-note {
-  padding: 26px 2px 0;
-}
-.workflow-note h2 {
-  font-size: 15px;
-}
-.workflow-note > p {
-  font-size: 13px;
-  line-height: 1.65;
-  margin-top: 7px;
-}
-.workflow-note > div {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 12px;
-  color: var(--faint);
-  padding-top: 18px;
-}
-.workflow-note > div svg {
-  color: var(--faint);
-}
-.sample-entry {
-  display: grid;
-  grid-template-columns: 42% minmax(0, 1fr);
-  gap: 22px;
-  align-items: center;
-  margin-top: 20px;
-  padding-top: 22px;
-  border-top: 1px solid var(--border);
-}
-.sample-thumbnail {
-  height: 210px;
-  min-width: 0;
-  border-radius: 6px;
-  overflow: hidden;
-  background: var(--raised);
-}
-.sample-entry h2 {
-  font-size: 19px;
-  line-height: 1.25;
-  letter-spacing: -0.45px;
-  margin-top: 12px;
-  max-width: 240px;
-}
-.sample-entry p {
-  font-size: 13px;
-  line-height: 1.65;
-  margin-top: 9px;
-  max-width: 320px;
-}
-.sample-entry small {
-  display: block;
-  font-size: 11px;
-  line-height: 1.6;
-  margin-top: 12px;
-}
-.sample-entry .tag {
-  padding: 0;
-  background: none;
-  min-height: 0;
-  font-size: 11px;
-  color: var(--faint);
-}
-.sample-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 500;
-  padding: 0;
-  margin-top: 15px;
-}
-.viewer-heading {
-  gap: 18px;
-  margin-bottom: 22px;
-}
-.viewer-heading h1 {
-  font-size: 25px;
-  letter-spacing: -0.6px;
-}
-.viewer-heading p {
-  font-size: 12px;
-  margin-top: 8px;
-}
 .back-link {
   font-size: 12px;
   color: var(--muted);
@@ -449,58 +287,13 @@ small {
 .back-link:hover {
   color: var(--text);
 }
-.viewer-heading-actions {
-  gap: 8px;
-}
-.viewer-grid {
-  grid-template-columns: minmax(0, 1fr) 252px;
-  gap: 16px;
-}
-[data-theme] .playback,
-[data-theme] .roster-panel,
-[data-theme] .round-panel {
+[data-theme] .playback {
   background: var(--raised);
   border-radius: 8px;
   box-shadow: none;
 }
-.viewer-toolbar {
-  padding: 10px 14px;
-  min-height: 48px;
-  gap: 8px;
-}
-.viewer-toolbar > span {
-  font-size: 12px;
-}
-.viewer-toolbar small {
-  font-size: 11px;
-  margin-left: 5px;
-}
-.viewer-toolbar-actions {
-  gap: 5px;
-}
-.camera-label {
-  display: flex;
-  flex-direction: row;
-  gap: 5px;
-  color: var(--muted);
-}
-[data-theme] .camera-label select {
-  background: transparent;
-  border: 0;
-  font-size: 12px;
-  min-height: 30px;
-  padding: 5px 6px;
-  max-width: 220px;
-}
 .controls {
   padding: 12px 14px;
-}
-.scrubber {
-  font-size: 12px;
-  color: var(--muted);
-}
-.scrubber input {
-  accent-color: var(--accent);
 }
 .transport {
   gap: 7px;
@@ -515,65 +308,11 @@ small {
 .transport .button {
   font-size: 12px;
 }
-.roster-panel {
-  padding: 17px 14px;
-}
-.roster-panel > .panel-heading {
-  margin-bottom: 17px;
-}
-.roster-panel > .panel-heading h2 {
-  font-size: 15px;
-}
-.player-row {
-  border-radius: 4px;
-  gap: 8px;
-  padding: 7px 6px;
-  min-height: 45px;
-  margin: 0;
-}
-.player-identity strong {
-  font-size: 13px;
-  max-width: 140px;
-}
-.player-identity small {
-  font-size: 11px;
-  max-width: 140px;
-}
 .health {
   font-size: 12px;
 }
 .health small {
   font-size: 11px;
-}
-.player-number {
-  font-size: 11px;
-  width: 13px;
-}
-.team-roster h3 {
-  font-size: 11px;
-  color: var(--muted);
-  margin-bottom: 7px;
-}
-[data-theme] .player-row.selected,
-[data-theme] .player-row:hover {
-  background: var(--border);
-}
-.team-roster + .team-roster {
-  margin-top: 18px;
-}
-.roster-foot {
-  font-size: 11px;
-  line-height: 1.65;
-  border-color: var(--border);
-  margin-top: 15px;
-  padding-top: 14px;
-}
-.round-panel {
-  padding: 18px;
-  margin-top: 16px;
-}
-.round-panel h2 {
-  font-size: 15px;
 }
 .round-strip {
   gap: 6px;
@@ -593,29 +332,6 @@ small {
 }
 [data-theme] .round-strip .active i {
   background: var(--accent);
-}
-.review-navigation {
-  margin-top: 16px;
-  gap: 8px;
-}
-.review-navigation .button {
-  font-size: 12px;
-}
-.review-navigation > span {
-  font-size: 12px;
-}
-.moment-navigation {
-  margin-top: 12px;
-}
-.moment-navigation summary {
-  font-size: 12px;
-  color: var(--faint);
-}
-.moment-navigation .actions {
-  gap: 8px;
-}
-.moment-navigation .button {
-  font-size: 12px;
 }
 .event-panel {
   margin-top: 22px;
@@ -640,17 +356,6 @@ small {
 }
 .note-form {
   border-color: var(--border);
-}
-.keyboard-help {
-  font-size: 11px;
-  color: var(--faint);
-  line-height: 1.7;
-}
-.view-hint,
-.map-notice {
-  background: #12170fe6;
-  color: #e8ede4;
-  font-size: 11px;
 }
 .killfeed div {
   background: #12170fe6;
@@ -816,93 +521,14 @@ summary {
     max-width: 1700px;
     margin: auto !important;
   }
-  .site-footer {
-    margin-left: 40px;
-    margin-right: 40px;
-  }
-  .library-workspace {
-    grid-template-columns: minmax(0, 1fr) 330px;
-    gap: 32px;
-  }
-  .sample-thumbnail {
-    height: 260px;
-  }
-  .sample-entry {
-    grid-template-columns: 44% 1fr;
-    gap: 30px;
-  }
-  .sample-entry h2 {
-    font-size: 24px;
-    max-width: 360px;
-  }
-  .sample-entry p {
-    font-size: 15px;
-    max-width: 420px;
-  }
-  .sample-entry .sample-link {
-    font-size: 14px;
-  }
-  .viewer-grid {
-    grid-template-columns: minmax(0, 1fr) 300px;
-  }
-  .roster-panel {
-    padding: 22px;
-  }
-  .player-row {
-    padding: 9px 7px;
-    min-height: 51px;
-  }
 }
 @media (max-width: 1200px) {
-  .library-workspace {
-    grid-template-columns: minmax(0, 1fr) 270px;
-    gap: 24px;
-  }
   .search input {
     width: 130px !important;
   }
   .demo-row {
     grid-template-columns: minmax(110px, 1fr) 60px 40px 60px 70px;
     gap: 8px;
-  }
-  .sample-entry {
-    grid-template-columns: 40% 1fr;
-    gap: 18px;
-  }
-  .sample-thumbnail {
-    height: 220px;
-  }
-  .sample-entry h2 {
-    font-size: 18px;
-  }
-  .sample-entry p {
-    font-size: 12px;
-  }
-  .viewer-grid {
-    grid-template-columns: minmax(0, 1fr) 230px;
-  }
-  .roster-panel {
-    padding: 16px 10px;
-  }
-  .player-row {
-    padding: 7px 4px;
-    gap: 6px;
-  }
-  .viewer-toolbar small {
-    display: none;
-  }
-  .viewer-heading-actions {
-    flex-wrap: wrap;
-    justify-content: flex-end;
-  }
-  .viewer-heading-actions .button {
-    font-size: 12px;
-  }
-  .viewer-toolbar-actions {
-    gap: 0;
-  }
-  .camera-label select {
-    max-width: 170px !important;
   }
 }
 @media (max-width: 1100px) {
@@ -917,101 +543,25 @@ summary {
     padding: 0 16px;
     gap: 12px;
   }
-  .mobile-menu {
-    display: flex;
-  }
-  .main,
-  .wide-main {
+  .main {
     padding: 28px 24px 0;
-  }
-  .library-workspace {
-    grid-template-columns: minmax(0, 1fr) 280px;
   }
   .demo-row {
     grid-template-columns: minmax(100px, 1fr) 60px 40px 60px 70px;
   }
-  .sample-entry p {
-    font-size: 13px;
-  }
-  .menu-panel {
-    right: auto;
-    left: 16px;
-    top: 52px;
-    min-width: 235px;
-  }
   .account-name {
     display: inline-block;
-  }
-  .site-footer {
-    flex-wrap: wrap;
-  }
-  .site-footer > span:last-child {
-    flex-basis: auto;
-    margin-left: auto;
   }
   .settings-section {
     gap: 30px;
   }
 }
 @media (max-width: 900px) {
-  .library-workspace {
-    grid-template-columns: 1fr;
-  }
-  .library-rail {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 24px;
-    align-items: start;
-  }
-  .workflow-note {
-    padding: 18px 0;
-  }
-  .sample-entry {
-    grid-template-columns: 40% 1fr;
-    gap: 24px;
-  }
-  .sample-thumbnail {
-    height: 210px;
-  }
-  .sample-entry p {
-    max-width: 340px;
-  }
   .library-empty {
     min-height: 210px;
   }
-  .viewer-grid {
-    grid-template-columns: 1fr;
-  }
-  .roster-panel {
-    padding: 20px;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-  }
-  .roster-panel > .panel-heading,
-  .roster-foot {
-    grid-column: 1/-1;
-  }
-  .roster-panel > .panel-heading {
-    margin: 0;
-  }
-  .team-roster + .team-roster {
-    margin: 0;
-  }
-  .player-row {
-    padding: 8px;
-    gap: 12px;
-  }
-  .player-identity strong,
-  .player-identity small {
-    max-width: 170px;
-  }
   .health {
     font-size: 13px;
-  }
-  .roster-foot {
-    padding-top: 16px;
-    margin-top: 0;
   }
   .event-list {
     grid-template-columns: 1fr;
@@ -1019,9 +569,6 @@ summary {
   .settings-section {
     grid-template-columns: 1fr 1.2fr;
     gap: 24px;
-  }
-  .site-footer {
-    gap: 12px;
   }
 }
 @media (max-width: 600px) {
@@ -1035,12 +582,6 @@ summary {
   }
   .nav-actions {
     gap: 2px;
-  }
-  .language-select select {
-    font-size: 11px !important;
-    max-width: 87px;
-    min-height: 36px !important;
-    padding: 6px 2px !important;
   }
   .theme-toggle {
     min-width: 32px !important;
@@ -1056,8 +597,7 @@ summary {
   .nav-actions > .button svg {
     width: 13px;
   }
-  .main,
-  .wide-main {
+  .main {
     padding: 26px 16px 0;
   }
   .page-heading {
@@ -1090,9 +630,6 @@ summary {
   .tabs button {
     font-size: 13px;
     padding: 13px 0;
-  }
-  .section-heading {
-    gap: 8px;
   }
   .library-tools {
     gap: 1px;
@@ -1136,57 +673,6 @@ summary {
   }
   .library-meta > span:last-child {
     max-width: 165px;
-  }
-  .sample-entry {
-    grid-template-columns: 1fr;
-    gap: 18px;
-    margin-top: 12px;
-    padding-top: 20px;
-  }
-  .sample-thumbnail {
-    height: 180px;
-  }
-  .sample-entry h2 {
-    font-size: 21px;
-    max-width: none;
-    margin-top: 8px;
-  }
-  .sample-entry p {
-    font-size: 13px;
-    max-width: none;
-    line-height: 1.65;
-  }
-  .sample-entry > div:last-child {
-    padding-bottom: 2px;
-  }
-  .sample-entry .tag {
-    font-size: 11px;
-  }
-  .sample-entry small {
-    font-size: 11px;
-  }
-  .sample-link {
-    font-size: 13px;
-    margin-top: 12px;
-  }
-  .library-rail {
-    grid-template-columns: 1fr;
-    gap: 22px;
-  }
-  .library-workspace {
-    gap: 28px;
-  }
-  .workflow-note {
-    padding: 0 0 8px;
-  }
-  .workflow-note h2 {
-    font-size: 16px;
-  }
-  .workflow-note > p {
-    font-size: 13px;
-  }
-  .workflow-note > div {
-    padding-top: 14px;
   }
   .table-head {
     display: none;
@@ -1232,61 +718,12 @@ summary {
     grid-row: 1;
     font-size: 11px;
   }
-  .viewer-heading {
-    gap: 12px;
-    align-items: flex-start;
-  }
-  .viewer-heading h1 {
-    font-size: 23px;
-    max-width: 210px;
-    line-height: 1.2;
-  }
-  .viewer-heading p {
-    font-size: 11px;
-    line-height: 1.65;
-  }
-  .viewer-heading-actions {
-    gap: 6px;
-    max-width: 130px;
-    flex-direction: column;
-    align-items: flex-end;
-  }
-  .viewer-heading-actions .button {
-    font-size: 11px;
-    min-height: 32px;
-    padding: 6px 9px;
-  }
-  .viewer-heading-actions .tag {
-    font-size: 10px;
-  }
   .back-link {
     font-size: 12px;
     margin-bottom: 10px;
   }
-  .viewer-toolbar {
-    padding: 9px 10px;
-    min-height: 44px;
-  }
-  .viewer-toolbar > span {
-    font-size: 11px;
-  }
-  .camera-label select {
-    font-size: 11px !important;
-    max-width: 150px !important;
-  }
-  .camera-label svg {
-    display: none;
-  }
   .controls {
     padding: 12px 10px;
-  }
-  .scrubber {
-    gap: 9px;
-    font-size: 11px;
-  }
-  .control-row {
-    gap: 4px;
-    margin-top: 8px;
   }
   .transport {
     gap: 2px;
@@ -1306,69 +743,15 @@ summary {
     gap: 4px;
     min-height: 40px;
   }
-  .roster-panel {
-    padding: 18px 12px;
-    gap: 12px;
-  }
-  .player-row {
-    min-height: 48px;
-    padding: 7px 3px;
-    gap: 6px;
-  }
-  .player-identity strong {
-    font-size: 12px;
-    max-width: 80px;
-  }
-  .player-identity small {
-    font-size: 11px;
-    max-width: 80px;
-  }
-  .player-number {
-    font-size: 10px;
-    width: 11px;
-  }
   .health {
     font-size: 11px;
   }
   .health small {
     font-size: 10px;
   }
-  .team-roster h3 {
-    font-size: 11px;
-    line-height: 1.3;
-    min-height: 28px;
-    align-items: flex-start;
-    gap: 5px;
-  }
-  .team-dot {
-    margin-top: 5px;
-    flex-shrink: 0;
-  }
-  .roster-foot {
-    font-size: 11px;
-  }
-  .round-panel {
-    padding: 18px 14px;
-  }
   .round-strip button {
     min-height: 44px !important;
     min-width: 36px !important;
-  }
-  .review-navigation {
-    gap: 8px;
-  }
-  .review-navigation .button {
-    font-size: 12px;
-    min-height: 40px;
-    padding: 8px 10px;
-  }
-  .review-navigation > span {
-    flex-basis: 100%;
-    margin: 0;
-    font-size: 11px;
-  }
-  .moment-navigation summary {
-    font-size: 12px;
   }
   .event-row {
     font-size: 12px;
@@ -1386,10 +769,6 @@ summary {
   .position-radar {
     width: 76px;
     height: 76px;
-  }
-  .keyboard-help {
-    font-size: 11px;
-    line-height: 1.8;
   }
   .settings-section {
     grid-template-columns: 1fr;
@@ -1424,18 +803,6 @@ summary {
   .admin-grid {
     grid-template-columns: 1fr;
   }
-  .site-footer {
-    margin: 32px 16px 0;
-    flex-direction: column;
-    gap: 8px;
-    font-size: 11px;
-    align-items: flex-start;
-  }
-  .site-footer > span:last-child {
-    margin: 0;
-    max-width: 320px;
-    line-height: 1.6;
-  }
   .account-name {
     display: none;
   }
@@ -1449,11 +816,6 @@ summary {
   .avatar {
     width: 27px;
     height: 27px;
-  }
-  .menu-panel {
-    top: 52px;
-    left: 12px;
-    max-width: calc(100vw - 24px);
   }
 
   .options-dialog {
@@ -1482,8 +844,5 @@ summary {
   }
   .processing p {
     font-size: 14px;
-  }
-  .sample-thumbnail .scene-fallback {
-    min-height: 180px;
   }
 }

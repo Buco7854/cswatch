@@ -205,13 +205,9 @@ function App() {
       </main>
     );
   const authRoute = ['/login', '/register'].includes(location.pathname);
-  const accountRoute = [
-    '/library',
-    '/connections',
-    '/account',
-    '/account/connections',
-    '/admin',
-  ].includes(location.pathname);
+  const accountRoute = ['/library', '/account', '/account/connections', '/admin'].includes(
+    location.pathname,
+  );
   const privateGate = !user && (!config.public_access || accountRoute);
   const publicSurface = location.pathname === '/' && !user;
   const guestPath = location.pathname + location.search + location.hash;
@@ -283,16 +279,6 @@ function App() {
         >
           <Routes>
             <Route path="/library" element={<Library />} />
-            <Route path="/explore" element={<Navigate replace to={user ? '/library' : '/'} />} />
-            <Route
-              path="/features/:kind"
-              element={<Navigate replace to={user ? '/library' : '/'} />}
-            />
-            <Route path="/self-host" element={<Navigate replace to={user ? '/library' : '/'} />} />
-            <Route
-              path="/connections"
-              element={<Navigate replace to={'/account/connections' + location.search} />}
-            />
             <Route path="/account" element={<Account />} />
             <Route path="/account/connections" element={<Account section="connections" />} />
             <Route path="/admin" element={<Admin />} />

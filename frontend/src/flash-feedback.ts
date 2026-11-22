@@ -27,16 +27,12 @@ export function flashFeedbackAt(
   const span = 1.4 * strength * data.tickRate;
   const maxGap = data.tickRate / 2;
   let onset = frame.tick;
-  let haveOnset = false;
   for (let i = index - 1; i >= 0 && index - i <= maxSearchFrames; i--) {
     const earlier = data.frames[i];
     if (onset - earlier.tick > maxGap) break;
     const previous = earlier.players.find((value) => value.id === selected);
     if (!previous || previous.flash === undefined) break;
-    if (!previous.alive || previous.flash !== duration) {
-      haveOnset = true;
-      break;
-    }
+    if (!previous.alive || previous.flash !== duration) break;
     onset = earlier.tick;
     if (frame.tick - onset > span + maxGap) break;
   }
@@ -57,12 +53,6 @@ export function flashFeedbackAt(
   }
 
   const peak = Math.min(0.97, 0.38 + strength * 0.65);
-  if (!haveOnset) {
-    // Older chunks may have geometric history only. Keep a subdued tint if
-    // neither a positive transition nor the sampled end is available.
-    if (observedEnd === undefined) return peak * 0.25;
-    onset = Math.min(onset, observedEnd - span);
-  }
   const end = Math.min(onset + span, observedEnd ?? Infinity);
   const release = onset + Math.min(data.tickRate * 0.22, (end - onset) * 0.18);
   const progress = Math.max(0, Math.min(1, (end - tick) / Math.max(1, end - release)));

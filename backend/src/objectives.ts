@@ -1,7 +1,7 @@
 import type { DemoReader } from 'cs2parser';
 import type { ObjectiveData, ObjectiveSample } from '../../shared/objectives.js';
 
-export const objectiveSampleLimit = 10000;
+const objectiveSampleLimit = 10000;
 const validTick = (value: unknown): value is number =>
   typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= 64 * 60 * 180;
 const number = (value: unknown) =>

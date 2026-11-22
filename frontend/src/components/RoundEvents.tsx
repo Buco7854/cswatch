@@ -14,7 +14,7 @@ const clock = (seconds: number) => {
 export const eventIcon = (event: ReviewEvent, size = 16): ReactNode => (
   <ReviewEventGlyph event={event} size={size} />
 );
-export function eventTitle(event: ReviewEvent) {
+function eventTitle(event: ReviewEvent) {
   if (event.type === 'kill') return t('Kill');
   if (event.type === 'death') return t('Death');
   if (event.type === 'elimination') return t('Elimination');
@@ -24,7 +24,7 @@ export function eventTitle(event: ReviewEvent) {
   if (event.type === 'throw') return t('Utility thrown');
   return t('Round ended');
 }
-export function eventDescription(event: ReviewEvent) {
+function eventDescription(event: ReviewEvent) {
   if (event.type === 'throw') {
     return t('{{player}} threw {{utility}}', {
       player: event.actor || t('a player'),

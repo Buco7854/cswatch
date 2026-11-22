@@ -1,6 +1,6 @@
 import { readFileSync, statSync } from 'node:fs';
 
-export type BuildInfo = { revision: string | null; builtAt: string | null };
+type BuildInfo = { revision: string | null; builtAt: string | null };
 const unknownBuild: BuildInfo = { revision: null, builtAt: null };
 function utcTimestamp(value: unknown): value is string {
   if (

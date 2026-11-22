@@ -2,8 +2,8 @@ import type { GameEvent, Playback } from './types';
 import { equipmentKey } from './equipment-key';
 import { roundEvents } from './review-events';
 
-export type ReviewPoint = { x: number; y: number; z: number };
-export type KillPrompt = {
+type ReviewPoint = { x: number; y: number; z: number };
+type KillPrompt = {
   kind: 'kill';
   id: string;
   tick: number;
@@ -28,7 +28,7 @@ export type LandingPrompt = {
   source: 'recorded-detonation';
   association: 'entity-id' | 'unambiguous-owner';
 };
-export type ReviewPromptIndex = {
+type ReviewPromptIndex = {
   kills: KillPrompt[];
   landings: LandingPrompt[];
   throws: ThrowPrompt[];

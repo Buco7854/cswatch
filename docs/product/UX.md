@@ -2,17 +2,15 @@
 
 ## Route families
 
-| Route                               | Logged-out visitor                                                    | Signed-in member                           | Private-instance visitor |
-| ----------------------------------- | --------------------------------------------------------------------- | ------------------------------------------ | ------------------------ |
-| `/`                                 | One compact upload entry, subject to guest policy                     | Redirect to `/library`                     | Branded sign-in entry    |
-| `/setup`                            | Operator-code enrollment only while no admin exists                   | Redirect after initialization              | Same initialization gate |
-| `/watch/:id`                        | Own temporary guest capability or explicit shared link, otherwise 404 | Own or explicitly shared demo              | Sign-in gate             |
-| `/watch/sample`                     | Labeled internal practice fixture, no public CTA                      | Same, separate from history                | Sign-in gate             |
-| `/library`                          | Account gate with safe return intent                                  | Own demos, uploads, status and recovery    | Sign-in gate             |
-| `/account`, `/account/connections`  | Sign-in with return intent                                            | Own identity/password and linked sources   | Sign-in gate             |
-| `/connections`                      | Redirect to account connections                                       | Same                                       | Sign-in gate             |
-| `/admin`                            | Sign-in then enforce role                                             | Admin policy only, other members forbidden | Sign-in then role check  |
-| Old marketing and `/explore` routes | Redirect home                                                         | Redirect home, then library                | Sign-in entry            |
+| Route                              | Logged-out visitor                                                    | Signed-in member                           | Private-instance visitor |
+| ---------------------------------- | --------------------------------------------------------------------- | ------------------------------------------ | ------------------------ |
+| `/`                                | One compact upload entry, subject to guest policy                     | Redirect to `/library`                     | Branded sign-in entry    |
+| `/setup`                           | Operator-code enrollment only while no admin exists                   | Redirect after initialization              | Same initialization gate |
+| `/watch/:id`                       | Own temporary guest capability or explicit shared link, otherwise 404 | Own or explicitly shared demo              | Sign-in gate             |
+| `/watch/sample`                    | Labeled internal practice fixture, no public CTA                      | Same, separate from history                | Sign-in gate             |
+| `/library`                         | Account gate with safe return intent                                  | Own demos, uploads, status and recovery    | Sign-in gate             |
+| `/account`, `/account/connections` | Sign-in with return intent                                            | Own identity/password and linked sources   | Sign-in gate             |
+| `/admin`                           | Sign-in then enforce role                                             | Admin policy only, other members forbidden | Sign-in then role check  |
 
 Private mode must protect APIs and game assets independently of SPA navigation. It may serve the generic frontend shell for routes so users receive a useful gate; it must not fetch or show gated content before authentication. Public registration is independent: private + registrations enabled permits account creation; private + registrations disabled offers sign-in and operator contact guidance only.
 

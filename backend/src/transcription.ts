@@ -9,7 +9,7 @@ import type { VoicePacket, CaptionCue } from '../../shared/communications.js';
 const SAMPLE_RATE = 16000;
 const MAX_VOICE_BYTES = 64 * 1024 ** 2;
 const MAX_CUES = 10000;
-export type VoiceUtterance = {
+type VoiceUtterance = {
   speaker: string;
   startTick: number;
   endTick: number;
@@ -22,7 +22,7 @@ export type TranscriptionOptions = {
   maxWallTimeMs?: number;
   language?: string;
 };
-export type TranscriptionResult = {
+type TranscriptionResult = {
   status: 'ready' | 'partial' | 'disabled' | 'failed' | 'unavailable';
   cues: CaptionCue[];
   warnings: string[];
