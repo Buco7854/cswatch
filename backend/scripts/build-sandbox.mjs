@@ -14,7 +14,6 @@ for (const name of [
   'map-previews',
   'compact-map',
   'gameplay-sounds',
-  'viewmodels',
 ])
   copyFileSync(resolve(root, `../shared/${name}.json`), resolve(root, `dist/${name}.json`));
 for (const name of [

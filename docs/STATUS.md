@@ -11,11 +11,11 @@
 
 - The whole-tab viewer supports POV, follow, free, overhead and tactical 2D cameras. Map loading exposes progress and 2D recovery. The playback controls, scoreboard, review, captions and input overlays support keyboard and touch, responsive layouts, and English and French in light and dark themes.
 - Recorded events and sampled state drive economy, objectives, recorded player input, crosshairs, combat recap, native sound and grenade paths. Flash and damage feedback follow demo time. Tracers use recorded aim and bounded prepared-map occlusion. Reduced motion keeps steady feedback and disables tracers.
-- The directional CT/T bank uses 87 native clips with recorded movement, aim and available action evidence. Missing rigs use capsule bodies. The dedicated first-person pass supports prepared weapon and hand rigs. Static equipment, movement inference and recorded event cues cover missing assets or evidence.
+- The directional CT/T bank uses 87 native clips with recorded movement, aim and available action evidence. Missing rigs use capsule bodies. The dedicated first-person pass discovers automatically prepared, hash-bound weapon and hand rigs. Static equipment, movement inference and recorded event cues cover missing assets or evidence.
 
 ## Assets and rendering
 
-- The separate assets service handles pinned official preparation, pending jobs and operator-authorized removal. Automatic acquisition defaults off. Latest snapshots are disclosed, manual map-name assets remain version-unverified, and publication requires complete validated packs with bound models and texture plans.
+- The separate assets service handles pinned official preparation, pending jobs and operator-authorized removal. Automatic acquisition defaults off. Latest snapshots are disclosed, manual map-name assets remain version-unverified, and publication requires complete validated packs with bound models and texture plans. Invalid worker-owned map packs enter preparation again.
 - Detailed and optional Compact 3D share the replay cameras and calibrated overview. The graded output pass uses authored lighting data where available. One smoke volume pass uses journal or analytic density and reports an unavailable renderer.
 - Local map evidence covers Mirage, Dust2 and Ancient in 3D and Cache in 2D. Native animation graphs, exact Source 2 materials and mixing, Workshop acquisition, and physical-device performance remain outside the verified feature set.
 

@@ -129,3 +129,47 @@ test('timed-out discovery cannot publish its late response and leaving the viewe
   await page.clock.fastForward(60000);
   expect(reads).toBe(2);
 });
+
+test('POV equipment only requests the current rig advertised by the authorized catalog', async ({
+  page,
+}) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE));
+  const model = '/api/assets/viewmodels/ak47/' + 'a'.repeat(64) + '.glb';
+  let advertised = false;
+  const requests: string[] = [];
+  await page.route('**/api/assets/viewmodels', (route) =>
+    route.fulfill({
+      json: {
+        complete: advertised,
+        items: advertised
+          ? {
+              ak47: {
+                model,
+                sha256: 'a'.repeat(64),
+                bytes: 128,
+                decodedGeometryBytes: 128,
+                decodedTextureBytes: 0,
+              },
+            }
+          : {},
+      },
+    }),
+  );
+  await page.route('**/api/assets/viewmodels/*/*.glb', (route) => {
+    requests.push(route.request().method() + ' ' + new URL(route.request().url()).pathname);
+    return route.fulfill({ status: 404 });
+  });
+  await viewer(page, (route) => route.fulfill({ json: { ct: null, t: null } }));
+  await page.getByRole('combobox', { name: 'Camera mode', exact: true }).click();
+  await page.getByRole('option', { name: 'Player perspective', exact: true }).click();
+  await page.clock.runFor(100);
+  expect(requests).toEqual([]);
+  advertised = true;
+  await page.clock.runFor(2100);
+  await expect
+    .poll(async () => {
+      await page.clock.runFor(50);
+      return requests;
+    })
+    .toEqual(['GET ' + model]);
+});

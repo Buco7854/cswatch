@@ -1,3 +1,4 @@
+import { preparerRevision } from './asset-preparer.js';
 /** Filesystem-only map acquisition contract. This module never imports the app,
  * database, accounts, native parser, network or operator conversion tools. */
 import { constants } from 'node:fs';
@@ -28,7 +29,7 @@ export const mapJobLimits = { bytes: 8192, jobs: 32, retained: 512, scanned: 102
 export const mapJobTemporaryName = /^\.[a-f0-9]{64}-[a-f0-9]{24}\.tmp$/;
 export const packIdSchema = z.string().regex(/^[a-f0-9]{64}$/);
 const mapJobIdentity = {
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(preparerRevision),
   packId: packIdSchema,
   generation: z.string().regex(/^[a-f0-9]{32}$/),
 };
@@ -51,11 +52,12 @@ export const mapJobRequestSchema = z.union([
 ]);
 export const mapJobResultSchema = z
   .object({
-    schemaVersion: z.literal(1),
+    schemaVersion: z.literal(preparerRevision),
     packId: packIdSchema,
     status: z.enum(['processing', 'ready', 'failed']),
     updatedAt: z.number().int().min(0).max(8640000000000),
     assetPackId: packIdSchema.optional(),
+    repairing: z.literal(true).optional(),
     source: officialMapSourceSchema.optional(),
     sourceCheckedAt: z.number().int().min(0).max(8640000000000).optional(),
     code: z
@@ -74,6 +76,7 @@ export const mapJobResultSchema = z
   .refine((value) =>
     value.status === 'failed' ? value.code !== undefined : value.code === undefined,
   )
+  .refine((value) => !value.repairing || value.status === 'processing')
   .refine((value) => {
     const supplied = [value.assetPackId, value.source, value.sourceCheckedAt].filter(
       (v) => v !== undefined,
@@ -436,10 +439,12 @@ async function queueHasRoom(root: string, newRequest: boolean) {
       if (++scanned > mapJobLimits.scanned || (newRequest && scanned >= mapJobLimits.scanned))
         return false;
       if (entry.isFile() && mapJobTemporaryName.test(entry.name)) continue;
+      if (!entry.isFile() || !/^[a-f0-9]{64}\.json$/.test(entry.name)) return false;
+      const id = entry.name.slice(0, -5);
+      if (!(await readMapRequest(root, id))) continue;
       if (++retained > mapJobLimits.retained || (newRequest && retained >= mapJobLimits.retained))
         return false;
-      if (!entry.isFile() || !/^[a-f0-9]{64}\.json$/.test(entry.name)) return false;
-      const result = await readMapResult(root, entry.name.slice(0, -5));
+      const result = await readMapResult(root, id);
       if (!result || result.status === 'processing') pending++;
       if (pending >= mapJobLimits.jobs) return false;
     }
@@ -465,7 +470,7 @@ function enqueueMapJob(
 }
 export function enqueueMapRequest(root: string, approval: ApprovedMapEntry) {
   return enqueueMapJob(root, {
-    schemaVersion: 1,
+    schemaVersion: preparerRevision,
     packId: mapPackId(approval),
     approval,
     generation: randomBytes(16).toString('hex'),
@@ -473,7 +478,7 @@ export function enqueueMapRequest(root: string, approval: ApprovedMapEntry) {
 }
 export function enqueueLatestMapRequest(root: string, selection: LatestOfficialSelection) {
   return enqueueMapJob(root, {
-    schemaVersion: 1,
+    schemaVersion: preparerRevision,
     packId: latestMapRequestId(selection),
     generation: randomBytes(16).toString('hex'),
     kind: 'latest-official',
@@ -516,7 +521,7 @@ function retryMapJob(
         // write or shutdown. Keep the verified content identity so the worker
         // can recover that immutable pack instead of downloading it again.
         await atomicMapJobWrite(root, 'results', packId, {
-          schemaVersion: 1,
+          schemaVersion: preparerRevision,
           packId,
           status: 'processing',
           updatedAt: at,

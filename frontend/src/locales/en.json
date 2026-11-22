@@ -1057,5 +1057,8 @@
   "The demo download is unavailable or has expired. Try again or upload manually.": "The demo download is unavailable or has expired. Try again or upload manually.",
   "Your game authentication code is saved encrypted for future syncs. You can remove it here or revoke it on Steam Support.": "Your game authentication code is saved encrypted for future syncs. You can remove it here or revoke it on Steam Support.",
   "Remove the saved game authentication code and discovered match list? Uploaded demos stay in your library.": "Remove the saved game authentication code and discovered match list? Uploaded demos stay in your library.",
-  "Steam linking was cancelled. Start again.": "Steam linking was cancelled. Start again."
+  "Steam linking was cancelled. Start again.": "Steam linking was cancelled. Start again.",
+  "Preparing map again": "Preparing map again",
+  "The prepared map is incomplete or damaged. The worker will rebuild it.": "The prepared map is incomplete or damaged. The worker will rebuild it.",
+  "First-person rigs": "First-person rigs"
 }

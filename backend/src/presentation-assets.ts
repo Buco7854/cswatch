@@ -1,8 +1,9 @@
 /** Fixed, bounded worker-owned shared artwork status. No paths or native output. */
 import { constants } from 'node:fs';
-import { open, rename, unlink, opendir } from 'node:fs/promises';
+import { lstat, open, rename, unlink, opendir } from 'node:fs/promises';
 import { randomBytes, createHash } from 'node:crypto';
 import { z } from 'zod';
+import { preparerRevision, presentationDirectory } from './asset-preparer.js';
 import { bytesFrom, regularFile, withDirectory, fileVersion } from './map-asset-files.js';
 import type {
   PresentationStatus,
@@ -10,7 +11,25 @@ import type {
   PresentationRetry,
 } from '../../shared/presentation-assets.js';
 
-export const presentationKinds = ['agents', 'equipment', 'equipment-models'] as const;
+export const presentationKinds = ['agents', 'equipment', 'equipment-models', 'viewmodels'] as const;
+const itemId = z.string().regex(/^[a-z0-9]{1,40}$/);
+const failureCode = z.enum([
+  'interrupted',
+  'timeout',
+  'storage_limit',
+  'source_mismatch',
+  'steam_rate_limited',
+  'preparation_failed',
+]);
+const retryItem = z
+  .object({
+    attempts: z.number().int().min(1).max(3),
+    generation: z.string().regex(/^[a-f0-9]{24}$/),
+    updatedAt: z.number().int().min(0).max(253402300799),
+    retryAt: z.number().int().min(0).max(253402300799).optional(),
+    code: failureCode.optional(),
+  })
+  .strict();
 const category = z
   .object({
     manifest: z
@@ -35,19 +54,16 @@ const category = z
       })
       .strict()
       .optional(),
+    unsupportedCode: z.literal('missing_official_resource').optional(),
+    operatorPresent: z.literal(true).optional(),
     unsupported: z
       .array(z.string().regex(/^[a-z0-9]{1,40}$/))
       .max(128)
       .optional(),
-    code: z
-      .enum([
-        'interrupted',
-        'timeout',
-        'storage_limit',
-        'source_mismatch',
-        'steam_rate_limited',
-        'preparation_failed',
-      ])
+    code: failureCode.optional(),
+    itemRetries: z
+      .record(itemId, retryItem)
+      .refine((items) => Object.keys(items).length <= 128)
       .optional(),
   })
   .strict()
@@ -67,43 +83,59 @@ const category = z
   );
 export const presentationStatusSchema = z
   .object({
-    schemaVersion: z.literal(1),
+    schemaVersion: z.literal(preparerRevision),
     categories: z
       .object({
         agents: category.optional(),
         equipment: category.optional(),
         'equipment-models': category.optional(),
+        viewmodels: category.optional(),
       })
       .strict(),
   })
   .strict();
+const statusName = `presentation-status-v${preparerRevision}.json`;
+const retryName = (kind: PresentationKind) =>
+  `presentation-retry-v${preparerRevision}-${kind}.json`;
+
 export async function readPresentationStatus(
   jobs: string,
-  strict = false,
 ): Promise<PresentationStatus | undefined> {
-  let missing = false;
-  const result = await withDirectory(jobs, [], async (directory) => {
+  return withDirectory(jobs, [], async (directory) => {
     let file;
     try {
-      file = await regularFile(directory, 'presentation-status.json', 2, 32768);
-      if (!file) return;
-      return presentationStatusSchema.parse(
-        JSON.parse((await bytesFrom(file, (await file.stat()).size, 32768)).toString('utf8')),
-      );
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') missing = true;
-      return;
+      file = await regularFile(directory, statusName, 2, 32768);
+      if (file)
+        return presentationStatusSchema.parse(
+          JSON.parse((await bytesFrom(file, (await file.stat()).size, 32768)).toString('utf8')),
+        );
     } finally {
       await file?.close();
     }
   });
-  if (strict && !result && !missing) throw Error('Private native presentation status is invalid.');
-  return result;
+}
+
+/** A legacy worker marker suppresses the old bank. Unmarked operator banks stay readable. */
+export async function presentationParts(root: string, kind: PresentationKind): Promise<string[]> {
+  if (await withDirectory(root, [presentationDirectory, kind], async () => true))
+    return [presentationDirectory, kind];
+  const workerOwned = await withDirectory(root, [kind], async (directory) => {
+    let file;
+    try {
+      file = await regularFile(directory, '.cswatch-presentation.json', 2, 256);
+      if (!file) return false;
+      const marker = JSON.parse((await bytesFrom(file, (await file.stat()).size, 256)).toString());
+      return marker.kind === kind && /^[1-9]\d{0,19}$/.test(marker.manifest);
+    } finally {
+      await file?.close();
+    }
+  });
+  return workerOwned ? [presentationDirectory, kind] : [kind];
 }
 
 const retrySchema = z
   .object({
-    schemaVersion: z.literal(2),
+    schemaVersion: z.literal(preparerRevision),
     kind: z.enum(presentationKinds),
     expectedGeneration: z.string().regex(/^[a-f0-9]{24}$/),
     expectedFailure: z.string().regex(/^[a-f0-9]{64}$/),
@@ -141,6 +173,7 @@ function failureSnapshot(category: PresentationCategory) {
             }
           : null,
         unsupported: category.unsupported ?? null,
+        itemRetries: category.itemRetries ?? null,
       }),
     )
     .digest('hex');
@@ -159,7 +192,7 @@ export function enqueuePresentationRetry(
     const expectedFailure = failureSnapshot(category);
     let failure: unknown;
     const result = await withDirectory(jobs, [], async (directory) => {
-      const filename = `presentation-retry-${kind}.json`,
+      const filename = retryName(kind),
         target = `/proc/self/fd/${directory.fd}/${filename}`;
       let temporary: string | undefined, file;
       try {
@@ -193,7 +226,7 @@ export function enqueuePresentationRetry(
         );
         await file.writeFile(
           JSON.stringify({
-            schemaVersion: 2,
+            schemaVersion: preparerRevision,
             kind,
             expectedGeneration: category.generation,
             expectedFailure,
@@ -234,7 +267,7 @@ export async function consumePresentationRetries(jobs: string): Promise<Presenta
   const resumed: PresentationRetry[] = [];
   for (const kind of presentationKinds)
     await withDirectory(jobs, [], async (directory) => {
-      const name = `presentation-retry-${kind}.json`;
+      const name = retryName(kind);
       let file;
       try {
         file = await regularFile(directory, name, 2, 512);
@@ -259,7 +292,10 @@ export async function consumePresentationRetries(jobs: string): Promise<Presenta
             stage: 'acquiring',
             updatedAt: Math.floor(Date.now() / 1000),
           };
-          delete status.categories[kind]!.code;
+          const next = status.categories[kind]!;
+          delete next.code;
+          delete next.retryAt;
+          if (next.item && next.itemRetries) delete next.itemRetries[next.item];
           await writePresentationStatus(jobs, status);
           resumed.push({
             kind,
@@ -282,8 +318,20 @@ export async function writePresentationStatus(jobs: string, status: Presentation
   if (bytes.length > 32768) throw Error('Presentation status exceeds its bound.');
   const saved = await withDirectory(jobs, [], async (directory) => {
     const temporary = `/proc/self/fd/${directory.fd}/.presentation-${randomBytes(12).toString('hex')}.tmp`;
+    const target = `/proc/self/fd/${directory.fd}/${statusName}`;
     let file;
     try {
+      const existing = await lstat(target).catch((error) => {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      });
+      if (
+        existing &&
+        (!existing.isFile() ||
+          existing.uid !== process.getuid?.() ||
+          existing.nlink !== 1 ||
+          existing.mode & 0o077)
+      )
+        throw Error('Presentation status path is unsafe.');
       file = await open(
         temporary,
         constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
@@ -293,7 +341,7 @@ export async function writePresentationStatus(jobs: string, status: Presentation
       await file.sync();
       await file.close();
       file = undefined;
-      await rename(temporary, `/proc/self/fd/${directory.fd}/presentation-status.json`);
+      await rename(temporary, target);
       await directory.sync();
       return true;
     } finally {

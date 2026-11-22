@@ -268,7 +268,7 @@ static void publish(const char *source,const char *target,int kind) {
         }
         suffix_start=9;
     } else if(kind==3) {
-        if(strcmp(from,to) || (strcmp(to_name,"agents") && strcmp(to_name,"equipment") && strcmp(to_name,"equipment-models")) ||
+        if(strcmp(from,to) || (strcmp(to_name,"agents") && strcmp(to_name,"equipment") && strcmp(to_name,"equipment-models") && strcmp(to_name,"viewmodels")) ||
             strlen(from_name)!=20 || strncmp(from_name,".presentation-",14)) {
             errno=EINVAL;fail("approved same-parent presentation bank names required");
         }
@@ -278,6 +278,15 @@ static void publish(const char *source,const char *target,int kind) {
             errno=EINVAL;fail("approved same-parent equipment model names required");
         }
         suffix_start=11;
+    } else if(kind==6) {
+        const size_t n=strlen(from_name);
+        if(strcmp(from,to) || (!equipment_name(from_name) && strcmp(from_name,"agents") && strcmp(from_name,"equipment")) ||
+            strlen(to_name)!=10+n+24 || strncmp(to_name,".retired-",9) || strncmp(to_name+9,from_name,n) ||
+            to_name[9+n]!='-') { errno=EINVAL;fail("approved same-parent presentation retirement required"); }
+        for(size_t i=10+n;i<10+n+24;i++)
+            if(!((to_name[i]>='0' && to_name[i]<='9') || (to_name[i]>='a' && to_name[i]<='f'))) {
+                errno=EINVAL;fail("invalid private retirement identity");
+            }
     } else if(kind==5) {
         if(strcmp(from,to) || !hex_id(from_name) || strlen(to_name)!=107 ||
             strncmp(to_name,".removing-",10) || strncmp(to_name+10,from_name,64) || to_name[74]!='-') {
@@ -294,7 +303,7 @@ static void publish(const char *source,const char *target,int kind) {
         }
         suffix_start=76;
     }
-    for(int i=suffix_start;kind!=5 && i<suffix_start+6;i++) if(!((from_name[i]>='a' && from_name[i]<='z') ||
+    for(int i=suffix_start;kind!=5 && kind!=6 && i<suffix_start+6;i++) if(!((from_name[i]>='a' && from_name[i]<='z') ||
         (from_name[i]>='A' && from_name[i]<='Z') || (from_name[i]>='0' && from_name[i]<='9'))) {
         errno=EINVAL;fail("invalid private staging suffix");
     }
@@ -320,6 +329,7 @@ int main(int argc,char **argv) {
     if(argc == 4 && !strcmp(argv[1],"--publish-preview")) { publish(argv[2],argv[3],2);return 0; }
     if(argc == 4 && !strcmp(argv[1],"--publish-presentation")) { publish(argv[2],argv[3],3);return 0; }
     if(argc == 4 && !strcmp(argv[1],"--publish-equipment")) { publish(argv[2],argv[3],4);return 0; }
+    if(argc == 4 && !strcmp(argv[1],"--retire-presentation")) { publish(argv[2],argv[3],6);return 0; }
     if(argc == 4 && !strcmp(argv[1],"--retire-map-pack")) { publish(argv[2],argv[3],5);return 0; }
     if(argc == 2 && !strcmp(argv[1],"--check")) {
         const int abi=landlock_abi();restrict_writes(NULL,0);restrict_conversion();

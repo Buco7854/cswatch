@@ -21,6 +21,8 @@ const aliases: Record<string, string> = {
   zeus: 'taser',
   zeusx27: 'taser',
   incendiarygrenade: 'incgrenade',
+  highexplosivegrenade: 'hegrenade',
+  c4explosive: 'c4',
   decoygrenade: 'decoy',
   defusekit: 'defuser',
   kevlar: 'armor',

@@ -5,10 +5,12 @@ import { randomBytes } from 'node:crypto';
 import { dirname, join, resolve, basename } from 'node:path';
 import { withDirectory, regularFile, bytesFrom } from '../../backend/dist/map-asset-files.js';
 import { presentationKinds } from '../../backend/dist/presentation-assets.js';
+import { equipmentIconSources } from './install-equipment-icons.mjs';
 import { selectedSteamManifest } from './steam-assets-plan.mjs';
 import { localDirectory } from './toolchain-security.mjs';
 
-const fileName = 'presentation-stages.json';
+import { preparerRevision } from '../../backend/dist/asset-preparer.js';
+const fileName = `presentation-stages-v${preparerRevision}.json`;
 const identity = (stat) => ({ dev: String(stat.dev), ino: String(stat.ino) });
 function validate(value) {
   if (
@@ -33,6 +35,7 @@ function validate(value) {
             'ino',
             'emptyDev',
             'emptyIno',
+            'retired',
           ].includes(key),
       ) ||
       !presentationKinds.includes(row.kind) ||
@@ -48,8 +51,15 @@ function validate(value) {
         : row.location === 'models'
           ? /^\.equipment-[A-Za-z0-9]{6}$/
           : /^(?:equipment-install-|icon-install-)[A-Za-z0-9]{6}$/;
+    const retired =
+      typeof row.retired === 'string' &&
+      /^[a-z0-9-]{1,40}$/.test(row.retired) &&
+      row.basename.startsWith(`.retired-${row.retired}-`) &&
+      /-[a-f0-9]{24}$/.test(row.basename);
     if (
-      !pattern.test(row.basename) ||
+      (row.retired === undefined
+        ? !pattern.test(row.basename)
+        : !retired || row.location === 'source') ||
       (row.emptyDev !== undefined &&
         (!/^[0-9]{1,40}$/.test(row.emptyDev) || !/^[0-9]{1,40}$/.test(row.emptyIno)))
     )
@@ -61,7 +71,7 @@ function parent(options, row) {
   return row.location === 'assets'
     ? options.assets
     : row.location === 'models'
-      ? join(options.assets, 'equipment-models')
+      ? join(options.assets, row.kind)
       : join(options.cache, 'sources', `steam-${row.manifest}`);
 }
 async function readJournal(jobs) {
@@ -114,14 +124,15 @@ async function writeJournal(jobs, journal) {
 export async function registerPresentationStage(
   options,
   path,
-  { manifest, kind, location, futureIdentity } = {},
+  { manifest, kind, location, futureIdentity, retirement } = {},
 ) {
   const row = {
     manifest,
     kind,
     location,
     basename: basename(path),
-    ...identity(await lstat(path, { bigint: true })),
+    ...identity(await lstat(retirement || path, { bigint: true })),
+    ...(retirement ? { retired: basename(retirement) } : {}),
   };
   if (futureIdentity) {
     row.emptyDev = row.dev;
@@ -144,12 +155,15 @@ export async function registerPresentationStage(
   journal.records.push(row);
   await writeJournal(options.jobs, journal);
 }
-async function safeTree(root) {
+async function safeTree(root, allowed) {
   let entries = 0,
     bytes = 0;
   async function walk(path, depth) {
+    if (allowed && depth) throw Error('Unexpected nested entry in retired bank.');
     if (depth > 32) throw Error('Private stage cleanup depth exceeded.');
     for (const entry of await readdir(path, { withFileTypes: true })) {
+      if (allowed && (!allowed.has(entry.name) || !entry.isFile()))
+        throw Error('Foreign entry in retired bank.');
       if (++entries > 4096) throw Error('Private stage cleanup entry bound exceeded.');
       const child = join(path, entry.name),
         stat = await lstat(child);
@@ -164,6 +178,30 @@ async function safeTree(root) {
   }
   await walk(root, 0);
 }
+export function retiredPresentationFiles(kind, item) {
+  if (item) return new Set(['model.glb', 'manifest.json', 'provenance.json', 'installation.json']);
+  const shared = ['.cswatch-presentation.json'];
+  if (kind === 'agents')
+    return new Set([
+      ...shared,
+      'installation.json',
+      ...['ct', 't'].flatMap((team) =>
+        ['glb', 'manifest.json', 'provenance.json'].map((suffix) => team + '.' + suffix),
+      ),
+    ]);
+  if (kind === 'equipment')
+    return new Set([
+      ...shared,
+      'provenance.json',
+      'source.provenance.json',
+      ...Object.keys(equipmentIconSources).map((id) => id + '.png'),
+    ]);
+  throw Error('Expected a fixed presentation bank or item.');
+}
+export async function checkPresentationRetirement(path, kind, item) {
+  await safeTree(path, retiredPresentationFiles(kind, item));
+}
+
 /** Call only while holding the asset worker flock, before any new converter starts. */
 export async function cleanPresentationStages(options) {
   const journal = await readJournal(options.jobs),
@@ -178,7 +216,7 @@ export async function cleanPresentationStages(options) {
         if (!info.isFile() || info.nlink !== 1 || info.size > 256)
           throw Error('Unsafe model parent marker.');
         const marker = JSON.parse(await readFile(join(root, '.cswatch-presentation.json'), 'utf8'));
-        if (marker.schemaVersion !== 1 || marker.kind !== 'equipment-models')
+        if (marker.schemaVersion !== preparerRevision || marker.kind !== row.kind)
           throw Error('Unknown model parent.');
       }
       const stat = await lstat(path, { bigint: true });
@@ -194,7 +232,10 @@ export async function cleanPresentationStages(options) {
         if ((await readdir(path)).length) throw Error('Private claim directory changed.');
       } else if (actual.dev !== row.dev || actual.ino !== row.ino)
         throw Error('Private stage directory identity changed.');
-      await safeTree(path);
+      await safeTree(
+        path,
+        row.retired ? retiredPresentationFiles(row.kind, row.location === 'models') : undefined,
+      );
       const after = identity(await lstat(path, { bigint: true }));
       if (after.dev !== actual.dev || after.ino !== actual.ino)
         throw Error('Private stage root changed.');

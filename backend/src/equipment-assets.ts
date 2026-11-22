@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { validPng } from './png.js';
 import { createHash } from 'node:crypto';
 import { fileDigest, fileVersion } from './asset-content.js';
-import { presentationCatalogComplete } from './presentation-assets.js';
+import { presentationCatalogComplete, presentationParts } from './presentation-assets.js';
 
 /** Fixed, version-controlled registry shared with the operator CLI and frontend.
  * Builds copy it next to this module; development reads the same source registry. */
@@ -62,7 +62,7 @@ async function withDirectory<T>(
     const flags = constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW;
     // DATA_DIR itself is trusted operator configuration; its children may never redirect opens.
     handles.push(await open(root, flags));
-    for (const name of ['equipment'])
+    for (const name of await presentationParts(root, 'equipment'))
       handles.push(await open(`/proc/self/fd/${handles.at(-1)!.fd}/${name}`, flags));
     return await read(handles.at(-1)!);
   } catch {

@@ -4,7 +4,6 @@ import {
   mkdtempSync,
   mkdirSync,
   writeFileSync,
-  readFileSync,
   rmSync,
   symlinkSync,
   linkSync,
@@ -20,10 +19,6 @@ import { Store, now } from '../src/db.js';
 import { COOKIE, digest } from '../src/security.js';
 import { equipmentModelManifestSchema, validEquipmentGlb } from '../src/equipment-model-assets.js';
 import { initializeFixture } from './fixtures/initialized.js';
-
-const firstPersonPins = JSON.parse(
-  readFileSync(new URL('../../shared/viewmodels.json', import.meta.url), 'utf8'),
-) as Record<string, { sha256: string; bytes: number }>;
 
 process.env.LOG_LEVEL = 'silent';
 const glb = (extra = {}) => {
@@ -95,32 +90,42 @@ async function fixture() {
   };
 }
 
-test('the optional first-person route keeps instance policy and rejects unpinned bytes and paths', async () => {
+test('first-person discovery admits only bounded current assets and shares the instance access policy', async () => {
   const s = await fixture();
   try {
-    for (const [id, pin] of Object.entries(firstPersonPins)) {
-      const filename = pin.sha256 + '.glb';
-      const url = `/api/assets/viewmodels/${id}/${filename}`;
-      assert.equal(
-        (await s.app.inject({ method: 'HEAD', url, headers: { host: s.headers.host } })).statusCode,
-        401,
-      );
-      assert.equal(
-        (await s.app.inject({ method: 'HEAD', url, headers: s.headers })).statusCode,
-        404,
-      );
-      const directory = join(s.root, 'maps', 'viewmodels', id);
-      mkdirSync(directory, { recursive: true });
-      const malformed = Buffer.alloc(pin.bytes);
-      writeFileSync(join(directory, filename), malformed);
-      assert.equal((await s.app.inject({ url, headers: s.headers })).statusCode, 404);
-    }
-    for (const path of [
-      '/api/assets/viewmodels/ak47/' + firstPersonPins.awp.sha256 + '.glb',
-      '/api/assets/viewmodels/m4a4/other.glb',
-      '/map-assets/viewmodels/desktop/scene.glb',
-    ])
-      assert.equal((await s.app.inject({ url: path, headers: s.headers })).statusCode, 404);
+    const catalog = '/api/assets/viewmodels';
+    assert.equal(
+      (await s.app.inject({ url: catalog, headers: { host: s.headers.host } })).statusCode,
+      401,
+    );
+    assert.deepEqual((await s.app.inject({ url: catalog, headers: s.headers })).json().items, {});
+    const directory = join(s.root, 'maps', 'presentation-v2', 'viewmodels', 'ak47');
+    mkdirSync(directory, { recursive: true });
+    const data = glb(),
+      sha256 = createHash('sha256').update(data).digest('hex');
+    const url = catalog + '/ak47/' + sha256 + '.glb';
+    writeFileSync(join(directory, 'model.glb'), data);
+    writeFileSync(
+      join(directory, 'manifest.json'),
+      JSON.stringify({
+        schemaVersion: 2,
+        id: 'ak47',
+        manifest: '1',
+        sha256,
+        bytes: data.length,
+        decodedGeometryBytes: 128,
+        decodedTextureBytes: 32,
+        actions: { draw: { seconds: 1, frames: 12, targets: 2 } },
+      }),
+    );
+    assert.equal(
+      (await s.app.inject({ url: catalog, headers: s.headers })).json().items.ak47.model,
+      url,
+    );
+    assert.deepEqual((await s.app.inject({ url, headers: s.headers })).rawPayload, data);
+    writeFileSync(join(directory, 'model.glb'), Buffer.alloc(data.length));
+    assert.deepEqual((await s.app.inject({ url: catalog, headers: s.headers })).json().items, {});
+    assert.equal((await s.app.inject({ url, headers: s.headers })).statusCode, 404);
   } finally {
     await s.close();
   }

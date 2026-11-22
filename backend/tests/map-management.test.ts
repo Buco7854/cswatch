@@ -67,13 +67,13 @@ async function fixture(t: TestContext) {
     packId = mapPackId(approval);
   await prepareMapJobs(jobs);
   await enqueueMapRequest(jobs, approval);
-  await writeMapJobResult(jobs, { schemaVersion: 1, packId, status: 'ready', updatedAt: now() });
+  await writeMapJobResult(jobs, { schemaVersion: 2, packId, status: 'ready', updatedAt: now() });
   const target = join(assets, 'packs', packId);
   await mkdir(target, { recursive: true });
   await writeFile(
     join(target, 'pack.json'),
     JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
       packId,
       approval: canonicalMapApproval(approval),
       preparedAt: now(),
@@ -358,7 +358,7 @@ test('map administration requires current admin, exact Origin, CSRF and reviewed
   assert.equal(discovery.code, 'removed_by_admin');
   assert.equal(discovery.canAcquire, false);
   await writeMapJobResult(f.jobs, {
-    schemaVersion: 1,
+    schemaVersion: 2,
     packId: f.packId,
     status: 'failed',
     code: 'removed_by_admin',
@@ -391,7 +391,7 @@ test('map administration requires current admin, exact Origin, CSRF and reviewed
   );
 
   await writePresentationStatus(f.jobs, {
-    schemaVersion: 1,
+    schemaVersion: 2,
     categories: {
       agents: {
         manifest: approval.source.manifest,
@@ -463,7 +463,9 @@ test('map administration requires current admin, exact Origin, CSRF and reviewed
       .statusCode,
     202,
   );
-  const intent = JSON.parse(await readFile(join(f.jobs, 'presentation-retry-agents.json'), 'utf8'));
+  const intent = JSON.parse(
+    await readFile(join(f.jobs, 'presentation-retry-v2-agents.json'), 'utf8'),
+  );
   assert.match(intent.expectedFailure, /^[a-f0-9]{64}$/);
   const { expectedFailure: _failure, ...selection } = intent;
   assert.deepEqual(selection, {

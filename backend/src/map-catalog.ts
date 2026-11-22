@@ -1,3 +1,4 @@
+import { preparerRevision } from './asset-preparer.js';
 import { lstat } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { basename, dirname } from 'node:path';
@@ -70,6 +71,7 @@ export function latestMapRequestId(value: LatestOfficialSelection): string {
     .update(
       JSON.stringify({
         kind: 'latest-official',
+        preparerRevision,
         map: item.map,
         appId: item.appId,
         depotId: item.depotId,
@@ -87,6 +89,7 @@ export function latestMapPackId(map: string, value: OfficialMapSource): string {
     .update(
       JSON.stringify({
         kind: 'latest-official-content',
+        preparerRevision,
         map,
         appId: source.appId,
         depotId: source.depotId,
@@ -107,7 +110,7 @@ export function latestOfficialSelection(
 }
 export const latestMapPackMarkerSchema = z
   .object({
-    schemaVersion: z.literal(1),
+    schemaVersion: z.literal(preparerRevision),
     kind: z.literal('latest-official'),
     packId: z.string().regex(/^[a-f0-9]{64}$/),
     requestId: z.string().regex(/^[a-f0-9]{64}$/),
@@ -155,7 +158,10 @@ export function canonicalMapApproval(value: ApprovedMapEntry): string {
   });
 }
 export const mapPackId = (entry: ApprovedMapEntry) =>
-  createHash('sha256').update(canonicalMapApproval(entry)).digest('hex');
+  createHash('sha256')
+    .update(`preparer:${preparerRevision}:`)
+    .update(canonicalMapApproval(entry))
+    .digest('hex');
 export async function readMapCatalog(filename: string): Promise<MapCatalog | undefined> {
   try {
     await lstat(filename);

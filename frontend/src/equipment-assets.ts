@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import type { ViewmodelCatalog, ViewmodelAsset } from '../../shared/viewmodel-assets';
+import { useEffect, useMemo, useState } from 'react';
 import type { EquipmentModelCatalog, EquipmentModel } from '../../shared/equipment-models';
 import equipment from '../../shared/equipment-models.json' with { type: 'json' };
 import type { AssetStatus } from './map-assets';
@@ -17,7 +18,54 @@ export type EquipmentRenderState = {
   unavailable: number;
   failed: number;
 };
-type EquipmentAssets = { status: AssetStatus; catalog: EquipmentModelCatalog };
+export type EquipmentCatalog = EquipmentModelCatalog & { viewmodels?: ViewmodelCatalog['items'] };
+type EquipmentAssets = { status: AssetStatus; catalog: EquipmentCatalog };
+const emptyRigs: ViewmodelCatalog['items'] = Object.freeze({});
+
+function validateViewmodels(value: unknown): ViewmodelCatalog {
+  if (!value || typeof value !== 'object') throw Error('Invalid viewmodel catalog');
+  const { items: raw, complete } = value as Partial<ViewmodelCatalog>;
+  if (
+    !raw ||
+    typeof raw !== 'object' ||
+    Array.isArray(raw) ||
+    Object.keys(raw).length > 96 ||
+    (complete !== undefined && typeof complete !== 'boolean')
+  )
+    throw Error('Invalid viewmodel catalog');
+  const items: Record<string, ViewmodelAsset> = {};
+  for (const [id, item] of Object.entries(raw)) {
+    if (
+      !Object.hasOwn(equipment.items, id) ||
+      !item ||
+      typeof item !== 'object' ||
+      typeof item.sha256 !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(item.sha256) ||
+      item.model !== `/api/assets/viewmodels/${id}/${item.sha256}.glb` ||
+      !integer(item.bytes, 8 * MiB) ||
+      item.bytes < 24 ||
+      !integer(item.decodedTextureBytes, 16 * MiB) ||
+      !integer(item.decodedGeometryBytes, 8 * MiB)
+    )
+      throw Error('Invalid viewmodel descriptor');
+    items[id] = item;
+  }
+  return { items, complete };
+}
+
+function useViewmodelAssets(identity: string, enabled: boolean) {
+  const [state, setState] = useState<{ identity: string; items: ViewmodelCatalog['items'] }>();
+  useEffect(() => {
+    if (!enabled) return;
+    return observeAssets({
+      read: async (signal) =>
+        validateViewmodels(await readAssetJSON('/api/assets/viewmodels', 32768, signal)),
+      complete: (catalog) => catalog.complete === true,
+      changed: ({ items }) => setState({ identity, items }),
+    });
+  }, [identity, enabled]);
+  return enabled && state?.identity === identity ? state.items : emptyRigs;
+}
 const pending: EquipmentAssets = { status: 'pending', catalog: empty };
 const MiB = 1024 * 1024;
 const integer = (value: unknown, maximum: number): value is number =>
@@ -145,9 +193,12 @@ export function useEquipmentAssets(identity: string, enabled: boolean) {
         ),
     });
   }, [identity, enabled]);
-  return !enabled
+  const rigs = useViewmodelAssets(identity, enabled);
+  const result = !enabled
     ? { status: 'missing' as const, catalog: empty }
     : state.identity === identity
       ? state.value
       : pending;
+  const catalog = useMemo(() => ({ ...result.catalog, viewmodels: rigs }), [result.catalog, rigs]);
+  return { status: result.status, catalog };
 }

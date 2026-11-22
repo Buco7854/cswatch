@@ -13,9 +13,9 @@ type WeaponFireState = {
   kick: number;
 };
 export type WeaponPoseSample = { age: number; weight: number };
-const firearms = new Set(
+const weapons = new Set(
   Object.entries(registry.items)
-    .filter(([id, item]) => item.kind === 'weapon' && id !== 'taser')
+    .filter(([, item]) => item.kind === 'weapon')
     .map(([id]) => id),
 );
 
@@ -31,7 +31,7 @@ export function indexWeaponFire(
     if (event.type !== 'weapon_fire' || !Number.isSafeInteger(event.tick) || event.tick < 0)
       continue;
     const weapon = typeof event.weapon === 'string' ? canonicalEquipmentKey(event.weapon) : '';
-    if (!firearms.has(weapon)) continue;
+    if (!weapons.has(weapon)) continue;
     let id = event.user_steamid;
     if ((typeof id !== 'string' || !players.has(id) || id === '0') && data.sample) {
       const matches = data.players.filter((player) => player.name === event.user_name);
@@ -54,13 +54,19 @@ export function recentWeaponShot(
   tick: number,
   tickRate: number,
   duration: number,
+  includeTaser = false,
 ) {
   if (!player.alive || !Number.isFinite(tick) || !Number.isFinite(tickRate) || tickRate <= 0)
     return;
   const shots = index.get(player.id);
   if (!shots?.length) return;
   const shot = shots[shotIndex(shots, tick)];
-  if (!shot || shot.weapon !== canonicalEquipmentKey(player.weapon)) return;
+  if (
+    !shot ||
+    (shot.weapon === 'taser' && !includeTaser) ||
+    shot.weapon !== canonicalEquipmentKey(player.weapon)
+  )
+    return;
   const age = (tick - shot.tick) / tickRate;
   if (age < 0 || age >= duration) return;
   return { ...shot, age };
@@ -95,7 +101,7 @@ export function nativeWeaponPose(
 ): { fire?: WeaponPoseSample; priorFire?: WeaponPoseSample; reload?: WeaponPoseSample } {
   if (!player.alive || !Number.isFinite(tick) || !Number.isFinite(rate) || rate <= 0) return {};
   const reload = player.reloadStarted;
-  const shot = shotsEnabled && recentWeaponShot(index, player, tick, rate, fireDuration);
+  const shot = shotsEnabled && recentWeaponShot(index, player, tick, rate, fireDuration, true);
   if (shot && (reload === undefined || shot.tick >= reload)) {
     const entry = Math.min(0.032, fireDuration / 4);
     const tail = Math.min(0.09, fireDuration / 4);

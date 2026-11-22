@@ -78,32 +78,6 @@ See [S2V map export documentation](https://s2v.app/ValveResourceFormat/guides/ex
 
 Agent/weapon exports use S2V's [model export guide](https://s2v.app/ValveResourceFormat/guides/exporting-models.html). Static spectator weapons, recorded world equipment and optional agent rigs are supported with prepared packs. Native hand poses, recoil, animation graphs and Source 2 effects remain incomplete.
 
-### Measure first-person source requirements
-
-The read-only diagnostic inspects the shared arms model and exact weapon/action resources for `ak47`, `m4a4`, `awp` or `glock`. It follows CRC-valid cached resources and reports index hashes, verified payload hashes and missing dependencies.
-
-```sh
-npm --prefix tools/assets run inspect-viewmodel-source -- \
-  --game /srv/cswatch-assets-cache/steam --manifest 8225060435969537482 --weapon m4a4
-```
-
-Supply the source pin explicitly. Cache directory names and local index hashes alone do not establish official provenance or current Steam availability. Missing resources make entry bytes a lower bound because they can hide further skeleton, material and texture dependencies. Steam chunk transfer, filesystem allocation and conversion scratch are separate measurements and remain unknown in this report. The source-cache space floor preserves the existing 512 MiB reserve and is not a complete preparation estimate. Full animation graphs and unregistered clips remain excluded. A complete bounded resource scan does not prove rig compatibility or runtime rendering.
-
-No Valve assets are bundled. Operators provide assets and determine whether their intended hosting/distribution is permitted. S2V's own open-source license does not grant rights to game content. Don't put proprietary exports into this repository or its public container image.
-
-### Pack first-person rigs
-
-The diagnostic report names the five exact source resources for each weapon. Use the pinned S2V tool to export the native default arms and weapon mesh selections with `--gltf_textures_adapt`. Export the three fixed `.vnmclip_c` inputs separately with `--gltf_compose_additive`. Keep every glTF and its sidecars in a private stage, with the verified Steam source mounted read-only. Run S2V and the packer as separate stage-confined commands through the normal `asset-network-deny --write-root` launcher. The packer applies the named native weapon anchor and caps animation, mesh and texture size before emitting a fresh GLB.
-
-```sh
-node tools/assets/prepare-viewmodel.mjs --equipment m4a4 \
-  --arms /stage/arms/arms.gltf --weapon /stage/weapon/weapon.gltf \
-  --idle /stage/idle/idle.gltf --fire /stage/fire/fire.gltf \
-  --reload /stage/reload/reload.gltf --output /stage/m4a4-first-person-actions.glb
-```
-
-Compare the completed output against `shared/viewmodels.json` before using the [operator installer](../../docs/MAP-ASSETS.md#optional-first-person-rigs). The registry pins the independently reviewed packs. Different source, exporter or packing outputs require review before admission.
-
 ## Local 2D map and radar overviews
 
 The 3D GLB and 2D overview are separate assets. For the 2D view and radar, export the actual map's radar artwork to PNG from your own local content with S2V. Use matching Valve overview text from the same map version, or supply a calibration you have checked against known Source coordinates. This standalone preparation command does not acquire artwork, infer missing map geometry, or guess calibration. The selective installer above can acquire the explicit matching artwork and overview metadata.
@@ -280,3 +254,5 @@ If Steam permanently denies the pinned native source, an administrator retry pre
 Every output/control stage is registered in a private bounded crash journal before conversion can write large files. Startup and the next shared preparation remove only exact registered names with matching device/inode, ownership and safe no-link contents. The journal covers both sides of publishing-directory rename, leaving unknown/operator paths untouched. Read-only browser catalog discovery can observe assets prepared after the viewer opened, using a bounded forty-five-minute lease. Coarse `complete` flags stop polling a finished or consciously preserved partial bank. Detailed errors/generations stay administrator-only, and a later remount starts a fresh lease.
 
 `presentation-assets.test.mjs` uses original synthetic geometry and SVGs to verify publication, retry generations, source-integrity refusal, per-item yielding, crash recovery and confinement. The hardened-image smoke exercises both fixed native publication modes, no-replace/link rejection and a crash between bank rename and final publication. These fixtures are not proof of downloading a fresh current CS2 asset set. Local low-disk stops retain the unchanged 512 MiB reserve, and actual Docker execution belongs to its successful exact-source CI run.
+
+The first-person bank uses the same confined equipment conversion path. Its fixed registry names exact weapon models and authored clip resources, including shared default clips referenced by the silenced weapons' official graphs. A separate packing child assembles the hands, weapon, camera origin and actions. The worker alternates static and first-person items after the agent and icon banks. It uses fixed priorities, since the assets container has no replay or account mount.

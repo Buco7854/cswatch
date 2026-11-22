@@ -72,17 +72,13 @@ Artwork preparation has a five-minute deadline, bounded attempts and the shared 
 
 The November 19 local native conversion proof used the retained CRC-verified screenshot from manifest `807392217824910805`: confined S2V and Sharp produced the exact existing 1280×720 PNG without changing installed artwork. That is cached-source conversion evidence, not a new current-manifest download. A new current-source artwork acquisition was not run on the disk-constrained host. See [verification](VERIFICATION.md) for the active revision's release gates.
 
-## Optional first-person rigs
+## Automatic first-person rigs
 
-The viewer can use byte-pinned operator-prepared rigs for the AK, M4A4, AWP and Glock from Steam depot 2347770 manifest `8225060435969537482`. Each supplies the weapon's default authored hands, idle, firing and reload poses. Web serves only the sizes and hashes in `shared/viewmodels.json` through fixed routes under the ordinary instance access policy. These optional assets are prepared outside the automatic map and shared-presentation workers.
+The asset worker prepares default authored hands, the exact held item, its idle pose and draw clip, and recorded firing and reload clips where applicable. It alternates the static and first-person items in fixed priority order after agents and HUD icons. The administrator can see the current item, counts, unsupported IDs and retry state. A missing official resource produces `missing_official_resource`. The worker pins an official depot manifest for the category and never substitutes another item's mesh.
 
-From a source workspace with the reviewed prepared GLB, install it into the existing operator asset directory with Node 24.
+The instance authorizes one bounded viewmodel catalog. Each previewed first-person asset comes from its validated byte count and SHA-256 descriptor. Missing rigs use static equipment. The active rig has an independent bounded cache, so world-model leases cannot exhaust its mobile budget. Rig files embed their own textures. Playback uses the recorded active item, draw transition, shot and reload evidence. The selected source supplies one default arms model for both sides. Stock knives use their respective models.
 
-```sh
-node tools/assets/install-viewmodel.mjs m4a4 /path/to/m4a4-first-person-actions.glb /path/to/map-assets
-```
-
-The accepted IDs are `ak47`, `m4a4`, `awp` and `glock`. Use the existing `MAP_ASSETS_DIR` and the usual read-only web mount. Reload animations require replay metadata from the parser that records active-weapon reload transitions. When reload evidence is unavailable, the rig can still show its idle pose and recorded firing. Missing rigs retain normal world-equipment rendering in POV.
+Prepared maps and shared presentation use a preparer revision in their identities. An invalid current map is prepared again within the existing attempt and storage limits. The worker safely retires only positively identified, allowlisted content. Old format generations are ignored and operator files are preserved.
 
 ## Baked lighting on the pinned Mirage source
 

@@ -67,13 +67,14 @@ import {
 import { installMapPreview, officialPreview } from './install-map-preview.mjs';
 import { installGameplaySounds } from './install-gameplay-sounds.mjs';
 import { installPresentationAssets } from './install-presentation-assets.mjs';
+import { presentationDirectory, preparerRevision } from '../../backend/dist/asset-preparer.js';
 import {
   presentationKinds,
   consumePresentationRetries,
   readPresentationStatus,
 } from '../../backend/dist/presentation-assets.js';
 import { cleanPresentationStages } from './presentation-stages.mjs';
-import { processOneMapRemoval } from './remove-map-pack.mjs';
+import { managedMapPaths, processOneMapRemoval, retireInvalidMapPack } from './remove-map-pack.mjs';
 
 export const mapWorkerLimits = Object.freeze({
   deadlineMs: 45 * 60 * 1000,
@@ -82,6 +83,7 @@ export const mapWorkerLimits = Object.freeze({
   keepSources: 2,
   attempts: 3,
   steamCooldownSeconds: 15 * 60,
+  packRecheckMs: 60 * 60 * 1000,
 });
 const sourceMarker = '.cswatch-official-source.json';
 const defaultNetworkDeny = fileURLToPath(new URL('./bin/asset-network-deny', import.meta.url));
@@ -145,20 +147,19 @@ async function requests(jobs) {
   return (
     (await withDirectory(jobs, ['requests'], async (directory) => {
       const folder = await opendir(`/proc/self/fd/${directory.fd}`),
-        ids = [];
+        current = [];
       let scanned = 0;
       for await (const entry of folder) {
         if (++scanned > mapJobLimits.scanned) throw Error('Map queue scan limit reached.');
         if (entry.isFile() && mapJobTemporaryName.test(entry.name)) continue;
-        if (
-          ids.length >= mapJobLimits.retained ||
-          !entry.isFile() ||
-          !/^[a-f0-9]{64}\.json$/.test(entry.name)
-        )
+        if (!entry.isFile() || !/^[a-f0-9]{64}\.json$/.test(entry.name))
           throw Error('Unexpected map queue entry.');
-        ids.push(entry.name.slice(0, -5));
+        const request = await readMapRequest(jobs, entry.name.slice(0, -5));
+        if (!request) continue;
+        if (current.length >= mapJobLimits.retained) throw Error('Map queue limit reached.');
+        current.push(request);
       }
-      return ids.sort();
+      return current.sort((a, b) => a.packId.localeCompare(b.packId));
     })) || []
   );
 }
@@ -300,7 +301,7 @@ export async function sourceCache(options, manifest) {
 
 const preparationMarker = (packId, requestId) =>
   JSON.stringify({
-    schemaVersion: 1,
+    schemaVersion: preparerRevision,
     packId,
     kind: 'cswatch-official-map-preparation',
     ...(requestId ? { requestId } : {}),
@@ -388,34 +389,71 @@ async function validatePack(root, request, validate, proof) {
       marker.source.manifest !== proof.source.manifest
     )
       throw Error('Prepared latest pack source differs.');
-    await validate(
+    return validate(
       join(root, 'maps'),
       request.selection.map,
       `steam-2347770-${request.selection.manifest}`,
     );
-    return;
   }
   if (
-    data.schemaVersion !== 1 ||
+    data.schemaVersion !== preparerRevision ||
     data.packId !== request.packId ||
     data.approval !== canonicalMapApproval(request.approval)
   )
     throw Error('Prepared pack approval differs.');
   const version =
     request.approval.assetVersion || `steam-2347770-${request.approval.source.manifest}`;
-  await validate(join(root, 'maps'), request.approval.identity.map, version);
+  return validate(join(root, 'maps'), request.approval.identity.map, version);
 }
 
+async function packStamp(root, paths) {
+  const stamps = [];
+  for (const path of paths) {
+    const stat = await lstat(join(root, path), { bigint: true }).catch((error) => {
+      if (error.code !== 'ENOENT') throw error;
+    });
+    if (stat?.isSymbolicLink()) throw Error('Unexpected prepared map symlink.');
+    stamps.push(stat ? `${stat.dev}:${stat.ino}:${stat.size}:${stat.ctimeNs}:${stat.mtimeNs}` : '');
+  }
+  return stamps.join('|');
+}
+async function checkPublishedMap(root, request, validate, proof, cached) {
+  const name =
+    request.kind === 'latest-official' ? request.selection.map : request.approval.identity.map;
+  const allowed = managedMapPaths(name);
+  const paths = ['', ...allowed.directories, ...allowed.files];
+  const stamp = await packStamp(root, paths);
+  const prior = cached?.get(root);
+  if (
+    prior?.generation === request.generation &&
+    prior.stamp === stamp &&
+    prior.recheckAt > performance.now()
+  )
+    return;
+  await localDirectory(root);
+  await validatePack(root, request, validate, proof);
+  if (stamp !== (await packStamp(root, paths)))
+    throw Error('Prepared map files changed during validation.');
+  if (cached) {
+    cached.set(root, {
+      stamp,
+      generation: request.generation,
+      recheckAt: performance.now() + mapWorkerLimits.packRecheckMs,
+    });
+    if (cached.size > mapJobLimits.retained) cached.delete(cached.keys().next().value);
+  }
+}
 /** Caller holds the single-worker lock. Test adapters replace conversion, never
  * request validation, current catalog approval or publication ownership. */
 export async function processOneMapRequest(options, adapters = {}) {
   const validate = adapters.validate || validatePreparedMap;
-  for (const packId of await requests(options.jobs)) {
-    const request = await readMapRequest(options.jobs, packId);
-    if (!request) continue;
+  const cached = options.validatedPacks;
+  for (const request of await requests(options.jobs)) {
+    const { packId } = request;
     const previous = await readMapResult(options.jobs, packId);
-    if (previous && previous.status !== 'processing') continue;
-    let staging;
+    if (previous?.status === 'failed') continue;
+    let staging,
+      repairing = previous?.repairing === true;
     let proof =
       request.kind === 'latest-official' && previous && latestMapResultMatches(request, previous)
         ? {
@@ -424,16 +462,39 @@ export async function processOneMapRequest(options, adapters = {}) {
             sourceCheckedAt: previous.sourceCheckedAt,
           }
         : undefined;
+    const latest = request.kind === 'latest-official';
+    const packs = join(options.assets, 'packs');
+    let assetPackId = proof?.assetPackId || packId;
+    let target = join(packs, assetPackId);
+    if (previous?.status === 'ready') {
+      try {
+        if (latest && !proof) throw Error('Ready snapshot lacks source proof.');
+        await checkPublishedMap(target, request, validate, previous, cached);
+        continue;
+      } catch {
+        repairing = true;
+        cached?.delete(target);
+      }
+    }
+    const retire = () =>
+      retireInvalidMapPack(
+        options,
+        request,
+        assetPackId,
+        signal,
+        preparationMarker(assetPackId, latest ? packId : undefined),
+      );
     const signal = options.signal
       ? AbortSignal.any([options.signal, AbortSignal.timeout(mapWorkerLimits.deadlineMs)])
       : AbortSignal.timeout(mapWorkerLimits.deadlineMs);
     const result = (status, code) =>
       writeMapJobResult(options.jobs, {
-        schemaVersion: 1,
+        schemaVersion: preparerRevision,
         packId,
         status,
         updatedAt: now(),
         ...proof,
+        ...(repairing && status === 'processing' ? { repairing: true } : {}),
         ...(code ? { code } : {}),
       });
     try {
@@ -446,21 +507,27 @@ export async function processOneMapRequest(options, adapters = {}) {
         status: 'processing',
         updatedAt: now(),
       });
-      const packs = join(options.assets, 'packs');
-      let assetPackId = proof?.assetPackId || packId;
-      let target = join(packs, assetPackId);
       await readableDirectory(packs);
       await localDirectory(packs);
-      if ((request.kind !== 'latest-official' || proof) && (await exists(target))) {
-        await localDirectory(target);
-        await validatePack(target, request, validate, { packId, ...proof });
-      } else {
+      let recoverable = false;
+      if (!latest || proof) {
+        if (await exists(target)) {
+          try {
+            await checkPublishedMap(target, request, validate, { packId, ...proof }, cached);
+            recoverable = true;
+          } catch {
+            repairing = true;
+            await result('processing');
+          }
+        }
+        if (!recoverable && repairing) await retire();
+      }
+      if (!recoverable) {
         if (!(await reserveAttempt(options.jobs, request)))
           throw Object.assign(Error('Map preparation restart budget exhausted.'), {
             code: 'ASSET_ATTEMPTS_EXHAUSTED',
           });
-        const latest = request.kind === 'latest-official',
-          map = latest ? request.selection.map : request.approval.identity.map,
+        const map = latest ? request.selection.map : request.approval.identity.map,
           manifest = latest ? request.selection.manifest : request.approval.source.manifest;
         const cache = await sourceCache(options, manifest);
         await budgets(options);
@@ -602,7 +669,7 @@ export async function processOneMapRequest(options, adapters = {}) {
           JSON.stringify(
             latest
               ? latestMapPackMarkerSchema.parse({
-                  schemaVersion: 1,
+                  schemaVersion: preparerRevision,
                   kind: 'latest-official',
                   packId: assetPackId,
                   requestId: packId,
@@ -611,7 +678,7 @@ export async function processOneMapRequest(options, adapters = {}) {
                   preparedAt: now(),
                 })
               : {
-                  schemaVersion: 1,
+                  schemaVersion: preparerRevision,
                   packId,
                   approval: canonicalMapApproval(request.approval),
                   preparedAt: now(),
@@ -624,9 +691,18 @@ export async function processOneMapRequest(options, adapters = {}) {
         if (!(await approved(options, request)))
           throw Object.assign(Error('Approval removed.'), { code: 'APPROVAL_REMOVED' });
         await budgets(options);
+        let alreadyPublished = false;
         if (await exists(target)) {
-          await localDirectory(target);
-          await validatePack(target, request, validate, { packId, ...proof });
+          try {
+            await checkPublishedMap(target, request, validate, { packId, ...proof }, cached);
+            alreadyPublished = true;
+          } catch {
+            repairing = true;
+            await result('processing');
+            await retire();
+          }
+        }
+        if (alreadyPublished) {
           await rm(staging, { recursive: true });
           staging = undefined;
         } else {
@@ -648,7 +724,10 @@ export async function processOneMapRequest(options, adapters = {}) {
     } catch (error) {
       if (error?.code === 'STEAM_RATE_LIMIT') options.onSteamRateLimit?.();
       const code = mapFailureCode(error, signal);
-      await result('failed', code);
+      await result(
+        repairing && options.signal?.aborted ? 'processing' : 'failed',
+        repairing && options.signal?.aborted ? undefined : code,
+      );
       options.log?.({ event: 'map.failed', packId, code });
     } finally {
       if (staging) await rm(staging, { recursive: true, force: true });
@@ -698,14 +777,19 @@ export async function runMapWorker(options, adapters = {}) {
   let busy = false,
     beat,
     inventoryFailure;
-  let blockedUntil = 0,
-    idleBlockedUntil = 0;
+  let blockedUntil = 0;
+  const nextPresentation = new Map();
   const onSteamRateLimit = () => {
     blockedUntil = Math.max(blockedUntil, clock() + mapWorkerLimits.steamCooldownSeconds);
     options.log?.({ event: 'map.steam_rate_limited', retryAt: blockedUntil });
     options.onSteamRateLimit?.();
   };
-  const workOptions = { ...options, onSteamRateLimit };
+  const workOptions = {
+    ...options,
+    onSteamRateLimit,
+    validatedPacks: new Map(),
+    pinnedIndexes: new Map(),
+  };
   const pause = async (milliseconds) => {
     try {
       await sleep(milliseconds, undefined, { signal: options.signal });
@@ -731,14 +815,17 @@ export async function runMapWorker(options, adapters = {}) {
   try {
     await cleanMapPreparations(options);
     try {
-      await cleanPresentationStages(options);
+      await cleanPresentationStages({
+        ...options,
+        assets: join(options.assets, presentationDirectory),
+      });
     } catch {
       options.log?.({ event: 'presentation.recovery_failed', code: 'preparation_failed' });
     }
     const previousPresentation = Object.values(
       (await readPresentationStatus(options.jobs))?.categories || {},
     );
-    idleBlockedUntil = Math.max(0, ...previousPresentation.map((entry) => entry.retryAt || 0));
+
     blockedUntil = Math.max(
       blockedUntil,
       ...previousPresentation
@@ -754,6 +841,7 @@ export async function runMapWorker(options, adapters = {}) {
       previewAttempts = 0,
       presentationManifest,
       presentationCheckedAt,
+      presentationScanAt = 0,
       pendingPresentation = [];
     while (!options.signal?.aborted) {
       busy = true;
@@ -763,8 +851,10 @@ export async function runMapWorker(options, adapters = {}) {
         await heartbeat();
         continue;
       }
-      for (const retry of await consumePresentationRetries(options.jobs))
+      for (const retry of await consumePresentationRetries(options.jobs)) {
+        nextPresentation.delete(retry.kind);
         if (!pendingPresentation.includes(retry.kind)) pendingPresentation.push(retry.kind);
+      }
       if (clock() < blockedUntil) {
         await heartbeat();
         await pause(Math.min(15000, (blockedUntil - clock()) * 1000));
@@ -782,6 +872,7 @@ export async function runMapWorker(options, adapters = {}) {
           presentationManifest = inventory.manifest;
           presentationCheckedAt = clock();
           pendingPresentation = [...presentationKinds];
+          presentationScanAt = clock() + 60;
           options.log?.({
             event: 'map.inventory_ready',
             manifest: inventory.manifest,
@@ -809,14 +900,19 @@ export async function runMapWorker(options, adapters = {}) {
       const worked = await processRequest(workOptions);
       busy = false;
       await heartbeat();
-      if (!worked && clock() < idleBlockedUntil) {
-        await pause(Math.min(2000, (idleBlockedUntil - clock()) * 1000));
-        continue;
-      }
       const inventoryIsFresh =
         presentationCheckedAt !== undefined &&
         clock() >= presentationCheckedAt &&
         clock() - presentationCheckedAt <= officialMapInventoryLimits.maxAgeSeconds;
+      if (
+        inventoryIsFresh &&
+        presentationManifest &&
+        !pendingPresentation.length &&
+        clock() >= presentationScanAt
+      ) {
+        pendingPresentation = [...presentationKinds];
+        presentationScanAt = clock() + 60;
+      }
       if (
         !worked &&
         inventoryIsFresh &&
@@ -824,36 +920,45 @@ export async function runMapWorker(options, adapters = {}) {
         pendingPresentation.length &&
         !options.signal?.aborted
       ) {
-        // Core actors/icons precede decorative work; bulk models yield to preview/audio too.
-        let preparedPresentation = false;
-        while (
-          pendingPresentation.length &&
-          ((!previewManifest && !audioManifest) || pendingPresentation[0] !== 'equipment-models') &&
-          !options.signal?.aborted
-        ) {
-          const kind = pendingPresentation.shift();
+        // One publication at a time. Ready banks do not delay or count as work.
+        let published = false;
+        while (pendingPresentation.length && !options.signal?.aborted && clock() >= blockedUntil) {
+          const eligible = pendingPresentation.findIndex(
+            (kind) => clock() >= (nextPresentation.get(kind) || 0),
+          );
+          if (eligible < 0) break;
+          const [kind] = pendingPresentation.splice(eligible, 1);
           busy = true;
           try {
-            const retained = (await readPresentationStatus(options.jobs, true))?.categories[kind];
+            const retained = (await readPresentationStatus(options.jobs))?.categories[kind];
             const sourceManifest = retained?.manifest || presentationManifest;
             const result = await preparePresentation(workOptions, sourceManifest, kind);
-            preparedPresentation = result?.status === 'prepared' || result?.status === 'checked';
-            if (result?.remaining) pendingPresentation.push(kind);
+            if (result?.remaining || result?.status === 'backoff') pendingPresentation.push(kind);
+            if (result?.status === 'backoff') nextPresentation.set(kind, result.retryAt);
+            published = result?.status === 'prepared' || result?.status === 'checked';
           } catch (error) {
-            idleBlockedUntil = Math.max(idleBlockedUntil, clock() + 300);
             if (error?.code === 'STEAM_RATE_LIMIT') onSteamRateLimit();
+            const retained = (await readPresentationStatus(options.jobs))?.categories[kind];
+            if (retained?.code !== 'source_mismatch' && retained?.item) {
+              pendingPresentation.push(kind);
+            } else if (retained?.attempts !== 3 && retained?.code !== 'source_mismatch') {
+              nextPresentation.set(kind, retained?.retryAt || clock() + 300);
+              pendingPresentation.push(kind);
+            }
             options.log?.({
               event: 'presentation.failed',
               kind,
               code: mapFailureCode(error, options.signal),
             });
+            // Recheck the queue after an acquisition attempt, successful or otherwise.
+            published = true;
           } finally {
             busy = false;
             await heartbeat();
           }
-          if (preparedPresentation || clock() < blockedUntil || clock() < idleBlockedUntil) break;
+          if (published) break;
         }
-        if (preparedPresentation || clock() < blockedUntil || clock() < idleBlockedUntil) continue;
+        if (published || clock() < blockedUntil) continue;
       }
       if (!worked && inventoryIsFresh && previewManifest && !options.signal?.aborted) {
         const selected = previewManifest;

@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { runAssetProcess } from './install-steam-assets.mjs';
 import { equipmentModelRegistry, selectedEquipmentModels } from './equipment-model-registry.mjs';
 import { inspectEquipmentSourceModel } from './equipment-source-model.mjs';
+import { viewmodelSources } from './viewmodel-sources.mjs';
 import { inspectNativeMuzzle } from './native-weapon-muzzle.mjs';
 import { scanEquipmentDependencies } from './equipment-dependencies.mjs';
 import { directionalAgentRegistry } from './agent-animation-registry.mjs';
@@ -33,6 +34,10 @@ const MiB = 1024 ** 2;
 const agentScript = fileURLToPath(new URL('./prepare-agent-model.mjs', import.meta.url));
 const prepareScript = fileURLToPath(new URL('./prepare-equipment-model.mjs', import.meta.url));
 export async function installEquipmentModels(options, adapters = {}) {
+  const rigId = options.viewmodel;
+  const rig = Object.hasOwn(viewmodelSources, rigId) ? viewmodelSources[rigId] : undefined;
+  if (rigId !== undefined && (!rig || !options.networkDeny || options.agents || options.items))
+    throw Error('Select one registered viewmodel under required conversion confinement.');
   const agents =
     options.agents === undefined
       ? []
@@ -48,7 +53,7 @@ export async function installEquipmentModels(options, adapters = {}) {
   )
     throw Error('Select agent teams ct,t explicitly.');
   let ids = options.items === undefined ? [] : selectedEquipmentModels(options.items);
-  if (!ids.length && !agents.length)
+  if (!ids.length && !agents.length && !rig)
     throw Error('Select explicit equipment items and/or agent teams.');
   if (
     !options.output ||
@@ -77,6 +82,8 @@ export async function installEquipmentModels(options, adapters = {}) {
   const game = join(cache, 'steam');
   await localDirectory(game, true);
   if (await exists(target)) await localDirectory(target);
+  const rigOutput = rig && join(output, 'viewmodels', rigId);
+  if (rigOutput) await readableDirectory(rigOutput);
   const agentOutput = join(output, 'agents');
   if (await exists(agentOutput)) await localDirectory(agentOutput);
   for (const team of agents)
@@ -201,17 +208,25 @@ export async function installEquipmentModels(options, adapters = {}) {
       ),
     );
     initial.push('game/csgo/steam.inf');
-    const listing = await execute(
-      tools.downloader,
-      ['ls', STEAM_APP, `${STEAM_DEPOT}:${options.manifest}`, '--anonymous', '--', ...initial],
-      'pinned-index-preflight',
-      { timeoutMs: 120000 },
-    );
-    const plan = parseSteamListing(listing.stdout, initial);
-    if (plan.manifest !== options.manifest)
-      throw Object.assign(Error('Equipment depot manifest mismatch.'), {
-        code: 'SOURCE_MAP_MISMATCH',
-      });
+    let plan = adapters.pinnedIndexes?.get(options.manifest);
+    if (!plan) {
+      const listing = await execute(
+        tools.downloader,
+        ['ls', STEAM_APP, `${STEAM_DEPOT}:${options.manifest}`, '--anonymous', '--', ...initial],
+        'pinned-index-preflight',
+        { timeoutMs: 120000 },
+      );
+      plan = parseSteamListing(listing.stdout, initial);
+      if (plan.manifest !== options.manifest)
+        throw Object.assign(Error('Equipment depot manifest mismatch.'), {
+          code: 'SOURCE_MAP_MISMATCH',
+        });
+      if (adapters.pinnedIndexes) {
+        if (adapters.pinnedIndexes.size >= 2)
+          adapters.pinnedIndexes.delete(adapters.pinnedIndexes.keys().next().value);
+        adapters.pinnedIndexes.set(options.manifest, plan);
+      }
+    }
     const matchesIndex = async (file) =>
       (await fileHash(join(game, file.file), 'sha1', file.bytes).catch(() => undefined)) ===
       file.sha1;
@@ -228,9 +243,11 @@ export async function installEquipmentModels(options, adapters = {}) {
         });
     const index = adapters.index ?? readVpkDirectory,
       csgo = await index(join(game, 'game/csgo/pak01_dir.vpk'));
+    if (rig && Object.values(rig).some((resource) => !csgo.entries.has(resource)))
+      return { installed: [], unsupported: [rigId], unsupportedCode: 'missing_official_resource' };
     const unsupported = ids.filter((id) => !csgo.entries.has(equipmentModelRegistry[id].resource));
     if (options.allowMissing) ids = ids.filter((id) => !unsupported.includes(id));
-    if (!ids.length && !agents.length) {
+    if (!ids.length && !agents.length && !rig) {
       if (options.allowMissing)
         return {
           installed: [],
@@ -244,11 +261,13 @@ export async function installEquipmentModels(options, adapters = {}) {
       ...new Set([
         ...ids.map((id) => equipmentModelRegistry[id].resource),
         ...agents.map((team) => agentSourceRegistry[team]),
+        ...(rig ? [rig.arms, rig.weapon] : []),
       ]),
     ];
     const closureSeeds = [
       ...resources,
       ...(agents.length ? Object.values(directionalAgentRegistry) : []),
+      ...(rig ? Object.values(rig).filter((resource) => resource.endsWith('.vnmclip_c')) : []),
     ];
     const missingSeeds = [];
     for (const resource of closureSeeds) {
@@ -272,11 +291,13 @@ export async function installEquipmentModels(options, adapters = {}) {
       await writeFile(path, bytes, { flag: 'wx', mode: 0o600 });
       const data = await execute(tools.s2v, ['-i', path, '--block', 'DATA'], `model-${i}-data`),
         control = await execute(tools.s2v, ['-i', path, '--block', 'CTRL'], `model-${i}-ctrl`);
-      const firearm = ids.some(
-        (id) =>
-          equipmentModelRegistry[id].resource === resource &&
-          equipmentModelRegistry[id].kind === 'weapon',
-      );
+      const firearm =
+        (rig?.weapon === resource && equipmentModelRegistry[rigId].kind === 'weapon') ||
+        ids.some(
+          (id) =>
+            equipmentModelRegistry[id].resource === resource &&
+            equipmentModelRegistry[id].kind === 'weapon',
+        );
       const mesh = firearm
         ? await execute(tools.s2v, ['-i', path, '--block', 'MDAT'], `model-${i}-mesh`)
         : undefined;
@@ -326,6 +347,59 @@ export async function installEquipmentModels(options, adapters = {}) {
       index,
     });
     const assetVersion = `steam-${STEAM_DEPOT}-${options.manifest}`;
+    if (rig) {
+      const paths = [];
+      for (const [role, resource] of Object.entries(rig)) {
+        const folder = join(conversion, 'rig-' + role);
+        await mkdir(folder);
+        const path = join(folder, role + '.gltf');
+        const model = modelSelections.get(resource);
+        const result = await execute(
+          tools.s2v,
+          [
+            '-i',
+            join(game, 'game/csgo/pak01_dir.vpk'),
+            '--game',
+            join(game, 'game/csgo'),
+            '--vpk_filepath',
+            resource,
+            '--output',
+            path,
+            '--gltf_export_format',
+            'gltf',
+            ...(model
+              ? ['--gltf_textures_adapt', '--gltf_mesh_list', model.meshes.join(',')]
+              : ['--gltf_compose_additive', '--gltf_keep_all_keyframes']),
+          ],
+          'rig-' + role + '-export',
+          { allowFailure: true, timeoutMs: 120000 },
+        );
+        if (
+          result.code !== 0 ||
+          !(await exists(path)) ||
+          /(?:Failed to|Could not|Unable to|Exception|Error:)/i.test(result.stdout + result.stderr)
+        )
+          throw Error('The fixed native first-person export failed: ' + role);
+        paths.push('--' + role, path);
+      }
+      const muzzle = modelSelections.get(rig.weapon).nativeMuzzle;
+      await execute(
+        process.execPath,
+        [
+          fileURLToPath(new URL('./prepare-viewmodel.mjs', import.meta.url)),
+          '--equipment',
+          rigId,
+          '--manifest',
+          options.manifest,
+          '--output',
+          join(rigOutput, 'model.glb'),
+          ...(muzzle ? ['--muzzle', JSON.stringify(muzzle)] : []),
+          ...paths,
+        ],
+        'viewmodel-pack',
+      );
+      installed.push(rigId);
+    }
     for (const [i, id] of ids.entries()) {
       const resource = equipmentModelRegistry[id].resource,
         selected = modelSelections.get(resource),
@@ -505,8 +579,8 @@ export async function installEquipmentModels(options, adapters = {}) {
       await writeFile(
         join(
           output,
-          agents.length ? 'agents' : 'equipment-models',
-          ...(options.firstItemOnly && ids.length ? [ids[0]] : []),
+          rig ? 'viewmodels' : agents.length ? 'agents' : 'equipment-models',
+          ...(rig ? [rigId] : options.firstItemOnly && ids.length ? [ids[0]] : []),
           'installation.json',
         ),
         reportBytes,

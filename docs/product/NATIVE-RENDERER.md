@@ -1,6 +1,6 @@
 # Native rendering follow-up
 
-The released sunlight/sky correction improves the existing PBR path. The local follow-up adds four authored first-person rigs and an initial set of native map shaders. Keep cswatch's interface, CPU-only hosting and the existing replay-access model.
+The released sunlight/sky correction improves the existing PBR path. The local follow-up prepares first-person rigs in the automatic worker and uses an initial set of native map shaders. Keep cswatch's interface, CPU-only hosting and the existing replay-access model.
 
 Compact 3D is a separate optional tier for responsive playback. The offline converter keeps placed opaque world surfaces and samples their base colors, while simplifying geometry and omitting textured materials, blended and masked surfaces, and the separate sky landscape. The full tier retains detailed materials and native lighting work. Both paths use the same cameras, timeline, radar and recorded actors. [Matched verification](../VERIFICATION.md#compact-3d-2026-11-22)
 
@@ -26,9 +26,9 @@ Do not vendor the competitor's renderer or hosted packs. Independently prepare o
 
 ## First-person rendering
 
-The local runtime supports optional source-pinned AK, M4A4, AWP and Glock rigs with their authored hands and gloves. Each rig uses the first-person depth pass and portrait framing. Its fire and reload clips sample demo time. Recorded shots drive firing and an analytical flash on the exact native muzzle joint. A contiguous false-to-true observation on the same active-weapon handle drives reload, with a ceiling of 256 replay ticks. Missing reload evidence leaves the idle pose. Firing uses the recorded shot events independently of reload evidence. [Operator asset installation](../MAP-ASSETS.md)
+The asset worker prepares source-authored hands, gloves and held models for first-person playback. Each rig uses the first-person depth pass and portrait framing. Authored draw, fire and reload clips sample demo time where those actions are available. Recorded shots drive firing and an analytical flash on the source muzzle joint. A contiguous false-to-true observation on the same active-weapon handle drives reload, with a ceiling of 256 replay ticks. Missing reload evidence leaves the idle pose. Firing uses the recorded shot events independently of reload evidence. [Automatic first-person rigs](../MAP-ASSETS.md#automatic-first-person-rigs)
 
-Other weapons retain their current first-person representation. The AWP, SSG 08, G3SG1 and SCAR-20 can use recorded camera-service FOV in scoped POV. The lens masks the viewport and suppresses the held model during a recorded scope. Native movement sway, per-player skins, recoil, lens transitions and other game-engine effects remain open.
+A static held model remains the fallback while its first-person rig is unavailable. The AWP, SSG 08, G3SG1 and SCAR-20 can use recorded camera-service FOV in scoped POV. The lens masks the viewport and suppresses the held model during a recorded scope. Native movement sway, per-player skins, recoil, lens transitions and other game-engine effects remain open.
 
 POV uses the sampled native pawn eye offset when available. A bounded shoulder-arm trace clips against supported opaque static render surfaces in follow mode and uses the same camera pose for spatial audio. Native collision hulls, invisible clip volumes and dynamic obstacles are outside this trace.
 

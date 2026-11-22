@@ -105,7 +105,10 @@ test('shots require recorded firearm events, exact immutable identity and curren
       { type: 'weapon_fire', tick: 1.5, user_steamid: other, weapon: 'ak47' },
     ]),
   );
-  expect(index.size).toBe(1);
+  expect(index.size).toBe(2);
+  const taser = { ...actor, id: other, weapon: 'taser' };
+  expect(weaponFireAt(index, taser, 65, 64)).toBeUndefined();
+  expect(nativeWeaponPose(index, taser, 65, 64, 0.25, 0, true).fire?.weight).toBeGreaterThan(0);
   expect(weaponFireAt(index, actor, 63.99, 64)).toBeUndefined();
   expect(weaponFireAt(index, actor, 64, 64)?.flash).toBe(1);
   expect(weaponFireAt(index, { ...actor, id: other }, 64, 64)).toBeUndefined();
