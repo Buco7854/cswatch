@@ -7,6 +7,14 @@
 - Test with the pinned demo fixture for native parsing and with `CSWATCH_TRANSCRIPTION_TEST_MODEL` for real offline inference. State fixture skips explicitly. Test data contracts and trust boundaries. Keep failing assertions and deadlines intact while fixing their cause.
 - Keep published build identity tied to the exact verified commit. Distinguish screenshots from physical-device and source-provenance evidence. Record the renderer, fixtures and conditions behind any measured result.
 
+## First-person lens and motion, 2026-11-22
+
+The local production build and 14 focused tests passed on Node 22.23.5. The tests cover separate clip planes and projection, right-handed offsets, renderer state restoration, wrapped turns, inferred landing and optional draw timing across seeks and shared chunk samples.
+
+Headless Chromium with SwiftShader rendered the pinned 60,601,900-byte Mirage demo and the retained detailed Mirage pack with pinned viewmodels. The parser ran with the required sandbox. At kill tick 21,176 and fire scene tick 43,128, the M4 and AWP sit below and right of the crosshair. The M4 flash stays at the authored muzzle. Both before/after pairs had identical RGB values in the same 120 × 120 crop around the crosshair. The GPU received 22% of the normal direct sunlight at the covered AWP position. The installed packs provide fire and reload clips, so draw timing is covered with synthetic samples. The landing cue uses descent followed by a near-level sample because the replay has no grounded flag.
+
+Browser captures covered 960 × 540, 960 × 720, 1260 × 540 and a 390 × 844 touch profile in both themes. An in-app world FOV change from 48° to 90° left the weapon draw at 53.67°. A recorded AWP scope drew the world at 30.54°, suppressed the weapon pass, then restored it on unscoping. The portrait weapon used 95.18° vertical to retain the horizontal aperture. With reduced motion enabled and the optional authored AK request blocked, the installed static AK still rendered through the portrait lens. These are software-rendered checks without physical-device or hardware performance evidence.
+
 ## Replay motion, texture detail and C4 wave, 2026-11-22
 
 Runtime `b4cbe2209eba91fbce8e3732717a5d1820e1e9bf` passed [workflow 44975440124](https://github.com/Buco7854/cswatch/actions/runs/44975440124), run 50. CI passed 389 backend, 296 asset and 230 public browser cases, both private registration policies, first-admin setup, cold bootstrap and both hardened images. Anonymous registry checks matched the revision and digests for both latest and immutable tags. The application index is `sha256:1466ed03c6736088480ab78d7426d829d9326c111f5468a207c94ea6fb01662c` and the assets index is `sha256:22a54e5c4649d3aa859c3c4f1013e6579c24224ddee7079ecc2fc8c09ef95cb5`.
