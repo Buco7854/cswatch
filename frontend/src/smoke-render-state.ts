@@ -65,7 +65,6 @@ export function useSmokeDensity(
     sun: XYZ;
     rows: SmokeDensityResult[];
   }>();
-  const [workerFailure, setWorkerFailure] = useState<SmokeTrack[]>();
   const invalidate = useThree((state) => state.invalidate);
   const controller = useRef<((targets: SmokeTarget[]) => void) | undefined>(undefined);
   const targets = useMemo(() => {
@@ -88,6 +87,12 @@ export function useSmokeDensity(
     let waiting = false;
     let last = '';
     let latest: SmokeTarget[] = [];
+    const fail = () => {
+      active = false;
+      worker?.terminate();
+      setResponses(undefined);
+      invalidate();
+    };
     const send = () => {
       if (waiting || !active) return;
       const request = requestKey(latest);
@@ -100,8 +105,7 @@ export function useSmokeDensity(
             type: 'module',
           });
         } catch {
-          active = false;
-          setWorkerFailure(tracks);
+          fail();
           return;
         }
         worker.onmessage = ({ data }: MessageEvent<SmokeDensityResult[]>) => {
@@ -130,16 +134,15 @@ export function useSmokeDensity(
           waiting = false;
           invalidate();
         };
-        worker.onerror = () => {
-          active = false;
-          worker?.terminate();
-          setResponses(undefined);
-          setWorkerFailure(tracks);
-          invalidate();
-        };
+        worker.onerror = fail;
+        worker.onmessageerror = fail;
       }
       waiting = true;
-      worker.postMessage({ targets: latest, sun } satisfies SmokeDensityRequest);
+      try {
+        worker.postMessage({ targets: latest, sun } satisfies SmokeDensityRequest);
+      } catch {
+        fail();
+      }
     };
     controller.current = (target) => {
       latest = target;
@@ -178,31 +181,26 @@ export function useSmokeDensity(
     );
   });
 
-  const recorded = targets.flatMap((target) => {
+  return targets.map((target) => {
     const exact = rows.find((row) => row.key === target.key && row.offset === target.offset);
     // The already displayed predecessor is part of the new pair. Hold it
     // briefly while the next field arrives, without applying late replies.
     const reply =
       exact ?? rows.find((row) => row.key === target.key && row.offset === target.previousOffset);
-    if (!reply?.current || !reply.previous) return [];
-    return [
-      {
-        key: target.key,
-        track: target.track,
-        current: reply.current,
-        previous: exact ? reply.previous : reply.current,
-        mix: exact ? smooth(tick - target.updateTick, target.fadeTicks) : 1,
-        stoppedAt: reply.stoppedAt,
-      },
-    ];
+    return {
+      key: target.key,
+      track: target.track,
+      density:
+        reply?.current && reply.previous
+          ? {
+              current: reply.current,
+              previous: exact ? reply.previous : reply.current,
+              mix: exact ? smooth(tick - target.updateTick, target.fadeTicks) : 1,
+              stoppedAt: reply.stoppedAt,
+            }
+          : undefined,
+    };
   });
-  const unavailable = typeof Worker === 'undefined' || Boolean(tracks && workerFailure === tracks);
-  const unsupported = targets.filter(
-    (target) =>
-      unavailable ||
-      rows.some((row) => row.key === target.key && row.offset === target.offset && !row.current),
-  );
-  return { recorded, unsupported: unsupported.map(({ track }) => track) };
 }
 
 export function smokeHidesLabel(volumes: SmokeSample[], from: XYZ, to: XYZ) {

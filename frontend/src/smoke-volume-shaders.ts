@@ -171,6 +171,7 @@ export const compositeFragment = /* glsl */ `
       value = mix(softSum / softTotal, value, smoothstep(0.025, 0.32, value.a));
     if (value.a <= 0.002) discard;
     gl_FragColor = vec4(value.rgb * (sceneLightScale / value.a), value.a);
+    // Three enables this transform only when the float scene target is unavailable.
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
     gl_FragColor.rgb *= gl_FragColor.a;

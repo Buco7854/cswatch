@@ -1,5 +1,7 @@
 # Current handoff
 
+Local R3 smoke unification. Journal density and analytic smoke share a single ray marcher. A worker failure can use the observed smoke track origin and interval even when its detonation event is absent. A failed volume target suppresses the volume and reports a localized viewer status. The targets are revalidated after WebGL context restoration. [Verification](VERIFICATION.md#local-single-smoke-renderer-2026-11-22)
+
 Local T4 utility effects, 2026-11-22. The confined parser records changes to burning inferno slots, and the viewer draws the footprint at the recorded heights across replay chunk boundaries. HE and flash use short depth-tested bursts, and event-only fire uses a soft animated patch. [Verification](VERIFICATION.md#local-utility-effects-2026-11-22)
 
 Local T2 adds version 2 directional third-person animation. Both teams were prepared from official Steam manifest `8225060435969537482` under ignored `var/anim-work/pack/agents`. The version 2 installer is opt-in via `--directional-agents`. Existing five-cycle packs and replay archives remain usable. New replays retain optional death anchors and a bounded movement history. The directional renderer integrates authored stride, blends from a centred movement window across cold seeks and uses the 64 Hz aim track when present. [Verification](VERIFICATION.md#local-directional-agents-2026-11-22)
