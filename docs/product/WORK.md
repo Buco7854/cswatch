@@ -1,5 +1,7 @@
 # Active work
 
+Local third-person work has a pinned 87-clip CT/T pack with rifle, pistol and knife direction sets, pitch, recorded action layers and authored death poses. The renderer integrates recorded gait phase and samples a centred blend window across chunks. Terrain contacts remain approximate. [Directional agent evidence](../VERIFICATION.md#local-directional-agents-2026-11-22)
+
 The renderer follow-up covers demo-time gait and weapon transitions, mipmapped map detail and the recorded C4 shockwave. [The renderer and replay roadmap](NATIVE-RENDERER.md#renderer-and-replay-roadmap) tracks FSR 3 upscaling and frame generation, a compatible WebGPU trial, round-by-round ingestion and further utility fidelity.
 
 Compact 3D adds a smaller map tier to the existing viewer and keeps all camera modes and the calibrated radar. The next renderer work covers verified visibility and LOD, compressed textures for the detailed renderer, typed replay slices, and recorded inferno and motion evidence.

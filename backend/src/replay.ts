@@ -24,6 +24,10 @@ import { gameplaySoundLimits } from './gameplay-sounds.js';
 import { mapIdentitySchema } from './map-identity.js';
 import { validSmokeTracks } from './smoke-state-wire.js';
 import type { SmokeTrack } from '../../shared/smoke-state.mjs';
+import type { GaitHistory } from '../../shared/agent-gait-history.mjs';
+import { encodeGaitHistory, validGaitHistory } from './replay-gait-history.js';
+import type { AgentDeathAnchor } from '../../shared/agent-deaths.mjs';
+import { replayAgentDeaths, validAgentDeaths } from './replay-agent-deaths.js';
 import { replayStride } from './replay-stride.js';
 import { aimBoundary, decodeAimChunk } from './aim-track-wire.js';
 import type { AimSlices } from './aim-track.js';
@@ -472,6 +476,8 @@ export const manifestSchema = z
       })
       .strict()
       .optional(),
+    agentDeaths: z.custom<AgentDeathAnchor[]>(validAgentDeaths).optional(),
+    gaitHistory: z.custom<GaitHistory>().optional(),
     firstTick: tick,
     lastTick: tick,
     chunks: z.array(descriptor).min(1).max(replayLimits.chunks),
@@ -655,6 +661,8 @@ async function writeReplayCore(
     firstTick: frames[0].tick,
     lastTick: frames.at(-1)!.tick,
     chunks: [],
+    agentDeaths: replayAgentDeaths(data),
+    gaitHistory: includeStride ? encodeGaitHistory(data) : undefined,
   };
   const bounds = {
     minX: Infinity,
@@ -816,6 +824,14 @@ async function writeReplayCore(
   }
   if (!validSmokeTracks(manifest.smokeTracks, manifest.lastTick)) delete manifest.smokeTracks;
   let json = replayJSON(manifest);
+  if (manifest.gaitHistory && Buffer.byteLength(json) > replayLimits.manifestBytes) {
+    delete manifest.gaitHistory;
+    json = replayJSON(manifest);
+  }
+  if (manifest.agentDeaths && Buffer.byteLength(json) > replayLimits.manifestBytes) {
+    delete manifest.agentDeaths;
+    json = replayJSON(manifest);
+  }
   if (stride && Buffer.byteLength(json) > replayLimits.manifestBytes) {
     for (const info of manifest.chunks) delete info.stride;
     json = replayJSON(manifest);
@@ -863,6 +879,34 @@ export function validateReplayArtifacts(folder: string): {
   if (manifest.mapIdentity && manifest.mapIdentity.map !== manifest.map)
     throw new Error('Recorded map identity does not match replay map');
   const actors = new Set(manifest.players.map((player) => player.id));
+  if (
+    manifest.gaitHistory !== undefined &&
+    !validGaitHistory(
+      manifest.gaitHistory,
+      actors,
+      manifest.firstTick,
+      manifest.lastTick,
+      manifest.tickRate,
+    )
+  )
+    throw new Error('Invalid recorded gait history');
+  if (manifest.agentDeaths?.length) {
+    const deathEvents = new Set(
+      manifest.events
+        .filter((event) => event.type === 'player_death' && typeof event.user_steamid === 'string')
+        .map((event) => event.user_steamid + ':' + event.tick),
+    );
+    if (
+      manifest.agentDeaths.some(
+        ({ id, tick }) =>
+          !actors.has(id) ||
+          tick < manifest.firstTick ||
+          tick > manifest.lastTick ||
+          !deathEvents.has(id + ':' + tick),
+      )
+    )
+      throw new Error('Invalid agent death identity or time');
+  }
   const strides = new Map<string, number>();
   for (const chunk of manifest.chunks)
     for (const [id, distance] of chunk.stride ?? []) {

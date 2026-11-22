@@ -1,11 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Document } from '@gltf-transform/core';
+import contract from '../../shared/agent-animation.json' with { type: 'json' };
+import {
+  directionalClassRoles,
+  directionalMovementRoles,
+} from '../../shared/agent-animation-contract.mjs';
 import { agentAnimationRoles } from './agent-animation-registry.mjs';
 import { inverseRigid } from './agent-retarget.mjs';
 import { retargetAgentAnimations } from './retarget-agent-animations.mjs';
 
-function fixture({ animated = false, extra = false } = {}) {
+function fixture({ animated = false, extra = false, stride } = {}) {
   const document = new Document(),
     buffer = document.createBuffer(),
     scene = document.createScene(),
@@ -19,7 +24,14 @@ function fixture({ animated = false, extra = false } = {}) {
     pelvis.addChild(between);
     between.addChild(hand);
   } else pelvis.addChild(hand);
-  const joints = [motion, pelvis, hand, ...(between ? [between] : [])],
+  const feet = stride
+    ? ['ball_L', 'ball_R'].map((name, i) => {
+        const node = document.createNode(name).setTranslation([0.1 - i * 0.2, 0, 0]);
+        motion.addChild(node);
+        return node;
+      })
+    : [];
+  const joints = [motion, pelvis, hand, ...(between ? [between] : []), ...feet],
     create = (type, array) =>
       document.createAccessor().setType(type).setArray(array).setBuffer(buffer),
     skin = document
@@ -48,8 +60,9 @@ function fixture({ animated = false, extra = false } = {}) {
   if (animated) {
     const animation = document.createAnimation('original_native_clip'),
       input = create('SCALAR', new Float32Array([0, 1]));
+    const [x, z] = stride ?? [10, 0];
     for (const [node, path, values] of [
-      [motion, 'translation', [0, 0, 0, 10, 0, 0]],
+      [motion, 'translation', [0, 0, 0, x, 0, z]],
       [pelvis, 'translation', [0, 1, 0, 0, 1.1, 0]],
       [hand, 'rotation', [0, 0, 0, 1, 0, 0, Math.SQRT1_2, Math.SQRT1_2]],
       [motion, 'rotation', [0, 0, 0, 1, 0, Math.SQRT1_2, 0, Math.SQRT1_2]],
@@ -192,5 +205,38 @@ test('native animation bounds time, duplicate channels, non-rigid poses and tota
   assert.throws(
     () => retargetAgentAnimations(oversized.document, sources(), { minimumMappedBones: 3 }),
     /allocation/,
+  );
+});
+
+test('version 2 packs preserve the positive duration of entirely static poses', () => {
+  const target = fixture().document;
+  const sources = Object.fromEntries(
+    directionalClassRoles('rifle').map((role) => {
+      const moving = directionalMovementRoles.has(role);
+      const angle = (contract.directions.indexOf(role.split('-').at(-1)) * Math.PI) / 4;
+      const { document } = fixture({
+        animated: true,
+        stride: moving ? [Math.sin(angle) * 2, Math.cos(angle) * 2] : [0, 0],
+      });
+      if (!moving)
+        for (const sampler of document.getRoot().listAnimations()[0].listSamplers()) {
+          const output = sampler.getOutput();
+          output.setElement(1, output.getElement(0, []));
+        }
+      return [role, document];
+    }),
+  );
+  const result = retargetAgentAnimations(target, sources, { minimumMappedBones: 3 });
+  assert.equal(result.schemaVersion, 2);
+  const idle = target
+    .getRoot()
+    .listAnimations()
+    .find((animation) => animation.getName() === 'cswatch:rifle-idle');
+  assert.ok(idle.listSamplers().some((sampler) => sampler.getInput().getCount() === 2));
+  assert.ok(idle.listSamplers().some((sampler) => sampler.getInput().getCount() === 1));
+  assert.ok(
+    result.clips
+      .filter(({ role }) => directionalMovementRoles.has(role))
+      .every(({ strideMeters }) => Math.abs(strideMeters - 2) < 1e-6),
   );
 });

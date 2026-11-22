@@ -1,3 +1,4 @@
+import type { GaitHistory } from './agent-gait-history.mjs';
 import type { AimChunk } from './aim-track.mjs';
 /** Versioned browser/server contract. Coordinates are Source units, Z up. IDs are strings. */
 import type { VoicePacket, ChatMessage, CaptionCue, CommunicationInfo } from './communications.js';
@@ -8,6 +9,7 @@ import type { CrosshairData } from './crosshairs.js';
 import type { ItemSample, ItemStateInfo } from './item-state.js';
 import type { GameplaySoundCue, GameplaySoundInfo } from './gameplay-sounds.js';
 import type { MapIdentity } from './map-acquisition.js';
+import type { AgentDeathAnchor } from './agent-deaths.mjs';
 import type { SmokeTrack } from './smoke-state.mjs';
 export type Player = { id: string; name: string; team: number };
 /** Recorded actions, independent of the player's physical keyboard layout/binds. */
@@ -130,6 +132,10 @@ export type Playback = {
   itemSamples?: ItemSample[];
   itemState?: ItemStateInfo;
   strideAnchor?: { tick: number; players: [id: string, centimeters: number][] };
+  /** Last nearby living pose for a recorded death. Optional on older artifacts. */
+  agentDeaths?: AgentDeathAnchor[];
+  /** Pack-independent movement intervals for deterministic directional gait. */
+  gaitHistory?: GaitHistory;
   /** Global Source-coordinate bounds keep cameras and plots stable while time slices change. */
   worldBounds?: {
     minX: number;

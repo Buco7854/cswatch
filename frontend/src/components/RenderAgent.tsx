@@ -13,6 +13,7 @@ import {
   AnimationMixer,
   Bone,
   GreaterDepth,
+  MathUtils,
   AlwaysStencilFunc,
   NotEqualStencilFunc,
   ReplaceStencilOp,
@@ -21,9 +22,20 @@ import {
 import { useEquipmentGLTF, useEquipmentScope } from '../equipment-loader';
 import type { ModelScope } from '../model-cache';
 import { prepareAgentModel } from '../agent-model';
+import {
+  createDirectionalAgent,
+  agentStrideProfile,
+  directionalClips,
+  reservedDirectionalClip,
+  type DirectionalSample,
+} from '../directional-agent';
+import type { GaitHistory } from '../../../shared/agent-gait-history.mjs';
+import { agentPoseVisibility } from '../agent-culling';
+import { agentCenteredMotionAt, agentPhaseAt } from '../agent-phase';
 import { agentAnimation } from '../agent-animation';
 import { disposeEquipmentInstance } from '../equipment-model';
 import { assertMapBaseColorTextures } from '../map-model';
+import type { AgentDeathSample } from '../agent-replay';
 import { agentXray } from '../agent-xray';
 
 export type AgentInstanceStatus = 'pending' | 'ready' | 'error';
@@ -98,18 +110,23 @@ type AgentProps = {
   rate: number;
   speed: number;
   travelMeters?: number;
+  gaitHistory?: GaitHistory;
+  directional?: DirectionalSample;
   duck: number;
   xrayColor?: string;
-  registerWeaponAnchor?: (bone: Object3D) => () => void;
+  registerWeaponAnchor?: (bone: Object3D, directional: boolean) => () => void;
   registerHeadAnchor?: (bone: Bone) => () => void;
 };
 function LoadedAgent({
   url,
+  id,
+  gaitHistory,
   tick,
   rate,
   speed,
   duck,
   travelMeters,
+  directional,
   scope,
   ready,
   registerWeaponAnchor,
@@ -131,13 +148,47 @@ function LoadedAgent({
     [prepared, xrayEnabled],
   );
   useLayoutEffect(() => xray?.acquire(), [xray]);
+  const clips = useMemo(
+    () => directionalClips(gltf.animations, gltf.parser.json.animations),
+    [gltf],
+  );
+  const directionalPose = useMemo(
+    () => clips && createDirectionalAgent(prepared.instance, clips),
+    [clips, prepared],
+  );
+  const strideProfile = useMemo(() => clips && agentStrideProfile(clips), [clips]);
+  const phaseAt = useMemo(
+    () => gaitHistory && strideProfile && agentPhaseAt(gaitHistory, id, rate, strideProfile),
+    [gaitHistory, id, rate, strideProfile],
+  );
+  const motionAt = useMemo(
+    () => strideProfile && gaitHistory && agentCenteredMotionAt(gaitHistory, id, rate),
+    [strideProfile, gaitHistory, id, rate],
+  );
+  const poseVisible = useMemo(agentPoseVisibility, []);
   const animation = useMemo(
-    () => agentAnimation(mixer, gltf.animations, gltf.parser.json.animations),
+    () =>
+      agentAnimation(
+        mixer,
+        gltf.animations.filter((clip) => !reservedDirectionalClip(clip.name)),
+        gltf.parser.json.animations,
+      ),
     [mixer, gltf],
   );
   useLayoutEffect(() => {
     invalidate();
-  }, [animation, tick, rate, speed, duck, travelMeters, invalidate, xrayColor]);
+  }, [
+    animation,
+    directional,
+    phaseAt,
+    tick,
+    rate,
+    speed,
+    duck,
+    travelMeters,
+    invalidate,
+    xrayColor,
+  ]);
   useEffect(
     () => () => {
       animation.stop();
@@ -154,18 +205,35 @@ function LoadedAgent({
   }, [scope, ready, invalidate]);
   useLayoutEffect(() => {
     const bone = prepared.instance.getObjectByName('wpn');
-    if (animation.native && bone instanceof Bone) return registerWeaponAnchor?.(bone);
-  }, [animation, prepared, registerWeaponAnchor]);
+    if ((directionalPose || animation.native) && bone instanceof Bone)
+      return registerWeaponAnchor?.(bone, Boolean(directionalPose));
+  }, [animation, directionalPose, prepared, registerWeaponAnchor]);
   useLayoutEffect(() => {
     if (!registerHeadAnchor) return;
     const bone = prepared.instance.getObjectByName('head_0');
     if (bone instanceof Bone) return registerHeadAnchor(bone);
   }, [prepared, registerHeadAnchor]);
-  useFrame(() => {
-    animation.sample(tick / rate, speed, duck, travelMeters);
+  useFrame(({ camera }) => {
+    if (!poseVisible(camera, prepared.root, xrayEnabled)) return;
+    if (directionalPose && directional) {
+      const motion = directional.death ? undefined : motionAt?.(tick);
+      prepared.root.visible = directionalPose.sample(
+        tick / rate,
+        motion?.speed ?? speed,
+        duck,
+        phaseAt
+          ? phaseAt(tick)
+          : travelMeters === undefined
+            ? (tick / rate) * 1.4
+            : travelMeters / 3.1,
+        motion ? { ...directional, ...motion } : directional,
+      );
+    } else if (!directional?.death) animation.sample(tick / rate, speed, duck, travelMeters);
     xray?.sample(xrayColor);
   }, -2);
-  return <primitive object={prepared.root} dispose={null} />;
+  return directional?.death && !directionalPose ? null : (
+    <primitive object={prepared.root} dispose={null} />
+  );
 }
 function PendingAgent({ id, children }: { id: string; children: ReactNode }) {
   const context = useContext(AgentModels)!;
@@ -200,5 +268,50 @@ export default function RenderAgent(props: AgentProps & { fallback: ReactNode })
         <LoadedAgent {...props} scope={scope} ready={callbacks.ready} />
       </Suspense>
     </AgentBoundary>
+  );
+}
+
+export function RecordedAgentBody({
+  body: { position, variant, age },
+  url,
+  tick,
+  rate,
+  reducedMotion,
+}: {
+  body: AgentDeathSample;
+  url: string | null;
+  tick: number;
+  rate: number;
+  reducedMotion: boolean;
+}) {
+  if (!url) return null;
+  const inchesToMeters = 0.0254;
+  return (
+    <group
+      position={[
+        position.x * inchesToMeters,
+        position.z * inchesToMeters,
+        -position.y * inchesToMeters,
+      ]}
+      rotation={[0, MathUtils.degToRad(position.yaw), 0]}
+    >
+      <RenderAgent
+        url={url}
+        id={'death:' + position.id}
+        tick={tick}
+        rate={rate}
+        speed={0}
+        duck={0}
+        fallback={null}
+        directional={{
+          yaw: position.yaw,
+          pitch: 0,
+          weapon: '',
+          velocityX: 0,
+          velocityY: 0,
+          death: { age: reducedMotion ? Infinity : age, variant },
+        }}
+      />
+    </group>
   );
 }

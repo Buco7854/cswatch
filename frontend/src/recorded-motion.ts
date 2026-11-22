@@ -3,7 +3,7 @@ import type { Frame, Playback, Position } from './types';
 import { strideCentimeters, strideDisplacement } from '../../shared/stride-distance.mjs';
 
 export type PreviousPose = { position?: Position; tick: number };
-const zero = { speed: 0, rise: 0, yaw: 0, pitch: 0 };
+const zero = { speed: 0, rise: 0, yaw: 0, pitch: 0, velocityX: 0, velocityY: 0 };
 const blend = (a: number, b: number, t: number) => a + (b - a) * t;
 const clamp = (value: number, limit: number) =>
   Number.isFinite(value) ? Math.max(-limit, Math.min(limit, value)) : 0;
@@ -14,6 +14,8 @@ function velocity(from: Position | undefined, to: Position | undefined, seconds:
   if (!delta) return;
   return {
     speed: (delta.horizontal * 0.0254) / seconds,
+    velocityX: ((to.x - from.x) * 0.0254) / seconds,
+    velocityY: ((to.y - from.y) * 0.0254) / seconds,
     rise: clamp((delta.vertical * 0.0254) / seconds, 12),
     yaw: clamp(shortestAngle(from.yaw, to.yaw) / seconds, 520),
     pitch: clamp(shortestAngle(from.pitch, to.pitch) / seconds, 380),
@@ -84,6 +86,8 @@ export function recordedMotion(
   const weight = t * t * (3 - 2 * t);
   return {
     speed: blend(before.speed, current.speed, weight),
+    velocityX: blend(before.velocityX, current.velocityX, weight),
+    velocityY: blend(before.velocityY, current.velocityY, weight),
     rise: blend(before.rise, current.rise, weight),
     yaw: blend(before.yaw, current.yaw, weight),
     pitch: blend(before.pitch, current.pitch, weight),

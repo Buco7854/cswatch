@@ -3,14 +3,18 @@ import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { readVpkDirectory, resourcePath, source2References } from './source2-dependencies.mjs';
 import { staticModelDependency } from './equipment-source-model.mjs';
-import { agentAnimationRegistry } from './agent-animation-registry.mjs';
+import { agentAnimationRegistry, directionalAgentRegistry } from './agent-animation-registry.mjs';
 export const agentIdleResource = agentAnimationRegistry.idle;
-const fixedAnimationResources = new Set(Object.values(agentAnimationRegistry));
+const fixedAnimationResources = new Set([
+  ...Object.values(agentAnimationRegistry),
+  ...Object.values(directionalAgentRegistry),
+]);
 export async function scanEquipmentDependencies({ game, seeds, index = readVpkDirectory }) {
   if (
     !Array.isArray(seeds) ||
     !seeds.length ||
-    seeds.length > 96 ||
+    seeds.length > 96 + Object.keys(directionalAgentRegistry).length ||
+    seeds.filter((resource) => !fixedAnimationResources.has(resource)).length > 96 ||
     seeds.some(
       (x) =>
         !/^((weapons|agents)\/models\/[a-z0-9_/-]+\.vmdl_c)$/.test(x) &&

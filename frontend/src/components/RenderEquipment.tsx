@@ -172,15 +172,19 @@ function Preset({ value, children }: { value: EquipmentModelTransform; children:
 export function HeldEquipment({
   position,
   anchor,
+  posedByAgent,
 }: {
   position: Position;
   anchor?: RefObject<Object3D | null>;
+  posedByAgent?: RefObject<boolean>;
 }) {
   const context = useContext(EquipmentModels),
     key = equipmentIconKey(position.weapon);
   const asset = key && context?.catalog.items[key];
   const fire = useEquipmentFire(position);
   const transform = useRef<Group>(null),
+    pitch = useRef<Group>(null),
+    recoil = useRef<Group>(null),
     matrix = useMemo(() => new Matrix4(), []);
   useFrame(() => {
     const node = transform.current;
@@ -188,6 +192,13 @@ export function HeldEquipment({
     if (!nativeWeaponFrame(matrix, node.parent, anchor?.current || null)) {
       const [x, y, z] = asset.attachments.hold.position;
       matrix.makeTranslation(x, y - (position.duck ?? 0) * 0.7, z);
+    }
+    const rigid = posedByAgent?.current && anchor?.current;
+    if (pitch.current) pitch.current.rotation.z = rigid ? 0 : -MathUtils.degToRad(position.pitch);
+    if (recoil.current) {
+      const kick = rigid ? 0 : fire?.kick || 0;
+      recoil.current.position.x = -kick * 0.025;
+      recoil.current.rotation.z = kick * 0.035;
     }
     node.matrix.copy(matrix);
     node.matrixWorldNeedsUpdate = true;
@@ -199,12 +210,9 @@ export function HeldEquipment({
       matrixAutoUpdate={false}
       name={'held-equipment:' + position.id + ':' + key}
     >
-      <group rotation={[0, 0, -MathUtils.degToRad(position.pitch)]}>
+      <group ref={pitch}>
         <group rotation={asset.attachments.hold.rotation} scale={asset.attachments.hold.scale}>
-          <group
-            position={[-(fire?.kick || 0) * 0.025, 0, 0]}
-            rotation={[0, 0, (fire?.kick || 0) * 0.035]}
-          >
+          <group ref={recoil}>
             <EquipmentModelInstance
               equipment={position.weapon}
               instance={'held:' + position.id + ':' + key}
