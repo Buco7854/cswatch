@@ -96,16 +96,16 @@ test('actual Three native blending samples bone deformation deterministically ac
     bone = new Bone();
   bone.name = 'native-test-bone';
   root.add(bone);
-  const clips = nativeAgentRoles.map(
-    (role, index) =>
-      new AnimationClip(nativeAgentNames[role], 1, [
-        new VectorKeyframeTrack(
-          'native-test-bone.position',
-          [0, 0.5, 1],
-          [0, 0, 0, 0, index + 1, 0, 0, 0, 0],
-        ),
-      ]),
-  );
+  const clips = nativeAgentRoles.map((role, index) => {
+    const seconds = [1, 2, 0.75, 1, 1.25][index];
+    return new AnimationClip(nativeAgentNames[role], seconds, [
+      new VectorKeyframeTrack(
+        'native-test-bone.position',
+        [0, seconds / 2, seconds],
+        [0, 0, 0, 0, index + 1, 0, 0, 0, 0],
+      ),
+    ]);
+  });
   const defs = nativeAgentRoles.map((role) => ({
     name: nativeAgentNames[role],
     extras: {
@@ -119,12 +119,21 @@ test('actual Three native blending samples bone deformation deterministically ac
   }));
   const mixer = new AnimationMixer(root),
     control = agentAnimation(mixer, clips, defs);
+  let evaluations = 0;
+  const update = mixer.update.bind(mixer);
+  mixer.update = (delta) => {
+    evaluations++;
+    return update(delta);
+  };
   assert.equal(control.native, true);
-  control.sample(0.25, 4, 0.5);
-  // standing walk/run contribute.25each, crouchwalk.5: (.25*2+.25*3+.5*5)*.5
+  control.sample(73, 4, 0.5, 0.775);
+  control.sample(73, 4, 0.5, 0.775);
+  assert.equal(evaluations, 1);
+  // Standing walk and run each contribute one quarter, crouch walking one half.
+  // Distance yields one quarter cycle in each differently timed moving clip.
   assert.ok(Math.abs(bone.position.y - 1.875) < 1e-8);
   control.sample(71.83, 0, 1);
-  control.sample(0.25, 4, 0.5);
+  control.sample(73, 4, 0.5, 0.775);
   assert.ok(Math.abs(bone.position.y - 1.875) < 1e-8);
   const another = root.clone(true),
     otherbone = another.getObjectByName('native-test-bone')!;
@@ -135,7 +144,7 @@ test('actual Three native blending samples bone deformation deterministically ac
   assert.deepEqual(root.position.toArray(), [0, 0, 0]);
   control.stop();
   mixer.uncacheRoot(root);
-  control.sample(0.25, 4, 0.5);
+  control.sample(0.5, 4, 0.5);
   assert.ok(
     Math.abs(bone.position.y - 1.875) < 1e-8,
     'StrictMode cleanup and re-setup must restore native bone sampling',

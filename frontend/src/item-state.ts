@@ -1,5 +1,5 @@
 import type { ItemSample, ItemStateInfo } from '../../shared/item-state';
-import registry from '../../shared/recorded-equipment.json';
+import registry from '../../shared/recorded-equipment.json' with { type: 'json' };
 
 export type PresentItem = Extract<ItemSample, { present: true }>;
 export type ItemIndex = ReadonlyMap<string, readonly ItemSample[]>;

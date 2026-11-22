@@ -2,6 +2,12 @@
 
 The optional `matchState`, `eventAvailability` and `throwInputs` fields extend the existing playback domain and version 2 manifest. They stay global while frame, grenade, voice and gameplay-sound slices are evicted or changed. Older prepared replays remain readable; they do not gain metadata without being processed again. Missing values remain unknown.
 
+## Locomotion and C4 presentation
+
+The optional per-chunk `stride` field is a list of immutable actor IDs and cumulative horizontal centimeters at the first primary frame. The confined writer skips round changes, dead/changed pawns, discontinuities and gaps above 250 ms. The same displacement and centimeter rounding run in the browser. The byte-adaptive writer computes anchors at the exact retained boundaries. Publication checks at most 128 unique known actor IDs per chunk and bounded monotonic totals. If the optional field would exceed the manifest allowance, the writer omits it. Existing readers and old artifacts retain the same version and bounds.
+
+The C4 wave uses the recorded `bomb_exploded` tick and a complete event origin or the unique planted entity still present immediately before that tick. Existing item overlap covers the 0.85-second presentation window across chunk boundaries. Ambiguous or absent origins leave no wave. The radius and opacity are analytical rendering parameters. The Utilities setting and reduced-motion preference control the draw. Objective state, audio and damage derive from their existing recorded evidence.
+
 ## Smoke journals and scope projection
 
 `smoke-state.ts` observes contiguous modern `CSmokeGrenadeProjectile.m_VoxelFrameData` records in the existing confined stream. The optional global `smokeTracks` bank stores entity index/serial, first/last observed interval, recorded detonation origin/color, the final byte journal and timestamped prefix boundaries. A projectile can outlive its current volume. The track therefore retires at the observed deletion or half a demo second after the last journal update, whichever arrives first. Failed or incompatible tracks leave event markers available. Shared validation caps 192 segments, 512 KiB of raw journal data and 20,000 timestamped updates before decoding. The viewer reconstructs supported density in a bundled local worker using the browser export of `cs2parser` 2.8.0, licensed MPL-2.0. [cs2parser source and license](https://github.com/osztenkurden/cs2parser)

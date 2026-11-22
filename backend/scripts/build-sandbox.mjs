@@ -17,7 +17,7 @@ for (const name of [
   'viewmodels',
 ])
   copyFileSync(resolve(root, `../shared/${name}.json`), resolve(root, `dist/${name}.json`));
-for (const name of ['gameplay-sound-files', 'auth-navigation', 'smoke-state'])
+for (const name of ['gameplay-sound-files', 'auth-navigation', 'smoke-state', 'stride-distance'])
   copyFileSync(resolve(root, `../shared/${name}.mjs`), resolve(root, `dist/${name}.mjs`));
 if (process.platform !== 'linux') {
   console.warn('Parser sandbox requires Linux. Use Docker for untrusted demos.');

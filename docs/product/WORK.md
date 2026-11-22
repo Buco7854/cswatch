@@ -1,5 +1,7 @@
 # Active work
 
+The renderer follow-up covers demo-time gait and weapon transitions, mipmapped map detail and the recorded C4 shockwave. [The renderer and replay roadmap](NATIVE-RENDERER.md#renderer-and-replay-roadmap) tracks FSR 3 upscaling and frame generation, a compatible WebGPU trial, round-by-round ingestion and further utility fidelity.
+
 Compact 3D adds a smaller map tier to the existing viewer and keeps all camera modes and the calibrated radar. The next renderer work covers verified visibility and LOD, compressed textures for the detailed renderer, typed replay slices, and recorded inferno and motion evidence.
 
 The viewer follow-up adds direct owner deletion, guest CSRF refresh, a loading-only map stage, distinct menu selection and hover states, and clearer Replay tools. Recorded horizontal movement drives held equipment in POV. Event-only smoke softly fills and fades from the recorded detonation, while supported voxel journals retain their recorded-density path. The normal browser viewer exercised both paths on the real Mirage recording. [Viewer follow-up evidence](../VERIFICATION.md#local-viewer-usability-and-presentation-follow-up-2026-11-21)

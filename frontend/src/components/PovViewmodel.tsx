@@ -10,7 +10,18 @@ import {
   type ReactNode,
 } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import { AnimationMixer, Bone, Group, LoopOnce, Object3D, Quaternion, Vector3 } from 'three';
+import {
+  AnimationClip,
+  AnimationMixer,
+  Bone,
+  Euler,
+  Group,
+  LoopOnce,
+  Object3D,
+  Quaternion,
+  Vector3,
+  type AnimationAction,
+} from 'three';
 import viewmodels from '../../../shared/viewmodels.json' with { type: 'json' };
 import { canonicalEquipmentKey } from '../equipment-key';
 import { useEquipmentGLTF, useEquipmentScope } from '../equipment-loader';
@@ -20,7 +31,8 @@ import { disposeEquipmentInstance, prepareEquipmentModel } from '../equipment-mo
 import type { Position } from '../types';
 import { povMovement } from '../pov-movement';
 import { useReducedMotion } from '../reduced-motion';
-import { EquipmentMuzzle, useNativeWeaponAction } from './EquipmentFire';
+import { EquipmentMuzzle, useNativeWeaponPose } from './EquipmentFire';
+import type { WeaponPoseSample } from '../weapon-fire';
 import { EquipmentModels, PovEquipment, type PovEquipmentProps } from './RenderEquipment';
 
 type ViewmodelId = keyof typeof viewmodels;
@@ -32,7 +44,16 @@ function viewmodelId(weapon: string): ViewmodelId | undefined {
 const urlFor = (id: ViewmodelId) => `/api/assets/viewmodels/${id}/${viewmodels[id].sha256}.glb`;
 // The S2V viewmodel looks towards +Z. A Three camera looks towards its local -Z.
 const authoredBasis = new Quaternion(0, 1, 0, 0);
-const cameraDepthAxis = new Vector3(0, 0, -1);
+
+function sampleAction(action: AnimationAction, sample?: WeaponPoseSample) {
+  if (!sample || sample.weight <= 0) {
+    if (action.isScheduled()) action.stop();
+    return;
+  }
+  if (!action.isScheduled()) action.reset().play();
+  action.time = sample.age;
+  action.setEffectiveWeight(sample.weight);
+}
 
 class ViewmodelBoundary extends Component<
   { fallback: ReactNode; scope: ModelScope; children: ReactNode },
@@ -94,32 +115,43 @@ function AuthoredViewmodel({
     }
     const mixer = new AnimationMixer(model);
     const fire = mixer.clipAction(clip).setLoop(LoopOnce, 1);
+    const priorFire = mixer
+      .clipAction(new AnimationClip(id + '-prior-fire', clip.duration, clip.tracks))
+      .setLoop(LoopOnce, 1);
     const reload = mixer.clipAction(reloadClip).setLoop(LoopOnce, 1);
     return {
       model,
       mixer,
       fire,
+      priorFire,
       reload,
       fireDuration: clip.duration,
       reloadDuration: reloadClip.duration,
     };
   }, [gltf, id, pin]);
-  const action = useNativeWeaponAction(position, rig.fireDuration, rig.reloadDuration);
-  const kind = action?.type,
-    age = action?.age;
+  const pose = useNativeWeaponPose(position, rig.fireDuration, rig.reloadDuration);
+  const { fire, priorFire, reload } = pose;
   const root = useRef<Group>(null);
   const framing = useMemo(() => new Vector3(), []);
   const lean = useMemo(() => new Quaternion(), []);
+  const angles = useMemo(() => new Euler(), []);
   useLayoutEffect(() => invalidate(), [motion, invalidate]);
   useLayoutEffect(() => {
-    if (kind !== 'fire') rig.fire.stop();
-    if (kind !== 'reload') rig.reload.stop();
-    if (kind && age !== undefined) {
-      rig[kind].reset().play();
-      rig.mixer.setTime(age);
-    }
+    sampleAction(rig.fire, fire);
+    sampleAction(rig.priorFire, priorFire);
+    sampleAction(rig.reload, reload);
+    rig.mixer.update(0);
     invalidate();
-  }, [rig, kind, age, invalidate]);
+  }, [
+    rig,
+    fire?.age,
+    fire?.weight,
+    priorFire?.age,
+    priorFire?.weight,
+    reload?.age,
+    reload?.weight,
+    invalidate,
+  ]);
   useEffect(
     () => () => {
       rig.mixer.stopAllAction();
@@ -140,7 +172,9 @@ function AuthoredViewmodel({
     root.current.position.copy(camera.position).add(framing.applyQuaternion(camera.quaternion));
     root.current.quaternion
       .copy(camera.quaternion)
-      .multiply(lean.setFromAxisAngle(cameraDepthAxis, motion?.roll ?? 0))
+      .multiply(
+        lean.setFromEuler(angles.set(motion?.pitch ?? 0, motion?.yaw ?? 0, -(motion?.roll ?? 0))),
+      )
       .multiply(authoredBasis);
   }, 1);
   return (
@@ -184,7 +218,14 @@ export default function PovViewmodel({
   const reducedMotion = useReducedMotion();
   const motion = reducedMotion
     ? undefined
-    : povMovement(props.position, props.next, props.alpha, props.timing);
+    : povMovement(
+        props.position,
+        props.next,
+        props.alpha,
+        props.timing,
+        props.previous,
+        props.travelMeters,
+      );
   const identity = context?.identity;
   const [available, setAvailable] = useState<{ identity: object; ids: ReadonlySet<ViewmodelId> }>();
   const id = native && props.position.alive ? viewmodelId(props.position.weapon) : undefined;

@@ -335,7 +335,7 @@ export async function parse(folder: string, maxExpanded: number) {
     eventAvailability,
     throwInputs: throwInputs.snapshots,
   };
-  await writeReplay(folder, data);
+  await writeReplay(folder, data, true);
   writeFileSync(
     join(folder, 'summary.json'),
     JSON.stringify({

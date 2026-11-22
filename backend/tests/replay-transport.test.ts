@@ -8,6 +8,7 @@ import { writeReplay, validateReplayArtifacts, replayLimits } from '../src/repla
 import { ReplayCache, chunkIndex, validateManifest } from '../../frontend/src/replay-cache.js';
 import { frameAt, skipDeadTime } from '../../frontend/src/playback.js';
 import { sample } from '../../frontend/src/sample.js';
+import { indexRecordedTravel } from '../../frontend/src/recorded-motion.js';
 import type { Playback, PlaybackChunk, PlaybackManifest, Frame } from '../../shared/playback.js';
 
 function fixture(): Playback {
@@ -142,7 +143,7 @@ test('rich replay chunks adapt to decoded bytes without losing boundary, five-se
       ) > replayLimits.chunkBytes,
       'The fixture must exercise the fixed-frame writer overflow, not only ordinary frame packing',
     );
-    await writeReplay(dir, original);
+    await writeReplay(dir, original, true);
     const { manifest } = validateReplayArtifacts(dir);
     assert.deepEqual(validateManifest(manifest), manifest);
     assert.deepEqual(manifest.crosshairs, original.crosshairs);
@@ -195,6 +196,12 @@ test('rich replay chunks adapt to decoded bytes without losing boundary, five-se
     const cache = new ReplayCache(manifest, async (index) =>
       decode(join(dir, 'chunks', `${index}.json.gz`)),
     );
+    const fullTravel = indexRecordedTravel(
+      original.frames,
+      { tick: original.frames[0].tick, players: original.players.map(({ id }) => [id, 0]) },
+      original.rounds,
+      original.tickRate,
+    )!;
     for (const info of manifest.chunks.slice(1)) {
       // Jump away first so the target must carry its own context after eviction.
       await cache.at(
@@ -209,6 +216,18 @@ test('rich replay chunks adapt to decoded bytes without losing boundary, five-se
         assert.equal(actual.alpha, expected.alpha);
         assert.deepEqual(actual.frame, expected.frame);
         assert.deepEqual(actual.next, expected.next);
+        assert.ok(loaded.strideAnchor?.players.length);
+        const slice = indexRecordedTravel(
+          loaded.frames,
+          loaded.strideAnchor,
+          loaded.rounds,
+          loaded.tickRate,
+        )!;
+        for (const { id } of actual.frame.players)
+          assert.equal(
+            slice(actual.frame, actual.next, id, actual.alpha),
+            fullTravel(expected.frame, expected.next, id, expected.alpha),
+          );
         assert.ok(cache.size <= 3);
         assert.ok(cache.requests <= 2);
       }

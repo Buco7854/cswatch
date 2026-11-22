@@ -37,6 +37,23 @@ export function validateManifest(value: PlaybackManifest): PlaybackManifest {
       (i > 0 && part.startTick !== value.chunks[i - 1].endTick)
     )
       throw new Error('Replay metadata is invalid.');
+    if (
+      part.stride !== undefined &&
+      (!Array.isArray(part.stride) ||
+        part.stride.length > 128 ||
+        part.stride.some(
+          (pair) =>
+            !Array.isArray(pair) ||
+            pair.length !== 2 ||
+            typeof pair[0] !== 'string' ||
+            !/^\d{1,20}$/.test(pair[0]) ||
+            !Number.isSafeInteger(pair[1]) ||
+            pair[1] < 0 ||
+            pair[1] > 100_000_000,
+        ) ||
+        new Set(part.stride.map(([id]) => id)).size !== part.stride.length)
+    )
+      delete part.stride;
   }
   if (
     value.chunks[0].startTick !== value.firstTick ||
@@ -105,6 +122,7 @@ export class ReplayCache {
       lastTick: _last,
       ...metadata
     } = this.manifest;
+    const descriptor = this.manifest.chunks[index];
     const value: Playback = {
       ...metadata,
       version: 1,
@@ -113,6 +131,9 @@ export class ReplayCache {
       voice: part.voice,
       sounds: part.sounds,
       itemSamples: part.itemSamples,
+      strideAnchor: descriptor.stride
+        ? { tick: descriptor.startTick, players: descriptor.stride }
+        : undefined,
     };
     if (this.cache.get(index) === part) this.views.set(index, value);
     return value;

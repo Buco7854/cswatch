@@ -24,6 +24,7 @@ import { gameplaySoundLimits } from './gameplay-sounds.js';
 import { mapIdentitySchema } from './map-identity.js';
 import { validSmokeTracks } from './smoke-state-wire.js';
 import type { SmokeTrack } from '../../shared/smoke-state.mjs';
+import { replayStride } from './replay-stride.js';
 import { recordedReloadTickLimit } from './parser-fields.js';
 import {
   ItemArtifactValidator,
@@ -350,6 +351,11 @@ const descriptor = z
       .min(1)
       .max(replayLimits.chunkFrames + replayLimits.contextFrames + 1),
     bytes: z.number().int().min(1).max(replayLimits.chunkBytes),
+    stride: z
+      .array(z.tuple([z.string().regex(/^\d{1,20}$/), z.number().int().min(0).max(100_000_000)]))
+      .max(128)
+      .refine((values) => new Set(values.map(([id]) => id)).size === values.length)
+      .optional(),
   })
   .strict();
 export const manifestSchema = z
@@ -525,10 +531,14 @@ function trailFrame(frame: Frame): Frame {
 }
 
 /** Each adjacent chunk shares its boundary frame, preserving interpolation across seeks. */
-export async function writeReplay(folder: string, data: Playback): Promise<void> {
+export async function writeReplay(
+  folder: string,
+  data: Playback,
+  includeStride = false,
+): Promise<void> {
   const written: string[] = [];
   try {
-    await writeReplayCore(folder, data, written);
+    await writeReplayCore(folder, data, written, includeStride);
   } catch (error) {
     if (
       data.sounds === undefined ||
@@ -563,13 +573,29 @@ export async function writeReplay(folder: string, data: Playback): Promise<void>
         },
       },
       [],
+      includeStride,
     );
   }
 }
-async function writeReplayCore(folder: string, data: Playback, written: string[]): Promise<void> {
+async function writeReplayCore(
+  folder: string,
+  data: Playback,
+  written: string[],
+  includeStride: boolean,
+): Promise<void> {
   if (!data.frames.length) throw new Error('No replay frames');
-  const { version: _version, frames, grenades, voice, sounds, itemSamples, ...metadata } = data;
+  const {
+    version: _version,
+    strideAnchor: _anchor,
+    frames,
+    grenades,
+    voice,
+    sounds,
+    itemSamples,
+    ...metadata
+  } = data;
   const items = new ItemSliceIndex(itemSamples || []);
+  const stride = includeStride && data.players.length <= 128 ? replayStride(data) : undefined;
   if (frames.length > replayLimits.chunks * replayLimits.chunkFrames + 1)
     throw new Error('Replay has too many chunks');
   // Count one frame at a time, retaining only small numeric prefix sums. A rich
@@ -727,6 +753,7 @@ async function writeReplayCore(folder: string, data: Playback, written: string[]
       endTick: part.at(-1)!.tick,
       frames: part.length,
       bytes,
+      ...(stride ? { stride: stride(offset) } : {}),
     });
     // The shared boundary becomes the next start; the final boundary needs no
     // singleton tail chunk, including when the complete replay has one frame.
@@ -735,6 +762,10 @@ async function writeReplayCore(folder: string, data: Playback, written: string[]
   }
   if (!validSmokeTracks(manifest.smokeTracks, manifest.lastTick)) delete manifest.smokeTracks;
   let json = replayJSON(manifest);
+  if (stride && Buffer.byteLength(json) > replayLimits.manifestBytes) {
+    for (const info of manifest.chunks) delete info.stride;
+    json = replayJSON(manifest);
+  }
   if (manifest.smokeTracks && Buffer.byteLength(json) > replayLimits.manifestBytes) {
     delete manifest.smokeTracks;
     json = replayJSON(manifest);
@@ -778,6 +809,13 @@ export function validateReplayArtifacts(folder: string): {
   if (manifest.mapIdentity && manifest.mapIdentity.map !== manifest.map)
     throw new Error('Recorded map identity does not match replay map');
   const actors = new Set(manifest.players.map((player) => player.id));
+  const strides = new Map<string, number>();
+  for (const chunk of manifest.chunks)
+    for (const [id, distance] of chunk.stride ?? []) {
+      if (!actors.has(id) || distance < (strides.get(id) ?? 0))
+        throw new Error('Invalid recorded stride anchor');
+      strides.set(id, distance);
+    }
   const itemValidator = new ItemArtifactValidator();
   for (const [index, sample] of (manifest.crosshairs?.samples || []).entries()) {
     if (

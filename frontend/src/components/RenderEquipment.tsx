@@ -13,6 +13,7 @@ import {
 import { useFrame, useThree } from '@react-three/fiber';
 import { Group, MathUtils, Matrix4, type Object3D } from 'three';
 import { playerPose, type PoseTiming } from '../player-pose';
+import type { PreviousPose } from '../recorded-motion';
 import type { povMovement } from '../pov-movement';
 import { nativeWeaponFrame } from '../agent-attachment';
 import {
@@ -249,7 +250,11 @@ export function PovEquipment({ position, next, alpha, timing, motion }: PovEquip
             motion?.lift ?? 0,
             motion?.side ?? 0,
           ]}
-          rotation={[motion?.roll ?? 0, 0, (fire?.kick || 0) * 0.035]}
+          rotation={[
+            motion?.roll ?? 0,
+            motion?.yaw ?? 0,
+            (motion?.pitch ?? 0) + (fire?.kick || 0) * 0.035,
+          ]}
         >
           <EquipmentModelInstance
             equipment={position.weapon}
@@ -266,6 +271,8 @@ export function PovEquipment({ position, next, alpha, timing, motion }: PovEquip
 export type PovEquipmentProps = {
   position: Position;
   next?: Position;
+  previous?: PreviousPose;
+  travelMeters?: number;
   alpha: number;
   timing?: PoseTiming;
   motion?: ReturnType<typeof povMovement>;

@@ -97,6 +97,7 @@ type AgentProps = {
   tick: number;
   rate: number;
   speed: number;
+  travelMeters?: number;
   duck: number;
   xrayColor?: string;
   registerWeaponAnchor?: (bone: Object3D) => () => void;
@@ -108,6 +109,7 @@ function LoadedAgent({
   rate,
   speed,
   duck,
+  travelMeters,
   scope,
   ready,
   registerWeaponAnchor,
@@ -123,17 +125,19 @@ function LoadedAgent({
     return value;
   }, [gltf]);
   const mixer = useMemo(() => new AnimationMixer(prepared.instance), [prepared]);
-  const xray = useMemo(() => agentXray(prepared.instance), [prepared]);
-  useLayoutEffect(() => xray.acquire(), [xray]);
+  const xrayEnabled = xrayColor !== undefined;
+  const xray = useMemo(
+    () => (xrayEnabled ? agentXray(prepared.instance) : undefined),
+    [prepared, xrayEnabled],
+  );
+  useLayoutEffect(() => xray?.acquire(), [xray]);
   const animation = useMemo(
     () => agentAnimation(mixer, gltf.animations, gltf.parser.json.animations),
     [mixer, gltf],
   );
   useLayoutEffect(() => {
-    animation.sample(tick / rate, speed, duck);
-    xray.sample(xrayColor);
     invalidate();
-  }, [animation, tick, rate, speed, duck, invalidate, xray, xrayColor]);
+  }, [animation, tick, rate, speed, duck, travelMeters, invalidate, xrayColor]);
   useEffect(
     () => () => {
       animation.stop();
@@ -158,8 +162,8 @@ function LoadedAgent({
     if (bone instanceof Bone) return registerHeadAnchor(bone);
   }, [prepared, registerHeadAnchor]);
   useFrame(() => {
-    animation.sample(tick / rate, speed, duck);
-    xray.sample(xrayColor);
+    animation.sample(tick / rate, speed, duck, travelMeters);
+    xray?.sample(xrayColor);
   }, -2);
   return <primitive object={prepared.root} dispose={null} />;
 }

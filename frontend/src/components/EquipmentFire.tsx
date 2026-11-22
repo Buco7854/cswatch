@@ -13,7 +13,7 @@ import type { EquipmentModel } from '../../../shared/equipment-models';
 import type { Playback, Position } from '../types';
 import {
   indexWeaponFire,
-  recentWeaponShot,
+  nativeWeaponPose,
   weaponFireAt,
   type WeaponFireIndex,
 } from '../weapon-fire';
@@ -60,22 +60,22 @@ export function useEquipmentFire(position: Position) {
     : undefined;
 }
 
-export function useNativeWeaponAction(
+export function useNativeWeaponPose(
   position: Position,
   fireDuration: number,
   reloadDuration: number,
 ) {
   const context = useContext(Context);
-  if (!context || context.reducedMotion) return;
-  const shot = context.enabled
-    ? recentWeaponShot(context.index, position, context.tick, context.rate, fireDuration)
-    : undefined;
-  const reload = position.reloadStarted;
-  if (shot && (reload === undefined || shot.tick >= reload))
-    return { type: 'fire' as const, age: shot.age };
-  if (reload === undefined) return;
-  const age = (context.tick - reload) / context.rate;
-  if (age >= 0 && age < reloadDuration) return { type: 'reload' as const, age };
+  if (!context || context.reducedMotion) return {};
+  return nativeWeaponPose(
+    context.index,
+    position,
+    context.tick,
+    context.rate,
+    fireDuration,
+    reloadDuration,
+    context.enabled,
+  );
 }
 
 /** Depth-tested analytical fire geometry. New prepared models carry their native
@@ -117,7 +117,9 @@ export function EquipmentMuzzle({
     resources.inner.opacity = flash;
   }, [resources, flash, fire?.tick]);
   useFrame(() => {
-    if (!transform.current) return;
+    // The flash and optional light have no output while idle. Keep the light
+    // mounted for the shader layout, and resolve the anchor only during a shot.
+    if (!transform.current || flash <= 0) return;
     const anchored = nativeMuzzleFrame(matrix, model, marker);
     transform.current.visible = anchored || Boolean(origin);
     if (!anchored && origin) matrix.makeTranslation(...origin);

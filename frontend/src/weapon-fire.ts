@@ -12,6 +12,7 @@ export type WeaponFireState = {
   /** A deliberately analytical attachment kick, not a recorded native pose. */
   kick: number;
 };
+export type WeaponPoseSample = { age: number; weight: number };
 const firearms = new Set(
   Object.entries(registry.items)
     .filter(([id, item]) => item.kind === 'weapon' && id !== 'taser')
@@ -58,6 +59,14 @@ export function recentWeaponShot(
     return;
   const shots = index.get(player.id);
   if (!shots?.length) return;
+  const shot = shots[shotIndex(shots, tick)];
+  if (!shot || shot.weapon !== canonicalEquipmentKey(player.weapon)) return;
+  const age = (tick - shot.tick) / tickRate;
+  if (age < 0 || age >= duration) return;
+  return { ...shot, age };
+}
+
+function shotIndex(shots: readonly RecordedShot[], tick: number) {
   let low = 0,
     high = shots.length;
   while (low < high) {
@@ -65,11 +74,57 @@ export function recentWeaponShot(
     if (shots[middle].tick <= tick) low = middle + 1;
     else high = middle;
   }
-  const shot = shots[low - 1];
-  if (!shot || shot.weapon !== canonicalEquipmentKey(player.weapon)) return;
-  const age = (tick - shot.tick) / tickRate;
-  if (age < 0 || age >= duration) return;
-  return { ...shot, age };
+  return low - 1;
+}
+
+function ease(value: number) {
+  const t = Math.min(1, Math.max(0, value));
+  return t * t * (3 - 2 * t);
+}
+
+/** Short authored-pose blends at recorded action boundaries. The previous
+ * shot is sampled at the same replay tick, including after a backward seek. */
+export function nativeWeaponPose(
+  index: WeaponFireIndex,
+  player: Pick<Position, 'id' | 'alive' | 'weapon' | 'reloadStarted'>,
+  tick: number,
+  rate: number,
+  fireDuration: number,
+  reloadDuration: number,
+  shotsEnabled: boolean,
+): { fire?: WeaponPoseSample; priorFire?: WeaponPoseSample; reload?: WeaponPoseSample } {
+  if (!player.alive || !Number.isFinite(tick) || !Number.isFinite(rate) || rate <= 0) return {};
+  const reload = player.reloadStarted;
+  const shot = shotsEnabled && recentWeaponShot(index, player, tick, rate, fireDuration);
+  if (shot && (reload === undefined || shot.tick >= reload)) {
+    const entry = Math.min(0.032, fireDuration / 4);
+    const tail = Math.min(0.09, fireDuration / 4);
+    const incoming = ease(shot.age / entry);
+    const fire = { age: shot.age, weight: incoming * ease((fireDuration - shot.age) / tail) };
+    const list = index.get(player.id)!;
+    const prior = incoming < 1 ? list[shotIndex(list, tick) - 1] : undefined;
+    if (
+      prior?.weapon === shot.weapon &&
+      prior.tick < shot.tick &&
+      (reload === undefined || prior.tick >= reload)
+    ) {
+      const age = (tick - prior.tick) / rate;
+      if (age < fireDuration)
+        return {
+          fire,
+          priorFire: {
+            age,
+            weight: (1 - incoming) * ease(age / entry) * ease((fireDuration - age) / tail),
+          },
+        };
+    }
+    return { fire };
+  }
+  if (reload === undefined) return {};
+  const age = (tick - reload) / rate;
+  return age >= 0 && age < reloadDuration
+    ? { reload: { age, weight: ease(age / 0.065) * ease((reloadDuration - age) / 0.11) } }
+    : {};
 }
 
 export function weaponFireAt(
