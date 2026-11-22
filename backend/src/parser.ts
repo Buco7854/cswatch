@@ -34,6 +34,7 @@ import {
 import type { EventAvailability } from '../../shared/match-state.js';
 import { classifyParserFailure } from './parser-failure.js';
 import { recordedRoundWinner } from './rounds.js';
+import { readAimSlices } from './aim-track.js';
 const finite = (v: unknown, fallback = 0) =>
   typeof v === 'number' && Number.isFinite(v) ? v : fallback;
 const round = (v: unknown) => Math.round(finite(v) * 100) / 100;
@@ -47,13 +48,20 @@ function readSampledTicks(source: string) {
     maximumTick * 64,
   );
   const ticks = new Set<number>();
+  let first = Infinity,
+    last = -Infinity;
   for (const value of columns.tick) {
     if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) continue;
     if (value > maximumTick) throw new Error('Demo has no ticks or exceeds 3 hours');
+    first = Math.min(first, value);
+    last = Math.max(last, value);
     if (value % 4 === 0) ticks.add(value);
   }
+  if (!Number.isFinite(first)) throw new Error('Demo has no ticks or exceeds 3 hours');
+  // Keep the actual playback edges even when they are off the four-tick grid.
+  ticks.add(first);
+  ticks.add(last);
   const sampled = [...ticks].sort((a, b) => a - b);
-  if (!sampled.length) throw new Error('Demo has no ticks or exceeds 3 hours');
   if (sampled.length > 180000) throw new Error('Frame limit');
   return sampled;
 }
@@ -256,6 +264,13 @@ export async function parse(folder: string, maxExpanded: number) {
       endTick: undefined,
       winner: undefined,
     });
+  const aim = readAimSlices(
+    source,
+    frames[0].tick,
+    frames.at(-1)!.tick,
+    players.map((player) => player.id),
+    new Set(starts.map((event) => event.tick)),
+  );
   const grenades: Grenade[] = [];
   try {
     const raw = (parseGrenades(source, undefined, false) as any[])
@@ -335,7 +350,7 @@ export async function parse(folder: string, maxExpanded: number) {
     eventAvailability,
     throwInputs: throwInputs.snapshots,
   };
-  await writeReplay(folder, data, true);
+  await writeReplay(folder, data, true, aim);
   writeFileSync(
     join(folder, 'summary.json'),
     JSON.stringify({

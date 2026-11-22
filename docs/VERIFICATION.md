@@ -15,6 +15,31 @@ Headless Chromium with SwiftShader rendered the pinned 60,601,900-byte Mirage de
 
 Browser captures covered 960 × 540, 960 × 720, 1260 × 540 and a 390 × 844 touch profile in both themes. An in-app world FOV change from 48° to 90° left the weapon draw at 53.67°. A recorded AWP scope drew the world at 30.54°, suppressed the weapon pass, then restored it on unscoping. The portrait weapon used 95.18° vertical to retain the horizontal aperture. With reduced motion enabled and the optional authored AK request blocked, the installed static AK still rendered through the portrait lens. These are software-rendered checks without physical-device or hardware performance evidence.
 
+## Local per-tick aim T6, 2026-11-22
+
+The pinned Mirage input is `var/fixture/input.dem`, SHA-256 `84a1a4191302bdd2a3bbb5a727842093744b1fb1a228aeec630369e44b622cb2`. Matched Linux parser runs used the required Landlock ABI 6/seccomp launcher, two Rayon/libuv threads, the 2 GiB V8 heap setting, and Node v22.23.5. The baseline was `68ad737`. Wall time and peak child RSS are single-run measurements from the local host.
+
+| Measurement      |    Baseline |          T6 |               Change |
+| ---------------- | ----------: | ----------: | -------------------: |
+| Chunk JSON bytes | 103,368,044 | 105,211,592 |  +1,843,548 (+1.78%) |
+| Chunk gzip bytes |   3,316,621 |   3,892,070 |   +575,449 (+17.35%) |
+| Parse wall time  |     9.448 s |    11.530 s |    +2.082 s (+22.0%) |
+| Peak parser RSS  | 928,816 KiB | 997,256 KiB | +68,440 KiB (+7.37%) |
+
+Both runs produced 31 chunks. The range extends from ticks 4–57,984 in the baseline to 1–57,985 with the recorded endpoint anchors. Comparing by chunk index, the median increase was 62,605 JSON bytes and 18,371 gzip bytes. The largest emitted chunk was 3,915,912 JSON bytes and 219,986 gzip bytes with aim.
+
+An independent narrow native query compared yaw and pitch across all 429,890 living player-tick samples. Every sample had decoded aim. Angular errors use shortest differences in degrees. The worst-axis p99 was 0.003899° against the 0.05° acceptance target.
+
+| Error in degrees |      p50 |      p95 |      p99 |      Max |
+| ---------------- | -------: | -------: | -------: | -------: |
+| Yaw              | 0.001862 | 0.003723 | 0.003876 | 0.003906 |
+| Pitch            | 0.001801 | 0.003662 | 0.003845 | 0.003906 |
+| Worst axis       | 0.002716 | 0.003799 | 0.003899 | 0.003906 |
+
+Both production builds, formatting and locale checks passed on Node 22. The backend suite passed 391 tests with three offline speech tests skipped because the local model was unavailable. A synthetic 128 Hz slice exercises rate-independent aim indexing. Native fixture accuracy is measured on the pinned Mirage recording.
+
+The production build rendered an original two-chunk aim fixture in headless Chromium with software WebGL2 at 1280 × 800, 768 × 1024 and 390 × 844 in dark and light. The tablet and phone profiles emulated touch. A WebGL uniform probe verified the POV direction after keyboard stepping, seeking to the shared boundary, continuing one tick past it and seeking backward. Six screenshots were inspected with reduced motion enabled. The browser check used original QA geometry, and the parser accuracy check used the pinned Mirage recording.
+
 ## Replay motion, texture detail and C4 wave, 2026-11-22
 
 Runtime `b4cbe2209eba91fbce8e3732717a5d1820e1e9bf` passed [workflow 44975440124](https://github.com/Buco7854/cswatch/actions/runs/44975440124), run 50. CI passed 389 backend, 296 asset and 230 public browser cases, both private registration policies, first-admin setup, cold bootstrap and both hardened images. Anonymous registry checks matched the revision and digests for both latest and immutable tags. The application index is `sha256:1466ed03c6736088480ab78d7426d829d9326c111f5468a207c94ea6fb01662c` and the assets index is `sha256:22a54e5c4649d3aa859c3c4f1013e6579c24224ddee7079ecc2fc8c09ef95cb5`.

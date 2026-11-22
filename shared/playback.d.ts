@@ -1,3 +1,4 @@
+import type { AimChunk } from './aim-track.mjs';
 /** Versioned browser/server contract. Coordinates are Source units, Z up. IDs are strings. */
 import type { VoicePacket, ChatMessage, CaptionCue, CommunicationInfo } from './communications.js';
 import type { ObjectiveData } from './objectives.js';
@@ -162,6 +163,7 @@ export type PlaybackManifest = Omit<
   chunks: ReplayChunkInfo[];
 };
 export type PlaybackChunk = {
+  aim?: AimChunk;
   version: 2;
   index: number;
   frames: Frame[];

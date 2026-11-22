@@ -2,6 +2,14 @@
 
 The optional `matchState`, `eventAvailability` and `throwInputs` fields extend the existing playback domain and version 2 manifest. They stay global while frame, grenade, voice and gameplay-sound slices are evicted or changed. Older prepared replays remain readable; they do not gain metadata without being processed again. Missing values remain unknown.
 
+## Recorded aim
+
+Version 2 chunks may carry a separate `aim` field with wire version 1 and sorted player-ID/base64 pairs. Each stream stores the gap from the previous recorded tick and a continuity bit, followed by zigzag-coded yaw and pitch as canonical unsigned LEB128. A break starts from absolute angles. Angular deltas take the shortest path around a turn. The 1/128° step bounds per-axis quantization error to 1/256° (0.00391°). The wire indexes source demo ticks directly, independently of the playback clock's rate.
+
+The confined parser queries only yaw, pitch, liveness, position and pawn handle, alongside the native identity columns. It reads up to 16,384 requested ticks and 262,144 requested player-tick pairs per batch, then retains at most 32 MiB of projected samples. Dead or missing rows and ambiguous duplicate IDs leave holes. Missing position evidence, unknown or changed pawn handles, gaps, round starts and jumps over 128 Source inches break interpolation. The writer caps binary aim at 256 KiB and 128 players per chunk. It accounts for base64 and JSON bytes in the existing output limits. Optional aim can be dropped across the replay if extraction or output budgets prevent publication.
+
+The browser checks version, actor identity, tick range, canonical encoding and byte limits before binding the track to primary frame positions. Trail context carries no aim. The pose sampler interpolates angles between contiguous recorded ticks, holds the previous angle up to a marked break and uses the original sparse pose where evidence is missing. The same quantized sample is present on both sides of a shared primary boundary when recorded. Positions and categorical state still come from the sparse frames, and the current replay clock still uses the existing nominal 64 Hz default for imported demos.
+
 ## Locomotion and C4 presentation
 
 The optional per-chunk `stride` field is a list of immutable actor IDs and cumulative horizontal centimeters at the first primary frame. The confined writer skips round changes, dead/changed pawns, discontinuities and gaps above 250 ms. The same displacement and centimeter rounding run in the browser. The byte-adaptive writer computes anchors at the exact retained boundaries. Publication checks at most 128 unique known actor IDs per chunk and bounded monotonic totals. If the optional field would exceed the manifest allowance, the writer omits it. Existing readers and old artifacts retain the same version and bounds.

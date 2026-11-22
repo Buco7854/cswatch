@@ -25,6 +25,8 @@ import { mapIdentitySchema } from './map-identity.js';
 import { validSmokeTracks } from './smoke-state-wire.js';
 import type { SmokeTrack } from '../../shared/smoke-state.mjs';
 import { replayStride } from './replay-stride.js';
+import { aimBoundary, decodeAimChunk } from './aim-track-wire.js';
+import type { AimSlices } from './aim-track.js';
 import { recordedReloadTickLimit } from './parser-fields.js';
 import {
   ItemArtifactValidator,
@@ -491,6 +493,7 @@ export const chunkSchema = z
     voice: z.array(voicePacketSchema).max(50000).optional(),
     sounds: z.array(gameplaySoundCueSchema).max(gameplaySoundLimits.chunkSamples).optional(),
     itemSamples: z.array(itemSampleSchema).max(itemChunkSampleLimit).optional(),
+    aim: z.unknown().optional(),
   })
   .strict();
 
@@ -535,29 +538,36 @@ export async function writeReplay(
   folder: string,
   data: Playback,
   includeStride = false,
+  aim?: AimSlices,
 ): Promise<void> {
   const written: string[] = [];
-  try {
-    await writeReplayCore(folder, data, written, includeStride);
-  } catch (error) {
-    if (
-      data.sounds === undefined ||
-      !(error instanceof Error) ||
-      ![
-        'Replay output limit',
-        'Stored replay limit',
-        'Replay has too many chunks',
-        'Replay metadata limit',
-      ].includes(error.message)
-    )
-      throw error;
-    // Optional audio must not make an otherwise valid long replay unavailable.
-    // Remove only files created by this invocation, preserving all primary data on the retry.
-    for (const path of written) unlinkSync(path);
-    const unavailable = 'unavailable' as const;
-    await writeReplayCore(
-      folder,
-      {
+  let droppedAudio = false;
+  for (;;) {
+    try {
+      await writeReplayCore(folder, data, written, includeStride, aim);
+      return;
+    } catch (error) {
+      if (
+        (!aim && (data.sounds === undefined || droppedAudio)) ||
+        !(error instanceof Error) ||
+        ![
+          'Replay output limit',
+          'Stored replay limit',
+          'Replay has too many chunks',
+          'Replay metadata limit',
+        ].includes(error.message)
+      )
+        throw error;
+      for (const path of written.splice(0)) unlinkSync(path);
+      // Retry without optional aim before considering a downgrade to audio.
+      // Drop aim across the entire recording so shared boundary coverage agrees.
+      if (aim) {
+        aim = undefined;
+        continue;
+      }
+      droppedAudio = true;
+      const unavailable = 'unavailable' as const;
+      data = {
         ...data,
         sounds: [],
         gameplaySounds: {
@@ -571,10 +581,8 @@ export async function writeReplay(
           },
           truncated: true,
         },
-      },
-      [],
-      includeStride,
-    );
+      };
+    }
   }
 }
 async function writeReplayCore(
@@ -582,6 +590,7 @@ async function writeReplayCore(
   data: Playback,
   written: string[],
   includeStride: boolean,
+  aim?: AimSlices,
 ): Promise<void> {
   if (!data.frames.length) throw new Error('No replay frames');
   const {
@@ -668,6 +677,12 @@ async function writeReplayCore(
       if (bytes > replayLimits.chunkBytes) return null;
       const startTick = frames[contextStart].tick,
         endTick = frames[end].tick;
+      const aimSlice = aim?.(frames[offset].tick, endTick);
+      if (aimSlice === null) return null;
+      if (aimSlice) {
+        bytes += 7 + Buffer.byteLength(replayJSON(aimSlice)); // ,"aim":
+        if (bytes > replayLimits.chunkBytes) return null;
+      }
       const paths: Grenade[] = [];
       for (const path of grenadeSlice(grenades || [], startTick, endTick)) {
         bytes += Buffer.byteLength(replayJSON(path)) + (paths.length ? 1 : 0);
@@ -706,6 +721,7 @@ async function writeReplayCore(
           ...(hasVoice ? { voice: packets } : {}),
           ...(hasSounds ? { sounds: soundSlice } : {}),
           ...(hasItems ? { itemSamples: itemSlice } : {}),
+          ...(aimSlice ? { aim: aimSlice } : {}),
         },
       };
     };
@@ -889,6 +905,7 @@ export function validateReplayArtifacts(folder: string): {
   if (count !== manifest.chunks.length) throw new Error('Missing replay files');
   let rawTotal = 0;
   const soundIdentities = new Map<string, string>();
+  let previousAimBoundary: string | undefined;
   for (const [i, info] of manifest.chunks.entries()) {
     if (
       info.index !== i ||
@@ -946,6 +963,10 @@ export function validateReplayArtifacts(folder: string): {
       throw new Error('Replay chunk mismatch');
     if (chunk.frames.some((f, n) => n > 0 && f.tick <= chunk.frames[n - 1].tick))
       throw new Error('Unordered replay frames');
+    const aim = decodeAimChunk(chunk.aim, info.startTick, info.endTick, actors);
+    if (i > 0 && aimBoundary(aim, info.startTick) !== previousAimBoundary)
+      throw new Error('Invalid recorded aim boundary');
+    previousAimBoundary = aimBoundary(aim, info.endTick);
     files.push(path);
   }
   return { files, bytes, manifest };

@@ -1,4 +1,5 @@
 import type { Playback, PlaybackManifest, PlaybackChunk } from '../../shared/playback';
+import { attachAim } from './player-pose';
 import { validateItemSamples, validateItemState } from './item-state';
 import { validateGameplaySoundInfo, validateGameplaySoundCues } from './gameplay-sound-assets';
 import { validSmokeTracks } from '../../shared/smoke-state.mjs';
@@ -177,6 +178,7 @@ export class ReplayCache {
         );
         if (Boolean(this.manifest.itemState) !== (part.itemSamples !== undefined))
           throw new Error('Replay item metadata is invalid.');
+        attachAim(part, info, new Set(this.manifest.players.map((player) => player.id)));
         this.cache.set(index, part);
         while (this.cache.size > 3) {
           const oldest = this.cache.keys().next().value!;
