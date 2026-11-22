@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef } from 'react';
+import { useLayoutEffect, useMemo, useRef, type RefObject } from 'react';
 import { useThree } from '@react-three/fiber';
 import { Color, Object3D, type DirectionalLight } from 'three';
 import { applySunShadow, type MapSun } from '../map-sun';
@@ -13,13 +13,16 @@ export default function SceneLighting({
   sun,
   skylight,
   shadows = false,
+  directionalRef,
 }: {
   sample: boolean;
   sun: MapSun | null;
   skylight: boolean;
   shadows?: boolean;
+  directionalRef?: RefObject<DirectionalLight | null>;
 }) {
-  const ref = useRef<DirectionalLight>(null),
+  const internalRef = useRef<DirectionalLight>(null),
+    ref = directionalRef ?? internalRef,
     target = useMemo(() => new Object3D(), []),
     color = useMemo(() => (sun ? new Color().fromArray(sun.color) : new Color('#ffffff')), [sun]),
     { invalidate } = useThree();
@@ -28,7 +31,7 @@ export default function SceneLighting({
     target.updateMatrixWorld(true);
     if (ref.current) applySunShadow(ref.current, sun?.shadow || fallbackShadow, sun?.up || up);
     invalidate();
-  }, [sun, target, invalidate]);
+  }, [sun, target, invalidate, ref]);
   return (
     <>
       <primitive object={target} />

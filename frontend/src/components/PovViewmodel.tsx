@@ -14,7 +14,6 @@ import {
   AnimationClip,
   AnimationMixer,
   Bone,
-  Euler,
   Group,
   LoopOnce,
   Object3D,
@@ -28,8 +27,9 @@ import { useEquipmentGLTF, useEquipmentScope } from '../equipment-loader';
 import type { ModelScope } from '../model-cache';
 import { assertMapBaseColorTextures } from '../map-model';
 import { disposeEquipmentInstance, prepareEquipmentModel } from '../equipment-model';
-import type { Position } from '../types';
-import { povMovement } from '../pov-movement';
+import type { Playback, Position } from '../types';
+import { povDraw, povLanding, povMovement } from '../pov-movement';
+import { povOffset } from '../pov-camera';
 import { useReducedMotion } from '../reduced-motion';
 import { EquipmentMuzzle, useNativeWeaponPose } from './EquipmentFire';
 import type { WeaponPoseSample } from '../weapon-fire';
@@ -42,8 +42,7 @@ function viewmodelId(weapon: string): ViewmodelId | undefined {
   return Object.hasOwn(viewmodels, id) ? (id as ViewmodelId) : undefined;
 }
 const urlFor = (id: ViewmodelId) => `/api/assets/viewmodels/${id}/${viewmodels[id].sha256}.glb`;
-// The S2V viewmodel looks towards +Z. A Three camera looks towards its local -Z.
-const authoredBasis = new Quaternion(0, 1, 0, 0);
+type ReplayHistory = Pick<Playback, 'frames' | 'rounds' | 'tickRate'>;
 
 function sampleAction(action: AnimationAction, sample?: WeaponPoseSample) {
   if (!sample || sample.weight <= 0) {
@@ -75,12 +74,18 @@ function AuthoredViewmodel({
   position,
   scope,
   id,
-  motion,
+  history,
+  frameTick,
+  tick,
+  reducedMotion,
 }: {
   position: Position;
   scope: ModelScope;
   id: ViewmodelId;
-  motion: PovEquipmentProps['motion'];
+  history: ReplayHistory;
+  frameTick: number;
+  tick: number;
+  reducedMotion: boolean;
 }) {
   const gltf = useEquipmentGLTF(urlFor(id));
   const pin = viewmodels[id];
@@ -89,6 +94,13 @@ function AuthoredViewmodel({
   const rig = useMemo(() => {
     const clip = gltf.animations.find((candidate) => candidate.name === id + '-fire');
     const reloadClip = gltf.animations.find((candidate) => candidate.name === id + '-reload');
+    const drawClip = gltf.animations.find(
+      (candidate) =>
+        candidate.name === id + '-draw' &&
+        candidate.duration > 0 &&
+        candidate.duration <= 1.5 &&
+        candidate.tracks.length > 0,
+    );
     const cameraAnchor = gltf.scene.getObjectByName('root_motion');
     if (
       !(cameraAnchor instanceof Bone) ||
@@ -125,21 +137,23 @@ function AuthoredViewmodel({
       fire,
       priorFire,
       reload,
+      draw: drawClip ? mixer.clipAction(drawClip).setLoop(LoopOnce, 1) : undefined,
+      drawDuration: drawClip?.duration,
       fireDuration: clip.duration,
       reloadDuration: reloadClip.duration,
     };
   }, [gltf, id, pin]);
   const pose = useNativeWeaponPose(position, rig.fireDuration, rig.reloadDuration);
   const { fire, priorFire, reload } = pose;
-  const root = useRef<Group>(null);
-  const framing = useMemo(() => new Vector3(), []);
-  const lean = useMemo(() => new Quaternion(), []);
-  const angles = useMemo(() => new Euler(), []);
-  useLayoutEffect(() => invalidate(), [motion, invalidate]);
+  const draw =
+    !reducedMotion && rig.drawDuration && !fire && !priorFire && !reload
+      ? povDraw(history, position, frameTick, tick, rig.drawDuration)
+      : undefined;
   useLayoutEffect(() => {
     sampleAction(rig.fire, fire);
     sampleAction(rig.priorFire, priorFire);
     sampleAction(rig.reload, reload);
+    if (rig.draw) sampleAction(rig.draw, draw);
     rig.mixer.update(0);
     invalidate();
   }, [
@@ -150,6 +164,8 @@ function AuthoredViewmodel({
     priorFire?.weight,
     reload?.age,
     reload?.weight,
+    draw?.age,
+    draw?.weight,
     invalidate,
   ]);
   useEffect(
@@ -160,25 +176,9 @@ function AuthoredViewmodel({
     },
     [rig],
   );
-  useFrame(({ camera, size }) => {
-    if (!root.current) return;
-    // Keep the held model in frame on tall displays without changing the map projection.
-    const portrait = Math.max(0, Math.min(1, (1.2 - size.width / size.height) / 0.75));
-    framing.set(
-      -0.09 * portrait + (motion?.side ?? 0),
-      -0.026 * portrait + (motion?.lift ?? 0),
-      -0.14 * portrait - (motion?.depth ?? 0),
-    );
-    root.current.position.copy(camera.position).add(framing.applyQuaternion(camera.quaternion));
-    root.current.quaternion
-      .copy(camera.quaternion)
-      .multiply(
-        lean.setFromEuler(angles.set(motion?.pitch ?? 0, motion?.yaw ?? 0, -(motion?.roll ?? 0))),
-      )
-      .multiply(authoredBasis);
-  }, 1);
   return (
-    <group ref={root} name={'native-' + id + '-viewmodel'}>
+    // The S2V viewmodel looks towards +Z. A Three camera looks towards its local -Z.
+    <group rotation-y={Math.PI} name={'native-' + id + '-viewmodel'}>
       <primitive object={rig.model} dispose={null}>
         <EquipmentMuzzle position={position} model={rig.model} pov />
       </primitive>
@@ -191,19 +191,22 @@ function AvailableViewmodel({
   position,
   fallback,
   identity,
-  motion,
+  ...sampling
 }: {
   id: ViewmodelId;
   position: Position;
   fallback: ReactNode;
   identity: object;
-  motion: PovEquipmentProps['motion'];
+  history: ReplayHistory;
+  frameTick: number;
+  tick: number;
+  reducedMotion: boolean;
 }) {
   const scope = useEquipmentScope(urlFor(id), identity);
   return (
     <ViewmodelBoundary fallback={fallback} scope={scope}>
       <Suspense fallback={fallback}>
-        <AuthoredViewmodel position={position} scope={scope} id={id} motion={motion} />
+        <AuthoredViewmodel position={position} scope={scope} id={id} {...sampling} />
       </Suspense>
     </ViewmodelBoundary>
   );
@@ -212,10 +215,13 @@ function AvailableViewmodel({
 /** Local asset availability is scoped to this viewer. Missing artwork keeps the normal POV. */
 export default function PovViewmodel({
   native,
+  history,
+  tick,
   ...props
-}: PovEquipmentProps & { native: boolean }) {
+}: PovEquipmentProps & { native: boolean; history: ReplayHistory; tick: number }) {
   const context = useContext(EquipmentModels);
   const reducedMotion = useReducedMotion();
+  const frameTick = props.timing?.fromTick ?? tick;
   const motion = reducedMotion
     ? undefined
     : povMovement(
@@ -225,7 +231,26 @@ export default function PovViewmodel({
         props.timing,
         props.previous,
         props.travelMeters,
+        povLanding(history, props.position, frameTick, tick),
       );
+  const root = useRef<Group>(null);
+  const { invalidate } = useThree();
+  const framing = useMemo(() => new Vector3(), []);
+  const eye = useMemo(() => new Quaternion(), []);
+  useLayoutEffect(() => invalidate(), [motion, invalidate]);
+  useFrame(({ camera }) => {
+    const group = root.current;
+    if (!group) return;
+    camera.getWorldQuaternion(eye);
+    framing.set(
+      povOffset.right + (motion?.side ?? 0),
+      povOffset.up + (motion?.lift ?? 0),
+      -povOffset.forward - (motion?.depth ?? 0),
+    );
+    camera.getWorldPosition(group.position).add(framing.applyQuaternion(eye));
+    group.rotation.set(motion?.pitch ?? 0, motion?.yaw ?? 0, -(motion?.roll ?? 0));
+    group.quaternion.premultiply(eye);
+  }, -2);
   const identity = context?.identity;
   const [available, setAvailable] = useState<{ identity: object; ids: ReadonlySet<ViewmodelId> }>();
   const id = native && props.position.alive ? viewmodelId(props.position.weapon) : undefined;
@@ -259,17 +284,24 @@ export default function PovViewmodel({
       controller.abort();
     };
   }, [identity, id, ready]);
-  const fallback = <PovEquipment {...props} motion={motion} />;
-  return id && identity && ready ? (
-    <AvailableViewmodel
-      key={id + ':' + props.position.id}
-      id={id}
-      position={props.position}
-      fallback={fallback}
-      identity={identity}
-      motion={motion}
-    />
-  ) : (
-    fallback
+  const fallback = <PovEquipment position={props.position} />;
+  return (
+    <group ref={root}>
+      {id && identity && ready ? (
+        <AvailableViewmodel
+          key={id + ':' + props.position.id}
+          id={id}
+          position={props.position}
+          fallback={fallback}
+          identity={identity}
+          history={history}
+          frameTick={frameTick}
+          tick={tick}
+          reducedMotion={reducedMotion}
+        />
+      ) : (
+        fallback
+      )}
+    </group>
   );
 }

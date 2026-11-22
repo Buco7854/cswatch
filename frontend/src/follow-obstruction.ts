@@ -59,7 +59,10 @@ export function followObstruction(root: Group) {
     lastDestination = new Vector3();
   let lastPosition: FollowCamera['position'] | undefined;
 
-  return ({ target, position }: FollowCamera): FollowCamera['position'] => {
+  return ({
+    target,
+    position,
+  }: Pick<FollowCamera, 'target' | 'position'>): FollowCamera['position'] => {
     ray.origin.fromArray(target);
     destination.fromArray(position);
     if (lastOrigin.equals(ray.origin) && lastDestination.equals(destination))

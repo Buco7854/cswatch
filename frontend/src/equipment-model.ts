@@ -1,5 +1,4 @@
 import { Light, Mesh, SkinnedMesh, type Object3D, type Matrix4 } from 'three';
-import type { EquipmentModelTransform } from '../../shared/equipment-models';
 import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 
 /** Instances own node visibility and pose. Geometry, materials and images stay cache-owned. */
@@ -43,16 +42,4 @@ export function nativeMuzzleFrame(target: Matrix4, model: Object3D, marker: Obje
   if (!Number.isFinite(determinant) || Math.abs(determinant) < 1e-12) return false;
   target.copy(model.matrixWorld).invert().multiply(marker.matrixWorld);
   return target.elements.every(Number.isFinite);
-}
-
-/** Static spectator placement adapts to portrait horizontal FOV without scaling game geometry. */
-export function fitPovAttachment(
-  preset: EquipmentModelTransform,
-  aspect: number,
-): EquipmentModelTransform {
-  const lateral = Math.min(1, Math.max(0.1, Number.isFinite(aspect) ? aspect : 1.6) / 1.6);
-  return {
-    ...preset,
-    position: [preset.position[0], preset.position[1], preset.position[2] * lateral],
-  };
 }

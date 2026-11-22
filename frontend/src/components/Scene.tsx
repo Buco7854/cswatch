@@ -584,7 +584,8 @@ function World({
     return () => setFollowModel((current) => (current === map ? null : current));
   }, []);
   const followTrace = useMemo(
-    () => (mode === 'follow' && followModel ? followObstruction(followModel) : null),
+    () =>
+      (mode === 'follow' || mode === 'pov') && followModel ? followObstruction(followModel) : null,
     [mode, followModel],
   );
   const fogResources = useRef<SourceFogResources>({ fog: null, cube: null });
@@ -950,9 +951,12 @@ function World({
               sample={Boolean(data.sample)}
               sun={sun}
               skylight={skylight}
+              trace={followTrace}
             >
               <PovViewmodel
                 native={!data.sample}
+                history={data}
+                tick={tick}
                 position={viewedPlayer}
                 next={nextPlayers.get(viewedPlayer.id)}
                 previous={previousPlayers?.get(viewedPlayer.id)}

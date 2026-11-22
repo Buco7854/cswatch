@@ -12,15 +12,10 @@ import {
 } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Group, MathUtils, Matrix4, type Object3D } from 'three';
-import { playerPose, type PoseTiming } from '../player-pose';
+import type { PoseTiming } from '../player-pose';
 import type { PreviousPose } from '../recorded-motion';
-import type { povMovement } from '../pov-movement';
 import { nativeWeaponFrame } from '../agent-attachment';
-import {
-  prepareEquipmentModel,
-  disposeEquipmentInstance,
-  fitPovAttachment,
-} from '../equipment-model';
+import { prepareEquipmentModel, disposeEquipmentInstance } from '../equipment-model';
 import type {
   EquipmentModel,
   EquipmentModelCatalog,
@@ -224,38 +219,16 @@ export function HeldEquipment({
 }
 /** Static eye-relative placement with a small analytical shot kick. Native
  * first-person arm/action animation is a separate asset capability. */
-export function PovEquipment({ position, next, alpha, timing, motion }: PovEquipmentProps) {
-  const pose = playerPose(position, next, alpha, timing);
+export function PovEquipment({ position }: { position: Position }) {
   const context = useContext(EquipmentModels),
     key = equipmentIconKey(position.weapon);
   const asset = key && context?.catalog.items[key];
   const fire = useEquipmentFire(position);
-  const { size } = useThree();
-  const preset = useMemo(
-    () => (asset ? fitPovAttachment(asset.attachments.pov, size.width / size.height) : null),
-    [asset, size.width, size.height],
-  );
-  const root = useMemo(() => new Group(), []);
-  useFrame(({ camera }) => {
-    root.position.copy(camera.position);
-    root.rotation.set(0, MathUtils.degToRad(pose.yaw), -MathUtils.degToRad(pose.pitch), 'YZX');
-  });
-  if (!asset || !preset || !position.alive) return null;
+  if (!asset || !position.alive) return null;
   return (
-    <primitive object={root} dispose={null} name={'pov-equipment:' + position.id + ':' + key}>
-      <Preset value={preset}>
-        <group
-          position={[
-            (motion?.depth ?? 0) - (fire?.kick || 0) * 0.025,
-            motion?.lift ?? 0,
-            motion?.side ?? 0,
-          ]}
-          rotation={[
-            motion?.roll ?? 0,
-            motion?.yaw ?? 0,
-            (motion?.pitch ?? 0) + (fire?.kick || 0) * 0.035,
-          ]}
-        >
+    <group rotation-y={Math.PI / 2} name={'pov-equipment:' + position.id + ':' + key}>
+      <Preset value={asset.attachments.pov}>
+        <group position-x={-(fire?.kick ?? 0) * 0.025} rotation-z={(fire?.kick ?? 0) * 0.035}>
           <EquipmentModelInstance
             equipment={position.weapon}
             instance={'pov:' + position.id + ':' + key}
@@ -265,7 +238,7 @@ export function PovEquipment({ position, next, alpha, timing, motion }: PovEquip
           />
         </group>
       </Preset>
-    </primitive>
+    </group>
   );
 }
 export type PovEquipmentProps = {
@@ -275,7 +248,6 @@ export type PovEquipmentProps = {
   travelMeters?: number;
   alpha: number;
   timing?: PoseTiming;
-  motion?: ReturnType<typeof povMovement>;
 };
 export function RecordedEquipment({ items }: { items: PresentItem[] }) {
   return (

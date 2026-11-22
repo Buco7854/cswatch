@@ -3,6 +3,20 @@ import { canonicalEquipmentKey } from './equipment-key';
 export type CameraView = { position: [number, number, number]; target: [number, number, number] };
 const sniperRifles = new Set(['awp', 'ssg08', 'scar20', 'g3sg1']);
 
+export const povNear = 0.025;
+export const povFar = 8;
+// Camera-local metres: right, down and forward from the authored eye origin.
+export const povOffset = { right: 0.0635, up: -0.052, forward: 0.13 };
+
+/** A 68° horizontal lens at 4:3. Fit at least a square aperture on tall
+ * canvases, while retaining their real aspect ratio and undistorted geometry. */
+export function povProjection(viewportAspect: number) {
+  const aspect = Number.isFinite(viewportAspect) && viewportAspect > 0 ? viewportAspect : 16 / 9;
+  const tangent = 0.75 * Math.tan((68 * Math.PI) / 360);
+  const fov = (2 * Math.atan(tangent / Math.min(1, aspect)) * 180) / Math.PI;
+  return { aspect, fov };
+}
+
 /** Convert the recorded Source horizontal reference to Three.js vertical degrees. */
 export function scopedVerticalFov(player: Position | undefined) {
   if (
