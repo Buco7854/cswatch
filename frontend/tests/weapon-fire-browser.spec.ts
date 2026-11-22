@@ -203,6 +203,15 @@ test('recorded shots render at the model muzzle in both themes and low-quality p
           'Paused recorded fire remains at the same demo-time pose',
         ).toBe(paused);
         await page.screenshot({ path: info.outputPath(`firing-${theme}-${width}.png`) });
+        if (theme === 'dark' && width === 1440) {
+          // Keep the same paused shot and its map ray alive while crossing the lens breakpoint.
+          await page.setViewportSize({ width: 768, height: 900 });
+          await waitForRenderedPov(page);
+          await page.screenshot({ path: info.outputPath('firing-dark-768-resized.png') });
+          await page.setViewportSize({ width, height: 900 });
+          await waitForRenderedPov(page);
+        }
+
         await page.locator('.timeline-slider').fill('128');
         await expect.poll(() => firePixels(page)).toBeGreaterThan(idle + 30);
         await page.locator('.timeline-slider').fill('64');
