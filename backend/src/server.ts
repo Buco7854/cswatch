@@ -9,7 +9,7 @@ import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import { z, ZodError } from 'zod';
 import { loadConfig, flagDefaults, type Config, type Flag } from './config.js';
-import { Store, now, openStoreForStartup } from './db.js';
+import { Store, openStoreForStartup } from './db.js';
 import { buildInfo } from './build-info.js';
 import {
   HttpError,
@@ -133,14 +133,9 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
             '/login',
             '/register',
             '/licenses/provider-brands.txt',
-            '/connections',
             '/account/connections',
             '/account',
             '/admin',
-            '/explore',
-            '/self-host',
-            '/features/viewer',
-            '/features/imports',
           ].includes(path) ||
             /^\/watch\/[A-Za-z0-9_-]+$/.test(path)));
       if (!allowed) throw new HttpError(401, 'This instance is private. Sign in to continue.');

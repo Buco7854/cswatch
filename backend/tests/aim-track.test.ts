@@ -211,7 +211,7 @@ test('writer and viewer share aim samples at seams, preserve sparse poses, and s
     );
     assert.equal(playerPose(first, next, 0.125, timing).yaw, -170);
     assert.equal(playerPose(first, next, 0.125, timing).pitch, 8.5);
-    assert.equal(playerPose(first, next, 0.75, timing).yaw, 10); // missing ticks use legacy pose
+    assert.equal(playerPose(first, next, 0.75, timing).yaw, 10); // missing ticks use sampled frame angles
     assert.equal(playerPose(position, position, 0, timing), position); // no attached aim evidence
 
     right.aim = encodeAimChunk(seam, seam + 4, one([sample(seam, -170, 8, false)]))!;

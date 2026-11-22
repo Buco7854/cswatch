@@ -405,7 +405,10 @@ test('recorded world equipment shares radar calibration and survives seeking wit
   test.skip(Boolean(process.env.E2E_PRIVATE));
   await page.setViewportSize({ width: 390, height: 844 });
   const playback = originalMapReplay();
-  playback.itemState = { complete: true };
+  playback.itemState = {
+    complete: true,
+    coverage: { dropped: true, planted: true, projectile: true },
+  };
   playback.itemSamples = [
     {
       id: 'item:101:1:0',

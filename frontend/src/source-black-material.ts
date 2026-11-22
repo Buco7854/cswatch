@@ -13,7 +13,7 @@ import {
 import type { MapCubeFog } from '../../shared/map-assets';
 
 export type SourceFogResources = { fog: MapCubeFog | null; cube: CubeTexture | null };
-export function isSourceBlackUnlit(material: Material): boolean {
+function isSourceBlackUnlit(material: Material): boolean {
   const source = material.userData?.vmat;
   return (
     source?.Name === 'materials/dev/black_simple.vmat' &&

@@ -68,7 +68,7 @@ test('event-only soft patch stops at recorded expiry and is capped with concurre
 test('HE has an early lit core, a cooling fireball and a longer rising dust tail', () => {
   const event = { ...events[0], type: 'hegrenade_detonate' };
   const zonesAt = buildUtilityZoneIndex([event], 64, true);
-  const legacyAt = buildUtilityZoneIndex([event], 64);
+  const eventOnlyAt = buildUtilityZoneIndex([event], 64);
   const at = (age: number, reduced = false) => {
     const tick = event.tick + age * 64;
     return sampleGrenadeBursts(zonesAt(tick), tick, 64, reduced);
@@ -83,7 +83,7 @@ test('HE has an early lit core, a cooling fireball and a longer rising dust tail
   expect(kinds(0.8)).toEqual(new Set([burstKind.dust]));
   expect(at(1.4)[0].sprites[0].strength).toBeLessThan(at(0.8)[0].sprites[0].strength);
   expect(at(1.56)).toEqual([]);
-  expect(legacyAt(event.tick + 0.8 * 64)).toEqual([]);
+  expect(eventOnlyAt(event.tick + 0.8 * 64)).toEqual([]);
   expect(at(0.03)).toEqual(early);
   expect(at(0.12, true)[0]).toMatchObject({ light: 0 });
   expect(new Set(at(0.12, true)[0].sprites.map((s) => s.variant))).toEqual(

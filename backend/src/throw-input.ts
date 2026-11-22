@@ -2,7 +2,7 @@ import type { GameEvent, Player } from '../../shared/playback.js';
 import type { ThrowInputSnapshot } from '../../shared/throw-input.js';
 import { hasNetworkAliasEvidence, isRecordedUtilityThrow, recordedInput } from './player-input.js';
 
-export const throwInputLimit = 10000;
+const throwInputLimit = 10000;
 export const eventInputFields = [
   'buttons',
   'FORWARD',

@@ -1,6 +1,6 @@
 export type PlayerColumns = Record<string, unknown[]>;
 type ReadColumns = (fields: string[]) => unknown;
-export const playerRowLimit = 180000 * 64;
+const playerRowLimit = 180000 * 64;
 export const recordedCameraFov = 'CCSPlayerPawn.CCSPlayer_CameraServices.m_iFOV';
 export const recordedReloadTickLimit = 256;
 

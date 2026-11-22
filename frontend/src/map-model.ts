@@ -11,7 +11,7 @@ import {
 import { StaticMapGroup } from './static-map-group';
 import { readSourceSun, type SourceSun } from './source-sun';
 
-export type MapModelResult = {
+type MapModelResult = {
   main: Group;
   sky: Scene | null;
   sun: SourceSun | null;

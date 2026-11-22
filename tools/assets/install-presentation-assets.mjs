@@ -28,7 +28,7 @@ import {
   presentationKinds,
 } from '../../backend/dist/presentation-assets.js';
 
-export const presentationPreparationLimits = Object.freeze({
+const presentationPreparationLimits = Object.freeze({
   attempts: 3,
   deadlineMs: 45 * 60 * 1000,
   modelDeadlineMs: 15 * 60 * 1000,

@@ -171,7 +171,10 @@ export function originalEquipmentReplay() {
     ...frame,
     players: frame.players.map((player) => ({ ...player, weapon: 'ak47', yaw: 0, pitch: 0 })),
   }));
-  replay.itemState = { complete: true };
+  replay.itemState = {
+    complete: true,
+    coverage: { dropped: true, planted: true, projectile: true },
+  };
   replay.itemSamples = [
     {
       id: 'item:1:0:0',

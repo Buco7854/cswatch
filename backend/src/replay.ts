@@ -9,13 +9,7 @@ import {
 import { join } from 'node:path';
 import { gzipSync, gunzipSync } from 'node:zlib';
 import { z } from 'zod';
-import type {
-  Playback,
-  PlaybackManifest,
-  PlaybackChunk,
-  Grenade,
-  Frame,
-} from '../../shared/playback.js';
+import type { Playback, PlaybackManifest, Grenade, Frame } from '../../shared/playback.js';
 import { opusDuration } from './voice-packets.js';
 import { isRecordedUtilityThrow } from './player-input.js';
 import { crosshairCodePattern } from './crosshairs.js';
@@ -126,7 +120,7 @@ const matchClockSchema = z
     pausedAtTick: objectiveDeadline.optional(),
   })
   .strict();
-export const matchStateSampleSchema = z
+const matchStateSampleSchema = z
   .object({
     tick,
     ctScore: z.number().int().min(0).max(10000).optional(),
@@ -157,7 +151,7 @@ const throwInputBase = {
   tick,
   actorId: z.string().regex(/^\d{1,20}$/),
 };
-export const throwInputSnapshotSchema = z.discriminatedUnion('provenance', [
+const throwInputSnapshotSchema = z.discriminatedUnion('provenance', [
   z.object({ ...throwInputBase, provenance: z.literal('unavailable') }).strict(),
   z
     .object({
@@ -302,7 +296,7 @@ const communicationInfoSchema = z
     unsupportedPackets: z.number().int().min(0).max(10000000),
   })
   .strict();
-export const gameplaySoundCueSchema = z
+const gameplaySoundCueSchema = z
   .object({
     id: z.string().min(1).max(100),
     tick: mediaTick,
@@ -656,7 +650,6 @@ async function writeReplayCore(
       bounds.maxZ = Math.max(bounds.maxZ, player.z);
     }
   const unavailable = 'unavailable' as const;
-  const coverage = data.itemState?.complete ?? false;
   const manifest: PlaybackManifest = {
     ...metadata,
     version: 3,
@@ -684,13 +677,9 @@ async function writeReplayCore(
     objectives: data.objectives ?? { complete: false, samples: [] },
     matchState: data.matchState ?? { complete: false, samples: [] },
     crosshairs: data.crosshairs ?? { complete: false, samples: [] },
-    itemState: {
-      complete: coverage,
-      coverage: data.itemState?.coverage ?? {
-        dropped: coverage,
-        planted: coverage,
-        projectile: coverage,
-      },
+    itemState: data.itemState ?? {
+      complete: false,
+      coverage: { dropped: false, planted: false, projectile: false },
     },
     eventAvailability: data.eventAvailability ?? { player_death: false, player_hurt: false },
     throwInputs: data.throwInputs ?? [],

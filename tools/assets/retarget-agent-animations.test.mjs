@@ -232,7 +232,7 @@ test('native animation bounds time, duplicate channels, non-rigid poses and tota
   );
 });
 
-test('version 2 packs preserve the positive duration of entirely static poses', () => {
+test('directional packs preserve the positive duration of entirely static poses', () => {
   const target = fixture().document;
   const result = retargetAgentAnimations(target, fixtureClips({ staticPoses: true }), {
     minimumMappedBones: 3,

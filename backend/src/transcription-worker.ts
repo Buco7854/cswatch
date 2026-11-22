@@ -58,7 +58,7 @@ export function requeueTranscription(
 }
 
 /** Caption jobs accept only copied replay slices and one bounded output file. */
-export function inspectTranscriptionScratch(folder: string) {
+function inspectTranscriptionScratch(folder: string) {
   let count = 0,
     total = 0;
   const scan = (path: string, chunks: boolean) => {

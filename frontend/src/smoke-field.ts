@@ -1,9 +1,9 @@
 import type { GameEvent } from './types';
 
 export type XYZ = [number, number, number];
-export type SmokeBounds = { min: XYZ; max: XYZ };
+type SmokeBounds = { min: XYZ; max: XYZ };
 export type SmokeField = { texels: Uint8Array; bounds: SmokeBounds | null };
-export type SmokeHole = { position: XYZ; radius: number; strength: number };
+type SmokeHole = { position: XYZ; radius: number; strength: number };
 export type SmokeSample = {
   origin: XYZ;
   scale: number;
@@ -17,7 +17,7 @@ export type SmokeSample = {
 
 // The recorded journal's 32-cell Source-space grid uses 20-inch voxels.
 export const GRID = 32;
-export const INCH = 0.0254;
+const INCH = 0.0254;
 export const CELL = 20 * INCH;
 export const BILLOW_SPAN = 1.12;
 export const HALF_GRID = (GRID * CELL) / 2;
@@ -159,7 +159,7 @@ function sampleDensity(field: SmokeField, x: number, y: number, z: number) {
   return lerp(low, high, c - k) / 255;
 }
 
-export function smokeDensityAt(smoke: SmokeSample, x: number, y: number, z: number) {
+function smokeDensityAt(smoke: SmokeSample, x: number, y: number, z: number) {
   const [ox, oy, oz] = smoke.origin;
   const { scale, previous, current, mix } = smoke;
   const a = sampleDensity(previous, (x - ox) / scale, (y - oy) / scale, (z - oz) / scale);

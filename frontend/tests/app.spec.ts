@@ -226,7 +226,15 @@ test('private entry gates feature and demo routes and respects registrations pol
   expect(await notice.text()).toContain('©2026 Valve Corporation.');
   expect((await request.get('/api/demos?scope=public')).status()).toBe(401);
   expect((await request.get('/api/maps/de_mirage')).status()).toBe(401);
-  expect((await request.get('/map-assets/de_mirage.glb')).status()).toBe(401);
+  expect((await request.get('/map-assets/de_mirage/desktop/scene.glb')).status()).toBe(401);
+  for (const path of [
+    '/connections',
+    '/explore',
+    '/self-host',
+    '/features/viewer',
+    '/features/imports',
+  ])
+    expect((await request.get(path)).status()).toBe(401);
   if (process.env.E2E_REGISTRATIONS === 'false')
     await expect(page.getByRole('link', { name: 'New here? Create an account' })).toHaveCount(0);
   else await expect(page.getByRole('link', { name: 'New here? Create an account' })).toBeVisible();

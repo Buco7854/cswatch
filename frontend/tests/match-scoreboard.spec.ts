@@ -170,7 +170,7 @@ async function fixture(
   language: Language = 'en',
   theme: 'dark' | 'light' = 'dark',
   policy: {
-    legacy?: boolean;
+    missingEvidence?: boolean;
     eventOnly?: boolean;
     incomplete?: boolean;
     wideScores?: boolean;
@@ -217,7 +217,7 @@ async function fixture(
   await page.route('**/api/demos/scoreboard-fixture/playback', (route) =>
     fulfillReplayFixture(route, {
       ...replay,
-      ...(policy.legacy || policy.eventOnly
+      ...(policy.missingEvidence || policy.eventOnly
         ? {
             frames: replay.frames.map((frame) => ({
               ...frame,
@@ -225,7 +225,7 @@ async function fixture(
             })),
           }
         : {}),
-      ...(policy.legacy
+      ...(policy.missingEvidence
         ? { matchState: undefined, eventAvailability: undefined }
         : policy.incomplete || policy.wideScores || policy.scorePairs
           ? {
@@ -417,11 +417,11 @@ test('recorded side scores, clock and native match totals follow exact seeks and
   await page.keyboard.up('Tab');
 });
 
-test('legacy missing score metadata and unsupported event coverage stay unknown rather than plausible zeroes', async ({
+test('missing score metadata and unsupported event coverage stay unknown rather than plausible zeroes', async ({
   page,
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE), 'Explicit synthetic UI fixture.');
-  await fixture(page, 'en', 'light', { legacy: true });
+  await fixture(page, 'en', 'light', { missingEvidence: true });
   await expect(page.locator('[data-score="ct"]')).toHaveText('-');
   await expect(page.locator('.match-score-clock > strong')).toHaveText('-');
   await page.getByRole('slider', { name: 'Playback position', exact: true }).fill('320');

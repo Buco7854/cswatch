@@ -59,7 +59,7 @@ async function stdinJSON(input) {
     chunks.push(bytes);
     length += bytes.length;
   }
-  if (length < 2) throw Error('Provide a complete version 2 replay manifest.');
+  if (length < 2) throw Error('Provide a complete replay manifest.');
   return json(Buffer.concat(chunks, length));
 }
 
@@ -79,7 +79,7 @@ export async function inspectMapIdentity({ replay, catalog, input = process.stdi
     typeof manifest.map !== 'string' ||
     !/^[A-Za-z0-9_-]{1,80}$/.test(manifest.map)
   )
-    throw Error('Inspect only a validated version 2 replay manifest.');
+    throw Error('Inspect only a validated replay manifest.');
   const approvals =
     catalog === undefined ? undefined : await fileJSON(catalog, mapCatalogLimits.bytes, true);
   const result = diagnoseMapIdentity(manifest.mapIdentity, approvals, manifest.map);
@@ -106,7 +106,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     else console.log(JSON.stringify(await inspectMapIdentity(values), null, 2));
   } catch {
     console.error(
-      'Map identity inspection refused. Use --help and a bounded local version 2 replay manifest or stdin.',
+      'Map identity inspection refused. Use --help and a bounded local validated replay manifest or stdin.',
     );
     process.exitCode = 1;
   }

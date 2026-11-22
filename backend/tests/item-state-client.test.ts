@@ -205,6 +205,7 @@ test('category coverage keeps exact projectile state despite unrelated missing d
     { complete: true, coverage: { dropped: false, planted: true, projectile: true } },
     { complete: false, coverage: { projectile: true } },
     { complete: false, coverage: null },
+    { complete: true },
   ])
     assert.throws(() => validateItemState(value));
 });

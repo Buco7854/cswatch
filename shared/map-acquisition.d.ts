@@ -8,7 +8,7 @@ export type MapIdentity = {
   addonPresence?: 'none' | 'present';
   conflicted?: true;
 };
-export type ApprovedMapIdentity = Required<Omit<MapIdentity, 'conflicted'>> & {
+type ApprovedMapIdentity = Required<Omit<MapIdentity, 'conflicted'>> & {
   addonPresence: 'none';
 };
 export type OfficialMapSource = {
@@ -52,7 +52,7 @@ export type MapJobRequest = MapJobIdentity &
     | { approval: ApprovedMapEntry; kind?: never; selection?: never }
     | { kind: 'latest-official'; selection: LatestOfficialSelection; approval?: never }
   );
-export type MapJobFailureCode =
+type MapJobFailureCode =
   | 'source_unavailable'
   | 'source_mismatch'
   | 'storage_limit'

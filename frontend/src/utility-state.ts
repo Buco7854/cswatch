@@ -1,6 +1,6 @@
 import type { GameEvent, Grenade } from './types';
 
-export type UtilityPoint = { tick: number; x: number; y: number; z: number };
+type UtilityPoint = { tick: number; x: number; y: number; z: number };
 export type ProjectileState = {
   id: string;
   kind: string;
@@ -60,7 +60,7 @@ export function buildUtilityZones(
   });
 }
 
-export const burstSeconds = { he: 1.55, flash: 0.52, decoy: 0.5 } as const;
+const burstSeconds = { he: 1.55, flash: 0.52, decoy: 0.5 } as const;
 export function buildUtilityZoneIndex(events: GameEvent[], rate: number, extendedBursts = false) {
   const zones = buildUtilityZones(events, rate).sort((a, b) => a.start - b.start);
   if (extendedBursts)

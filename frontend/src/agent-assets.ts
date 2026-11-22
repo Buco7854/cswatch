@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { AssetStatus } from './map-assets';
 import { observeAssets, readAssetJSON } from './asset-discovery';
 
-export type AgentAssets = { ct: string | null; t: string | null };
+type AgentAssets = { ct: string | null; t: string | null };
 const empty: AgentAssets = Object.freeze({ ct: null, t: null });
 type State = { status: AssetStatus; assets: AgentAssets };
 const pending: State = { status: 'pending', assets: empty };

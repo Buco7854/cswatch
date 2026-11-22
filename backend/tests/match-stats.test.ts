@@ -123,7 +123,7 @@ test('match snapshots preserve recorded halftime/overtime side scores, phases an
   assert.equal(matchAt(index, -1).ctScore, undefined);
 });
 
-test('legacy metadata cannot infer match round numbers or scores and clock expiry cannot invent completion', () => {
+test('missing recorded metadata cannot establish match round numbers or scores and clock expiry cannot invent completion', () => {
   const data = replay();
   const missing = matchAt(buildMatchTimeline(data), 200);
   assert.equal(missing.ctScore, undefined);

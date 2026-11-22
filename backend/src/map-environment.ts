@@ -14,7 +14,7 @@ import {
 import { validPng } from './png.js';
 import { HttpError } from './security.js';
 import { mapCubeFogSchema } from './map-fog.js';
-import { legacyMapLocation, type MapAssetLocation } from './map-asset-location.js';
+import { manualMapLocation, type MapAssetLocation } from './map-asset-location.js';
 
 /** Prepared offline in viewer Y-up cube order; no runtime Source rotation. */
 export const environmentFaces = ['px', 'nx', 'py', 'ny', 'pz', 'nz'] as const;
@@ -115,7 +115,7 @@ type EnvironmentItem = {
 export function mapEnvironmentAssets(
   app: FastifyInstance,
   dataRoot: string,
-  defaultLocation = legacyMapLocation(dataRoot),
+  defaultLocation = manualMapLocation(dataRoot),
 ) {
   const cache = new Map<string, EnvironmentItem>();
   const inFlight = new Map<string, Promise<EnvironmentItem | undefined>>();

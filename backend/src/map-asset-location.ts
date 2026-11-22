@@ -7,7 +7,7 @@ export type MapAssetLocation = {
   apiPrefix: string;
   modelPrefix: string;
 };
-export const legacyMapLocation = (root: string): MapAssetLocation => ({
+export const manualMapLocation = (root: string): MapAssetLocation => ({
   root,
   parts: ['maps'],
   key: 'manual',

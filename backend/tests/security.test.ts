@@ -224,11 +224,11 @@ test('HTTPS sessions and Steam state use host-only cookie prefixes, including ro
       (cookie) => cookie.name === '__Host-cswatch_session',
     )!;
     const sessionCookie = `${session.name}=${session.value}`;
-    const legacy = await app.inject({
+    const nonHostCookie = await app.inject({
       url: '/api/auth/me',
       headers: { ...headers, cookie: `${COOKIE}=${session.value}` },
     });
-    assert.equal(legacy.json().user, null);
+    assert.equal(nonHostCookie.json().user, null);
     const start = await app.inject({
       url: '/api/auth/steam',
       headers: { ...headers, cookie: sessionCookie },

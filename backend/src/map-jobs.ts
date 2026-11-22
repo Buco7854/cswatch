@@ -116,7 +116,7 @@ export const mapInventoryFailureSchema: z.ZodType<MapInventoryFailure> = z
   })
   .strict()
   .refine((value) => value.retryAt >= value.at && value.retryAt <= value.at + 3600);
-export const mapWorkerStatusSchema = z
+const mapWorkerStatusSchema = z
   .object({
     schemaVersion: z.literal(1),
     updatedAt: z.number().int().min(0),
@@ -125,7 +125,7 @@ export const mapWorkerStatusSchema = z
   })
   .strict();
 
-export async function readMapJob<T>(
+async function readMapJob<T>(
   root: string,
   folder: 'requests' | 'results',
   packId: string,

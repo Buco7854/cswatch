@@ -2,9 +2,9 @@
 
 The version 3 manifest carries recorded metadata and coverage. Frames and their media slices have their own version 3 chunk envelope. Missing evidence remains unknown.
 
-## Replay v3 fields
+## Replay fields
 
-| Field                                             | v3 contract                                                                                                         |
+| Field                                             | Contract                                                                                                            |
 | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | Map identity                                      | Optional. The recording can omit the required header evidence.                                                      |
 | Round live tick, end tick and winner              | Optional. Parsed round events may not establish them.                                                               |
@@ -27,7 +27,7 @@ The per-chunk stride anchor is still used by first-person weapon motion through 
 
 ## Recorded aim
 
-Version 3 chunks may carry a separate `aim` field with wire version 1 and sorted player-ID/base64 pairs. Each stream stores the gap from the previous recorded tick and a continuity bit, followed by zigzag-coded yaw and pitch as canonical unsigned LEB128. A break starts from absolute angles. Angular deltas take the shortest path around a turn. The 1/128° step bounds per-axis quantization error to 1/256° (0.00391°). The wire indexes source demo ticks directly, independently of the playback clock's rate.
+Chunks may carry an `aim` field containing wire version 1 and sorted player-ID/base64 pairs. Each stream stores the gap from the previous recorded tick and a continuity bit, followed by zigzag-coded yaw and pitch as canonical unsigned LEB128. A break starts from absolute angles. Angular deltas take the shortest path around a turn. The 1/128° step bounds per-axis quantization error to 1/256° (0.00391°). The wire indexes source demo ticks directly, independently of the playback clock's rate.
 
 The confined parser queries only yaw, pitch, liveness, position and pawn handle, alongside the native identity columns. It reads up to 16,384 requested ticks and 262,144 requested player-tick pairs per batch, then retains at most 32 MiB of projected samples. Dead or missing rows and ambiguous duplicate IDs leave holes. Missing position evidence, unknown or changed pawn handles, gaps, round starts and jumps over 128 Source inches break interpolation. The writer caps binary aim at 256 KiB and 128 players per chunk. It accounts for base64 and JSON bytes in the existing output limits. Optional aim can be dropped across the replay if extraction or output budgets prevent publication.
 
@@ -93,7 +93,7 @@ These additions inherit the manifest’s 16 MiB decoded limit, bounded total rep
 
 ## Recorded crosshairs and spatial context
 
-`CrosshairData` is an optional, bounded global timeline of exact controller share-code changes by string Steam ID. A `null` code clears evidence. Publication validates declared actors, nondecreasing ticks, code syntax and the 10,000-snapshot limit. Static geometry is decoded locally. Missing or incomplete evidence never becomes a copied player setting, and unsupported native dynamic styles remain unavailable.
+`CrosshairData` is a bounded global timeline of exact controller share-code changes by string Steam ID. A `null` code clears evidence. Publication validates declared actors, nondecreasing ticks, code syntax and the 10,000-snapshot limit. Static geometry is decoded locally. Missing or incomplete evidence never becomes a copied player setting, and unsupported native dynamic styles remain unavailable.
 
 Byte-adaptive chunks keep full recorded player metadata from `startTick` through their shared final boundary. The preceding five-second context contains only spatial position/pose/status fields for trails. A review tool seeking historical equipment, inputs or statistics must request the chunk whose descriptor owns that tick. It must not treat an optional field absent from trail context as proof of an unknown canonical state. This removes repeated HUD data while preserving every authoritative sample and the 4 MiB/512 MiB/160 MiB bounds.
 
@@ -101,7 +101,7 @@ Native unfinished rounds can have no winner. Only actual numeric CT/T team IDs b
 
 ## Recorded world equipment
 
-Optional `itemState` metadata describes coverage independently for `dropped`, `planted` and `projectile` entities. `complete` is the conjunction of those category flags. Legacy metadata without category flags retains its earlier global meaning. Missing metadata remains unavailable. The existing streaming entity pass supplies changed `itemSamples` rather than another native whole-match object graph.
+The manifest requires `itemState` coverage for `dropped`, `planted` and `projectile` entities. `complete` is the conjunction of those category flags. A category with unavailable evidence is marked incomplete. The existing streaming entity pass supplies changed `itemSamples` rather than another native whole-match object graph.
 
 Entity identities include the recorded index, 17-bit serial and creation tick. Item definition indices supply equipment identity. Explicit owner and root-parent handles, complete cell/offset origins and recorded angle tuples supply placement. Parent-local coordinates are not interpreted as world coordinates. Molotov versus incendiary uses the recorded native flag, never the thrower's team. Unknown required fields hide the item and mark its category incomplete.
 
@@ -111,7 +111,7 @@ The renderer uses authoritative projectile bodies only when projectile coverage 
 
 ## Gameplay sound evidence
 
-`shared/gameplay-sounds.d.ts` defines optional global `gameplaySounds` capability metadata and per-chunk `sounds` cues. They are independent of voice packets, chat and captions. Older prepared replays have no sound evidence until processed again. The global manifest keeps six category coverage values and a truncation flag, rather than retaining every footstep or reload cue.
+`shared/gameplay-sounds.d.ts` defines the manifest’s `gameplaySounds` coverage and per-chunk `sounds` cues. They are independent of voice packets, chat and captions. Unavailable sound evidence produces the corresponding coverage flag and no cues. The global manifest keeps six category coverage values and a truncation flag, rather than retaining every footstep or reload cue.
 
 A cue has a stable `id`, recorded demo `tick`, fixed-registry `soundId` and category. `evidence` distinguishes native `network-sound` messages from `game-event` fallbacks. `selection` identifies representative native sample selection separately from recorded occurrence. Optional `eventName` retains the exact resolved native name. `actor`, when present, is an immutable string Steam ID from the manifest. Optional positions use Source inches and Z-up. Authored bounded volume/pitch may accompany a native event. `endTick` comes only from its explicit recorded stop and never establishes an inferred loop or duration.
 
