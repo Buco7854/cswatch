@@ -1,4 +1,11 @@
-import { Mesh, MeshStandardMaterial, NoColorSpace, SRGBColorSpace, Texture } from 'three';
+import {
+  Mesh,
+  MeshStandardMaterial,
+  NoColorSpace,
+  ShaderChunk,
+  SRGBColorSpace,
+  Texture,
+} from 'three';
 import type { GLTF, GLTFLoader } from 'three-stdlib';
 import format from '../../shared/map-baked-lighting.json' with { type: 'json' };
 import {
@@ -7,6 +14,14 @@ import {
   type LayerTextureIds,
   type MaterialLayers,
 } from './map-material-layers';
+import { mapGradeTargets } from './map-grade';
+
+const lightLoop = ShaderChunk.lights_fragment_begin.replace(
+  'getDirectionalLightInfo( directionalLight, directLight );',
+  `getDirectionalLightInfo( directionalLight, directLight );
+    directLight.color *=
+      bakedSun * step(1e-6, dot(nonPerturbedNormal, directLight.direction));`,
+);
 
 function configureMaterial(
   material: MeshStandardMaterial,
@@ -22,14 +37,30 @@ function configureMaterial(
       cswatchLayerBlend: layers.blend,
       cswatchLayerDetail: layers.detail,
     });
+  let graded = false;
+  material.onBeforeRender = (renderer) => {
+    const target = renderer.getRenderTarget();
+    const next = target !== null && mapGradeTargets.has(target);
+    if (next !== graded) {
+      graded = next;
+      material.needsUpdate = true;
+    }
+  };
   material.onBeforeCompile = (shader) => {
     if (layers) applyLayerShader(shader, layers);
+    const grazingFix = graded
+      ? `          // Quantized XY can escape the unit disk despite nonzero diffuse.
+          // Floor the direction at five degrees, as in VRF common/lighting.slang.
+          const float maxXY = 0.9961947;
+          directionXY *= maxXY / max(maxXY, length(directionXY));
+`
+      : '';
     const shading = direction
       ? `
         #ifdef USE_NORMALMAP_TANGENTSPACE
           vec3 directionSample = texture2D(cswatchLightingDirection, vLightMapUv).rgb;
           vec2 directionXY = directionSample.xy * 2.0 - 1.0;
-          float incomingZ = sqrt(max(0.0, 1.0 - dot(directionXY, directionXY)));
+${grazingFix}          float incomingZ = sqrt(max(0.0, 1.0 - dot(directionXY, directionXY)));
           vec3 incoming = vec3(directionXY, incomingZ);
           float angledDiffuse = max(0.0, dot(normalize(mapN), incoming)) / max(0.05, incomingZ);
           bakedIrradiance *= mix(angledDiffuse, 1.0, directionSample.z);
@@ -43,34 +74,56 @@ function configureMaterial(
         '#include <lightmap_pars_fragment>\nuniform sampler2D cswatchLightingDirection;',
       );
     }
-    shader.fragmentShader = shader.fragmentShader
-      // Keep normal/roughness, live direct lighting and reflected sky. The atlas
-      // replaces the approximate diffuse fill and supplies the authored sun occlusion.
-      .replace(
-        '#include <lights_fragment_maps>',
-        '#undef USE_LIGHTMAP\n#include <lights_fragment_maps>\n#define USE_LIGHTMAP',
-      )
-      .replace(
-        '#include <lights_fragment_end>',
-        `#include <lights_fragment_end>
+    const sample = `
           vec4 bakedLighting = texture2D(lightMap, vLightMapUv);
           vec3 bakedIrradiance = (exp2(bakedLighting.rgb * log2(${format.irradianceRange}.0 * ${format.irradianceBias}.0 + 1.0)) - 1.0) / ${format.irradianceBias}.0;
           ${shading}
-          float bakedSun = 1.0 - clamp((bakedLighting.a * 255.0 - 1.0) / 254.0, 0.0, 1.0);
+          float bakedSun = 1.0 - clamp((bakedLighting.a * 255.0 - 1.0) / 254.0, 0.0, 1.0);`;
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <lights_fragment_maps>',
+      '#undef USE_LIGHTMAP\n#include <lights_fragment_maps>\n#define USE_LIGHTMAP',
+    );
+    if (graded) {
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <lights_fragment_begin>', `${sample}\n${lightLoop}`)
+        .replace(
+          '#include <lights_fragment_end>',
+          `
+            // Replace ambient and sky irradiance with the captured light.
+            // Three's energy-conserving indirect BRDF divides by pi.
+            irradiance = vec3(0.0);
+            iblIrradiance = PI * bakedIrradiance;
+            #include <lights_fragment_end>
+          `,
+        )
+        .replace(
+          '#include <aomap_fragment>',
+          `#include <aomap_fragment>
+            #ifdef USE_AOMAP
+              reflectedLight.directDiffuse *= ambientOcclusion;
+              reflectedLight.directSpecular *= ambientOcclusion;
+            #endif
+          `,
+        );
+      return;
+    }
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <lights_fragment_end>',
+      `#include <lights_fragment_end>${sample}
           reflectedLight.indirectDiffuse = material.diffuseColor * bakedIrradiance;
           reflectedLight.directDiffuse *= bakedSun;
           reflectedLight.directSpecular *= bakedSun;
         `,
-      );
+    );
   };
-  material.customProgramCacheKey = () =>
-    [
-      format.extension,
-      format.schemaVersion,
-      Boolean(direction),
-      Boolean(layers),
-      Boolean(layers?.detail),
-    ].join(':');
+  const programKey = [
+    format.extension,
+    format.schemaVersion,
+    Boolean(direction),
+    Boolean(layers),
+    Boolean(layers?.detail),
+  ].join(':');
+  material.customProgramCacheKey = () => (graded ? programKey + ':grade' : programKey);
 }
 
 function boundedTexture(texture: unknown) {

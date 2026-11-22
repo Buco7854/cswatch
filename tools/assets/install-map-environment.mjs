@@ -13,6 +13,13 @@ import {
   steamAssetLimits,
 } from './steam-assets-plan.mjs';
 import { exportMapGltf, resolveMapResources } from './install-map-resources.mjs';
+import { createHash } from 'node:crypto';
+import { inspectMapGrade } from './environment-metadata.mjs';
+import {
+  maxPostProcessBytes,
+  maxPostProcessDumpBytes,
+  prepareMapGrade,
+} from './prepare-map-grade.mjs';
 import { cleanupSourceExports } from './cleanup-source-exports.mjs';
 
 const prepareScript = fileURLToPath(
@@ -102,6 +109,48 @@ export async function inspectInstalledEnvironment(context, adapters = {}) {
   const material =
     configuration.skyMaterial == null ? null : compiledPath(configuration.skyMaterial, '.vmat_c');
   permitPrefab(prefab.file);
+  async function postProcessing() {
+    try {
+      const authored = inspectMapGrade(mainEntities);
+      if (!authored) return;
+      for (const file of [
+        mainPackage,
+        prefab.file,
+        'game/csgo/pak01_dir.vpk',
+        'game/core/pak01_dir.vpk',
+      ]) {
+        const bank = await packageIndex(file);
+        const entry = bank.entries.get(authored.resource);
+        if (!entry) continue;
+        const size = entry.length + entry.preloadBytes;
+        if (!Number.isSafeInteger(size) || size < 1 || size > maxPostProcessBytes) return;
+        let payload = await bank.readEntry(authored.resource);
+        if (!payload) {
+          await download(
+            [{ selector: `${file}:${authored.resource}`, bytes: size }],
+            `${map}-post-processing`,
+          );
+          const refreshed = await index(join(game, file));
+          payload = await refreshed.readEntry(authored.resource);
+        }
+        if (payload?.length !== size) return;
+        const compiled = join(stage, 'authored.vpost_c');
+        await writeFile(compiled, payload, { flag: 'wx', mode: 0o600 });
+        const { stdout: data } = await execute(
+          s2v,
+          ['-i', compiled, '--block', 'DATA'],
+          `${map}-post-data`,
+        );
+        if (Buffer.byteLength(data) > maxPostProcessDumpBytes) return;
+        prepareMapGrade(authored, data);
+        return { data, sha256: createHash('sha256').update(payload).digest('hex') };
+      }
+    } catch {
+      // Missing, unavailable or unsupported authored post-processing is optional.
+      // Later required stages still observe installation cancellation/storage failure.
+    }
+  }
+
   return {
     skyMap: configuration.skyMap,
     required: material === null ? [] : [material],
@@ -213,6 +262,7 @@ export async function inspectInstalledEnvironment(context, adapters = {}) {
         faces.map((face) => [face, join(faceOutput, `${stem}_${face}.png`)]),
       );
       for (const path of Object.values(skyFaces)) await regular(path, 8 * 1024 ** 2, 57);
+      const gradeInput = await postProcessing();
       const config = {
         map,
         assetVersion,
@@ -223,6 +273,7 @@ export async function inspectInstalledEnvironment(context, adapters = {}) {
         skyEntities,
         materialData,
         skyFaces,
+        ...(gradeInput ? { gradeInput } : {}),
         output,
       };
       const configPath = join(stage, 'environment-prepare.json');

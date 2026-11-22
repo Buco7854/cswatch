@@ -1,3 +1,4 @@
+import { mapGradeFile } from '../../shared/map-grade.mjs';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { MapAssets } from '../../shared/map-assets.js';
@@ -392,6 +393,18 @@ export async function demoMapAssetRoutes(
       const item = await repository.loadOverview(request.params.name, await readyLocation(request));
       if (!item) throw new HttpError(404, 'Map overview not found.');
       return reply.header('Cache-Control', 'private, no-store').type('image/png').send(item.image);
+    },
+  );
+  app.get<{ Params: { packId: string; name: string } }>(
+    `/api/map-packs/:packId/maps/:name/environment/${mapGradeFile}`,
+    async (request, reply) => {
+      const location = await readyLocation(request);
+      const item = await repository.loadEnvironment(request.params.name, location);
+      if (!item?.gradeLut) throw new HttpError(404, 'Map grading LUT not found.');
+      return reply
+        .header('Cache-Control', 'private, no-store')
+        .type('application/octet-stream')
+        .send(item.gradeLut);
     },
   );
   app.get<{ Params: { packId: string; name: string; face: string } }>(

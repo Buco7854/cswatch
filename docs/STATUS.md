@@ -1,5 +1,7 @@
 # Feature status
 
+- Optional prepared environment version 2 supplies an authored exposure range, tone curve and hash-bound 3D color LUT for the detailed WebGL viewer. The graded path uses the minimum authored exposure for deterministic seeks. Version 1 environments continue through the legacy renderer. [Mirage verification](VERIFICATION.md#local-authored-mirage-grading-2026-11-22)
+
 - Recorded damage uses a crisp POV edge frame, a center-clear glow and the recorded attacker direction when available. POV flash feedback uses the sampled pawn state and offers Off, Indicator only, Reduced tint and Strong tint. The default is Indicator only. Reduced motion keeps the hurt frame steady and shows a flash indicator.
 - Optional shot tracers sample recorded weapon-fire events and aim in 3D. The streak uses the rendered muzzle when available and clips against prepared opaque map surfaces. Tracers default on for desktop High and Auto profiles, default off for compact and mobile profiles, and are hidden under reduced motion. Saved choices override the profile default.
 - Recorded projectile visibility remains quality-independent. The 3D and 2D path preference supports all players, the followed player and off. Paths reveal sampled points, mark sharp turns and fade for five demo seconds after a matched detonation. Unidentified throwers use a neutral path color.

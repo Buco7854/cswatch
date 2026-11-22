@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { FileHandle } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
+import { mapGradeBytes, mapGradeFile, validMapGrade } from '../../shared/map-grade.mjs';
 import type { MapEnvironment } from '../../shared/map-assets.js';
 import {
   bytesFrom,
@@ -33,12 +34,13 @@ const assetVersion = z.string().trim().min(1).max(100);
 const sha256 = z.string().regex(/^[a-f0-9]{64}$/);
 const metadataSchema = z
   .object({
-    schemaVersion: z.literal(1),
+    schemaVersion: z.union([z.literal(1), z.literal(2)]),
     map: mapName,
     assetVersion,
     source: z.string().trim().min(1).max(500),
     landscape: z.boolean(),
     fog: mapCubeFogSchema.optional(),
+    grade: z.unknown().optional(),
     sky: z
       .object({
         brightness: z.number().finite().min(0).max(16),
@@ -48,7 +50,8 @@ const metadataSchema = z
       })
       .strict(),
   })
-  .strict();
+  .strict()
+  .refine((value) => value.schemaVersion === 2 || value.grade === undefined);
 const mapManifestSchema = z.object({
   schemaVersion: z.literal(1),
   map: mapName,
@@ -106,6 +109,7 @@ type EnvironmentItem = {
   imageDigests: Record<Face, string>;
   environment: MapEnvironment;
   images: Record<Face, Buffer>;
+  gradeLut?: Buffer;
   bytes: number;
 };
 
@@ -152,17 +156,38 @@ export function mapEnvironmentAssets(
             totalBytes += (await file.stat()).size;
             if (totalBytes > environmentLimits.aggregateBytes) return;
           }
-          const fingerprint = async () =>
-            `${pair.fingerprint}:${(await Promise.all(files.map(fileVersion))).join(':')}`;
-          const version = await fingerprint();
-          const previous = cache.get(key);
+          const metadataVersion = await fileVersion(metadata);
           const metadataBytes = await bytesFrom(
             metadata,
             (await metadata.stat()).size,
             environmentLimits.metadataBytes,
           );
           const metadataDigest = createHash('sha256').update(metadataBytes).digest('hex');
-          if (previous?.version === version && previous.metadataDigest === metadataDigest) {
+          const parsed = metadataSchema.parse(JSON.parse(metadataBytes.toString('utf8')));
+          if (parsed.map !== name || parsed.assetVersion !== pair.assetVersion) return;
+          const grade = validMapGrade(parsed.grade) ? parsed.grade : undefined;
+          const lutSize = grade ? mapGradeBytes(grade.lut.size) : 0;
+          const lutFile = lutSize
+            ? await regularFile(directory, mapGradeFile, lutSize, lutSize).catch(() => undefined)
+            : undefined;
+          if (lutFile) files.push(lutFile);
+          const fingerprint = async () =>
+            `${pair.fingerprint}:${(await Promise.all(files.map(fileVersion))).join(':')}`;
+          const version = await fingerprint();
+          if (metadataVersion !== (await fileVersion(metadata))) return;
+          const previous = cache.get(key);
+          const lut = lutFile
+            ? await bytesFrom(lutFile, lutSize, lutSize).catch(() => undefined)
+            : undefined;
+          const gradeLut =
+            lut && createHash('sha256').update(lut).digest('hex') === grade?.lut.sha256
+              ? lut
+              : undefined;
+          if (
+            previous?.version === version &&
+            previous.metadataDigest === metadataDigest &&
+            Boolean(previous.gradeLut) === Boolean(gradeLut)
+          ) {
             let unchanged = true;
             for (const [index, face] of environmentFaces.entries())
               if (
@@ -177,14 +202,12 @@ export function mapEnvironmentAssets(
               version === (await fingerprint()) &&
               (await preparedMapPair(location, name))?.fingerprint === pair.fingerprint
             ) {
-              cache.delete(name);
-              cache.set(name, previous);
+              cache.delete(key);
+              cache.set(key, previous);
               return previous;
             }
           }
           discard(key);
-          const parsed = metadataSchema.parse(JSON.parse(metadataBytes.toString('utf8')));
-          if (parsed.map !== name || parsed.assetVersion !== pair.assetVersion) return;
           const images = {} as Record<Face, Buffer>;
           let dimension: number | undefined;
           let readBytes = 0;
@@ -219,6 +242,7 @@ export function mapEnvironmentAssets(
               ) as MapEnvironment['sky']['faces'],
             },
             ...(parsed.fog ? { fog: parsed.fog } : {}),
+            ...(gradeLut && grade ? { grade } : {}),
           };
           const item = {
             version,
@@ -226,7 +250,8 @@ export function mapEnvironmentAssets(
             imageDigests: parsed.sky.faces,
             environment,
             images,
-            bytes: readBytes,
+            gradeLut,
+            bytes: readBytes + (gradeLut?.length ?? 0),
           };
           cache.set(key, item);
           cachedBytes += item.bytes;
@@ -263,6 +288,15 @@ export function mapEnvironmentAssets(
       const item = await load(name);
       if (!item) throw new HttpError(404, 'Map environment not found.');
       return reply.type('image/png').send(item.images[face as Face]);
+    },
+  );
+  app.get<{ Params: { name: string } }>(
+    `/api/maps/:name/environment/${mapGradeFile}`,
+    async (request, reply) => {
+      reply.header('Cache-Control', 'private, no-store');
+      const item = await load(request.params.name);
+      if (!item?.gradeLut) throw new HttpError(404, 'Map grading LUT not found.');
+      return reply.type('application/octet-stream').send(item.gradeLut);
     },
   );
   app.addHook('onClose', async () => {

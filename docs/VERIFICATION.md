@@ -58,6 +58,47 @@ The tracer cost follow-up replayed Mirage ticks 21120–21248 at a fixed 60 samp
 
 The standalone parser suite passed all six checks with the pinned Mirage fixture and no skips. The focused cache, settings, combat and aim/transport tests passed all 17 cases. All 21 related camera, POV, spectator and weapon Playwright tests passed, including independent reuse of the camera ray after a tracer query. The follow-up type check, frontend build, formatting and English/French checks passed on Node 22.23.5.
 
+## Local authored Mirage grading, 2026-11-22
+
+The confined replay fixture has SHA-256 `84a1a4191302bdd2a3bbb5a727842093744b1fb1a228aeec630369e44b622cb2`. Pinned depot 2347770 manifest `8225060435969537482` supplies Mirage. In `maps/de_mirage/entities/default_ents.vents_c`, the enabled master `post_processing_volume` points to `lighting/postprocessing/de_mirage_prefab/de_mirage.vpost_c`. The entry passed the sparse VPK CRC check and required no transfer. The source payload SHA-256 is `7417dc3b46dc6c83427a797d03a90dc303e4099343bcd9ab7a99810554969989`. The LUT is 131,072 RGBA8 bytes with SHA-256 `88688e4738847824468d96b318683c4b708674b297dbac18669ddca92cb731fd`. The curve has white point 1.5 stops (2.828427 linear), shoulder 0, linear strength and angle 0.001, and all three toe fields 1. The viewer uses the authored exposure floor 0.8 within the 0.8–1.0 range and applies the resource's zero-stop bias. [Pinned curve reference](https://github.com/ValveResourceFormat/ValveResourceFormat/blob/942df5b37ebbde6153f6c488880b91d4bed003e6/Renderer/Shaders/post_processing.frag.slang)
+
+The pinned renderer exponentiates the white point before clamping and normalization. At exposure 0.8, Mirage’s near-linear curve gives linear values 0.198439, 0.396656 and 0.792425 for scene inputs 0.25, 0.50 and 1.00. The previous interpretation of 1.5 as a linear value overstated the slope by about 1.89×. The independent CPU comparison covers both curves and an asymmetric LUT. The Mirage test also checks the corresponding sRGB bytes 123, 169 and 230. [Pinned white-point units](https://github.com/ValveResourceFormat/ValveResourceFormat/blob/942df5b37ebbde6153f6c488880b91d4bed003e6/Renderer/Renderer/SceneEnvironment/ScenePostProcessVolume.cs#L40-L49)
+
+The static entity’s sRGB color (255, 223, 179), brightness 3.0 and unit scale produce linear sun RGB (3.000, 2.214, 1.352). The pinned shader puts the reciprocal Lambert factor in the light units. The graded path compensates for Three applying it within the BRDF. The viewmodel uses T3’s half-metre eye trace, which attenuates the directional intensity independently of the graded sun color, and the agent models receive the world’s shadow map when live shadows are enabled. The prepared panorama’s authored brightness is 1.0. Its LDR PMREM continues to use 0.35 as a broad lighting and reflection approximation. The grade replaces the legacy ambient and hemisphere lights when PMREM is available, with authored sky RGB (0.223, 0.610, 1.000) supplying a hemisphere fallback. [Pinned sunlight units](https://github.com/ValveResourceFormat/ValveResourceFormat/blob/942df5b37ebbde6153f6c488880b91d4bed003e6/Renderer/Renderer/World/WorldLightingInfo.cs#L730-L740)
+
+The desktop 2048² WebP atlas matched the official 8192² irradiance and red shadow channels at center-reduced texels:
+
+| Prepared texel | Source irradiance RGB        | WebP-decoded linear RGB      | Red shadow byte | Sun visibility |
+| -------------- | ---------------------------- | ---------------------------- | --------------- | -------------- |
+| (44, 0)        | 0.311279, 0.181030, 0.104248 | 0.313447, 0.180843, 0.103812 | 255             | 0              |
+| (440, 0)       | 0.457275, 0.378418, 0.409180 | 0.458464, 0.380054, 0.404783 | 0               | 1              |
+| (1133, 0)      | 0.443359, 0.322266, 0.239624 | 0.444491, 0.323807, 0.239963 | 237             | 0.070866       |
+
+At (11, 507), the directional RGB is (255, 130, 0). Unpacked XY has squared length 1.000384, causing the old reconstruction to return zero on a flat normal despite source irradiance of (1.826172, 1.358398, 0.744141). A five-degree minimum recovers the flat-normal term and limits grazing amplification.
+
+All 100 lightmapped materials in each prepared tier bind the ORM texture to glTF occlusion. AO is in the red glTF channel. Desktop examples have ranges 250–255 for `door_b` and 252–255 for `sitebwall07a`. The graded shader uses Three’s existing indirect AO and applies the same channel to direct light. Three’s indirect BRDF reduces the baked diffuse by the dielectric specular energy while using the bake for multiscattering.
+
+The captures use 960 × 540 Chromium SwiftShader with the confined Mirage fixture. The production frontend and version 2 environment ran against an isolated backend and a private copy of the installed asset tree. Both runs allocated 4× MSAA in RGBA16F color and DEPTH24_STENCIL8 at the full 960 × 540 drawing-buffer resolution. All six captures reported zero shader or page errors. The viewer retains its full drawing-buffer resolution on large displays, using the native canvas path if graded color and depth/stencil cannot fit within the listed allocation budget.
+
+The table reports mean linear Rec.709 luminance of 7 × 7 screenshot patches. Coordinates identify each patch center. The tick 21241 samples include the recorded red damage overlay.
+
+| Tick  | Interior wall              | Floor                      | Shadow                     | Exterior or opening        | Sky                       |
+| ----- | -------------------------- | -------------------------- | -------------------------- | -------------------------- | ------------------------- |
+| 18077 | (170, 191) 0.0946 → 0.0732 | (477, 366) 0.3036 → 0.2280 | (551, 103) 0.0337 → 0.0361 | (738, 223) 0.3121 → 0.2095 | Out of view               |
+| 43128 | (350, 115) 0.3108 → 0.1952 | (309, 375) 0.1762 → 0.1142 | (883, 139) 0.1125 → 0.0819 | (660, 191) 0.5133 → 0.3510 | Out of view               |
+| 21176 | (257, 201) 0.4065 → 0.2606 | (518, 275) 0.3210 → 0.5248 | (452, 301) 0.1715 → 0.1236 | (582, 193) 0.4159 → 0.5398 | (498, 57) 0.8726 → 0.6998 |
+| 18142 | (254, 190) 0.1100 → 0.0809 | (411, 420) 0.1782 → 0.1051 | (410, 369) 0.0437 → 0.0548 | (947, 244) 0.4573 → 0.3012 | Out of view               |
+| 43193 | (350, 115) 0.2872 → 0.1809 | (310, 375) 0.1746 → 0.1133 | (883, 139) 0.0949 → 0.0722 | (654, 184) 0.5043 → 0.3416 | Out of view               |
+| 21241 | (161, 200) 0.2119 → 0.1543 | (355, 368) 0.1849 → 0.3212 | (280, 334) 0.1576 → 0.2055 | (336, 191) 0.3621 → 0.4576 | (718, 37) 0.2822 → 0.2543 |
+
+The fire-wall crop clips zero of 26,862 pixels at both ticks, compared with 128 red-255 pixels at tick 43128 in the first grading attempt. The worst central scene crop has 1,797 of 284,700 pixels reaching 255 in any channel at tick 21176, including small sunlit highlights and the muzzle flash. The largest connected region reaching 255 in any channel has 383 pixels in a 42 × 22 box at the lit forearm. Small exterior highlights still reach the output limit. The sampled main exterior patch stays below clipping and gains luminance.
+
+The version 1 and unavailable-grade paths keep the original shader source and cache keys. The separate reviewed desktop, tablet and phone matrix exercised both themes and reduced motion. At 75% render resolution, the six targets used 4× MSAA at 720 × 405, 576 × 675 and 292 × 633, matching their drawing buffers. A visible through-wall silhouette issued its stencil test with 8 stencil bits and 4 samples on the graded framebuffer. The build, ramp, formatting, 42 backend cases and 22 asset cases passed. Local probes, bloom, automatic exposure metering, physical GPUs and a newly downloaded sparse post-processing entry remain unverified. The runtime is Node 22.23.5.
+
+### Integration with the first-person lens at `095c227`
+
+The uncommitted grading change was applied to detached integration tip `095c227`. T3 retains the half-metre eye cache, its directional intensity adjustment and its one local PMREM multiplier. T5 scales the authored sun color on the graded target and applies the output curve and LUT to the composed frame. WebGL recorded a color/depth/stencil clear at the start of the graded frame, followed by two depth-only clears for the world and POV layers. The graded X-ray draw used eight stencil bits and four samples. All four reviewed Mirage captures at ticks 43128, 21176, 43193 and 21241 show the weapon in the lower right, with the map and effects visible around it. Both runs used 960 × 540 Chromium SwiftShader with 4× MSAA and reported no shader or page faults. Both TypeScript checks, both builds, 42 backend tests, 22 asset tests, the grade ramp and all six POV tests passed. No commits or release artifacts were created.
+
 ## Replay motion, texture detail and C4 wave, 2026-11-22
 
 Runtime `b4cbe2209eba91fbce8e3732717a5d1820e1e9bf` passed [workflow 44975440124](https://github.com/Buco7854/cswatch/actions/runs/44975440124), run 50. CI passed 389 backend, 296 asset and 230 public browser cases, both private registration policies, first-admin setup, cold bootstrap and both hardened images. Anonymous registry checks matched the revision and digests for both latest and immutable tags. The application index is `sha256:1466ed03c6736088480ab78d7426d829d9326c111f5468a207c94ea6fb01662c` and the assets index is `sha256:22a54e5c4649d3aa859c3c4f1013e6579c24224ddee7079ecc2fc8c09ef95cb5`.

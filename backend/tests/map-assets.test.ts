@@ -628,3 +628,53 @@ test('environment faces reject links, special files, mixed dimensions, excess ag
     await s.close();
   }
 });
+
+test('grading LUT is versioned, access-gated and hash-bound, with identical legacy sky discovery and bytes', async () => {
+  const s = await setup();
+  try {
+    const { environmentPack, environment } = s.installEnvironment();
+    const base = '/api/maps/de_fixture';
+    const lutUrl = base + '/environment/grade.rgba';
+    const legacy = (await s.get(base)).body;
+    const sky = (await s.get(base + '/environment/px.png')).rawPayload;
+    const file = join(environmentPack, 'environment.json');
+    const lut = Buffer.alloc(32, 7);
+    const grade = {
+      exposure: { min: 0.8, max: 1, bias: 0 },
+      curve: {
+        shoulder: 0,
+        linear: 0.001,
+        angle: 0.001,
+        toe: 1,
+        numerator: 1,
+        denominator: 1,
+        whiteStops: 1.5,
+      },
+      lut: { size: 2, sha256: createHash('sha256').update(lut).digest('hex') },
+    };
+    assert.equal((await s.get(lutUrl)).statusCode, 404);
+    writeFileSync(file, JSON.stringify({ ...environment, schemaVersion: 2, grade }));
+    assert.equal((await s.get(base)).body, legacy);
+    const lutPath = join(environmentPack, 'grade.rgba');
+    writeFileSync(lutPath, lut);
+    assert.deepEqual((await s.get(base)).json().environment.grade, grade);
+    assert.deepEqual((await s.get(lutUrl)).rawPayload, lut);
+    assert.equal((await s.get(lutUrl, false)).statusCode, 401);
+    assert.equal((await s.get('/map-assets/environments/de_fixture/grade.rgba')).statusCode, 404);
+    writeFileSync(lutPath, Buffer.alloc(32, 8));
+    assert.equal((await s.get(lutUrl)).statusCode, 404);
+    assert.equal((await s.get(base)).body, legacy);
+    assert.deepEqual((await s.get(base + '/environment/px.png')).rawPayload, sky);
+    writeFileSync(file, JSON.stringify({ ...environment, schemaVersion: 2 }));
+    assert.equal((await s.get(base)).body, legacy);
+    writeFileSync(
+      file,
+      JSON.stringify({ ...environment, schemaVersion: 2, grade: { ...grade, lut: { size: 33 } } }),
+    );
+    assert.equal((await s.get(base)).body, legacy);
+    writeFileSync(file, JSON.stringify(environment));
+    assert.equal((await s.get(base)).body, legacy);
+  } finally {
+    await s.close();
+  }
+});
