@@ -15,7 +15,8 @@ export function indexSpectatorEvents(data: Playback): SpectatorEvents {
         : event.type === 'player_death'
           ? index.deaths
           : undefined;
-    if (!destination) continue;
+    if (!destination || (destination === index.damage && recordedAmount(event) === undefined))
+      continue;
     const player = eventPlayer(data, event, 'user');
     if (!player) continue;
     const events = destination.get(player.id) || [];
@@ -55,10 +56,15 @@ function at(data: Playback, id: string, tick: number) {
     },
   );
 }
-const recordedDamage = (value: unknown) =>
-  typeof value === 'number' && Number.isSafeInteger(value) && value > 0 && value <= 1_000_000
-    ? value
-    : 0;
+function recordedAmount(event: GameEvent) {
+  const damage = (value: unknown) =>
+    typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= 1_000_000
+      ? value
+      : undefined;
+  const health = damage(event.dmg_health),
+    armor = damage(event.dmg_armor);
+  return health === undefined && armor === undefined ? undefined : (health ?? 0) + (armor ?? 0);
+}
 export type DamageFeedbackState = { opacity: number; direction?: number };
 
 /** A deliberately approximate spectator cue derived only from recorded hurt
@@ -71,20 +77,23 @@ export function damageFeedbackAt(
 ): DamageFeedbackState | undefined {
   const events = timeline.damage.get(selected);
   if (!events || !Number.isFinite(data.tickRate) || data.tickRate <= 0) return;
+  const current = preceding(events, tick);
+  if (current < 0) return;
   const duration = data.tickRate * 0.65;
-  let opacity = 0,
+  const mergeWindow = data.tickRate * 0.34;
+  const newest = events[current];
+  const next = events[current + 1];
+  const age = tick - newest.tick;
+  if (age >= duration) return;
+  // Keep closely spaced hits lit as one burst, then release from the last hit.
+  const decay = next && next.tick - newest.tick <= mergeWindow ? 1 : 1 - age / duration;
+  let peak = 0,
     direction: number | undefined;
-  // A bounded number of simultaneous hits can strengthen the cue, not add
-  // flashing animations or allocate an effect for every event in the match.
-  for (let index = preceding(events, tick), read = 0; index >= 0 && read++ < 8; index--) {
+  for (let index = current; index >= 0 && current - index < 8; index--) {
     const event = events[index];
-    const age = tick - event.tick;
-    if (age >= duration) break;
-    const amount = recordedDamage(event.dmg_health) + recordedDamage(event.dmg_armor);
-    if (!amount) continue;
-    const decay = 1 - age / duration;
-    opacity = Math.min(0.7, opacity + Math.min(0.55, 0.24 + amount / 280) * decay * decay);
-    if (direction !== undefined) continue;
+    if (index < current && events[index + 1].tick - event.tick > mergeWindow) break;
+    peak = Math.min(0.96, peak + Math.min(0.94, 0.64 + (recordedAmount(event) ?? 0) / 270));
+    if (direction !== undefined || tick - event.tick >= duration) continue;
     const attacker = eventPlayer(data, event, 'attacker');
     if (!attacker || attacker.id === selected) continue;
     const origin = at(data, attacker.id, event.tick),
@@ -97,7 +106,7 @@ export function damageFeedbackAt(
     const facing = at(data, selected, tick)?.yaw ?? victim.yaw;
     direction = -((((Math.atan2(y, x) * 180) / Math.PI - facing + 540) % 360) - 180);
   }
-  return opacity > 0 ? { opacity, direction } : undefined;
+  return { opacity: peak * decay, direction };
 }
 
 type FollowObservation = {

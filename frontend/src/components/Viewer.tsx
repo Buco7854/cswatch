@@ -85,6 +85,7 @@ import { combatDamage } from '../combat-recap';
 import { damageFeedbackAt, DeathFollowController, indexSpectatorEvents } from '../spectator-state';
 import DamageFeedback from './DamageFeedback';
 import FlashFeedback from './FlashFeedback';
+import { flashFeedbackAt } from '../flash-feedback';
 import Communications from './Communications';
 import ViewerOptions from './ViewerOptions';
 import ViewerLoading from './ViewerLoading';
@@ -263,7 +264,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     () => (data ? roundEvents(data, { number: 0, start: first, end: last }, selected) : []),
     [data?.events, data?.players, data?.sample, first, last, selected],
   );
-  const { settings, setSettings } = useViewerPreferences();
+  const { settings, setSettings, mobile } = useViewerPreferences();
   useEffect(() => {
     audio.setMaster(settings.audioVolume, settings.audioMuted);
   }, [audio, settings.audioVolume, settings.audioMuted]);
@@ -1056,7 +1057,19 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
   ];
   const { frame } = frameAt(data, tick);
   const selectedPosition = frame.players.find((player) => player.id === selected);
-  const recordedFlash = selectedPosition?.alive ? selectedPosition.flash : undefined;
+  const sampledFlash = selectedPosition?.alive ? selectedPosition.flash : undefined;
+  const recordedFlash =
+    mode === 'pov' &&
+    !using2D &&
+    !buffering &&
+    settings.flashFeedback !== 'off' &&
+    sampledFlash !== undefined &&
+    Number.isFinite(sampledFlash) &&
+    sampledFlash > 0
+      ? settings.flashFeedback === 'indicator'
+        ? 0
+        : flashFeedbackAt(data, selected, tick)
+      : undefined;
   const scopeFov =
     mode === 'pov' && !using2D && !buffering ? scopedVerticalFov(selectedPosition) : undefined;
   const playerCrosshairCode =
@@ -1407,6 +1420,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
               key={sceneKey}
               data={data}
               tick={tick}
+              mobile={mobile}
               playing={playing && !buffering}
               mode={mode}
               selected={selected}
@@ -1418,6 +1432,13 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
               onAudioListener={cameraAudio}
             />
           </Suspense>
+          {mode === 'pov' &&
+            !using2D &&
+            !buffering &&
+            settings.flashFeedback !== 'off' &&
+            recordedFlash !== undefined && (
+              <FlashFeedback presentation={settings.flashFeedback} opacity={recordedFlash} />
+            )}
           {settings.damageFeedback &&
             mode === 'pov' &&
             !using2D &&
@@ -1425,13 +1446,6 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
             spectatorEvents && (
               <DamageFeedback value={damageFeedbackAt(data, spectatorEvents, selected, tick)} />
             )}
-          {mode === 'pov' &&
-            !using2D &&
-            !buffering &&
-            settings.flashFeedback !== 'off' &&
-            recordedFlash !== undefined &&
-            Number.isFinite(recordedFlash) &&
-            recordedFlash > 0 && <FlashFeedback presentation={settings.flashFeedback} />}
           {buffering && (
             <div className="replay-buffer" role={chunkError ? 'alert' : 'status'}>
               <span>{t(chunkError || 'Loading this moment…')}</span>
@@ -1955,6 +1969,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       )}
       {options && (
         <ViewerOptions
+          compactProfile={mobile || mapRender?.compactTracerProfile}
           settings={settings}
           playerCrosshairCode={playerCrosshairCode}
           equipment={mapRender?.map === data.map ? mapRender.equipment : undefined}

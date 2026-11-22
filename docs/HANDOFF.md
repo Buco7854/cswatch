@@ -1,5 +1,7 @@
 # Current handoff
 
+Local combat presentation adds a high-contrast POV hurt frame, recorded grenade path reveal and a five-second fade in 3D and on the radar. Grenade paths can show all players, the followed player or none. Strong POV flash uses the observed duration field to recover in demo time. Reduced motion keeps steady damage and path cues and uses the flash indicator. Older replay chunks preserve the samples they carry. Shot tracers use recorded fire and aim plus a per-shot prepared-map surface trace for presentation. The default is on for desktop High and Auto profiles and off for compact and mobile. Replays that exceed the shared budget drop aim, followed by combat context and then gameplay audio. This worktree is unreleased. [Local verification](VERIFICATION.md#local-combat-feedback-2026-11-22)
+
 Local T6 adds optional per-tick aim to newly prepared replay chunks and uses it in the shared pose sampler. Older artifacts use their existing angles. See the [fixture verification](VERIFICATION.md#local-per-tick-aim-t6-2026-11-22) for accuracy, chunk growth and confined parser costs. The change is unreleased.
 
 Local first-person presentation follow-up, 2026-11-22. Authored and static held weapons share a dedicated lens, right-handed framing, recorded turn lag and a short dip inferred from descent and settling. Prepared static map geometry can shade the weapon. The existing pinned rigs contain fire and reload clips, and the viewer can sample a draw clip when a pack supplies one. [Verification](VERIFICATION.md#first-person-lens-and-motion-2026-11-22)

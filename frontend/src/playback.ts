@@ -1,3 +1,4 @@
+import type { GrenadePathsMode } from './grenade-paths';
 import type { Playback, Frame } from './types';
 import { defaultCrosshairStyle, normalizeCrosshairStyle, type CrosshairStyle } from './crosshair';
 export function playbackBounds(data: Playback) {
@@ -22,9 +23,9 @@ export function playbackBounds(data: Playback) {
   return bounds;
 }
 export function frameAt(
-  data: Playback,
+  data: Pick<Playback, 'frames'>,
   tick: number,
-): { previous?: Frame; frame: Frame; next: Frame; alpha: number } {
+): { index: number; previous?: Frame; frame: Frame; next: Frame; alpha: number } {
   let lo = 0,
     hi = data.frames.length - 1;
   while (lo < hi) {
@@ -35,6 +36,7 @@ export function frameAt(
   const frame = data.frames[lo],
     next = data.frames[Math.min(lo + 1, data.frames.length - 1)];
   return {
+    index: lo,
     previous: data.frames[lo - 1],
     frame,
     next,
@@ -71,6 +73,7 @@ export type ViewerSettings = {
   flashFeedback: 'off' | 'indicator' | 'reduced' | 'strong';
   damageFeedback: boolean;
   shotEffects: boolean;
+  shotTracers?: boolean;
   autoFollowDeath: boolean;
   crosshair: boolean;
   crosshairStyle: CrosshairStyle;
@@ -83,7 +86,7 @@ export type ViewerSettings = {
   matchScore: boolean;
   reviewFeed: boolean;
   utilities: boolean;
-  trajectories: boolean;
+  trajectories: GrenadePathsMode;
   trails: boolean;
   radar: boolean;
   killfeed: boolean;
@@ -137,7 +140,7 @@ export const defaultSettings: ViewerSettings = {
   matchScore: true,
   reviewFeed: false,
   utilities: true,
-  trajectories: true,
+  trajectories: 'all',
   trails: false,
   radar: true,
   killfeed: true,
@@ -173,10 +176,23 @@ export const defaultSettings: ViewerSettings = {
   soundRounds: true,
   quality: 'auto',
 };
+export function shotTracersEnabled(
+  settings: Pick<ViewerSettings, 'quality' | 'shotTracers'>,
+  mobileOrCompact: boolean,
+) {
+  return (
+    settings.shotTracers ??
+    (!mobileOrCompact && (settings.quality === 'auto' || settings.quality === 'high'))
+  );
+}
+
 export function readSettings(key = 'viewer-settings'): ViewerSettings {
   try {
     const saved = JSON.parse(localStorage.getItem(key) || '{}');
     const settings = { ...defaultSettings };
+    if (typeof saved.shotTracers === 'boolean') settings.shotTracers = saved.shotTracers;
+    if (typeof saved.trajectories === 'boolean')
+      settings.trajectories = saved.trajectories ? 'all' : 'off';
     if (saved.autoSkip === true) {
       settings.autoSkipFreeze = true;
       settings.autoSkipTimeouts = true;
@@ -187,6 +203,7 @@ export function readSettings(key = 'viewer-settings'): ViewerSettings {
         typeof saved[k] === typeof settings[k] &&
         (k !== 'inputLayout' || ['wasd', 'zqsd'].includes(saved[k])) &&
         (k !== 'voiceScope' || ['selected', 'team', 'all'].includes(saved[k])) &&
+        (k !== 'trajectories' || ['all', 'selected', 'off'].includes(saved[k])) &&
         (k !== 'flashFeedback' || ['off', 'indicator', 'reduced', 'strong'].includes(saved[k])) &&
         (!['voiceVolume', 'gameVolume', 'audioVolume'].includes(k) ||
           (Number.isFinite(saved[k]) && saved[k] >= 0 && saved[k] <= 1)) &&

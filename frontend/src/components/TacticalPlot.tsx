@@ -1,5 +1,5 @@
 import { t } from '../i18n';
-import { useId, useMemo } from 'react';
+import { useCallback, useId, useMemo } from 'react';
 import type { Playback } from '../types';
 import type { MapOverview } from '../../../shared/map-assets';
 import { overviewPoint, overviewRadius } from '../tactical-coordinates';
@@ -10,6 +10,7 @@ import { buildUtilityZoneIndex, projectilesAt } from '../utility-state';
 import { hasRecordedProjectiles, indexItems, itemsAt } from '../item-state';
 import { equipmentKind, equipmentName } from '../equipment-display';
 import EquipmentGlyph from './EquipmentGlyph';
+import TacticalGrenadePaths from './TacticalGrenadePaths';
 import MapUnavailable, { type MapUnavailableAction } from './MapUnavailable';
 import type { MapUnavailableReason } from '../map-availability';
 import './tactical-plot.css';
@@ -65,23 +66,25 @@ export default function TacticalPlot({
   );
   const zones = settings.utilities ? zonesAt(tick) : [];
   const projectiles = useMemo(
-    () => projectilesAt(data.grenades || [], tick, data.tickRate, settings.trajectories),
-    [data.grenades, tick, data.tickRate, settings.trajectories],
+    () => projectilesAt(data.grenades || [], tick, data.tickRate, false),
+    [data.grenades, tick, data.tickRate],
   );
   const itemIndex = useMemo(() => indexItems(data.itemSamples), [data.itemSamples]);
   const items = useMemo(() => itemsAt(itemIndex, tick), [itemIndex, tick]);
   const recordedProjectiles = hasRecordedProjectiles(data);
   const itemBodies = items.filter((item) => item.kind !== 'projectile' || recordedProjectiles);
-  const position = (value: { x: number; y: number }) => {
-    const normalized = calibrated
-      ? overviewPoint(calibrated, value)
-      : { x: (value.x - bounds.minX) / bounds.size, y: 1 - (value.y - bounds.minY) / bounds.size };
-    return { x: 10 + normalized.x * 100, y: 10 + normalized.y * 100 };
-  };
-  const point = (value: { x: number; y: number }) => {
-    const p = position(value);
-    return `${p.x},${p.y}`;
-  };
+  const position = useCallback(
+    (value: { x: number; y: number }) => {
+      const normalized = calibrated
+        ? overviewPoint(calibrated, value)
+        : {
+            x: (value.x - bounds.minX) / bounds.size,
+            y: 1 - (value.y - bounds.minY) / bounds.size,
+          };
+      return { x: 10 + normalized.x * 100, y: 10 + normalized.y * 100 };
+    },
+    [bounds, calibrated],
+  );
   const { frame } = frameAt(data, tick);
   if (!calibrated && !data.sample)
     return compact ? null : (
@@ -182,30 +185,28 @@ export default function TacticalPlot({
             stroke="none"
           />
         ))}
-        {projectiles.map((grenade) => (
-          <g key={grenade.id}>
-            {settings.trajectories && grenade.trail.length > 1 && (
-              <polyline
-                className="tactical-grenade-path"
-                points={grenade.trail.map(point).join(' ')}
-                fill="none"
-                stroke={tacticalPalette.utility}
-                strokeWidth=".55"
-              />
-            )}
-            {!recordedProjectiles && (
-              <circle
-                className="tactical-projectile"
-                cx={position(grenade.point).x}
-                cy={position(grenade.point).y}
-                r={compact ? 1.2 : 1.5}
-                fill={tacticalPalette.utility}
-                stroke={tacticalPalette.ground}
-                strokeWidth=".35"
-              />
-            )}
-          </g>
-        ))}
+        {settings.trajectories !== 'off' && (
+          <TacticalGrenadePaths
+            data={data}
+            tick={tick}
+            selected={selected}
+            mode={settings.trajectories}
+            position={position}
+          />
+        )}
+        {!recordedProjectiles &&
+          projectiles.map((grenade) => (
+            <circle
+              key={grenade.id}
+              className="tactical-projectile"
+              cx={position(grenade.point).x}
+              cy={position(grenade.point).y}
+              r={compact ? 1.2 : 1.5}
+              fill={tacticalPalette.utility}
+              stroke={tacticalPalette.ground}
+              strokeWidth=".35"
+            />
+          ))}
         {itemBodies.map((item) => {
           const p = position(item),
             kind = equipmentKind(item.equipment),

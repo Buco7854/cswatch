@@ -46,13 +46,21 @@
   inset: 0;
   z-index: 2;
   pointer-events: none;
-  background: radial-gradient(
-    ellipse farthest-side,
-    rgb(164 16 13 / 9%) 12%,
-    rgb(188 21 15 / 20%) 46%,
-    rgb(213 28 17 / 70%) 79%,
-    #e32b18 100%
-  );
+  --hurt-rim: #ff473e;
+  opacity: var(--hurt-opacity);
+}
+.spectator-damage-frame {
+  position: absolute;
+  inset: 0;
+  border: clamp(2px, 0.4vmin, 4px) solid var(--hurt-rim);
+  --hurt-edge: rgb(238 19 27 / 52%);
+  --hurt-mid: rgb(227 21 30 / 21%);
+  background:
+    linear-gradient(to bottom, var(--hurt-edge), var(--hurt-mid) 7vmin, transparent 17vmin),
+    linear-gradient(to top, var(--hurt-edge), var(--hurt-mid) 7vmin, transparent 17vmin),
+    linear-gradient(to right, var(--hurt-edge), var(--hurt-mid) 7vmin, transparent 17vmin),
+    linear-gradient(to left, var(--hurt-edge), var(--hurt-mid) 7vmin, transparent 17vmin);
+  box-shadow: inset 0 0 0 1px #9c201d;
 }
 .spectator-damage-direction {
   position: absolute;
@@ -61,7 +69,9 @@
   width: clamp(110px, 17vmin, 180px);
   height: clamp(110px, 17vmin, 180px);
   transform: translate(-50%, -50%);
-  fill: #f05b50;
+  fill: var(--hurt-rim);
+  stroke: #591c1a;
+  stroke-width: 0.8;
 }
 .spectator-flash {
   position: absolute;
@@ -72,10 +82,7 @@
 .spectator-flash-tint {
   position: absolute;
   inset: 0;
-  background: rgb(250 247 239 / 30%);
-}
-.spectator-flash-tint[data-strength='strong'] {
-  background: rgb(250 247 239 / 72%);
+  background: #fffcf5;
 }
 .spectator-flash-label {
   position: absolute;
@@ -90,6 +97,12 @@
   font-weight: 600;
 }
 @media (prefers-reduced-motion: reduce) {
+  .spectator-damage {
+    opacity: 0.72;
+  }
+  .spectator-damage-direction {
+    display: none;
+  }
   .spectator-flash-tint[data-strength] {
     display: none;
   }
