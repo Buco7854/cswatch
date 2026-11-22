@@ -370,7 +370,7 @@ async function preparedFixture() {
   await writeFile(
     join(environment, 'environment.json'),
     JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
       map,
       assetVersion: version,
       source: 'Original synthetic environment',

@@ -340,7 +340,7 @@ export async function prepareEnvironment(config) {
       ? await writeMapGrade(destination, authoredGrade, gradeInput.data)
       : undefined;
     const descriptor = {
-      schemaVersion: grade ? 2 : 1,
+      schemaVersion: 2,
       map,
       assetVersion,
       source: source.trim(),

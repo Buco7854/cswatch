@@ -47,7 +47,7 @@ async function validateEnvironment(prepared, map, assetVersion) {
       ...(hasGrade ? ['grade'] : []),
     ]) ||
     (hasFog && !validPreparedFog(data.fog)) ||
-    data.schemaVersion !== (hasGrade ? 2 : 1) ||
+    data.schemaVersion !== 2 ||
     (hasGrade && !validMapGrade(data.grade)) ||
     data.map !== map ||
     data.assetVersion !== assetVersion ||

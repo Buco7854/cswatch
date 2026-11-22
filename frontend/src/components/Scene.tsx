@@ -590,6 +590,7 @@ function World({
   sun,
   skylight,
   environment,
+  gradeEnvironment,
   reportEnvironment,
   preview,
   settings,
@@ -621,6 +622,7 @@ function World({
   skylight: boolean;
   modelScope: ModelScope | null;
   environment: MapEnvironment | null;
+  gradeEnvironment: MapEnvironment | null;
   reportEnvironment: (identity: string | null, status: AssetStatus, skylight?: boolean) => void;
   preview: boolean;
   settings: ViewerSettings;
@@ -973,7 +975,12 @@ function World({
     (data.sample || modelReady);
 
   return (
-    <>
+    <SceneGrade
+      environment={data.sample ? null : gradeEnvironment}
+      low={low}
+      revision={contextRevision}
+      manualWorld={!sky && !showPovEquipment}
+    >
       <EnvironmentBackground
         key={contextRevision}
         environment={environment}
@@ -982,13 +989,6 @@ function World({
         resources={fogResources}
         low={low}
       />
-      {!data.sample && environment?.grade && (
-        <SceneGrade
-          grade={environment.grade}
-          firstFace={environment.sky.faces[0]}
-          manualWorld={!sky && !showPovEquipment}
-        />
-      )}
       {sky && <SkyPass sky={sky} sun={sun} skylight={skylight} />}
       <SceneLighting
         sample={Boolean(data.sample)}
@@ -1153,7 +1153,7 @@ function World({
           maxDistance={bounds.extent * 3}
         />
       )}
-    </>
+    </SceneGrade>
   );
 }
 function UtilityLayer({
@@ -1540,7 +1540,8 @@ export default function Scene({
   const currentRendererAttempt = useRef(rendererAttempt);
   currentRendererAttempt.current = rendererAttempt;
   const modelScope = useMapModelScope(data.sample ? null : model, rendererAttempt);
-  const environment = compact ? null : mapAssets.assets.environment || null,
+  const gradeEnvironment = mapAssets.assets.environment ?? null,
+    environment = compact ? null : gradeEnvironment,
     environmentIdentity = mapEnvironmentKey(environment);
   const [environmentLoad, setEnvironmentLoad] = useState<{
     identity: string | null;
@@ -1836,6 +1837,7 @@ export default function Scene({
                           : null
                       }
                       environment={environment}
+                      gradeEnvironment={gradeEnvironment}
                       reportEnvironment={reportEnvironment}
                       preview={preview}
                       settings={settings}

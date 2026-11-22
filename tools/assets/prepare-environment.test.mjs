@@ -459,6 +459,8 @@ test('actual GLB merge keeps separately-rendered tagged landscape through map op
   const metadata = JSON.parse(
     await readFile(join(result.environmentPath, 'environment.json'), 'utf8'),
   );
+  assert.equal(metadata.schemaVersion, 2);
+  assert.equal(Object.hasOwn(metadata, 'grade'), false);
   assert.equal(metadata.landscape, true);
   assert.equal(metadata.sky.brightness, 2 ** 0.765);
   assert.equal(metadata.fog.maxOpacity, 1);

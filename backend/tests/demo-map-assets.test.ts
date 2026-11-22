@@ -113,7 +113,7 @@ function install(root: string, map = 'de_mirage', assetVersion = 'Synthetic-vers
   writeFileSync(
     join(environment, 'environment.json'),
     JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
       map,
       assetVersion,
       source: 'Synthetic fixture only',

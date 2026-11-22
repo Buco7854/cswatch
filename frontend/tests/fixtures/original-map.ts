@@ -106,6 +106,8 @@ export function originalMapGLB(
   const positions: number[] = [],
     normals: number[] = [],
     coordinates: number[] = [];
+  // Distinct floor and landscape colors make pass order measurable after grading.
+  const floorColor = landscape ? [0.18, 0.59, 0.25, 1] : [0.46, 0.59, 0.53, 1];
   for (const [left, top, right, bottom] of rooms) {
     const source = [
       [left, top],
@@ -218,7 +220,7 @@ export function originalMapGLB(
           : {}),
         doubleSided: true,
         pbrMetallicRoughness: {
-          baseColorFactor: texture || black ? [1, 1, 1, 1] : [0.46, 0.59, 0.53, 1],
+          baseColorFactor: texture || black ? [1, 1, 1, 1] : floorColor,
           ...(texture ? { baseColorTexture: { index: 0 } } : {}),
           metallicFactor: 0,
           roughnessFactor: 1,

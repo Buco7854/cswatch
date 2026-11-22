@@ -1,5 +1,7 @@
 # Feature status
 
+- The WebGL viewer composites into a linear target and grades once. Prepared environments may supply an authored exposure range, tone curve and hash-bound 3D LUT. Other maps use a neutral shoulder and identity LUT. Low and Compact use a single-sample target. [Verification](VERIFICATION.md#unified-map-lighting-and-output-2026-11-22)
+
 - Device-local viewer preferences use current fields and values. Unsupported saved values fall back to the current defaults.
 
 Docker/Compose runs TypeScript services behind the operator's reverse proxy, without Caddy. The default image is `ghcr.io/buco7854/cswatch:latest` with `CSWATCH_IMAGE` override. Weekly rebuild/publication and dependency-update workflows exist, including the separately published `assets` image target. The normal Compose stack starts this isolated worker by default. Both release images passed their hardened checks and published in runtime workflow `44482972828`. Docker was unavailable locally; CI supplies the container evidence.
@@ -12,8 +14,6 @@ Docker/Compose runs TypeScript services behind the operator's reverse proxy, wit
 - The 3D viewer uses one smoke volume renderer. Missing recorded density and failed workers use the analytic field. A failed volume target is reported and checked again after WebGL restoration.
 
 - Quality-independent recorded projectile visibility, interpolation without extrapolation and independent path controls. Local 3D utility effects include recorded inferno footprints, event-only fire patches and short HE and flash bursts. The flames, scorch and burst shaders are procedural. The 2D view retains analytical utility markers.
-
-- Optional prepared environment version 2 supplies an authored exposure range, tone curve and hash-bound 3D color LUT for the detailed WebGL viewer. The graded path uses the minimum authored exposure for deterministic seeks. Version 1 environments continue through the legacy renderer. [Mirage verification](VERIFICATION.md#local-authored-mirage-grading-2026-11-22)
 
 - Recorded damage uses a crisp POV edge frame, a center-clear glow and the recorded attacker direction when available. POV flash feedback uses the sampled pawn state and offers Off, Indicator only, Reduced tint and Strong tint. The default is Indicator only. Reduced motion keeps the hurt frame steady and shows a flash indicator.
 - Optional shot tracers sample recorded weapon-fire events and aim in 3D. The streak uses the rendered muzzle when available and clips against prepared opaque map surfaces. Tracers default on for desktop High and Auto profiles, default off for compact and mobile profiles, and are hidden under reduced motion. Saved choices override the profile default.

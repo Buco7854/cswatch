@@ -540,7 +540,7 @@ async function originalPack(output, entry) {
   await writeFile(
     join(environment, 'environment.json'),
     JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
       map,
       assetVersion,
       source: 'Original worker QA pixels',
