@@ -10,6 +10,11 @@ import { installEquipmentModels } from './install-equipment-models.mjs';
 import { installEquipmentIcons, equipmentIconSources } from './install-equipment-icons.mjs';
 import { equipmentModelRegistry } from './equipment-model-registry.mjs';
 import { inspectEquipmentGltf } from './equipment-model-input.mjs';
+import contract from '../../shared/agent-animation.json' with { type: 'json' };
+import {
+  directionalDeclarations,
+  validDirectionalRoles,
+} from '../../shared/agent-animation-contract.mjs';
 import { verifyPreparedGlb } from './prepared-glb.mjs';
 import { validPng } from '../../backend/dist/png.js';
 import {
@@ -70,14 +75,28 @@ async function validateBank(root, kind, manifest) {
     await regular(metadataPath, 16384, 2);
     const metadata = JSON.parse(await readFile(metadataPath, 'utf8'));
     // Validate dense/Meshopt allocation bounds before any decoder is called.
-    await inspectEquipmentGltf(modelPath);
+    const { json } = await inspectEquipmentGltf(modelPath);
+    if (
+      kind === 'agents' &&
+      (!Array.isArray(metadata.animationRoles) ||
+        !validDirectionalRoles(metadata.animationRoles) ||
+        !directionalDeclarations(json.animations) ||
+        json.animations.some(
+          (animation) =>
+            !Array.isArray(animation.channels) ||
+            !animation.channels.length ||
+            animation.channels.length > contract.limits.maxChannels,
+        ))
+    )
+      throw Error('Prepared agent must contain the complete directional animation set.');
     const verified = await verifyPreparedGlb(modelPath);
     if (
-      metadata.schemaVersion !== 1 ||
+      (kind === 'agents'
+        ? metadata.schemaVersion !== contract.schemaVersion || metadata.team !== id
+        : metadata.schemaVersion !== 1 || metadata.id !== id) ||
       metadata.assetVersion !== `steam-2347770-${manifest}` ||
       metadata.sha256 !== verified.sha256 ||
-      metadata.bytes !== verified.bytes ||
-      (kind === 'agents' ? metadata.team !== id : metadata.id !== id)
+      metadata.bytes !== verified.bytes
     )
       throw Error('Native model content/provenance does not match its fixed identity.');
   };
@@ -200,7 +219,6 @@ export async function installPresentationAssets(options, manifest, kind, adapter
         updatedAt: now(),
         ...(previous?.counts ? { counts: previous.counts } : {}),
         ...(previous?.unsupported ? { unsupported: previous.unsupported } : {}),
-        ...(previous?.animation ? { animation: previous.animation } : {}),
       };
       await writePresentationStatus(options.jobs, status);
       return { status: state === 'ready' ? 'installed' : 'preserved' };
@@ -320,7 +338,7 @@ export async function installPresentationAssets(options, manifest, kind, adapter
         {
           ...common,
           ...(kind === 'agents'
-            ? { agents: ['ct', 't'], allowIdleFallback: true }
+            ? { agents: ['ct', 't'] }
             : { items: missing, allowMissing: true, firstItemOnly: true }),
           cleanup: true,
         },
@@ -374,6 +392,7 @@ export async function installPresentationAssets(options, manifest, kind, adapter
       );
     await options.beforePublish?.();
     await (adapters.reserve || checkFreeReserve)(options.cache, output);
+    controller.throwIfAborted();
     publishing = await mkdtemp(
       join(extending ? target : output, extending ? '.equipment-' : '.presentation-'),
     );
@@ -415,9 +434,6 @@ export async function installPresentationAssets(options, manifest, kind, adapter
             },
             unsupported: installation.unsupported,
           }
-        : {}),
-      ...(kind === 'agents' && installation?.animation
-        ? { animation: installation.animation }
         : {}),
       ...(remaining ? { stage: 'acquiring' } : {}),
       ...(modelId

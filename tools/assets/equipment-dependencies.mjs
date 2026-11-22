@@ -3,12 +3,8 @@ import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { readVpkDirectory, resourcePath, source2References } from './source2-dependencies.mjs';
 import { staticModelDependency } from './equipment-source-model.mjs';
-import { agentAnimationRegistry, directionalAgentRegistry } from './agent-animation-registry.mjs';
-export const agentIdleResource = agentAnimationRegistry.idle;
-const fixedAnimationResources = new Set([
-  ...Object.values(agentAnimationRegistry),
-  ...Object.values(directionalAgentRegistry),
-]);
+import { directionalAgentRegistry } from './agent-animation-registry.mjs';
+const fixedAnimationResources = new Set(Object.values(directionalAgentRegistry));
 export async function scanEquipmentDependencies({ game, seeds, index = readVpkDirectory }) {
   if (
     !Array.isArray(seeds) ||

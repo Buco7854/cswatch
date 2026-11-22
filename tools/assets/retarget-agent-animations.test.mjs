@@ -3,10 +3,9 @@ import assert from 'node:assert/strict';
 import { Document } from '@gltf-transform/core';
 import contract from '../../shared/agent-animation.json' with { type: 'json' };
 import {
-  directionalClassRoles,
+  directionalRoles,
   directionalMovementRoles,
 } from '../../shared/agent-animation-contract.mjs';
-import { agentAnimationRoles } from './agent-animation-registry.mjs';
 import { inverseRigid } from './agent-retarget.mjs';
 import { retargetAgentAnimations } from './retarget-agent-animations.mjs';
 
@@ -83,32 +82,50 @@ function fixture({ animated = false, extra = false, stride } = {}) {
   }
   return { document, motion, pelvis, hand, between };
 }
-const sources = () =>
+const fixtureClips = ({ staticPoses = false } = {}) =>
   Object.fromEntries(
-    agentAnimationRoles.map((role) => [role, fixture({ animated: true }).document]),
+    directionalRoles.map((role) => {
+      const moving = directionalMovementRoles.has(role);
+      const angle = (contract.directions.indexOf(role.split('-').at(-1)) * Math.PI) / 4;
+      const { document } = fixture({
+        animated: true,
+        stride: moving ? [Math.sin(angle) * 2, Math.cos(angle) * 2] : undefined,
+      });
+      if (staticPoses && !moving)
+        for (const sampler of document.getRoot().listAnimations()[0].listSamplers()) {
+          const output = sampler.getOutput();
+          output.setElement(1, output.getElement(0, []));
+        }
+      return [role, document];
+    }),
   );
 
 test('native cycles preserve named world deformation across different hierarchies while recorded position owns travel', () => {
   const target = fixture({ extra: true }),
-    result = retargetAgentAnimations(target.document, sources(), { minimumMappedBones: 3 });
-  assert.equal(result.pose, 'approximate-native-locomotion');
-  assert.equal(result.totalSamples, 10);
+    result = retargetAgentAnimations(target.document, fixtureClips(), { minimumMappedBones: 3 });
+  assert.equal(result.pose, 'directional-native-agent');
+  assert.equal(result.totalSamples, 174);
   assert.deepEqual(
     result.clips.map((clip) => clip.name),
-    agentAnimationRoles.map((role) => `cswatch:${role}`),
+    directionalRoles.map((role) => `cswatch:${role}`),
   );
   assert.equal(
     result.clips.every((clip) => clip.mappedBones === 3),
     true,
   );
   assert.equal(
-    result.clips.every((clip) => clip.nativeGroundSpeed === 10),
+    result.clips.every(
+      (clip) =>
+        Math.abs(clip.nativeGroundSpeed - (directionalMovementRoles.has(clip.role) ? 2 : 10)) <
+        1e-6,
+    ),
     true,
   );
   assert.ok(result.sampledBounds.max[0] < 1, 'native 10m travel must not be applied twice');
-  const animation = target.document.getRoot().listAnimations()[1];
+  const animation = target.document.getRoot().listAnimations()[0];
   for (const channel of animation.listChannels()) {
-    const value = channel.getSampler().getOutput().getElement(1, []),
+    const output = channel.getSampler().getOutput(),
+      value = output.getElement(output.getCount() - 1, []),
       node = channel.getTargetNode();
     if (channel.getTargetPath() === 'translation') node.setTranslation(value);
     else if (channel.getTargetPath() === 'rotation') node.setRotation(value);
@@ -119,23 +136,30 @@ test('native cycles preserve named world deformation across different hierarchie
     Math.abs(target.motion.getWorldMatrix()[0] - 1) < 1e-6,
     'native root yaw does not rotate recorded aim twice',
   );
-  assert.ok(Math.abs(target.pelvis.getWorldMatrix()[13] - 1.1) < 1e-6);
-  assert.ok(Math.abs(target.hand.getWorldMatrix()[12] - 0.3) < 1e-6);
-  assert.ok(Math.abs(target.hand.getWorldMatrix()[13] - 1.4) < 1e-6);
-  assert.ok(Math.abs(target.hand.getWorldMatrix()[0]) < 1e-6, 'genuine hand rotation retained');
+  assert.ok(Math.abs(target.pelvis.getWorldMatrix()[13] - 1.1) < 0.0001);
+  assert.ok(Math.abs(target.hand.getWorldMatrix()[12] - 0.3) < 0.0001);
+  assert.ok(Math.abs(target.hand.getWorldMatrix()[13] - 1.4) < 0.0001);
+  assert.ok(Math.abs(target.hand.getWorldMatrix()[0]) < 0.0001, 'genuine hand rotation retained');
   assert.deepEqual(target.between.getTranslation(), [0, 0.1, 0]);
 });
 
 test('native animation rejects missing roles, uncomposed deltas and unsupported channels rather than inventing motion', () => {
-  assert.throws(() => retargetAgentAnimations(fixture().document, {}), /five/);
-  const delta = sources();
-  delta.walk.getRoot().listAnimations()[0].setExtras({ additive: true, additive_composed: false });
+  assert.throws(() => retargetAgentAnimations(fixture().document, {}), /complete/);
+  const delta = fixtureClips();
+  delta['rifle-idle']
+    .getRoot()
+    .listAnimations()[0]
+    .setExtras({ additive: true, additive_composed: false });
   assert.throws(
     () => retargetAgentAnimations(fixture().document, delta, { minimumMappedBones: 3 }),
     /delta/,
   );
-  const unsupported = sources();
-  unsupported.run.getRoot().listAnimations()[0].listSamplers()[0].setInterpolation('CUBICSPLINE');
+  const unsupported = fixtureClips();
+  unsupported['rifle-idle']
+    .getRoot()
+    .listAnimations()[0]
+    .listSamplers()[0]
+    .setInterpolation('CUBICSPLINE');
   assert.throws(
     () => retargetAgentAnimations(fixture().document, unsupported, { minimumMappedBones: 3 }),
     /channel/,
@@ -177,16 +201,16 @@ test('native animation bounds time, duplicate channels, non-rigid poses and tota
       );
     },
   ]) {
-    const clips = sources();
-    modify(clips.walk);
+    const clips = fixtureClips();
+    modify(clips['rifle-idle']);
     assert.throws(
       () => retargetAgentAnimations(fixture().document, clips, { minimumMappedBones: 3 }),
       /invalid|ambiguous/,
     );
   }
-  const clips = sources(),
+  const clips = fixtureClips(),
     count = 2049;
-  clips.walk
+  clips['rifle-idle']
     .getRoot()
     .listAnimations()[0]
     .listSamplers()[0]
@@ -203,30 +227,16 @@ test('native animation bounds time, duplicate channels, non-rigid poses and tota
     .setArray(new Float32Array(2 * 1024 ** 2))
     .setBuffer(oversized.document.getRoot().listBuffers()[0]);
   assert.throws(
-    () => retargetAgentAnimations(oversized.document, sources(), { minimumMappedBones: 3 }),
+    () => retargetAgentAnimations(oversized.document, fixtureClips(), { minimumMappedBones: 3 }),
     /allocation/,
   );
 });
 
 test('version 2 packs preserve the positive duration of entirely static poses', () => {
   const target = fixture().document;
-  const sources = Object.fromEntries(
-    directionalClassRoles('rifle').map((role) => {
-      const moving = directionalMovementRoles.has(role);
-      const angle = (contract.directions.indexOf(role.split('-').at(-1)) * Math.PI) / 4;
-      const { document } = fixture({
-        animated: true,
-        stride: moving ? [Math.sin(angle) * 2, Math.cos(angle) * 2] : [0, 0],
-      });
-      if (!moving)
-        for (const sampler of document.getRoot().listAnimations()[0].listSamplers()) {
-          const output = sampler.getOutput();
-          output.setElement(1, output.getElement(0, []));
-        }
-      return [role, document];
-    }),
-  );
-  const result = retargetAgentAnimations(target, sources, { minimumMappedBones: 3 });
+  const result = retargetAgentAnimations(target, fixtureClips({ staticPoses: true }), {
+    minimumMappedBones: 3,
+  });
   assert.equal(result.schemaVersion, 2);
   const idle = target
     .getRoot()

@@ -7,15 +7,21 @@ import { Document, NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { prepareAgentModel } from './prepare-agent-model.mjs';
 import { MeshoptDecoder } from './meshopt-glb.mjs';
-import { agentAnimationRoles } from './agent-animation-registry.mjs';
-async function fixture(path, { clip = false } = {}) {
+import contract from '../../shared/agent-animation.json' with { type: 'json' };
+import {
+  directionalRoles,
+  directionalMovementRoles,
+} from '../../shared/agent-animation-contract.mjs';
+async function fixture(path, { clip = false, direction } = {}) {
   const doc = new Document(),
     buffer = doc.createBuffer(),
     scene = doc.createScene(),
     joints = [];
   for (let i = 0; i < 20; i++) {
     const node = doc
-      .createNode(i ? 'native_bone_' + i : 'root_motion')
+      .createNode(
+        i === 18 ? 'ball_L' : i === 19 ? 'ball_R' : i ? 'native_bone_' + i : 'root_motion',
+      )
       .setTranslation(i ? [0, 0.05, 0] : [0, 0, 0]);
     if (i) joints[i - 1].addChild(node);
     else scene.addChild(node);
@@ -42,8 +48,16 @@ async function fixture(path, { clip = false } = {}) {
     doc.createNode('native_mesh').setMesh(doc.createMesh().addPrimitive(primitive)).setSkin(skin),
   );
   if (clip) {
+    const angle = (contract.directions.indexOf(direction) * Math.PI) / 4;
     const input = create('SCALAR', new Float32Array([0, 1])),
-      output = create('VEC3', new Float32Array([0.1, 0.05, 0, 0.1, 0.05, 0])),
+      output = create(
+        'VEC3',
+        new Float32Array(
+          direction
+            ? [0, 0, 0, Math.sin(angle) * 2, 0, Math.cos(angle) * 2]
+            : [0.1, 0.05, 0, 0.1, 0.05, 0],
+        ),
+      ),
       sampler = doc
         .createAnimationSampler()
         .setInterpolation('LINEAR')
@@ -52,60 +66,13 @@ async function fixture(path, { clip = false } = {}) {
       channel = doc
         .createAnimationChannel()
         .setSampler(sampler)
-        .setTargetNode(joints[1])
+        .setTargetNode(joints[direction ? 0 : 1])
         .setTargetPath('translation');
     doc.createAnimation('original_native_idle').addSampler(sampler).addChannel(channel);
   }
   await new NodeIO().write(path, doc);
 }
-test('static agent preparation publishes one native-sized posed agent without a second axis conversion or fake animation', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'cswatch-agent-pose-'));
-  try {
-    const input = join(root, 'agent.glb'),
-      idle = join(root, 'idle.glb'),
-      output = join(root, 'agents');
-    await fixture(input);
-    await fixture(idle, { clip: true });
-    const result = await prepareAgentModel({
-      input,
-      idle,
-      output,
-      team: 'ct',
-      assetVersion: 'original-fixture',
-    });
-    assert.equal(result.manifest.pose, 'approximate-static-native-idle');
-    assert.equal(result.provenance.posePreparation.mappedBones, 20);
-    assert.equal(result.manifest.coordinateSystem, 's2v-meters-y-up-viewer-rotates-positive-90y');
-    assert.ok(Math.abs(result.manifest.bounds.max[1] - 1.8) < 1e-6);
-    await MeshoptDecoder.ready;
-    const doc = await new NodeIO()
-      .registerExtensions(ALL_EXTENSIONS)
-      .registerDependencies({ 'meshopt.decoder': MeshoptDecoder })
-      .read(result.path);
-    assert.equal(doc.getRoot().listAnimations().length, 0);
-    assert.ok(
-      Math.abs(
-        doc
-          .getRoot()
-          .listNodes()
-          .find((x) => x.getName() === 'native_bone_1')
-          .getTranslation()[0] - 0.1,
-      ) < 1e-6,
-    );
-    assert.equal(
-      JSON.parse(await readFile(join(output, 'ct.manifest.json'), 'utf8')).sha256,
-      result.manifest.sha256,
-    );
-    await assert.rejects(
-      () => prepareAgentModel({ input, idle, output, team: 'ct', assetVersion: 'replacement' }),
-      /overwrite/,
-    );
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-});
-
-test('native animation preparation retains five bounded clips through lossless packing and records separate source versions', async () => {
+test('native animation preparation retains 87 bounded clips through lossless packing and records separate source versions', async () => {
   const root = await mkdtemp(join(tmpdir(), 'cswatch-agent-curves-'));
   try {
     const input = join(root, 'agent.glb'),
@@ -113,7 +80,18 @@ test('native animation preparation retains five bounded clips through lossless p
       output = join(root, 'agents');
     await fixture(input);
     await fixture(clip, { clip: true });
-    const animations = Object.fromEntries(agentAnimationRoles.map((role) => [role, clip]));
+    const directional = new Map();
+    for (const direction of contract.directions) {
+      const path = join(root, `native-${direction}.glb`);
+      await fixture(path, { clip: true, direction });
+      directional.set(direction, path);
+    }
+    const animations = Object.fromEntries(
+      directionalRoles.map((role) => [
+        role,
+        directionalMovementRoles.has(role) ? directional.get(role.split('-').at(-1)) : clip,
+      ]),
+    );
     const result = await prepareAgentModel({
       input,
       animations,
@@ -123,10 +101,14 @@ test('native animation preparation retains five bounded clips through lossless p
       sourceAssetVersion: 'model-v1',
       animationAssetVersion: 'clips-v2',
     });
-    assert.equal(result.manifest.pose, 'approximate-native-locomotion');
+    assert.equal(result.manifest.pose, 'directional-native-agent');
     assert.equal(result.provenance.sourceAssetVersion, 'model-v1');
     assert.equal(result.provenance.animationAssetVersion, 'clips-v2');
-    assert.equal(result.manifest.animations.length, 5);
+    assert.equal(result.manifest.animationRoles.length, 87);
+    assert.equal(
+      JSON.parse(await readFile(join(output, 't.manifest.json'), 'utf8')).sha256,
+      result.manifest.sha256,
+    );
     assert.ok(result.manifest.geometryBytes < 8 * 1024 ** 2);
     const document = await new NodeIO()
       .registerExtensions(ALL_EXTENSIONS)
@@ -137,7 +119,7 @@ test('native animation preparation retains five bounded clips through lossless p
         .getRoot()
         .listAnimations()
         .map((animation) => animation.getName()),
-      agentAnimationRoles.map((role) => `cswatch:${role}`),
+      directionalRoles.map((role) => `cswatch:${role}`),
     );
     assert.deepEqual(
       Array.from(
@@ -153,7 +135,7 @@ test('native animation preparation retains five bounded clips through lossless p
     );
     for (const animation of document.getRoot().listAnimations()) {
       assert.ok(animation.listChannels().length > 0);
-      assert.equal(animation.getExtras().cswatch.kind, 'native-locomotion');
+      assert.equal(animation.getExtras().cswatch.kind, 'native-agent');
       assert.ok(
         animation
           .listSamplers()

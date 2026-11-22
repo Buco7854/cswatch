@@ -13,7 +13,6 @@ export type PresentationStatus = {
         updatedAt: number;
         retryAt?: number;
         stage?: 'acquiring' | 'converting' | 'publishing';
-        animation?: 'native-locomotion' | 'native-idle';
         item?: string;
         counts?: { ready: number; unavailable: number; total: number };
         unsupported?: string[];

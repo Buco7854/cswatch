@@ -25,8 +25,7 @@ import type {
 } from '../../shared/agent-animation';
 import {
   directionalMovementRoles,
-  directionalRoles,
-  validDirectionalRoles,
+  directionalDeclarations,
 } from '../../shared/agent-animation-contract.mjs';
 
 export type DirectionalSample = {
@@ -42,7 +41,6 @@ export type DirectionalSample = {
 type NativeClip = { clip: AnimationClip; metadata: DirectionalAgentMetadata };
 type ClipSet = ReadonlyMap<DirectionalAgentRole, NativeClip>;
 type GaitSample = { role: DirectionalAgentRole; weight: number };
-const known = new Set<string>(directionalRoles.map((role) => 'cswatch:' + role));
 const directions = contract.directions as AgentDirection[];
 const clamp = (value: number) => Math.max(0, Math.min(value, 1));
 const cycle = (value: number) => value - Math.floor(value);
@@ -51,52 +49,30 @@ const smooth = (value: number) => {
   return t * t * (3 - 2 * t);
 };
 
-export function reservedDirectionalClip(name: string) {
-  return known.has(name);
-}
-
 export function directionalClips(
   clips: readonly AnimationClip[],
   declarations: unknown,
 ): ClipSet | undefined {
-  if (
-    !Array.isArray(declarations) ||
-    declarations.length > directionalRoles.length ||
-    clips.length > directionalRoles.length
-  )
-    return;
+  const metadata = directionalDeclarations(declarations);
+  if (!metadata || clips.length !== metadata.size) return;
   const result = new Map<DirectionalAgentRole, NativeClip>();
   for (const clip of clips) {
-    if (!known.has(clip.name)) continue;
-    const source = declarations.filter((item) => item?.name === clip.name);
-    const metadata: DirectionalAgentMetadata | undefined = source[0]?.extras?.cswatch;
+    const role = clip.name.slice('cswatch:'.length) as DirectionalAgentRole;
+    const meta = metadata.get(role);
     if (
-      source.length !== 1 ||
-      !metadata ||
-      metadata.schemaVersion !== 2 ||
-      metadata.kind !== 'native-agent' ||
-      metadata.rootMotion !== 'recorded-position' ||
-      clip.name !== 'cswatch:' + metadata.role ||
-      result.has(metadata.role) ||
+      !meta ||
+      clip.name !== 'cswatch:' + role ||
+      result.has(role) ||
       !(clip.duration > 0 && clip.duration <= contract.limits.seconds) ||
       !clip.tracks.length ||
-      clip.tracks.length > 1024
+      clip.tracks.length > contract.limits.maxChannels ||
+      (directionalMovementRoles.has(role) &&
+        meta.strideMeters! / clip.duration > contract.limits.maxSpeedMetersPerSecond)
     )
       return;
-    if (directionalMovementRoles.has(metadata.role)) {
-      const { strideMeters, phaseOffset } = metadata;
-      if (
-        typeof strideMeters !== 'number' ||
-        !(strideMeters >= 0.1 && strideMeters <= contract.limits.maxStrideMeters) ||
-        strideMeters / clip.duration > contract.limits.maxSpeedMetersPerSecond ||
-        typeof phaseOffset !== 'number' ||
-        !(phaseOffset >= 0 && phaseOffset < 1)
-      )
-        return;
-    }
-    result.set(metadata.role, { clip, metadata });
+    result.set(role, { clip, metadata: meta });
   }
-  return validDirectionalRoles([...result.keys()]) ? result : undefined;
+  return result;
 }
 
 type Step = { stride: number; speed: number };
@@ -105,7 +81,6 @@ type StrideProfile = Map<AgentWeaponClass, Record<AgentGait, Step[]>>;
 function gaitProfile(clips: ClipSet): StrideProfile {
   const profiles: StrideProfile = new Map();
   for (const weapon of contract.weaponClasses as AgentWeaponClass[]) {
-    if (!clips.has(`${weapon}-idle`)) continue;
     const steps = (gait: AgentGait) =>
       directions.map((direction) => {
         const { metadata, clip } = clips.get(`${weapon}-${gait}-${direction}`)!;
@@ -123,8 +98,7 @@ function gaitChoice(
   duck: number,
   bearing: number,
 ) {
-  const gait = profile.get(weapon) ?? profile.get('rifle')!;
-  if (!profile.has(weapon)) weapon = 'rifle';
+  const gait = profile.get(weapon)!;
   const direction = Number.isFinite(bearing) ? cycle(bearing / 360) * 8 : 0;
   const sector = Math.floor(direction);
   const towardNext = direction - sector;
@@ -320,7 +294,7 @@ export function createDirectionalAgent(root: Object3D, clips: ClipSet) {
   }
   const vector = new Vector3(),
     rotation = new Quaternion();
-  const deathRoles = (contract.deaths as AgentDeath[]).filter((role) => clips.has(role));
+  const deathRoles = contract.deaths as AgentDeath[];
   function mix(target: Vector3 | Quaternion, data: ArrayLike<number>, amount: number) {
     if (target instanceof Quaternion) target.slerp(rotation.fromArray(data).normalize(), amount);
     else target.lerp(vector.fromArray(data), amount);
@@ -343,10 +317,9 @@ export function createDirectionalAgent(root: Object3D, clips: ClipSet) {
     ) {
       const death = input.death;
       const deathRole = death && deathRoles[death.variant % deathRoles.length];
-      if (death && !deathRole) return false;
       const deathTime =
         death && deathRole ? Math.min(death.age, clips.get(deathRole)!.clip.duration) : undefined;
-      if (deathRole && lastDeath?.role === deathRole && lastDeath.time === deathTime) return true;
+      if (deathRole && lastDeath?.role === deathRole && lastDeath.time === deathTime) return;
       lastDeath =
         deathRole && deathTime !== undefined ? { role: deathRole, time: deathTime } : undefined;
       for (const channel of channels.values()) channel.weight = 0;
@@ -368,7 +341,7 @@ export function createDirectionalAgent(root: Object3D, clips: ClipSet) {
           target.copy(rest as Quaternion).slerp(value as Quaternion, Math.min(weight, 1));
         else target.copy(rest as Vector3).lerp(value as Vector3, Math.min(weight, 1));
       }
-      if (base && input.action && base.weapon === agentWeaponClass(input.weapon)) {
+      if (base && input.action) {
         const { kind, age } = input.action;
         const role = `${base.weapon}-${kind}` as const;
         const duration = clips.get(role)?.clip.duration || 0;
@@ -381,7 +354,6 @@ export function createDirectionalAgent(root: Object3D, clips: ClipSet) {
         }
       }
       if (!death) aim?.(input.pitch);
-      return true;
     },
   };
 }

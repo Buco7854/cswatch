@@ -1,5 +1,7 @@
 # Active work
 
+After the private preview was gracefully stopped, the complete ignored pack tree was restored to `var/maps-final`. It includes Mirage, Dust2 and Ancient, ten equipment IDs and private agent exports. Keep the operator asset tree intact. `MAP_ASSETS_DIR` supplies all operator artwork independently of the application database volume. Do not commit proprietary assets, recordings, extracted audio, private captures, credentials or preparation caches.
+
 Local third-person work has a pinned 87-clip CT/T pack with rifle, pistol and knife direction sets, pitch, recorded action layers and authored death poses. The renderer integrates recorded gait phase and samples a centred blend window across chunks. Terrain contacts remain approximate. [Directional agent evidence](../VERIFICATION.md#local-directional-agents-2026-11-22)
 
 The renderer follow-up covers demo-time gait and weapon transitions, mipmapped map detail and the recorded C4 shockwave. [The renderer and replay roadmap](NATIVE-RENDERER.md#renderer-and-replay-roadmap) tracks FSR 3 upscaling and frame generation, a compatible WebGPU trial, round-by-round ingestion and further utility fidelity.
@@ -57,8 +59,6 @@ Separate genuine asset checks cover Mirage, Dust2 and Ancient geometry, decoded 
 The final review also closed a broad-static-model symlink bypass and descriptor lifetime gaps during hashing/disconnect/send failure. Model delivery now uses exact paths, anchored no-follow reads, streamed hashes and bounded ranges. Auth publishes CSRF with verified identity, and interrupted setup POSTs check authoritative state without duplicate enrollment or lost edits. Kill-feed weapons/headshots reuse the existing artwork components, with exact recorded aliases shared by model/icon/shape lookup.
 
 The previous released revision passed 283 backend/native/offline EN/FR tests, 178 asset tests and 135 public browser journeys with two intentional policy skips. Dedicated private registrations closed/open each pass, and first-admin setup passes four cases. Required HTTP/sandbox/ownership/guest/sharing/offline speech and asset publication smoke pass. Build, formatting, locales, all-profile Compose validation and four production dependency audits pass. See [verification](../VERIFICATION.md) for exact evidence. Never remove assertions or extend deadlines to obtain green results.
-
-After the private preview was gracefully stopped, the complete ignored pack tree was restored to `var/maps-final`. It includes Mirage, Dust2 and Ancient, ten equipment IDs, animated CT/T and `.agents-static-retired`. Body rigs use source manifest `6678473446694075055`, while the five clips use `807392217824910805`; preserve mixed provenance. Keep the complete tree and its `.agents-static-retired` backup intact. `MAP_ASSETS_DIR` supplies all operator artwork independently of the application database volume. Do not commit proprietary assets, recordings, extracted audio, private captures, credentials or preparation caches.
 
 ## Release and subsequent work
 

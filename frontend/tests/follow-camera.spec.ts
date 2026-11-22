@@ -1,7 +1,7 @@
 import { manualMapAssets } from './fixtures/map-assets';
 import { expect, test, type Page } from '@playwright/test';
 import { originalMapGLB, originalMapReplay, qaActor } from './fixtures/original-map';
-import { originalAgentGLB } from './fixtures/original-agent';
+import { originalAnimatedAgentGLB } from './fixtures/original-agent';
 import { originalEquipmentCatalog, originalEquipmentGLB } from './fixtures/original-equipment';
 import { BoxGeometry, Group, Mesh, MeshBasicMaterial } from 'three';
 import { followObstruction } from '../src/follow-obstruction';
@@ -169,7 +169,7 @@ test('third-person follow renders the selected actor, follows real recorded tran
     route.fulfill({ json: { ct: '/map-assets/agents/ct.glb', t: '/map-assets/agents/t.glb' } }),
   );
   await page.route('**/map-assets/agents/*.glb', (route) =>
-    route.fulfill({ contentType: 'model/gltf-binary', body: originalAgentGLB() }),
+    route.fulfill({ contentType: 'model/gltf-binary', body: originalAnimatedAgentGLB() }),
   );
   await page.route('**/api/assets/equipment-models', (route) =>
     route.fulfill({ json: originalEquipmentCatalog(['ak47']) }),

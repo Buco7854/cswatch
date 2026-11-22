@@ -19,8 +19,10 @@ import { Document, NodeIO } from '@gltf-transform/core';
 import { buildNetworkDeny } from './build-network-deny.mjs';
 import { installPresentationAssets } from './install-presentation-assets.mjs';
 import { equipmentIconSources } from './install-equipment-icons.mjs';
-import { agentRolesForIndex } from './install-equipment-models.mjs';
-import { agentAnimationRegistry, agentAnimationRoles } from './agent-animation-registry.mjs';
+import {
+  directionalRoles,
+  directionalMovementRoles,
+} from '../../shared/agent-animation-contract.mjs';
 import {
   cleanPresentationStages,
   registerPresentationStage,
@@ -63,7 +65,7 @@ async function fixture(t) {
 }
 const noStorage = async () => {};
 const adapters = { storage: noStorage, reserve: noStorage };
-async function triangle() {
+async function triangle(agent) {
   const document = new Document(),
     buffer = document.createBuffer();
   const positions = document
@@ -82,16 +84,52 @@ async function triangle() {
             .addPrimitive(document.createPrimitive().setAttribute('POSITION', positions)),
         ),
     );
+  if (agent) {
+    const node = document.getRoot().listNodes()[0];
+    const input = document
+      .createAccessor()
+      .setType('SCALAR')
+      .setArray(new Float32Array([0, 1]))
+      .setBuffer(buffer);
+    const output = document
+      .createAccessor()
+      .setType('VEC3')
+      .setArray(new Float32Array([0, 0, 0, 0, 0.1, 0]))
+      .setBuffer(buffer);
+    for (const role of directionalRoles) {
+      const sampler = document.createAnimationSampler().setInput(input).setOutput(output);
+      document
+        .createAnimation('cswatch:' + role)
+        .addSampler(sampler)
+        .addChannel(
+          document
+            .createAnimationChannel()
+            .setTargetNode(node)
+            .setTargetPath('translation')
+            .setSampler(sampler),
+        )
+        .setExtras({
+          cswatch: {
+            kind: 'native-agent',
+            schemaVersion: 2,
+            role,
+            rootMotion: 'recorded-position',
+            ...(directionalMovementRoles.has(role) ? { strideMeters: 1, phaseOffset: 0 } : {}),
+          },
+        });
+    }
+  }
   return Buffer.from(await new NodeIO().writeBinary(document));
 }
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
 async function preparedModel(output, id, agent = false) {
   const directory = agent ? join(output, 'agents') : join(output, 'equipment-models', id);
   await mkdir(directory, { recursive: true, mode: 0o700 });
-  const bytes = await triangle();
+  const bytes = await triangle(agent);
   const metadata = {
-    schemaVersion: 1,
-    ...(agent ? { team: id } : { id }),
+    ...(agent
+      ? { schemaVersion: 2, team: id, animationRoles: directionalRoles }
+      : { schemaVersion: 1, id }),
     assetVersion: 'steam-2347770-1',
     sha256: digest(bytes),
     bytes: bytes.length,
@@ -137,6 +175,36 @@ test('presentation banks publish both original agent fixtures atomically and reu
     [],
   );
 });
+test('interrupted agent validation leaves no published bank and retains the retry cooldown', async (t) => {
+  const { options } = await fixture(t);
+  const controller = new AbortController();
+  await assert.rejects(
+    installPresentationAssets(
+      {
+        ...options,
+        signal: controller.signal,
+        beforePublish: () => controller.abort(),
+      },
+      '1',
+      'agents',
+      {
+        ...adapters,
+        installModels: async (settings) => {
+          await preparedModel(settings.output, 'ct', true);
+          await preparedModel(settings.output, 't', true);
+        },
+      },
+    ),
+    { name: 'AbortError' },
+  );
+  assert.deepEqual(await readdir(options.assets), []);
+  const status = (await readPresentationStatus(options.jobs)).categories.agents;
+  assert.equal(status.status, 'failed');
+  assert.equal(status.code, 'interrupted');
+  assert.equal(status.attempts, 1);
+  assert.ok([299, 300].includes(status.retryAt - status.updatedAt));
+});
+
 test('native model preparation yields after one fixed item and extends only immutable registry identities', async (t) => {
   const { options } = await fixture(t);
   const items = [];
@@ -805,17 +873,6 @@ test('fixed official icon selectors never accept URLs, uploaded paths or wildcar
   assert.ok(Object.keys(equipmentIconSources).length <= 128);
   for (const row of Object.values(equipmentIconSources))
     assert.doesNotMatch(row.resource, /\.\.|https?:|\*/);
-});
-test('fixed native idle remains usable when optional locomotion clips are missing without inventing a pose', () => {
-  const index = {
-    entries: new Map(Object.values(agentAnimationRegistry).map((resource) => [resource, {}])),
-  };
-  assert.deepEqual(agentRolesForIndex(index, true), agentAnimationRoles);
-  index.entries.delete(agentAnimationRegistry.walk);
-  assert.deepEqual(agentRolesForIndex(index, true), ['idle']);
-  assert.deepEqual(agentRolesForIndex(index, false), agentAnimationRoles);
-  index.entries.delete(agentAnimationRegistry.idle);
-  assert.throws(() => agentRolesForIndex(index, true), /idle clip is unavailable/);
 });
 test('confined original SVG rasterization succeeds without granting metadata changes or control-file writes', async (t) => {
   const { root } = await fixture(t),
