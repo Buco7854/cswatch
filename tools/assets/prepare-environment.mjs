@@ -8,6 +8,7 @@ import { mergeDocuments, unpartition } from '@gltf-transform/functions';
 import sharp from 'sharp';
 import {
   inspectMapEnvironment,
+  inspectMapGrade,
   inspectSkyCamera,
   inspectSkyMaterial,
   prepareCubemapFog,
@@ -25,6 +26,7 @@ import { fileHash, localDirectory, regularFile } from './toolchain-security.mjs'
 import { writePreparedModel } from './prepared-model-output.mjs';
 import { steamAssetLimits } from './steam-assets-plan.mjs';
 import { MeshoptDecoder } from './meshopt-glb.mjs';
+import { writeMapGrade } from './prepare-map-grade.mjs';
 import { applyTextureBudget } from './texture-budget.mjs';
 
 export {
@@ -235,6 +237,7 @@ export async function prepareEnvironment(config) {
     skyEntities,
     materialData,
     skyFaces,
+    gradeInput,
     output,
     onProgress = () => {},
   } = config;
@@ -330,14 +333,21 @@ export async function prepareEnvironment(config) {
     const faces = Object.fromEntries(
       viewerFaces.map((face) => [face, hash(converted.outputs[face])]),
     );
+    const authoredGrade = gradeInput && inspectMapGrade(mainEntities);
+    if (gradeInput && (!authoredGrade || !/^[a-f0-9]{64}$/.test(gradeInput.sha256)))
+      throw Error('Prepared grading requires authored entity provenance.');
+    const grade = authoredGrade
+      ? await writeMapGrade(destination, authoredGrade, gradeInput.data)
+      : undefined;
     const descriptor = {
-      schemaVersion: 1,
+      schemaVersion: grade ? 2 : 1,
       map,
       assetVersion,
       source: source.trim(),
       landscape: true,
       sky: { brightness, faces },
       ...(cubeFog.fog ? { fog: cubeFog.fog } : {}),
+      ...(grade ? { grade } : {}),
     };
     const report = {
       schemaVersion: 1,
@@ -348,6 +358,7 @@ export async function prepareEnvironment(config) {
       effectiveEnvironment: effective,
       material,
       cubeFog,
+      ...(grade ? { postProcessing: { ...authoredGrade, sha256: gradeInput.sha256 } } : {}),
       skyWorldMatrix: matrix,
       landscape: true,
       brightness,

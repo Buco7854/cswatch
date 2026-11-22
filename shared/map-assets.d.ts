@@ -1,3 +1,5 @@
+import type { MapGrade } from './map-grade.mjs';
+
 /** Locally installed map artwork. Coordinates stay in Source inches, X/Y horizontal. */
 /** Runtime identities are restricted by the shared map-previews.json registry. */
 export type MapPreview = { image: string; map: string } | { image: null; map: null };
@@ -32,6 +34,7 @@ export type MapEnvironment = {
     brightness: number;
   };
   fog?: MapCubeFog;
+  grade?: MapGrade;
 };
 export type MapAssets = {
   model: string | null;

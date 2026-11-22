@@ -96,6 +96,7 @@ import EquipmentFire from './EquipmentFire';
 import PovEquipmentPass from './PovEquipmentPass';
 import PovViewmodel from './PovViewmodel';
 import { useMapShadowCache } from '../useMapShadowCache';
+import SceneGrade from './SceneGrade';
 import SceneLighting from './SceneLighting';
 import { mapSun, type MapSun } from '../map-sun';
 import { useMapSkyLighting } from '../useMapSkyLighting';
@@ -895,6 +896,13 @@ function World({
     });
   });
   useEffect(() => () => onAudioListener?.(null), [onAudioListener]);
+  const showPovEquipment =
+    !preview &&
+    mode === 'pov' &&
+    scopeFov === undefined &&
+    viewedPlayer &&
+    (data.sample || modelReady);
+
   return (
     <>
       <EnvironmentBackground
@@ -904,6 +912,13 @@ function World({
         resources={fogResources}
         low={low}
       />
+      {!data.sample && environment?.grade && (
+        <SceneGrade
+          grade={environment.grade}
+          firstFace={environment.sky.faces[0]}
+          manualWorld={!sky && !showPovEquipment}
+        />
+      )}
       {sky && <SkyPass sky={sky} sun={sun} skylight={skylight} />}
       <SceneLighting
         sample={Boolean(data.sample)}
@@ -956,31 +971,27 @@ function World({
               travelMeters={recordedTravel?.(frame, next, p.id, alpha)}
             />
           ))}
-        {!preview &&
-          mode === 'pov' &&
-          scopeFov === undefined &&
-          viewedPlayer &&
-          (data.sample || modelReady) && (
-            <PovEquipmentPass
-              hasSky={Boolean(sky)}
-              sample={Boolean(data.sample)}
-              sun={sun}
-              skylight={skylight}
-              trace={followTrace}
-            >
-              <PovViewmodel
-                native={!data.sample}
-                history={data}
-                tick={tick}
-                position={viewedPlayer}
-                next={nextPlayers.get(viewedPlayer.id)}
-                previous={previousPlayers?.get(viewedPlayer.id)}
-                travelMeters={recordedTravel?.(frame, next, viewedPlayer.id, alpha)}
-                alpha={alpha}
-                timing={poseTiming}
-              />
-            </PovEquipmentPass>
-          )}
+        {showPovEquipment && (
+          <PovEquipmentPass
+            hasSky={Boolean(sky)}
+            sample={Boolean(data.sample)}
+            sun={sun}
+            skylight={skylight}
+            trace={followTrace}
+          >
+            <PovViewmodel
+              native={!data.sample}
+              history={data}
+              tick={tick}
+              position={viewedPlayer}
+              next={nextPlayers.get(viewedPlayer.id)}
+              previous={previousPlayers?.get(viewedPlayer.id)}
+              travelMeters={recordedTravel?.(frame, next, viewedPlayer.id, alpha)}
+              alpha={alpha}
+              timing={poseTiming}
+            />
+          </PovEquipmentPass>
+        )}
         {!preview && tracers && tracerTrace && (
           <ShotTracers
             data={data}

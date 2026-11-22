@@ -17,6 +17,7 @@ import { steamAssetLimits, selectedMaps } from './steam-assets-plan.mjs';
 import { checkFreeReserve, fileHash, readableDirectory, regular } from './asset-storage.mjs';
 
 import { verifyPreparedGlb } from './prepared-glb.mjs';
+import { mapGradeBytes, mapGradeFile, validMapGrade } from '../../shared/map-grade.mjs';
 import { validPreparedFog } from './prepared-environment-fog.mjs';
 import { validateTexturePlan } from './texture-plan-validation.mjs';
 
@@ -33,6 +34,7 @@ async function validateEnvironment(prepared, map, assetVersion) {
   await regular(metadata, 16384);
   const data = JSON.parse(await readFile(metadata, 'utf8'));
   const hasFog = data && typeof data === 'object' && Object.hasOwn(data, 'fog');
+  const hasGrade = data && typeof data === 'object' && Object.hasOwn(data, 'grade');
   if (
     !exactKeys(data, [
       'schemaVersion',
@@ -42,9 +44,11 @@ async function validateEnvironment(prepared, map, assetVersion) {
       'landscape',
       'sky',
       ...(hasFog ? ['fog'] : []),
+      ...(hasGrade ? ['grade'] : []),
     ]) ||
     (hasFog && !validPreparedFog(data.fog)) ||
-    data.schemaVersion !== 1 ||
+    data.schemaVersion !== (hasGrade ? 2 : 1) ||
+    (hasGrade && !validMapGrade(data.grade)) ||
     data.map !== map ||
     data.assetVersion !== assetVersion ||
     typeof data.source !== 'string' ||
@@ -101,6 +105,14 @@ async function validateEnvironment(prepared, map, assetVersion) {
       bytes: (await regular(path, maximum)).size,
       sha256: await fileHash(path, 'sha256', maximum),
     });
+  }
+  if (hasGrade) {
+    const path = join(pack, mapGradeFile);
+    const bytes = mapGradeBytes(data.grade.lut.size);
+    await regular(path, bytes, bytes);
+    const sha256 = await fileHash(path, 'sha256', bytes);
+    if (sha256 !== data.grade.lut.sha256) throw Error('Prepared grading LUT hash mismatch.');
+    files.push({ path: `environments/${map}/${mapGradeFile}`, bytes, sha256 });
   }
   return files;
 }

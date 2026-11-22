@@ -1,3 +1,4 @@
+import { validMapGrade } from '../../shared/map-grade.mjs';
 import { useCallback, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import type { MapAssets, MapEnvironment, MapOverview } from '../../shared/map-assets';
 import { validateMapCubeFog } from './map-fog';
@@ -121,6 +122,7 @@ export function validateMapAssets(value: unknown, map: string, packId?: string):
       landscape: item.landscape,
       sky: { faces: expected, brightness: item.sky.brightness },
       ...(item.fog !== undefined ? { fog: validateMapCubeFog(item.fog) } : {}),
+      ...(validMapGrade(item.grade) ? { grade: item.grade } : {}),
     };
   }
   return {

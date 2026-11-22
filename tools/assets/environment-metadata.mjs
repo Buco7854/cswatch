@@ -1,5 +1,5 @@
 /** Bounded S2V entity/material metadata, separate from game acquisition and rendering. */
-import { sourceRotate } from './environment-space.mjs';
+import { sourceRotate, srgbToLinear } from './environment-space.mjs';
 import { validPreparedFog } from './prepared-environment-fog.mjs';
 
 const keys = new Set([
@@ -18,6 +18,20 @@ const keys = new Set([
   'parentname',
   'targetname',
 ]);
+const gradeKeys = new Set([
+  ...keys,
+  'master',
+  'postprocessing',
+  'enableexposure',
+  'minexposure',
+  'maxexposure',
+  'color',
+  'brightness',
+  'style',
+  'directlight',
+  'skycolor',
+  'skyintensity',
+]);
 const limits = { bytes: 16 * 1024 ** 2, lumps: 64, entities: 20000 };
 
 function decoded(value) {
@@ -29,7 +43,7 @@ function decoded(value) {
   }
 }
 
-function entities(input) {
+function entities(input, fields = keys) {
   const texts = Array.isArray(input) ? input : [input];
   if (
     !texts.length ||
@@ -50,7 +64,10 @@ function entities(input) {
       const entity = Object.create(null);
       for (const line of block.split(/\r?\n/)) {
         const property = /^([a-zA-Z0-9_.]+)\s+(.+)$/.exec(line);
-        if (!property || (!keys.has(property[1]) && !/^cubemap(?:fog|heightfog)/.test(property[1])))
+        if (
+          !property ||
+          (!fields.has(property[1]) && !/^cubemap(?:fog|heightfog)/.test(property[1]))
+        )
           continue;
         if (Object.hasOwn(entity, property[1]))
           throw new Error('Duplicate environment entity property.');
@@ -141,6 +158,48 @@ function skySources(all) {
       angles: vector(entity.angles, [0, 0, 0]),
       parented: Boolean(entity.parentname),
     }));
+}
+
+export function inspectMapGrade(input) {
+  const all = entities(input, gradeKeys);
+  const masters = all.filter(
+    (entity) =>
+      entity.classname === 'post_processing_volume' &&
+      active(entity) &&
+      [true, 'true', 1, '1'].includes(entity.master),
+  );
+  if (masters.length !== 1 || masters[0].parentname || !masters[0].postprocessing) return null;
+  const entity = masters[0];
+  const exposure = [true, 'true', 1, '1'].includes(entity.enableexposure);
+  const min = exposure ? number(entity.minexposure, undefined, 0.01, 16) : 1;
+  return {
+    resource: resource(entity.postprocessing, 'vpost') + '_c',
+    min,
+    max: exposure ? number(entity.maxexposure, undefined, min, 16) : 1,
+    ...inspectGradeLighting(all),
+  };
+}
+
+function inspectGradeLighting(all) {
+  const lights = all.filter((entity) => entity.classname === 'light_environment' && active(entity));
+  if (lights.length !== 1) return {};
+  const light = lights[0];
+  if (light.parentname || Number(light.style ?? 0) !== 0 || String(light.directlight ?? 1) !== '1')
+    return {};
+  try {
+    const energy = number(light.brightness, 1, 0, 16) * number(light.brightnessscale, 1, 0, 16);
+    if (energy > 16) return {};
+    const linear = (color, scale) =>
+      vector(color, [255, 255, 255], true).map((x) => srgbToLinear(x / 255) * scale);
+    return {
+      lighting: {
+        sun: linear(light.color, energy),
+        sky: linear(light.skycolor, number(light.skyintensity, 1, 0, 16)),
+      },
+    };
+  } catch {
+    return {};
+  }
 }
 
 export function inspectMapEnvironment(input) {
