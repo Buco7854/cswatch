@@ -1,6 +1,15 @@
 # Verification record
 
+## Verification methods
+
+- Inspect the production build at desktop, tablet and mobile sizes in both themes. Check touch targets, keyboard focus, overlay recovery, fallback states and EN/FR layout. Use isolated accounts and test data.
+- Observe the actual WebGL projection and drawing buffer after layout changes. Model-ready state and CSS size alone do not establish paint. Isolate the rendered pixels from DOM chrome before comparing artwork. Reuse the bounded original-camera fixture and control ResizeObserver and animation-frame ordering when testing races.
+- Test with the pinned demo fixture for native parsing and with `CSWATCH_TRANSCRIPTION_TEST_MODEL` for real offline inference. State fixture skips explicitly. Test data contracts and trust boundaries. Keep failing assertions and deadlines intact while fixing their cause.
+- Keep published build identity tied to the exact verified commit. Distinguish screenshots from physical-device and source-provenance evidence. Record the renderer, fixtures and conditions behind any measured result.
+
 ## Replay motion, texture detail and C4 wave, 2026-11-22
+
+Runtime `b4cbe2209eba91fbce8e3732717a5d1820e1e9bf` passed [workflow 44975440124](https://github.com/Buco7854/cswatch/actions/runs/44975440124), run 50. CI passed 389 backend, 296 asset and 230 public browser cases, both private registration policies, first-admin setup, cold bootstrap and both hardened images. Anonymous registry checks matched the revision and digests for both latest and immutable tags. The application index is `sha256:1466ed03c6736088480ab78d7426d829d9326c111f5468a207c94ea6fb01662c` and the assets index is `sha256:22a54e5c4649d3aa859c3c4f1013e6579c24224ddee7079ecc2fc8c09ef95cb5`.
 
 The original 8× filtering trial for all map samplers fell from 5.48 to 4.29 render submissions per second and increased p95 intervals from 450 to 600 ms on SwiftShader. A narrower 2× mobile base-color trial reached 5.26 submissions per second against 5.62 baseline, with p95 intervals of 450 ms against 433 ms. These experiments retain the same map and include the other motion changes. The shipping filter requests 4× for the textured desktop base color. Three caps it to the renderer's supported value. The mobile and compact tiers, and auxiliary textures, keep their existing sampling.
 
