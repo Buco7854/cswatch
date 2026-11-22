@@ -7,6 +7,14 @@
 - Test with the pinned demo fixture for native parsing and with `CSWATCH_TRANSCRIPTION_TEST_MODEL` for real offline inference. State fixture skips explicitly. Test data contracts and trust boundaries. Keep failing assertions and deadlines intact while fixing their cause.
 - Keep published build identity tied to the exact verified commit. Distinguish screenshots from physical-device and source-provenance evidence. Record the renderer, fixtures and conditions behind any measured result.
 
+## Integrated viewer fidelity pass, 2026-11-22
+
+The merged first-person lens, aim track, combat feedback, authored grading, agent animation, utility effects and smoke volumes ran together on Node 22.23.5. The supported target is Node 24. Backend finished with 420 passes and three offline speech-model skips, assets with 302 passes, and public browser checks with 243 passes and two environment skips. No test failed. The two builds, formatting and English/French coverage passed.
+
+The checksum-pinned Mirage fixture parsed under the required sandbox and rendered at ticks 18142, 43193 and 21241 with a regenerated Mirage environment pack, 87-clip agents and the pinned rigs. The captures had no page or shader faults. An independent read of the stored chunks matched 430,110 recorded aim samples with none missing and a maximum error of 0.0039 degrees.
+
+Rendering used Chromium with SwiftShader, so these checks establish no frame rate and no physical-device result. Grading was exercised on Mirage only and requires a regenerated environment pack. The 64 Hz aim, fire spread, gait history and complete grenade paths require a new parse. Existing replays and packs keep their previous presentation. Corpses can intersect stairs or overhang ledges, some clip weights can still change within one tick, and landing is inferred from vertical motion. This host's equipment pack contains only the AK, so other held, dropped and thrown models used their fallbacks.
+
 ## First-person lens and motion, 2026-11-22
 
 The local production build and 14 focused tests passed on Node 22.23.5. The tests cover separate clip planes and projection, right-handed offsets, renderer state restoration, wrapped turns, inferred landing and optional draw timing across seeks and shared chunk samples.
