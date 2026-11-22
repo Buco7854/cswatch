@@ -1,24 +1,41 @@
 import { t, locale } from '../i18n';
 import { useEffect, useRef, useState } from 'react';
-import type { FormEvent } from 'react';
 import { ArrowUpRight, Check, ExternalLink, Link2, RefreshCw } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { useApp } from '../context';
-import { ProviderBrandNotice, ProviderLogo, SteamSignInLink } from './ProviderBrand';
+import { ProviderBrandNotice, ProviderLogo } from './ProviderBrand';
+import SteamMatchHistory from './SteamMatchHistory';
+type DemoFile = { id: string; file: number; demo_id: string | null };
+type History = { items: Match[]; to: number; next_offset: number | null };
+const faceitMatchId = /^[A-Za-z0-9_-]{1,128}$/;
+function parseMatch(input: string) {
+  const value = input.trim();
+  if (faceitMatchId.test(value)) return value;
+  try {
+    const url = new URL(value);
+    if (url.origin === 'https://www.faceit.com' && !url.username && !url.password)
+      return /^\/[a-z-]+\/cs2\/room\/([A-Za-z0-9_-]{1,128})\/?$/.exec(url.pathname)?.[1];
+  } catch {
+    return undefined;
+  }
+}
+
 type Match = {
   match_id: string;
-  finished_at?: number;
-  competition_name?: string;
-  teams?: Record<string, { nickname: string }>;
+  finished_at?: number | null;
+  competition_name?: string | null;
+  teams?: Record<string, { nickname: string }> | null;
 };
 export default function Connections() {
   const { user, config, refresh, notify, signIn } = useApp();
   const nav = useNavigate();
+  const [params] = useSearchParams();
   const [busy, setBusy] = useState(''),
     [error, setError] = useState(''),
-    [matches, setMatches] = useState<Match[]>([]),
-    [code, setCode] = useState('');
+    [history, setHistory] = useState<History>(),
+    [page, setPage] = useState(0),
+    [selection, setSelection] = useState<{ matchId: string; files: DemoFile[] }>();
   const steam = user?.identities?.find((i) => i.provider === 'steam'),
     faceit = user?.identities?.find((i) => i.provider === 'faceit');
   const identity = useRef(user?.id);
@@ -29,8 +46,9 @@ export default function Connections() {
     active.current = true;
     setBusy('');
     setError('');
-    setMatches([]);
-    setCode('');
+    setHistory(undefined);
+    setPage(0);
+    setSelection(undefined);
     return () => {
       active.current = false;
       pending.current = null;
@@ -55,25 +73,31 @@ export default function Connections() {
       }
     }
   }
-  async function discover(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const body = Object.fromEntries(new FormData(e.currentTarget));
-    await task('steam', async (current) => {
-      const r = await api<{ share_code: string | null; message: string }>(
-        '/api/connections/steam/next-match',
-        { method: 'POST', body: JSON.stringify(body) },
-      );
+  function loadFaceit(offset = 0, through?: number) {
+    void task('history', async (current) => {
+      const params = new URLSearchParams({ offset: String(offset) });
+      if (through !== undefined) params.set('to', String(through));
+      const result = await api<History>('/api/connections/faceit/matches?' + params);
       if (current()) {
-        setCode(r.share_code || t('No newer match is available.'));
-        notify(r.message);
+        setPage(offset);
+        setHistory(result);
       }
     });
   }
-  async function importMatch(match_id: string) {
+  function selectMatch(matchId: string) {
+    setSelection(undefined);
+    void task('details', async (current) => {
+      const result = await api<{ files: DemoFile[] }>(
+        '/api/connections/faceit/match-demos?' + new URLSearchParams({ match_id: matchId }),
+      );
+      if (current()) setSelection({ matchId, files: result.files });
+    });
+  }
+  async function importMatch(match_id: string, resource_id: string) {
     await task(match_id, async (current) => {
       const r = await api<{ id: string }>('/api/connections/faceit/import', {
         method: 'POST',
-        body: JSON.stringify({ match_id }),
+        body: JSON.stringify({ match_id, resource_id }),
       });
       if (current()) nav('/watch/' + r.id);
     });
@@ -90,6 +114,9 @@ export default function Connections() {
         </div>
       ) : (
         <>
+          {params.get('steam') === 'cancelled' && !error && (
+            <p role="status">{t('Steam linking was cancelled. Start again.')}</p>
+          )}
           {error && (
             <p role="alert" className="error notice">
               {t(error)}
@@ -133,10 +160,22 @@ export default function Connections() {
               </p>
               <div className="actions">
                 {config.steam_enabled && (
-                  <SteamSignInLink
-                    returnTo="/account/connections"
-                    label={steam ? t('Verify Steam again') : t('Connect Steam')}
-                  />
+                  <button
+                    type="button"
+                    className="button provider-steam-link"
+                    disabled={!!busy}
+                    onClick={() =>
+                      void task('steam-link', async (current) => {
+                        const result = await api<{ location: string }>('/api/auth/steam/link', {
+                          method: 'POST',
+                        });
+                        if (current()) window.location.assign(result.location);
+                      })
+                    }
+                  >
+                    <ProviderLogo provider="steam" />
+                    <span>{steam ? t('Verify Steam again') : t('Connect Steam')}</span>
+                  </button>
                 )}
                 <a
                   className="button"
@@ -148,49 +187,11 @@ export default function Connections() {
                   <ExternalLink size={14} aria-hidden="true" />
                 </a>
               </div>
-              {config.steam_enabled && steam && (
-                <details>
-                  <summary>{t('Discover the next match')}</summary>
-                  <p>
-                    {t(
-                      'Enter a match sharing code and your game authentication code from Steam’s “Personal Game Data”. These are used for this request and are not stored.',
-                    )}
-                  </p>
-                  <form onSubmit={discover}>
-                    <label>
-                      {t('Game authentication code')}
-                      <input
-                        name="auth_code"
-                        required
-                        minLength={5}
-                        maxLength={40}
-                        autoComplete="off"
-                        type="password"
-                      />
-                    </label>
-                    <label>
-                      {t('Last match sharing code')}
-                      <input
-                        name="share_code"
-                        required
-                        pattern="CSGO(-[A-Za-z0-9]{5}){5}"
-                        placeholder={t('CSGO-xxxxx-xxxxx-xxxxx-xxxxx-xxxxx')}
-                      />
-                    </label>
-                    <button className="button primary" disabled={!!busy || !config.steam_discovery}>
-                      {busy === 'steam' ? t('Checking…') : t('Find next match')}
-                    </button>
-                    {!config.steam_discovery && (
-                      <small>{t('The administrator must configure a Steam Web API key.')}</small>
-                    )}
-                  </form>
-                  {code && <p className="code-result">{code}</p>}
-                  <p className="muted">
-                    {t(
-                      'Steam sign-in does not grant access to demo files. Download a discovered match in CS2, then upload its .dem file.',
-                    )}
-                  </p>
-                </details>
+              {steam && (
+                <SteamMatchHistory
+                  key={user.id + ':' + steam.subject}
+                  enabled={config.steam_enabled && config.steam_discovery}
+                />
               )}
             </div>
           </div>
@@ -243,7 +244,11 @@ export default function Connections() {
                       void task('faceit-link', async (current) => {
                         await api('/api/connections/faceit/link', { method: 'POST' });
                         await refresh();
-                        if (current()) notify('FACEIT profile verified.');
+                        if (current()) {
+                          setHistory(undefined);
+                          setSelection(undefined);
+                          notify('FACEIT profile verified.');
+                        }
                       })
                     }
                   >
@@ -257,17 +262,8 @@ export default function Connections() {
                   {faceit && (
                     <button
                       className="button"
-                      disabled={!!busy}
-                      onClick={() =>
-                        void task('history', async (current) => {
-                          const r = await api<{ items: Match[] }>(
-                            '/api/connections/faceit/matches',
-                          );
-                          if (!current()) return;
-                          setMatches(r.items || []);
-                          if (!r.items?.length) notify('No recent CS2 matches found.');
-                        })
-                      }
+                      disabled={!!busy || !config.faceit_configured}
+                      onClick={() => loadFaceit()}
                     >
                       <RefreshCw size={15} className={busy === 'history' ? 'spin' : ''} />
                       {busy === 'history' ? t('Loading matches…') : t('Recent matches')}
@@ -287,30 +283,37 @@ export default function Connections() {
                       'Automatic demo downloads need an approved FACEIT Downloads API token. Manual uploads always work.',
                     )}
               </p>
-              {config.faceit_enabled && config.faceit_downloads && faceit && (
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    const raw = String(new FormData(e.currentTarget).get('match'));
-                    const match_id = raw.match(/1-[0-9a-f-]{36}/i)?.[0] || raw;
-                    void importMatch(match_id);
-                  }}
-                >
-                  <label>
-                    {t('FACEIT match ID or match room URL')}
-                    <input
-                      name="match"
-                      required
-                      placeholder="https://www.faceit.com/…/room/1-…"
-                      maxLength={300}
-                    />
-                  </label>
-                  <button className="button primary" disabled={!!busy || !config.faceit_downloads}>
-                    {busy ? t('Working…') : t('Import match')}
-                    <ArrowUpRight size={16} />
-                  </button>
-                </form>
-              )}
+              {config.faceit_enabled &&
+                config.faceit_configured &&
+                config.faceit_downloads &&
+                faceit && (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const raw = String(new FormData(e.currentTarget).get('match'));
+                      const matchId = parseMatch(raw);
+                      if (matchId) selectMatch(matchId);
+                      else setError('Enter a FACEIT CS2 match ID or match room URL.');
+                    }}
+                  >
+                    <label>
+                      {t('FACEIT match ID or match room URL')}
+                      <input
+                        name="match"
+                        required
+                        placeholder="https://www.faceit.com/…/room/1-…"
+                        maxLength={300}
+                      />
+                    </label>
+                    <button
+                      className="button primary"
+                      disabled={!!busy || !config.faceit_downloads}
+                    >
+                      {busy === 'details' ? t('Loading matches…') : t('Find demo files')}
+                      <ArrowUpRight size={16} />
+                    </button>
+                  </form>
+                )}
               {config.faceit_enabled && !config.faceit_downloads && (
                 <Link className="button" to="/library?upload=1">
                   {t('Add a demo')}
@@ -319,10 +322,13 @@ export default function Connections() {
               )}
             </div>
           </div>
-          {matches.length > 0 && (
+          {history && (
             <section className="history-panel">
               <h2>{t('Recent FACEIT matches')}</h2>
-              {matches.map((m) => (
+              {history.items.length === 0 && (
+                <p role="status">{t('No recent CS2 matches found.')}</p>
+              )}
+              {history.items.map((m) => (
                 <div key={m.match_id} className="history-row">
                   <div>
                     <strong>
@@ -341,11 +347,55 @@ export default function Connections() {
                   <button
                     className="button"
                     disabled={!!busy || !config.faceit_downloads}
-                    onClick={() => void importMatch(m.match_id)}
+                    onClick={() => selectMatch(m.match_id)}
                   >
-                    {t('Import')}
+                    {t('Find demo files')}
                     <ArrowUpRight size={15} />
                   </button>
+                </div>
+              ))}
+              {(page > 0 || history.next_offset !== null) && (
+                <div className="actions">
+                  <button
+                    className="button"
+                    disabled={!!busy || page === 0}
+                    onClick={() => loadFaceit(Math.max(0, page - 20), history.to)}
+                  >
+                    {t('Previous page')}
+                  </button>
+                  <button
+                    className="button"
+                    disabled={!!busy || history.next_offset === null}
+                    onClick={() => loadFaceit(history.next_offset!, history.to)}
+                  >
+                    {t('Next page')}
+                  </button>
+                </div>
+              )}
+            </section>
+          )}
+          {selection && (
+            <section className="history-panel" aria-live="polite">
+              <h2>{t('FACEIT demo files')}</h2>
+              <p>{selection.matchId}</p>
+              {selection.files.map((file) => (
+                <div key={file.id} className="history-row">
+                  <strong>{t('Demo file {{v0}}', { v0: file.file })}</strong>
+                  {file.demo_id ? (
+                    <Link className="button" to={'/watch/' + file.demo_id}>
+                      {t('Open uploaded demo')}
+                    </Link>
+                  ) : (
+                    <button
+                      className="button"
+                      disabled={!!busy || !config.faceit_downloads}
+                      onClick={() => void importMatch(selection.matchId, file.id)}
+                    >
+                      {busy === selection.matchId
+                        ? t('Working…')
+                        : t('Import demo file {{v0}}', { v0: file.file })}
+                    </button>
+                  )}
                 </div>
               ))}
             </section>

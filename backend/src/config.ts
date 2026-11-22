@@ -12,6 +12,11 @@ const integer = (v: string | undefined, fallback: number, min = 1) =>
     .int()
     .min(min)
     .parse(v || fallback);
+const fixedHosts = (value: string | undefined) =>
+  z
+    .array(z.string().regex(/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/))
+    .max(8)
+    .parse(value ? value.split(',').map((host) => host.trim().toLowerCase()) : []);
 export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
   const appUrl = new URL(env.APP_URL || 'http://localhost:8000');
   if (
@@ -49,6 +54,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
       faceit_enabled: boolean(env.FACEIT_ENABLED),
       transcription_enabled: boolean(env.TRANSCRIPTION_ENABLED),
     },
+    steamSyncKeyFile: env.STEAM_SYNC_KEY_FILE || '',
     steamApiKey: env.STEAM_API_KEY || '',
     adminUsername:
       z
@@ -71,6 +77,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
       .parse(env.GUEST_RETENTION_HOURS || 24),
     guestDemoLimit: integer(env.GUEST_DEMO_LIMIT, 3),
     guestStorageMb: integer(env.GUEST_STORAGE_MB, 512),
+    faceitResourceHosts: fixedHosts(env.FACEIT_RESOURCE_HOSTS),
+    faceitSignedDownloadHosts: fixedHosts(env.FACEIT_SIGNED_DOWNLOAD_HOSTS),
     faceitApiKey: env.FACEIT_API_KEY || '',
     faceitDownloadToken: env.FACEIT_DOWNLOAD_TOKEN || '',
     maxUploadMb: integer(env.MAX_UPLOAD_MB, 512),

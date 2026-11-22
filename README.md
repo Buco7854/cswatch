@@ -46,17 +46,17 @@ These variables accept `true`, `false`, or an empty/unset value:
 | `GUEST_UPLOADS_ENABLED`      | `true`             | Private temporary uploads without an account. Effective only on initialized public instances.                             |
 | `REGISTRATIONS_ENABLED`      | `true`             | Local registrations and creation of new accounts through Steam. Existing users can still sign in.                         |
 | `STEAM_ENABLED`              | `false`            | Steam OpenID sign-in and account linking.                                                                                 |
-| `FACEIT_ENABLED`             | `false`            | Steam-verified FACEIT profile linking, match history, and approved imports. This is not a FACEIT login provider.          |
+| `FACEIT_ENABLED`             | `false`            | Steam-verified FACEIT profile linking, match history, and approved imports.                                               |
 | `TRANSCRIPTION_ENABLED`      | `false`            | Optional offline CPU speech transcription with a prepared local model and the transcription worker.                       |
 | `AUTO_OFFICIAL_MAPS_ENABLED` | `false`            | Prefer approved map sources, otherwise prepare a disclosed latest official snapshot. Requires the separate asset service. |
 
 Explicit environment values take precedence and lock the corresponding admin controls. Empty variables let the administrator change policy in the UI. API keys are environment-only and are never returned to the browser. To run a closed private instance, disable **both** public access and registrations.
 
-### Identity providers
+### Steam and FACEIT
 
-Steam OpenID verifies a Steam ID without collecting Steam passwords. Enable `STEAM_ENABLED=true`; a Steam Web API key is only needed for next-match share-code discovery. Discovery also requires the member's game authentication code and a prior match sharing code, used only for that request. Steam sign-in does not grant access to demo download URLs. Download a match in CS2 and upload its file.
+Steam OpenID verifies a Steam ID. Enable `STEAM_ENABLED=true`. Match sync uses the operator’s application key, an encryption key file, the member’s game authentication code and a recent match sharing code. Open the discovered match in CS2, download it and upload its file. [Provider setup](docs/ACCESS-SETUP.md#steam-and-faceit)
 
-For FACEIT, set `FACEIT_API_KEY`. Linking looks up the FACEIT CS2 account matching the user's verified Steam ID. History comes from the official Data API. Automatic imports additionally require a separately approved `FACEIT_DOWNLOAD_TOKEN`; ordinary Data API access is insufficient. Only FACEIT match IDs are accepted, never arbitrary remote download URLs. If approval is unavailable, manual uploads work.
+For FACEIT, enable `FACEIT_ENABLED` and configure a server-side `FACEIT_API_KEY`. Members can browse pages of their CS2 history after verifying their Steam association. Importing each recording requires their participation in the match and a separately approved `FACEIT_DOWNLOAD_TOKEN`. [Provider setup](docs/ACCESS-SETUP.md#steam-and-faceit)
 
 ### Premier, Competitive and externally downloaded demos
 
@@ -68,7 +68,7 @@ Accounts use usernames, not email addresses. There is no email verification or e
 docker compose exec web node dist/cli.js reset-password USERNAME
 ```
 
-Resetting invalidates existing sessions. Signed-in users can change/set their own passwords in Account settings. Login rechecks credentials after password verification, and password changes recheck the initiating session and credentials after hashing, so a concurrent reset or logout cannot revive stale authority. The identity table supports multiple provider identities per user without merging accounts by display name or email. See [architecture](docs/ARCHITECTURE.md) for adding future providers.
+Resetting invalidates existing sessions. Signed-in users can change/set their own passwords in Account settings. Login rechecks credentials after password verification, and password changes recheck the initiating session and credentials after hashing, so a concurrent reset or logout cannot revive stale authority. The identity table supports multiple provider identities per user without merging accounts by display name or email. See [architecture](docs/ARCHITECTURE.md#accounts-and-providers) for provider identity rules.
 
 ### Recorded inputs, economy and communications
 
@@ -209,4 +209,4 @@ Start with [AGENTS.md](AGENTS.md), [architecture](docs/ARCHITECTURE.md), [securi
 
 The browser distribution includes the [csgo-sharecode MIT license](frontend/public/licenses/csgo-sharecode.txt) and the [Barlow Condensed](frontend/public/licenses/barlow-condensed.txt) and [IBM Plex Sans](frontend/public/licenses/ibm-plex-sans.txt) font licenses. Game artwork and demo recordings are excluded from Git and Docker build contexts.
 
-Steam and FACEIT use compact locally bundled Simple Icons glyphs (CC0-1.0), with visible localized action labels and shared theme colours. Source identities and trademark attribution are recorded in the shipped [provider brand notice](frontend/public/licenses/provider-brands.txt). These UI icons are separate from the unbundled Counter-Strike game artwork. FACEIT remains a data connection, not a login provider.
+Steam and FACEIT use compact locally bundled Simple Icons glyphs (CC0-1.0), with visible localized action labels and shared theme colours. Source identities and trademark attribution are recorded in the shipped [provider brand notice](frontend/public/licenses/provider-brands.txt). These UI icons are separate from the unbundled Counter-Strike game artwork. FACEIT is available in Connected accounts for CS2 history and demo imports.

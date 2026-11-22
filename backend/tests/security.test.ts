@@ -230,14 +230,16 @@ test('HTTPS sessions and Steam state use host-only cookie prefixes, including ro
     });
     assert.equal(nonHostCookie.json().user, null);
     const start = await app.inject({
-      url: '/api/auth/steam',
-      headers: { ...headers, cookie: sessionCookie },
+      method: 'POST',
+      url: '/api/auth/steam/link',
+      headers: { ...headers, cookie: sessionCookie, 'x-csrf-token': registration.json().user.csrf },
     });
+    assert.equal(start.statusCode, 200);
     assertCookie(String(start.headers['set-cookie']), '__Host-cswatch_steam_state');
     const state = start.cookies.find(
       (cookie) => cookie.name === '__Host-cswatch_steam_state',
     )!.value;
-    const returnTo = new URL(start.headers.location!).searchParams.get('openid.return_to')!;
+    const returnTo = new URL(start.json().location).searchParams.get('openid.return_to')!;
     const claimed = 'https://steamcommunity.com/openid/id/76561198000000002';
     const query = new URLSearchParams({
       state,
@@ -260,7 +262,7 @@ test('HTTPS sessions and Steam state use host-only cookie prefixes, including ro
     assert.equal(wrongCookie.statusCode, 400);
     globalThis.fetch = async (input) => {
       assert.equal(input, 'https://steamcommunity.com/openid/login');
-      return new Response('is_valid:true\n');
+      return new Response('ns:http://specs.openid.net/auth/2.0\nis_valid:true\n');
     };
     const linked = await app.inject({
       url,
@@ -479,6 +481,138 @@ test('Steam callback fails before network without matching one-use state', async
     assert.equal(r.statusCode, 400);
     assert.equal(s.db.one('SELECT count(*) AS n FROM users WHERE is_admin=0')!.n, 0);
   } finally {
+    await s.close();
+  }
+});
+
+test('Steam rejects malformed and stale assertions, cross-state nonce reuse, and revoked linking sessions', async () => {
+  const s = await setup({ STEAM_ENABLED: 'true' });
+  const originalFetch = globalThis.fetch;
+  const headers = { host: 'localhost:8000', origin };
+  const validReply = 'ns:http://specs.openid.net/auth/2.0\nis_valid:true\n';
+  const claimed = 'http://steamcommunity.com/openid/id/76561198000000222';
+  let counter = 0;
+  let verifications = 0;
+  let upstream = () => new Response(validReply);
+  globalThis.fetch = async (input, options) => {
+    verifications++;
+    assert.equal(input, 'https://steamcommunity.com/openid/login');
+    assert.equal(options?.redirect, 'error');
+    return upstream();
+  };
+  try {
+    const member = await s.register('steam_linking_member');
+    const authenticated = { ...headers, cookie: member.cookie, 'x-csrf-token': member.csrf };
+    const start = async (link = false) => {
+      const response = await s.app.inject(
+        link
+          ? { method: 'POST', url: '/api/auth/steam/link', headers: authenticated }
+          : { url: '/api/auth/steam?returnTo=%2F%2Fevil.test', headers },
+      );
+      assert.equal(response.statusCode, link ? 200 : 303, response.body);
+      const endpoint = new URL(link ? response.json().location : response.headers.location!);
+      const returnTo = endpoint.searchParams.get('openid.return_to')!;
+      const state = new URL(returnTo).searchParams.get('state')!;
+      const query = new URLSearchParams({
+        state,
+        'openid.mode': 'id_res',
+        'openid.ns': 'http://specs.openid.net/auth/2.0',
+        'openid.op_endpoint': 'https://steamcommunity.com/openid/login',
+        'openid.return_to': returnTo,
+        'openid.identity': claimed,
+        'openid.claimed_id': claimed,
+        'openid.response_nonce':
+          new Date().toISOString().replace(/\.\d{3}Z$/, 'Z') + 'case-' + counter++,
+        'openid.assoc_handle': 'fixture-handle',
+        'openid.signed': 'op_endpoint,return_to,response_nonce,assoc_handle,claimed_id,identity',
+        'openid.sig': 'fixture-signature',
+      });
+      return {
+        query,
+        callback: () =>
+          s.app.inject({
+            url: '/api/auth/steam/callback?' + query,
+            headers: {
+              ...headers,
+              cookie: (link ? member.cookie + '; ' : '') + 'steam_state=' + state,
+            },
+          }),
+      };
+    };
+    for (const changes of [
+      { 'openid.identity': claimed + '0' },
+      { 'openid.return_to': origin + '/library' },
+      { 'openid.op_endpoint': 'https://other.example/openid/login' },
+      { 'openid.signed': 'op_endpoint,return_to,response_nonce,assoc_handle,claimed_id' },
+      { 'openid.response_nonce': '2000-01-01T00:00:00Zexpired' },
+      { 'openid.response_nonce': '2026-02-29T00:00:00Zmalformed' },
+      { 'openid.sig': '' },
+    ]) {
+      const flow = await start();
+      for (const [name, value] of Object.entries(changes)) flow.query.set(name, value);
+      assert.equal((await flow.callback()).statusCode, 400);
+    }
+    const cancelled = await start();
+    cancelled.query.set('openid.mode', 'cancel');
+    const refusal = await cancelled.callback();
+    assert.equal(refusal.statusCode, 303);
+    assert.equal(refusal.headers.location, '/login?steam=cancelled&returnTo=%2Flibrary');
+    const expired = await start();
+    s.db.run('UPDATE auth_states SET expires_at=0');
+    assert.match((await expired.callback()).body, /expired/);
+    assert.equal(verifications, 0);
+    for (const body of [
+      validReply.replace('true', 'false'),
+      validReply + 'is_valid:false\n',
+      'nonsense\nis_valid:true\n',
+      validReply + 'x'.repeat(16384),
+    ]) {
+      upstream = () => new Response(body);
+      assert.equal((await (await start()).callback()).statusCode, 400);
+    }
+    upstream = () => new Response(null, { status: 302 });
+    assert.equal((await (await start()).callback()).statusCode, 400);
+    upstream = () => new Response(validReply);
+    const valid = await start();
+    const signedIn = await valid.callback();
+    assert.equal(signedIn.statusCode, 303, signedIn.body);
+    assert.equal(signedIn.headers.location, '/library');
+    const replay = await start();
+    replay.query.set('openid.response_nonce', valid.query.get('openid.response_nonce')!);
+    assert.equal((await replay.callback()).statusCode, 400);
+    assert.equal(
+      (
+        await s.app.inject({
+          method: 'POST',
+          url: '/api/auth/steam/link',
+          headers: { ...authenticated, origin: 'https://other.example' },
+        })
+      ).statusCode,
+      403,
+    );
+    const conflict = await (await start(true)).callback();
+    assert.equal(conflict.statusCode, 409);
+    const link = await start(true);
+    link.query.set('openid.identity', claimed.slice(0, -1) + '3');
+    link.query.set('openid.claimed_id', claimed.slice(0, -1) + '3');
+    upstream = () => {
+      s.db.run('DELETE FROM sessions WHERE user_id=?', member.id);
+      return new Response(validReply);
+    };
+    assert.match((await link.callback()).body, /session changed/);
+    assert.equal(
+      s.db.one("SELECT subject FROM identities WHERE user_id=? AND provider='steam'", member.id),
+      undefined,
+    );
+    s.db.run("INSERT INTO settings VALUES('registrations_enabled',0)");
+    upstream = () => new Response(validReply);
+    const closed = await start();
+    closed.query.set('openid.identity', claimed.slice(0, -1) + '4');
+    closed.query.set('openid.claimed_id', claimed.slice(0, -1) + '4');
+    assert.equal((await closed.callback()).statusCode, 403);
+    assert.equal((await (await start()).callback()).statusCode, 303);
+  } finally {
+    globalThis.fetch = originalFetch;
     await s.close();
   }
 });

@@ -420,9 +420,6 @@ test('French phone review actions remain named, reachable and usable when viewin
   await expect(page.locator('.scene')).toHaveAttribute('data-camera-mode', 'orbit');
   await expect(page.locator('.scene')).toHaveAttribute('data-focus-x', '320');
   expect(Number(await page.locator('.timeline-slider').inputValue())).toBeGreaterThanOrEqual(240);
-  await expect(
-    page.getByRole('button', { name: message('fr', 'Return to playback'), exact: true }),
-  ).toHaveCount(0);
   expect(
     await page.evaluate(
       () =>

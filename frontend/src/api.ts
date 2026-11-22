@@ -30,6 +30,7 @@ export function uploadFile(
   progress: (n: number) => void,
   signal?: AbortSignal,
   csrfToken = csrf,
+  steamMatch?: string,
 ): Promise<{ id: string }> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
@@ -48,7 +49,10 @@ export function uploadFile(
       if ('id' in result) resolve(result);
       else reject(result);
     }
-    xhr.open('POST', '/api/demos');
+    xhr.open(
+      'POST',
+      steamMatch ? '/api/demos?' + new URLSearchParams({ steam_match: steamMatch }) : '/api/demos',
+    );
     xhr.setRequestHeader('X-CSRF-Token', csrfToken);
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) progress(Math.round((e.loaded / e.total) * 100));

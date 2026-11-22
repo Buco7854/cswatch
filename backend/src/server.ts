@@ -22,6 +22,7 @@ import {
 } from './security.js';
 import { abandon, accessDemo, reserve, validateMagic } from './ingestion.js';
 import { authRoutes } from './auth.js';
+import { steamHistoryRoutes } from './steam-history.js';
 import { providerRoutes } from './providers.js';
 import { captionArtifactName } from './captions.js';
 import { requeueTranscription } from './transcription-worker.js';
@@ -41,7 +42,11 @@ import { cleanupPresentationRetryTemps } from './presentation-assets.js';
 import { currentGuest, guestRoutes, guestUploadsEnabled } from './guest.js';
 import { prepareSetup, provisionAdmin, setupRequired, setupRoutes } from './setup.js';
 
-export async function createApp(c: Config, db = new Store(c.dataDir)) {
+export async function createApp(
+  c: Config,
+  db = new Store(c.dataDir),
+  providerDownload?: Parameters<typeof providerRoutes>[3],
+) {
   process.umask(0o077);
   if (Boolean(c.adminUsername) !== Boolean(c.adminPassword))
     throw new Error('ADMIN_USERNAME and ADMIN_PASSWORD must be configured together.');
@@ -189,7 +194,8 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
   await authRoutes(app, db, c);
   await setupRoutes(app, db, c);
   await guestRoutes(app, db, c);
-  await providerRoutes(app, db, c);
+  await providerRoutes(app, db, c, providerDownload);
+  steamHistoryRoutes(app, db, c);
   await equipmentAssetRoutes(app, db.root, c.mapAssetsDir, c.mapJobsDir);
   await gameplaySoundAssetRoutes(app, db.root, c.mapAssetsDir);
   await equipmentModelAssetRoutes(app, db.root, c.mapAssetsDir, c.mapJobsDir);
@@ -245,7 +251,7 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
           ? Math.min(c.maxUploadMb, c.guestStorageMb)
           : c.maxUploadMb,
       retention_days: c.retentionDays,
-      steam_discovery: Boolean(c.steamApiKey),
+      steam_discovery: Boolean(c.steamApiKey && c.steamSyncKeyFile),
       faceit_configured: Boolean(c.faceitApiKey),
       faceit_downloads: Boolean(c.faceitDownloadToken),
       transcription_configured: Boolean(c.transcriptionModelDir),
@@ -278,8 +284,25 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
     return { demos: rows.map((row) => visible(row, r.user?.id)), total };
   });
   app.post('/api/demos', async (r, reply) => {
-    const u = r.user || r.guest || requireUser(r),
-      uploadMb = r.user ? c.maxUploadMb : Math.min(c.maxUploadMb, c.guestStorageMb),
+    const u = r.user || r.guest || requireUser(r);
+    const { steam_match } = z
+      .object({
+        steam_match: z
+          .string()
+          .regex(/^[1-9]\d{0,19}$/)
+          .optional(),
+      })
+      .parse(r.query);
+    function checkSteamUpload() {
+      if (!steam_match) return;
+      const live = currentUser(db, r, c);
+      if (!r.user || !live || live.id !== u.id || live.csrf !== r.user.csrf)
+        throw new HttpError(401, 'Session expired. Refresh the page and try again.');
+      if (!db.one('SELECT 1 FROM steam_matches WHERE user_id=? AND match_id=?', u.id, steam_match))
+        throw new HttpError(404, 'This Steam match is no longer in your history.');
+    }
+    checkSteamUpload();
+    const uploadMb = r.user ? c.maxUploadMb : Math.min(c.maxUploadMb, c.guestStorageMb),
       file = await r.file({ limits: { fileSize: uploadMb * 1024 ** 2 } });
     if (!file) throw new HttpError(400, 'Choose a .dem or .dem.zst file.');
     const filename = basename(file.filename),
@@ -311,7 +334,15 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
       await pipeline(file.file, createWriteStream(join(folder, 'input' + ext), { mode: 0o600 }));
       if (file.file.truncated) throw new HttpError(413, 'Demo exceeds the upload limit.');
       validateMagic(join(folder, 'input' + ext), ext);
-      db.run("UPDATE demos SET status='queued',size=? WHERE id=?", size, id);
+      db.transaction(() => {
+        checkSteamUpload();
+        db.run(
+          "UPDATE demos SET status='queued',size=?,source_ref=? WHERE id=?",
+          size,
+          steam_match ? 'steam:' + steam_match : null,
+          id,
+        );
+      });
     } catch (e) {
       abandon(db, id);
       throw e;

@@ -1,3 +1,5 @@
+import { HttpError } from './errors.js';
+
 /** Fixed-origin provider responses are still bounded before JSON/text allocation. */
 export async function readUpstreamText(response: Response, maxBytes: number) {
   const reader = response.body?.getReader();
@@ -19,4 +21,23 @@ export async function readUpstreamText(response: Response, maxBytes: number) {
 }
 export async function readUpstreamJson(response: Response, maxBytes = 2 * 1024 ** 2) {
   return JSON.parse(await readUpstreamText(response, maxBytes)) as any;
+}
+
+export async function requestJson<T>(
+  url: string,
+  options: RequestInit,
+  failure: string,
+  read: (response: Response) => Promise<T>,
+) {
+  try {
+    const response = await fetch(url, { ...options, redirect: 'error' });
+    try {
+      return await read(response);
+    } finally {
+      if (!response.bodyUsed) void response.body?.cancel().catch(() => {});
+    }
+  } catch (error) {
+    if (error instanceof HttpError) throw error;
+    throw new HttpError(502, failure);
+  }
 }

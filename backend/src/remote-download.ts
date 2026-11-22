@@ -157,7 +157,13 @@ export async function downloadRemoteDemo(
     request.end();
   });
   if (response.statusCode !== 200) {
+    const unavailable = [401, 403, 404, 410].includes(response.statusCode ?? 0);
     response.destroy();
+    if (unavailable)
+      throw new HttpError(
+        502,
+        'The demo download is unavailable or has expired. Try again or upload manually.',
+      );
     throw new HttpError(502, 'The demo source did not return a downloadable file.');
   }
   const encoding = response.headers['content-encoding'];
