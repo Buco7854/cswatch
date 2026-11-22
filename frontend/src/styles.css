@@ -835,15 +835,16 @@ details form {
 }
 .skip-link {
   position: fixed;
-  top: -100px;
+  top: 12px;
   left: 16px;
+  clip-path: inset(50%);
   padding: 10px 16px;
   background: #fff;
   color: #111;
   z-index: 100;
 }
 .skip-link:focus {
-  top: 12px;
+  clip-path: none;
 }
 @media (min-width: 1800px) {
   .main {

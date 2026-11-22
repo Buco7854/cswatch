@@ -1,3 +1,4 @@
+import { chooseCameraControl } from './fixtures/viewer-transport';
 import { test, expect } from '@playwright/test';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -16,7 +17,7 @@ test('viewer streams only nearby time slices, pauses on a failed seek, retries a
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.addInitScript(() =>
-    ['viewer-settings', 'viewer-settings-mobile'].forEach((key) =>
+    ['viewer-settings-v2', 'viewer-settings-v2-mobile'].forEach((key) =>
       localStorage.setItem(key, JSON.stringify({ economy: true, quality: 'low' })),
     ),
   );
@@ -61,8 +62,7 @@ test('viewer streams only nearby time slices, pauses on a failed seek, retries a
     await expect(
       page.getByRole('heading', { name: 'Training courtyard', exact: true }),
     ).toBeVisible();
-    await page.getByRole('combobox', { name: 'Camera mode' }).click();
-    await page.getByRole('option', { name: '2D tactical · low power' }).click();
+    await chooseCameraControl(page, '2D tactical · low power');
     const slider = page.getByRole('slider', { name: 'Playback position' });
     await expect(slider).toHaveAttribute('max', '9600');
     await expect.poll(() => calls.includes(1)).toBe(true);
@@ -80,32 +80,11 @@ test('viewer streams only nearby time slices, pauses on a failed seek, retries a
     await page.getByRole('button', { name: 'Pause', exact: true }).click();
     await page.getByRole('button', { name: 'Replay tools', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Timeline options', exact: true }).click();
-    await page.getByRole('switch', { name: 'Show round strip', exact: true }).check();
-    await page.getByRole('button', { name: 'Close timeline options', exact: true }).click();
-    const context = page.getByRole('combobox', { name: 'Timeline range', exact: true });
-    const transport = page.locator('.viewer-controlbar');
-    const rail = page.locator('.viewer-rounds-rail');
-    const secondRound = page.getByRole('button', { name: 'Jump to round 2', exact: true });
-    await expect(context).toBeVisible();
-    const contextBounds = (await context.boundingBox())!;
-    const transportBounds = (await transport.boundingBox())!;
-    const railBounds = (await rail.boundingBox())!;
-    expect(contextBounds.y).toBeGreaterThanOrEqual(transportBounds.y);
-    expect(contextBounds.y + contextBounds.height).toBeLessThanOrEqual(
-      transportBounds.y + transportBounds.height + 1,
-    );
-    expect(transportBounds.y + transportBounds.height).toBeLessThanOrEqual(railBounds.y + 1);
-    expect(
-      await secondRound.evaluate((button) => {
-        const bounds = button.getBoundingClientRect();
-        return button.contains(
-          document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2),
-        );
-      }),
-      'Expanded round navigation must receive the actual pointer hit',
-    ).toBe(true);
-    await secondRound.click();
-    await expect(slider).toHaveValue('1280');
+    const round = page.getByRole('combobox', { name: 'Round', exact: true });
+    await round.click();
+    await page.getByRole('option', { name: 'Round 2', exact: true }).click();
+    await expect(page.locator('.timeline-round-segment[aria-current="step"]')).toHaveText('2');
+    await expect(slider).toHaveValue('1408');
     await expect(slider).toHaveAttribute('max', '9600');
     expect(errors).toEqual([]);
   } finally {

@@ -613,8 +613,8 @@ export default function ViewerOptions({
                 value={settings.cameraFov}
                 min={40}
                 max={110}
-                step={1}
-                display={settings.cameraFov + '°'}
+                step="any"
+                display={settings.cameraFov.toLocaleString(locale()) + '°'}
                 description={t(
                   'Changes the vertical field of view for 3D cameras. The 2D view is unaffected.',
                 )}
@@ -660,7 +660,7 @@ export default function ViewerOptions({
                   onChange({ ...settings, quality: value as ViewerSettings['quality'] })
                 }
                 options={[
-                  { value: 'auto', label: t('Auto · mobile friendly') },
+                  { value: 'auto', label: t('Auto · based on GPU') },
                   { value: 'compact', label: t('Compact 3D · simplified map') },
                   { value: 'low', label: t('Low · reduced resolution, no shadows') },
                   { value: 'high', label: t('High · shadows, higher resolution') },

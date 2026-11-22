@@ -1,3 +1,4 @@
+import { chooseCameraControl } from './fixtures/viewer-transport';
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { test, expect } from '@playwright/test';
 import { originalAnimatedAgentGLB } from './fixtures/original-agent';
@@ -19,7 +20,7 @@ test('directional clips deform skinned actors from recorded speed and duck on de
   test.skip(Boolean(process.env.E2E_PRIVATE));
   await page.addInitScript(() => {
     localStorage.setItem('cswatch.language', 'en');
-    for (const key of ['viewer-settings', 'viewer-settings-mobile'])
+    for (const key of ['viewer-settings-v2', 'viewer-settings-v2-mobile'])
       localStorage.setItem(
         key,
         JSON.stringify({
@@ -181,12 +182,10 @@ test('directional clips deform skinned actors from recorded speed and duck on de
     await page.addInitScript((theme) => localStorage.setItem('theme', theme), theme);
     await page.goto('/watch/native-locomotion-fixture');
     const scene = page.locator('.scene');
-    await expect(scene).toHaveAttribute('data-agent-ready-count', '1');
     await expect(scene).toHaveAttribute('data-map-model-state', 'ready');
-    // The ground-level free camera intentionally hides the body intersecting
-    // its eye. Observe from above so GPU bone/attachment probes see the actor.
-    await page.getByRole('combobox', { name: 'Camera mode', exact: true }).click();
-    await page.getByRole('option', { name: 'Overhead', exact: true }).click();
+    // See the tracked actor from above before probing the bone and attachment.
+    await chooseCameraControl(page, 'Overhead');
+    await expect(scene).toHaveAttribute('data-agent-ready-count', '1');
     if (width < 600) {
       await expect(page.locator('.map-verification-short')).toHaveText('Unverified');
       expect(
@@ -243,11 +242,9 @@ test('directional clips deform skinned actors from recorded speed and duck on de
     await page.screenshot({
       path: info.outputPath(`original-directional-agent-${theme}-${width}.png`),
     });
-    await page.getByRole('combobox', { name: 'Camera mode', exact: true }).click();
-    await page.getByRole('option', { name: '2D tactical · low power', exact: true }).click();
+    await chooseCameraControl(page, '2D tactical · low power');
     await expect(page.locator('.tactical-plot')).toBeVisible();
-    await page.getByRole('combobox', { name: 'Camera mode', exact: true }).click();
-    await page.getByRole('option', { name: 'Free camera', exact: true }).click();
+    await chooseCameraControl(page, 'Free camera');
     await expect(scene).toHaveAttribute('data-agent-ready-count', '1');
     await check(208, -0.55);
   }

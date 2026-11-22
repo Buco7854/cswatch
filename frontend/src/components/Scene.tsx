@@ -16,7 +16,8 @@ import {
 import type { ReactNode, RefObject } from 'react';
 import type { ListenerPose } from '../viewer-audio';
 import { AdaptiveResolution, type RenderQuality } from '../adaptive-resolution';
-import { Canvas, createPortal, useFrame, useThree } from '@react-three/fiber';
+import { Canvas, createPortal, useFrame, useThree, type RootState } from '@react-three/fiber';
+import { renderDevice, type RenderDevice } from '../render-device';
 import { Html, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import type { Playback, Position } from '../types';
@@ -684,6 +685,7 @@ function World({
     !shadows ||
     mode === 'follow' ||
     mode === 'pov' ||
+    Boolean(focus) ||
     tracers ||
     items.some(({ kind }) => kind !== 'projectile');
   const followTrace = useMemo(
@@ -757,9 +759,7 @@ function World({
         event.altKey ||
         event.metaKey ||
         typingOrDialog(event.target) ||
-        document.querySelector(
-          'dialog[open]:not(.review-feed-inline),[aria-modal="true"],[role="menu"],[role="listbox"]',
-        )
+        document.querySelector('dialog[open],[aria-modal="true"],[role="menu"],[role="listbox"]')
       )
         return;
       if (
@@ -810,8 +810,6 @@ function World({
       document.removeEventListener('focusin', clear);
     };
   }, [mode, preview, gl, invalidate]);
-  const freeView = useRef<{ position: THREE.Vector3; target: THREE.Vector3 } | null>(null);
-  const previousMode = useRef<string | undefined>(undefined);
   const { previous, frame, next, alpha } = frameAt(data, tick);
   const recordedTravel = useMemo(
     () => indexRecordedTravel(data.frames, data.strideAnchor, data.rounds, data.tickRate),
@@ -868,79 +866,61 @@ function World({
     const size = box.getSize(new THREE.Vector3());
     return { center: box.getCenter(new THREE.Vector3()), extent: Math.max(size.x, size.z, 20) };
   }, [data.sample, data.worldBounds, data.worldBounds ? null : data.frames]);
-  useEffect(() => {
-    const priorMode = previousMode.current;
-    previousMode.current = mode;
-    if (mode === 'orbit' && focus) {
-      const target = new THREE.Vector3(
-        focus.target.x * UNIT,
-        focus.target.z * UNIT,
-        -focus.target.y * UNIT,
+  const focusTrace = focus ? followTrace : null;
+  const freeView = useRef<{ position: THREE.Vector3; target: THREE.Vector3 }>(undefined);
+  useLayoutEffect(() => {
+    if (mode !== 'orbit') return;
+    const observed =
+      (viewedPlayer?.alive ? viewedPlayer : undefined) ??
+      frame.players.find((player) => player.alive);
+    const eye = observed && !data.sample ? firstPersonView(observed) : undefined;
+    const overview = bounds.center
+      .clone()
+      .add(
+        data.sample
+          ? new THREE.Vector3(bounds.extent * 0.57, bounds.extent * 0.65, bounds.extent * 0.62)
+          : new THREE.Vector3(0, bounds.extent * 1.3, 0.01),
       );
-      const origin =
-        focus.origin &&
-        new THREE.Vector3(focus.origin.x * UNIT, focus.origin.z * UNIT, -focus.origin.y * UNIT);
-      const extent = origin ? THREE.MathUtils.clamp(origin.distanceTo(target) * 0.7, 10, 32) : 16;
-      camera.position
-        .copy(target)
-        .add(new THREE.Vector3(extent * 0.65, extent * 0.9, extent * 0.65));
-      camera.lookAt(target);
-      orbit.current?.target.copy(target);
-      orbit.current?.update();
-    } else if (mode === 'orbit') {
-      let initial = freeView.current;
-      if (!initial && !data.sample) {
-        if (priorMode === 'pov' || priorMode === 'follow') {
-          initial = {
-            position: camera.position.clone(),
-            target: camera.position
-              .clone()
-              .add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(8)),
-          };
-        } else {
-          const observed = viewedPlayer || frame.players.find((player) => player.alive);
-          if (observed) {
-            const view = firstPersonView(observed);
-            initial = {
-              position: new THREE.Vector3(...view.position),
-              target: new THREE.Vector3(...view.target),
-            };
-          }
-        }
+    const saved = focus ? undefined : freeView.current;
+    const target =
+      saved?.target ?? (eye ? new THREE.Vector3(...eye.target) : bounds.center.clone());
+    camera.position.copy(saved?.position ?? (eye ? new THREE.Vector3(...eye.position) : overview));
+    if (focus) {
+      target.set(focus.target.x * UNIT, focus.target.z * UNIT, -focus.target.y * UNIT);
+      if (eye && focusTrace) {
+        const origin =
+          focus.origin &&
+          new THREE.Vector3(focus.origin.x * UNIT, focus.origin.z * UNIT, -focus.origin.y * UNIT);
+        const extent = origin ? THREE.MathUtils.clamp(origin.distanceTo(target) * 0.7, 10, 32) : 16;
+        const overview = target
+          .clone()
+          .add(new THREE.Vector3(extent * 0.65, extent * 0.9, extent * 0.65));
+        camera.position.fromArray(
+          focusTrace({ target: eye.position, position: overview.toArray() }),
+        );
       }
-      camera.position.copy(
-        initial?.position ||
-          bounds.center
-            .clone()
-            .add(
-              new THREE.Vector3(bounds.extent * 0.57, bounds.extent * 0.65, bounds.extent * 0.62),
-            ),
-      );
-      const target = initial?.target || bounds.center;
-      camera.lookAt(target);
-      orbit.current?.target.copy(target);
-      orbit.current?.update();
     }
+    camera.lookAt(target);
+    orbit.current?.target.copy(target);
+    orbit.current?.update();
     invalidate();
     return () => {
-      if (mode === 'orbit')
-        freeView.current = {
-          position: camera.position.clone(),
-          target: data.sample
-            ? orbit.current?.target.clone() || bounds.center.clone()
-            : camera.position
-                .clone()
-                .add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(8)),
-        };
+      if (focus) return;
+      freeView.current = {
+        position: camera.position.clone(),
+        target:
+          (data.sample && orbit.current?.target.clone()) ||
+          camera.position
+            .clone()
+            .add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(8)),
+      };
     };
-  }, [mode, bounds, camera, focus?.id, invalidate]);
+  }, [mode, bounds, camera, focus?.id, focusTrace, invalidate]);
   useFrame((_, delta) => {
     if (mode === 'orbit') {
       if (
         !movement.current.size ||
-        document.querySelector(
-          'dialog[open]:not(.review-feed-inline),[aria-modal="true"],[role="menu"],[role="listbox"]',
-        )
+        document.querySelector('dialog[open],[aria-modal="true"],[role="menu"],[role="listbox"]')
       )
         return;
       const forward = camera.getWorldDirection(new THREE.Vector3());
@@ -1473,20 +1453,25 @@ export default function Scene({
   const equipmentCounts = Object.values(
     equipmentStatuses.identity === equipmentIdentity ? equipmentStatuses.items : {},
   );
-  const [autoLow, setAutoLow] = useState(
+  const [fallbackLow, setFallbackLow] = useState(
     () =>
       window.matchMedia('(max-width:780px),(pointer:coarse)').matches ||
       navigator.hardwareConcurrency <= 4,
   );
   useEffect(() => {
     const media = window.matchMedia('(max-width:780px),(pointer:coarse)');
-    const update = () => setAutoLow(media.matches || navigator.hardwareConcurrency <= 4);
+    const update = () => setFallbackLow(media.matches || navigator.hardwareConcurrency <= 4);
     media.addEventListener('change', update);
     update();
     return () => media.removeEventListener('change', update);
   }, []);
-  const prefersCompact = settings.quality === 'compact' || (settings.quality === 'auto' && autoLow);
-  const wantsLow = settings.quality === 'low' || prefersCompact;
+  const [gpu, setGpu] = useState<RenderDevice>();
+  const auto = settings.quality === 'auto';
+  const probingGpu = auto && gpu === undefined;
+  const prefersCompact =
+    settings.quality === 'compact' ||
+    (auto && (gpu === 'software' || gpu === 'limited' || (gpu === 'unknown' && fallbackLow)));
+  const wantsLow = settings.quality === 'low' || prefersCompact || (auto && gpu === 'integrated');
   const detailedModel = wantsLow
     ? mapAssets.assets.mobile || mapAssets.assets.model
     : mapAssets.assets.model || mapAssets.assets.mobile;
@@ -1505,7 +1490,7 @@ export default function Scene({
     () => setAdaptiveQuality({ resolution: settings.renderResolution, shadows: true }),
     [assetScope, data.map, settings.quality, settings.renderResolution],
   );
-  const adaptive = settings.quality === 'auto' && !preview;
+  const adaptive = auto && !preview;
   const resolution = adaptive
     ? Math.min(adaptiveQuality.resolution, settings.renderResolution)
     : settings.renderResolution;
@@ -1601,7 +1586,9 @@ export default function Scene({
         ? 'error'
         : model
           ? modelLoad?.url === model
-            ? modelLoad.status
+            ? probingGpu
+              ? 'pending'
+              : modelLoad.status
             : 'pending'
           : 'missing';
   const [rendererFailure, setRendererFailure] = useState<string>();
@@ -1611,7 +1598,7 @@ export default function Scene({
   );
   const currentRendererAttempt = useRef(rendererAttempt);
   currentRendererAttempt.current = rendererAttempt;
-  const modelScope = useMapModelScope(data.sample ? null : model, rendererAttempt);
+  const modelScope = useMapModelScope(data.sample || probingGpu ? null : model, rendererAttempt);
   const gradeEnvironment = mapAssets.assets.environment ?? null,
     environment = compact ? null : gradeEnvironment,
     environmentIdentity = mapEnvironmentKey(environment);
@@ -1647,10 +1634,14 @@ export default function Scene({
     rendererAttempt.failed = true;
     setRendererFailure(rendererAttempt.map);
   }, [rendererAttempt]);
-  const reportRendererCreated = useCallback(() => {
-    if (currentRendererAttempt.current !== rendererAttempt || rendererAttempt.failed) return;
-    setRendererFailure((previous) => (previous === rendererAttempt.map ? undefined : previous));
-  }, [rendererAttempt]);
+  const reportRendererCreated = useCallback(
+    ({ gl }: RootState) => {
+      if (currentRendererAttempt.current !== rendererAttempt || rendererAttempt.failed) return;
+      setGpu(renderDevice(gl.getContext()));
+      setRendererFailure((previous) => (previous === rendererAttempt.map ? undefined : previous));
+    },
+    [rendererAttempt],
+  );
   const equipmentReady = equipmentCounts.filter((status) => status === 'ready').length;
   const equipmentFailed =
     equipmentAssets.status === 'error'
@@ -1794,8 +1785,17 @@ export default function Scene({
   return (
     <div
       className="scene"
-      data-quality={low ? 'low' : 'high'}
-      data-map-tier={compact ? 'compact' : model === mapAssets.assets.mobile ? 'mobile' : 'desktop'}
+      data-quality={probingGpu ? 'probing' : low ? 'low' : 'high'}
+      data-render-device={gpu}
+      data-map-tier={
+        probingGpu || !model
+          ? undefined
+          : compact
+            ? 'compact'
+            : model === mapAssets.assets.mobile
+              ? 'mobile'
+              : 'desktop'
+      }
       data-render-resolution={resolution}
       data-live-shadows={shadows}
       data-agent-model-state={agentAssets.status}
@@ -1823,6 +1823,7 @@ export default function Scene({
       }
       data-smoke-state={smokeEnabled ? (smokeFailed ? 'unavailable' : 'ready') : undefined}
       data-camera-mode={mode}
+      data-camera-fov={settings.cameraFov}
       data-map-model-state={data.sample ? 'ready' : modelStatus}
       data-environment-state={environmentStatus}
       data-skylight-state={skylight ? 'ready' : 'fallback'}
@@ -1866,7 +1867,7 @@ export default function Scene({
               gl={{ antialias: true, stencil: true, powerPreference: 'high-performance' }}
               fallback={<span>{t('3D rendering is unavailable.')}</span>}
             >
-              {adaptive && (
+              {!probingGpu && adaptive && (
                 <MeasureRenderCadence
                   key={`${data.map}:${model}:${mode}`}
                   active={playing && (Boolean(data.sample) || modelStatus === 'ready')}
@@ -1877,53 +1878,55 @@ export default function Scene({
                   onChange={setAdaptiveQuality}
                 />
               )}
-              <EquipmentFire
-                data={data}
-                tick={tick}
-                low={low}
-                enabled={settings.shotEffects}
-                tracers={tracers}
-              >
-                <EquipmentModels.Provider value={equipmentContext}>
-                  <AgentModels.Provider value={agentContext}>
-                    <World
-                      data={data}
-                      low={low}
-                      tick={tick}
-                      shadows={shadows}
-                      mode={mode}
-                      selected={selected}
-                      model={model}
-                      modelReady={modelStatus === 'ready'}
-                      reportModel={reportModel}
-                      modelScope={modelScope}
-                      sun={
-                        modelLoad?.url === model && modelLoad.status === 'ready'
-                          ? modelLoad.sun
-                          : null
-                      }
-                      skylight={Boolean(skylight)}
-                      sky={
-                        modelLoad?.url === model && modelLoad.status === 'ready'
-                          ? modelLoad.sky
-                          : null
-                      }
-                      environment={environment}
-                      gradeEnvironment={gradeEnvironment}
-                      reportEnvironment={reportEnvironment}
-                      preview={preview}
-                      settings={settings}
-                      tracers={tracers}
-                      agents={agents}
-                      focus={focus}
-                      utilityState={utilityState}
-                      items={liveItems}
-                      onAudioListener={reportAudioListener}
-                      onSmokeUnavailable={setSmokeUnavailable}
-                    />
-                  </AgentModels.Provider>
-                </EquipmentModels.Provider>
-              </EquipmentFire>
+              {!probingGpu && (
+                <EquipmentFire
+                  data={data}
+                  tick={tick}
+                  low={low}
+                  enabled={settings.shotEffects}
+                  tracers={tracers}
+                >
+                  <EquipmentModels.Provider value={equipmentContext}>
+                    <AgentModels.Provider value={agentContext}>
+                      <World
+                        data={data}
+                        low={low}
+                        tick={tick}
+                        shadows={shadows}
+                        mode={mode}
+                        selected={selected}
+                        model={model}
+                        modelReady={modelStatus === 'ready'}
+                        reportModel={reportModel}
+                        modelScope={modelScope}
+                        sun={
+                          modelLoad?.url === model && modelLoad.status === 'ready'
+                            ? modelLoad.sun
+                            : null
+                        }
+                        skylight={Boolean(skylight)}
+                        sky={
+                          modelLoad?.url === model && modelLoad.status === 'ready'
+                            ? modelLoad.sky
+                            : null
+                        }
+                        environment={environment}
+                        gradeEnvironment={gradeEnvironment}
+                        reportEnvironment={reportEnvironment}
+                        preview={preview}
+                        settings={settings}
+                        tracers={tracers}
+                        agents={agents}
+                        focus={focus}
+                        utilityState={utilityState}
+                        items={liveItems}
+                        onAudioListener={reportAudioListener}
+                        onSmokeUnavailable={setSmokeUnavailable}
+                      />
+                    </AgentModels.Provider>
+                  </EquipmentModels.Provider>
+                </EquipmentFire>
+              )}
             </Canvas>
           </SceneBoundary>
         </>

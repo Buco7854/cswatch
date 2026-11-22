@@ -1,3 +1,4 @@
+import { chooseCameraControl } from './fixtures/viewer-transport';
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { manualMapAssets } from './fixtures/map-assets';
 import { expect, test, type Page } from '@playwright/test';
@@ -44,8 +45,7 @@ async function pixel(page: Page) {
   );
 }
 async function overhead(page: Page) {
-  await page.getByRole('combobox', { name: 'Camera mode', exact: true }).click();
-  await page.getByRole('option', { name: 'Overhead', exact: true }).click();
+  await chooseCameraControl(page, 'Overhead');
 }
 async function install(
   page: Page,
@@ -56,7 +56,7 @@ async function install(
     localStorage.setItem('theme', 'dark');
     localStorage.setItem('cswatch.language', 'en');
     localStorage.setItem(
-      'viewer-settings',
+      'viewer-settings-v2',
       JSON.stringify({
         quality: 'high',
         autoHideControls: false,
@@ -79,8 +79,13 @@ async function install(
       },
     }),
   );
+  const replay = originalMapReplay();
+  replay.frames = replay.frames.map((frame) => ({
+    ...frame,
+    players: frame.players.map((player) => ({ ...player, weapon: '' })),
+  }));
   await page.route('**/api/demos/original-source-material/playback', (route) =>
-    fulfillReplayFixture(route, originalMapReplay()),
+    fulfillReplayFixture(route, replay),
   );
   await page.route('**/api/demos/original-source-material/map-assets', (route) =>
     route.fulfill({

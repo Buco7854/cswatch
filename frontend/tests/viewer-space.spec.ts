@@ -1,3 +1,4 @@
+import { choosePlaybackSpeed, chooseCameraControl } from './fixtures/viewer-transport';
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { installMapFixture } from './fixtures/map-assets';
 import { test, expect, type Page } from '@playwright/test';
@@ -108,12 +109,14 @@ async function fixture(
       // Preserve saved visibility on reload; only choose low rendering cost for a fresh context.
       if (
         !localStorage.getItem(
-          window.matchMedia('(max-width:760px),(pointer:coarse) and (max-height:560px)').matches
-            ? 'viewer-settings-mobile'
-            : 'viewer-settings',
+          window.matchMedia(
+            '(max-width:760px),(max-width:960px) and (max-height:560px),(pointer:coarse) and (max-height:560px)',
+          ).matches
+            ? 'viewer-settings-v2-mobile'
+            : 'viewer-settings-v2',
         )
       )
-        ['viewer-settings', 'viewer-settings-mobile'].forEach((key) =>
+        ['viewer-settings-v2', 'viewer-settings-v2-mobile'].forEach((key) =>
           localStorage.setItem(key, JSON.stringify({ quality: 'low' })),
         );
     },
@@ -149,14 +152,11 @@ async function fixture(
     await expect(page.locator('.viewer-stage canvas')).toBeVisible();
     return;
   }
-  const camera = page.getByRole('combobox', {
-    name: message(language, 'Camera mode'),
-    exact: true,
-  });
-  await camera.click();
-  await page
-    .getByRole('option', { name: message(language, '2D tactical · low power'), exact: true })
-    .click();
+  await chooseCameraControl(
+    page,
+    message(language, '2D tactical · low power'),
+    message(language, 'Camera mode'),
+  );
   await expect(
     page.getByRole('img', {
       name: message(language, 'Map overview with recorded player positions'),
@@ -170,9 +170,11 @@ const settings = (page: Page) =>
   page.evaluate(() =>
     JSON.parse(
       localStorage.getItem(
-        window.matchMedia('(max-width:760px),(pointer:coarse) and (max-height:560px)').matches
-          ? 'viewer-settings-mobile'
-          : 'viewer-settings',
+        window.matchMedia(
+          '(max-width:760px),(max-width:960px) and (max-height:560px),(pointer:coarse) and (max-height:560px)',
+        ).matches
+          ? 'viewer-settings-v2-mobile'
+          : 'viewer-settings-v2',
       ) || '{}',
     ),
   );
@@ -382,7 +384,7 @@ test.describe('scene touch gestures', () => {
     test.skip(Boolean(process.env.E2E_PRIVATE));
     await page.setViewportSize({ width: 390, height: 844 });
     await page.addInitScript(() =>
-      ['viewer-settings', 'viewer-settings-mobile'].forEach((key) =>
+      ['viewer-settings-v2', 'viewer-settings-v2-mobile'].forEach((key) =>
         localStorage.setItem(key, JSON.stringify({ quality: 'low', inputs: true, economy: true })),
       ),
     );
@@ -477,10 +479,13 @@ test('idle fade follows playback but respects paused state, dialogs, focus, menu
   test.setTimeout(90000);
   await page.setViewportSize({ width: 1440, height: 900 });
   await fixture(page);
+  await page.getByRole('button', { name: 'Options', exact: true }).click();
+  await selectOptionsCategory(page, 'Playback');
+  await optionSwitch(page, 'Hide controls during playback').check();
+  await page.getByRole('button', { name: 'Close viewer options', exact: true }).click();
   const frame = page.locator('.viewer-frame'),
     stage = page.locator('.viewer-stage');
-  await page.getByRole('combobox', { name: 'Playback speed', exact: true }).click();
-  await page.getByRole('option', { name: '0.25×', exact: true }).click();
+  await choosePlaybackSpeed(page, '0.25×');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   const box = (await stage.boundingBox())!;
   const point = { x: Math.round(box.x + box.width / 2), y: Math.round(box.y + box.height * 0.45) };
@@ -593,7 +598,7 @@ for (const language of ['en', 'fr'] as const)
         await page.setViewportSize(viewport);
         await expect
           .poll(async () => (await page.locator('.viewer-dock').boundingBox())!.height)
-          .toBeLessThanOrEqual(108);
+          .toBeLessThanOrEqual(116);
         const dock = (await page.locator('.viewer-dock').boundingBox())!;
         expect(dock.y + dock.height).toBeLessThanOrEqual(viewport.height + 1);
         expect(viewport.height - dock.y - dock.height).toBeLessThanOrEqual(12);

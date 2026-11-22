@@ -1,3 +1,4 @@
+import { chooseCameraControl } from './fixtures/viewer-transport';
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { manualMapAssets } from './fixtures/map-assets';
 import { originalOverviewPNG, qaOverview } from './fixtures/original-map';
@@ -6,8 +7,7 @@ import { originalMapGLB, originalMapReplay } from './fixtures/original-map';
 import { originalAgentGLB, originalAnimatedAgentGLB } from './fixtures/original-agent';
 
 async function camera(page: Page, name: string) {
-  await page.getByRole('combobox', { name: 'Camera mode', exact: true }).click();
-  await page.getByRole('option', { name, exact: true }).click();
+  await chooseCameraControl(page, name);
 }
 async function install(page: Page, badT = false) {
   const replay = originalMapReplay('de_agent_qa'),
@@ -25,13 +25,14 @@ async function install(page: Page, badT = false) {
     localStorage.setItem('cswatch.language', 'en');
     localStorage.setItem('theme', 'dark');
     localStorage.setItem(
-      'viewer-settings',
+      'viewer-settings-v2',
       JSON.stringify({
         quality: 'high',
         autoHideControls: false,
         matchScore: false,
         xray: false,
         crosshair: false,
+        playerLabels: false,
         killReplay: false,
         grenadeLanding: false,
       }),
@@ -86,7 +87,7 @@ async function install(page: Page, badT = false) {
   return { requests, hideT: () => (missingT = true) };
 }
 async function open(page: Page) {
-  await page.goto('/watch/agent-fixture');
+  await page.goto('/watch/agent-fixture?tick=0');
   await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
 }
 
@@ -96,6 +97,7 @@ test('invalid directional packs and missing native actors retain generic bodies 
   test.skip(Boolean(process.env.E2E_PRIVATE));
   const fixture = await install(page, true);
   await open(page);
+  await camera(page, 'Overhead');
   const scene = page.locator('.scene');
   await expect(scene).toHaveAttribute('data-agent-ready-count', '1');
   await expect(scene).toHaveAttribute('data-agent-error-count', '1');
@@ -110,6 +112,7 @@ test('invalid directional packs and missing native actors retain generic bodies 
   await page.getByRole('link', { name: 'Back to home', exact: true }).click();
   await expect(page.locator('.viewer-frame')).toHaveCount(0);
   await page.goBack();
+  await camera(page, 'Overhead');
   await expect(scene).toHaveAttribute('data-agent-ready-count', '1');
   await expect(scene).toHaveAttribute('data-agent-error-count', '0');
   await expect(scene).toHaveAttribute('data-agent-fallback-count', '1');
@@ -171,6 +174,8 @@ test('skinned original native-axis agents release cloned bone textures on POV re
   });
   const { requests } = await install(page);
   await open(page);
+  await page.locator('.timeline-slider').fill('0');
+  await camera(page, 'Free camera');
   const scene = page.locator('.scene'),
     stats = () =>
       page.evaluate(() =>

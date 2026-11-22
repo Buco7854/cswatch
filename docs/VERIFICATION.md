@@ -42,6 +42,18 @@ The first corrected public Playwright run passed 245 tests with two policy skips
 
 Synthetic equipment browser checks exercised recorded drops, planted C4 and all six grenade projectiles. The pinned recording reports partial dropped-item coverage. The replay still lacks a complete native animation graph, terrain-aware ragdolls, and direct state evidence for all jump, fall, land and ladder transitions. Local captures and raw measurements are indexed in `.design/proof/PROOF.md`.
 
+## Match opening and HUD, 2026-11-22
+
+The pinned Mirage demo opened at tick 1761, round 1, in player POV at 73.74° vertical. Headless Chromium opened all 24 combinations of 1920×1080, 1600×900, 1280×720, 1024×768, 844×390 and 390×844 in dark and light, EN and FR. Auto read the active SwiftShader context and selected the worker-prepared Compact Mirage pack. The mocked renderer-identity tests confirmed the first model request for a discrete NVIDIA adapter, Intel Iris Xe and SwiftShader. No physical device or hardware GPU was measured.
+
+The 336 reviewed production captures under `.design/look/shots` cover 14 states for each of those 24 profiles. These include map loading, first open, active POV, kill, flash, observed death, smoke, the same round-seven weapon moment as the supplied fire capture, follow, free, overhead, buffering, map-unavailable 2D and a guest-owned copy of the recording. Some mobile-profile equipment models reached their existing resource budget. The guest and member checks used the isolated test database. The configured Steam sync form and connected FACEIT text were inspected at 1440, 768 and 390 pixels in both themes and languages. The unfocused skip link was clipped and became visible when focused.
+
+At 1280×720, the playback probes used the same player, Compact map and starting tick 18142 for roughly eight seconds. The original defaults measured 36.12 React DOM commits/s including scene label roots, 4.62 app-root commits/s and zero layout shift with the 48° lens and roster hidden. The matched comparison enabled both rosters and the 73.74° lens in both builds. Across three alternating samples per build, median React DOM commits went from 55.18/s to 46.87/s, app-root commits from 8.09/s to 7.50/s and layout shift from 0.00163 to 0.0000353. The panel bounds stayed fixed in all six samples. The remaining small layout-shift entries came from changing numeric text and grenade icons. These runs establish the matched software-rendered comparison on this host.
+
+The final Node 24 production build passed. Public Playwright passed 250 with two configuration skips. The private registration policies each passed 53 with 199 policy skips. Setup passed four with one configuration skip. The affected browser fixtures cover camera restoration, the wider label projection, transport fit and the prompt's clearance from the opt-in input instrument. Formatting and English/French locale coverage passed.
+
+The backend passed all 426 tests with the pinned demo and the offline speech model. The asset suite passed 301. The requested verifier also passed its production build, 423 backend tests with three offline speech skips, all 301 asset tests, runtime layout scans, required Mirage parser confinement and the asset-worker kernel smoke.
+
 ## Final compatibility sweep, 2026-11-22
 
 Verified the uncommitted sweep on `c61b469` with Node 22.23.5. Both builds and the backend unused-local check passed. All 423 backend tests passed with the pinned Mirage recording and offline speech fixtures. All 301 asset tests passed, including publication with required model and texture-plan bindings, compression with the bound texture plan, and retiering with the verified source model hash.

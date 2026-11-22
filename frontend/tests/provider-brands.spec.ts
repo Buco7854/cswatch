@@ -201,6 +201,22 @@ for (const profile of profiles) {
         ),
       ).toBeVisible();
     }
+    const skip = page.locator('.skip-link');
+    await expect(skip).toHaveCSS('clip-path', 'inset(50%)');
+    await skip.focus();
+    await expect(skip).toBeFocused();
+    await expect(skip).toHaveCSS('clip-path', 'none');
+    await skip.blur();
+    if (connected) {
+      await expect(
+        page.getByText(
+          profile.language === 'fr'
+            ? 'Vérifiez le compte FACEIT associé à votre compte Steam.'
+            : 'Verify the FACEIT account linked to your Steam account.',
+          { exact: true },
+        ),
+      ).toBeVisible();
+    }
     await capture('connections');
     expect(images.every((url) => new URL(url).origin === new URL(page.url()).origin)).toBe(true);
     expect(images.some((url) => /steam-openid|faceit-on-(light|dark)/.test(url))).toBe(false);
@@ -282,12 +298,17 @@ test('Steam sync displays discovered matches and opens a pre-identified upload',
   );
   await page.goto('/account/connections');
   await page.getByText('Steam match sync', { exact: true }).click();
+  const help = page.getByRole('link', { name: 'Get your codes on Steam Support', exact: true });
+  await expect(help).toHaveClass(/button/);
+  await expect(help.locator('svg')).toHaveCount(1);
+  await expect(help).toHaveAttribute('target', '_blank');
+  expect((await help.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await page.getByLabel('Game authentication code').fill('ABCD-EFGHI-JKLM');
   await page
     .getByLabel('Starting match sharing code')
     .fill('steam://rungame/730/76561202255233023/+csgo_download_match%20' + code);
   await page.getByRole('button', { name: 'Verify and save codes' }).click();
-  await expect(page.getByText('Steam match codes verified.')).toBeVisible();
+  await expect(page.getByText('Steam sync codes verified.')).toBeVisible();
   await expect(page.getByLabel('Game authentication code')).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Download in CS2' }).first()).toHaveAttribute(
     'href',

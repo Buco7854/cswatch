@@ -39,7 +39,7 @@ test('a mounted viewer replaces recorded weapon text when its artwork is prepare
   let discoveries = 0;
   await page.addInitScript(() => {
     localStorage.setItem(
-      'viewer-settings',
+      'viewer-settings-v2',
       JSON.stringify({ economy: true, autoHideControls: false }),
     );
   });

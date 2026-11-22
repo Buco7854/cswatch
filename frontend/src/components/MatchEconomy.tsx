@@ -1,5 +1,7 @@
-import { useId, useMemo } from 'react';
+import { memo, useId, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronDown, Skull } from 'lucide-react';
+import { playerShortcut } from '../replay-opening';
 import { locale, t } from '../i18n';
 import type { Frame, Player, Position } from '../types';
 import { equipmentKey, equipmentKind, equipmentName, utilityInventory } from '../equipment-display';
@@ -13,7 +15,7 @@ const number = (value: number | undefined) => known(value)?.toLocaleString(local
 const money = (value: number | undefined) =>
   known(value) === undefined ? '-' : '$' + number(value);
 const yesNo = (value: boolean | undefined) => (value === undefined ? '-' : t(value ? 'Yes' : 'No'));
-type LoadoutMember = { player: Player; state: Position | undefined };
+type LoadoutMember = { player: Player; state: Position | undefined; shortcut?: string };
 
 function UtilityInventory({ state }: { state: Position | undefined }) {
   const items = utilityInventory(state?.inventory);
@@ -25,18 +27,6 @@ function UtilityInventory({ state }: { state: Position | undefined }) {
         aria-label={t('Inventory is unavailable at this moment.')}
       >
         -
-      </span>
-    );
-  if (!items.length)
-    return (
-      <span
-        className="broadcast-no-utility"
-        role="img"
-        aria-label={t('No utility carried.')}
-        title={t('No utility carried.')}
-      >
-        <EquipmentGlyph kind="he" />
-        <span>0</span>
       </span>
     );
   return (
@@ -57,7 +47,7 @@ function UtilityInventory({ state }: { state: Position | undefined }) {
   );
 }
 
-export function PlayerRow({
+function PlayerRow({
   member,
   selected,
   onSelect,
@@ -66,7 +56,9 @@ export function PlayerRow({
   selected: boolean;
   onSelect: (id: string) => void;
 }) {
-  const { player, state } = member;
+  useTranslation();
+  const { player, state, shortcut } = member;
+  const dead = state?.alive === false;
   const descriptionId = useId();
   const health = state ? known(state.health) : undefined;
   const armor = known(state?.armor);
@@ -75,11 +67,7 @@ export function PlayerRow({
     (state?.weapon && equipmentKind(state.weapon) === 'bomb');
   return (
     <li
-      className={
-        'broadcast-player' +
-        (selected ? ' is-selected' : '') +
-        (state && !state.alive ? ' is-out' : '')
-      }
+      className={'broadcast-player' + (selected ? ' is-selected' : '') + (dead ? ' is-out' : '')}
       data-player-id={player.id}
       data-health={health === undefined ? 'unknown' : health <= 25 ? 'low' : 'normal'}
       data-armor={armor === undefined ? 'unknown' : 'known'}
@@ -91,99 +79,137 @@ export function PlayerRow({
         aria-label={t('Select player {{player}}', { player: player.name })}
         aria-describedby={descriptionId}
         aria-pressed={selected}
+        aria-keyshortcuts={shortcut}
       >
         <span className="broadcast-player-heading">
+          {shortcut && <kbd aria-hidden="true">{shortcut}</kbd>}
           <strong className="broadcast-player-name" title={player.name}>
-            {state && !state.alive && <Skull size={13} aria-hidden="true" />}
+            {dead && <Skull size={13} aria-hidden="true" />}
             {player.name}
           </strong>
-          <span className="broadcast-cash num" title={t('Money')}>
-            {money(state?.money)}
-          </span>
+          {!dead || state.money ? (
+            <span className="broadcast-cash num" title={t('Money')}>
+              {money(state?.money)}
+            </span>
+          ) : null}
         </span>
-        <span className="broadcast-player-equipment">
-          <span className="broadcast-active-weapon">
-            <span
-              className="broadcast-weapon-identity"
-              title={state?.weapon ? equipmentName(state.weapon) : undefined}
-            >
-              {state?.weapon ? (
-                <>
-                  <EquipmentGlyph item={state.weapon} />
-                  <span className="visually-hidden">{equipmentName(state.weapon)}</span>
-                </>
-              ) : (
-                <span className="broadcast-unavailable">{t('Weapon unavailable')}</span>
-              )}
-            </span>
-            <span className="broadcast-ammo num" title={t('Ammo')}>
-              {number(state?.ammo)}
-              <span className="visually-hidden"> {t('Ammo')}</span>
-            </span>
-          </span>
-          <UtilityInventory state={state} />
-          <span className="broadcast-protection">
-            {state?.helmet === true && (
-              <span role="img" aria-label={t('Helmet')} title={t('Helmet')}>
-                <EquipmentGlyph kind="helmet" />
+        {!dead && (
+          <>
+            <span className="broadcast-player-equipment">
+              <span className="broadcast-active-weapon">
+                <span
+                  className="broadcast-weapon-identity"
+                  title={state?.weapon ? equipmentName(state.weapon) : undefined}
+                >
+                  {state?.weapon ? (
+                    <>
+                      <EquipmentGlyph item={state.weapon} />
+                      <span className="visually-hidden">{equipmentName(state.weapon)}</span>
+                    </>
+                  ) : (
+                    <span className="broadcast-unavailable">–</span>
+                  )}
+                </span>
+                <span className="broadcast-ammo num" title={t('Ammo')}>
+                  {number(state?.ammo)}
+                  <span className="visually-hidden"> {t('Ammo')}</span>
+                </span>
               </span>
-            )}
-            {state?.defuser === true && (
-              <span role="img" aria-label={t('Defuse kit')} title={t('Defuse kit')}>
-                <EquipmentGlyph kind="defuser" />
+              <UtilityInventory state={state} />
+              <span className="broadcast-protection">
+                {state?.helmet === true && (
+                  <span role="img" aria-label={t('Helmet')} title={t('Helmet')}>
+                    <EquipmentGlyph kind="helmet" />
+                  </span>
+                )}
+                {state?.defuser === true && (
+                  <span role="img" aria-label={t('Defuse kit')} title={t('Defuse kit')}>
+                    <EquipmentGlyph kind="defuser" />
+                  </span>
+                )}
+                {bomb && (
+                  <span
+                    className="broadcast-bomb"
+                    role="img"
+                    aria-label={t('Carries C4')}
+                    title={t('Carries C4')}
+                  >
+                    <EquipmentGlyph kind="bomb" />
+                  </span>
+                )}
               </span>
-            )}
-            {bomb && (
+            </span>
+            <span className="broadcast-player-status">
+              <span className="broadcast-health-value num" title={t('Health')}>
+                {number(health)}
+                <small className="visually-hidden"> {t('HP')}</small>
+              </span>
+              <span className="broadcast-health-track" aria-hidden="true">
+                <span style={{ width: `${health === undefined ? 0 : Math.min(100, health)}%` }} />
+              </span>
+              <span className="broadcast-armor-track" aria-hidden="true">
+                <span style={{ width: `${armor === undefined ? 0 : Math.min(100, armor)}%` }} />
+              </span>
               <span
-                className="broadcast-bomb"
+                className="broadcast-armor"
                 role="img"
-                aria-label={t('Carries C4')}
-                title={t('Carries C4')}
+                aria-label={t('Armor: {{value}}', { value: number(armor) })}
+                title={t('Armor: {{value}}', { value: number(armor) })}
               >
-                <EquipmentGlyph kind="bomb" />
+                <EquipmentGlyph kind="armor" />
+                <span className="num">{number(armor)}</span>
               </span>
-            )}
-          </span>
+            </span>
+          </>
+        )}
+        <span className="broadcast-kd num">
+          {!dead || state.stats?.kills ? (
+            <span title={t('Kills')}>K {number(state?.stats?.kills)}</span>
+          ) : null}
+          {!dead || state.stats?.deaths ? (
+            <span title={t('Deaths')}>D {number(state?.stats?.deaths)}</span>
+          ) : null}
         </span>
-        <span className="broadcast-player-status">
-          <span className="broadcast-health-value num" title={t('Health')}>
-            {number(health)}
-            <small className="visually-hidden"> {t('HP')}</small>
-          </span>
-          <span className="broadcast-health-track" aria-hidden="true">
-            <span style={{ width: `${health === undefined ? 0 : Math.min(100, health)}%` }} />
-          </span>
-          <span className="broadcast-armor-track" aria-hidden="true">
-            <span style={{ width: `${armor === undefined ? 0 : Math.min(100, armor)}%` }} />
-          </span>
-          <span
-            className="broadcast-armor"
-            role="img"
-            aria-label={t('Armor: {{value}}', { value: number(armor) })}
-            title={t('Armor: {{value}}', { value: number(armor) })}
-          >
-            <EquipmentGlyph kind="armor" />
-            <span className="num">{number(armor)}</span>
-          </span>
-        </span>
-        {!state && <span className="visually-hidden">{t('State unavailable')}</span>}
-        {state && !state.alive && <span className="visually-hidden">{t('Out')}</span>}
         <span id={descriptionId} className="visually-hidden">
-          {[
-            `${t('Health')}: ${number(health)}`,
-            `${t('Money')}: ${money(state?.money)}`,
-            state?.weapon ? equipmentName(state.weapon) : t('Weapon unavailable'),
-            `${t('Ammo')}: ${number(state?.ammo)}`,
-            t('Armor: {{value}}', { value: number(state?.armor) }),
-            state?.inventory === undefined
-              ? t('Inventory is unavailable at this moment.')
-              : `${t('Weapons and equipment')}: ${state.inventory.length ? state.inventory.map(equipmentName).join(', ') : t('No items carried at this moment.')}`,
-          ].join('. ')}
+          {dead ? t('Out') : !state ? t('State unavailable') : t('Health') + ' ' + number(health)}
         </span>
       </button>
     </li>
   );
 }
+
+// Spatial samples change continuously. Only rebuild a row when its recorded
+// display fields change, leaving position and aim to the renderer.
+export const LoadoutRow = memo(PlayerRow, (a, b) => {
+  if (
+    a.selected !== b.selected ||
+    a.onSelect !== b.onSelect ||
+    a.member.player !== b.member.player ||
+    a.member.shortcut !== b.member.shortcut
+  )
+    return false;
+  const prev = a.member.state,
+    next = b.member.state;
+  if (prev === next) return true;
+  if (!prev || !next) return false;
+  return (
+    prev.alive === next.alive &&
+    prev.health === next.health &&
+    prev.armor === next.armor &&
+    prev.money === next.money &&
+    prev.weapon === next.weapon &&
+    prev.ammo === next.ammo &&
+    prev.helmet === next.helmet &&
+    prev.defuser === next.defuser &&
+    prev.stats?.kills === next.stats?.kills &&
+    prev.stats?.deaths === next.stats?.deaths &&
+    (prev.inventory === next.inventory ||
+      (prev.inventory !== undefined &&
+        next.inventory !== undefined &&
+        prev.inventory.length === next.inventory.length &&
+        prev.inventory.every((item, index) => item === next.inventory![index])))
+  );
+});
 
 export function SelectedLoadout({ member }: { member: LoadoutMember }) {
   const { state } = member;
@@ -302,7 +328,7 @@ function TeamBank({
       {members.length ? (
         <ul className="broadcast-roster">
           {members.map((member) => (
-            <PlayerRow
+            <LoadoutRow
               key={member.player.id}
               member={member}
               selected={member.player.id === selected}
@@ -337,11 +363,12 @@ export default function MatchEconomy({
   );
   const teams = useMemo(() => {
     const grouped: Record<2 | 3, LoadoutMember[]> = { 2: [], 3: [] };
-    for (const player of players) {
+    players.forEach((player, index) => {
       const state = states.get(player.id),
         team = state?.team ?? player.team;
-      if (team === 2 || team === 3) grouped[team].push({ player, state });
-    }
+      if (team === 2 || team === 3)
+        grouped[team].push({ player, state, shortcut: playerShortcut(index) });
+    });
     return grouped;
   }, [players, states]);
   const visibleTeams: (2 | 3)[] = team ? [team] : [3, 2];

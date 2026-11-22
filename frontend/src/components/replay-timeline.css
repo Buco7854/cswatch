@@ -23,23 +23,6 @@
   justify-content: flex-end;
   text-align: right;
 }
-.timeline-context-label {
-  position: absolute;
-  /* The scope belongs to the first transport row, even when round navigation
-     adds another row below it: 6px deck padding +44px timeline. */
-  top: 50px;
-  left: 12px;
-  max-width: min(200px, calc(50% - 180px));
-  line-height: 44px;
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  color: var(--faint);
-  font-size: 12px;
-  text-align: left;
-  pointer-events: none;
-}
 .replay-timeline-plot {
   /* One 44px seek row. Named 24px event targets sit above its axis and take
      precedence only at their own tick; the full lower band remains scrubbable. */
@@ -48,9 +31,6 @@
   position: relative;
   height: 44px;
   margin: 0 64px;
-}
-.replay-timeline-plot.is-empty {
-  height: 44px;
 }
 .timeline-track-line {
   position: absolute;
@@ -213,9 +193,6 @@
   pointer-events: none;
 }
 @media (max-width: 760px) {
-  .timeline-context-label {
-    display: none;
-  }
   .replay-timeline-plot {
     margin-inline: 52px;
   }
@@ -252,4 +229,41 @@
   width: 100%;
   min-height: 44px;
   margin-top: 18px;
+}
+
+.timeline-round-lane {
+  position: relative;
+  height: 16px;
+  margin-inline: 64px;
+}
+.timeline-round-segment {
+  --round-ink: var(--viewer-muted);
+  position: absolute;
+  inset-block: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-inline-end: 2px solid var(--viewer-plane);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--round-ink) 17%, var(--viewer-plane));
+  color: var(--round-ink);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  line-height: 16px;
+}
+.timeline-round-segment[data-winner='3'] {
+  --round-ink: var(--team-ct);
+}
+.timeline-round-segment[data-winner='2'] {
+  --round-ink: var(--team-t);
+}
+.timeline-round-segment[aria-current='step'] {
+  background: var(--round-ink);
+  color: var(--viewer-plane);
+  font-weight: 700;
+}
+@media (max-width: 760px) {
+  .timeline-round-lane {
+    margin-inline: 52px;
+  }
 }

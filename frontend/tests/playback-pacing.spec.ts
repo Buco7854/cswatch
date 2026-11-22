@@ -1,3 +1,4 @@
+import { chooseCameraControl, choosePlaybackSpeed } from './fixtures/viewer-transport';
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { test, expect, type Page } from '@playwright/test';
 import { Matrix4, PerspectiveCamera, Vector3 } from 'three';
@@ -33,7 +34,7 @@ async function fixture(page: Page, id: string, gpu = false, quality: 'low' | 'au
   if (gpu) data.frames[2].players = data.frames[2].players.filter((p) => p.id !== qaActor);
   await page.addInitScript((quality) => {
     localStorage.setItem('cswatch.language', 'en');
-    for (const key of ['viewer-settings', 'viewer-settings-mobile'])
+    for (const key of ['viewer-settings-v2', 'viewer-settings-v2-mobile'])
       localStorage.setItem(
         key,
         JSON.stringify({
@@ -104,8 +105,7 @@ test('visible playback follows elapsed time after a long animation frame, rebase
   await fixture(page, 'clock-pacing');
   await page.goto('/watch/clock-pacing');
   await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
-  await page.getByRole('combobox', { name: 'Camera mode', exact: true }).click();
-  await page.getByRole('option', { name: '2D tactical · low power', exact: true }).click();
+  await chooseCameraControl(page, '2D tactical · low power');
   const slider = page.getByRole('slider', { name: 'Playback position' });
   await slider.fill('0');
   await page.clock.install();
@@ -115,8 +115,7 @@ test('visible playback follows elapsed time after a long animation frame, rebase
   expect(Number(await slider.inputValue())).toBeCloseTo(64, 0);
   await page.getByRole('button', { name: 'Pause', exact: true }).click();
   await slider.fill('400');
-  await page.getByRole('combobox', { name: 'Playback speed', exact: true }).click();
-  await page.getByRole('option', { name: '2×', exact: true }).click();
+  await choosePlaybackSpeed(page, '2×');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   await page.clock.fastForward(500);
   expect(Number(await slider.inputValue())).toBeCloseTo(464, 0);
@@ -221,8 +220,7 @@ test('POV camera and equipment share interpolated recorded angles, eye height an
   const scene = page.locator('.scene'),
     slider = page.getByRole('slider', { name: 'Playback position' });
   await expect(scene).toHaveAttribute('data-map-model-state', 'ready');
-  await page.getByRole('combobox', { name: 'Camera mode', exact: true }).click();
-  await page.getByRole('option', { name: 'Player perspective', exact: true }).click();
+  await chooseCameraControl(page, 'Player perspective');
   await slider.fill('2');
   await expect(scene).toHaveAttribute(
     'data-equipment-ready-instances',
@@ -371,6 +369,8 @@ test('retiring a model during bounded embedded-image parsing finishes without fa
   await page.route('**/api/assets/equipment-models/ak47.glb', (route) =>
     route.fulfill({ contentType: 'model/gltf-binary', body: textured }),
   );
+  // The synthetic equipment bundle has no separately authored POV rig.
+  await page.route('**/api/assets/viewmodels/**', (route) => route.fulfill({ status: 204 }));
   await page.goto('/watch/local-parse');
   await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
   await expect
@@ -380,8 +380,7 @@ test('retiring a model during bounded embedded-image parsing finishes without fa
       ),
     )
     .toBe(1);
-  await page.getByRole('combobox', { name: 'Camera mode', exact: true }).click();
-  await page.getByRole('option', { name: '2D tactical · low power', exact: true }).click();
+  await chooseCameraControl(page, '2D tactical · low power');
   await expect(page.locator('.scene canvas')).toHaveCount(0);
   await page.evaluate(() =>
     (window as unknown as { qaLocalParse: { release: () => void } }).qaLocalParse.release(),
@@ -394,8 +393,7 @@ test('retiring a model during bounded embedded-image parsing finishes without fa
     )
     .toBe(1);
   expect(errors).toEqual([]);
-  await page.getByRole('combobox', { name: 'Camera mode', exact: true }).click();
-  await page.getByRole('option', { name: 'Free camera', exact: true }).click();
+  await chooseCameraControl(page, 'Free camera');
   await expect(page.locator('.scene')).toHaveAttribute('data-equipment-ready-count', '2');
   const state = await page.evaluate(() => {
     const { decoded, closed } = (

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api';
+import { openingTick } from './replay-opening';
 import { sample } from './sample';
 import { ReplayCache, chunkIndex, validateManifest } from './replay-cache';
 import type { Demo, Playback } from './types';
@@ -10,6 +11,7 @@ export function useReplay(
   tick: number,
   onReady: (data: Playback, first: number) => void,
   userId?: string,
+  linkedTick?: number,
 ) {
   const [data, setData] = useState<Playback | null>(id === 'sample' ? sample : null);
   const [demo, setDemo] = useState<Demo | null>(null);
@@ -23,17 +25,23 @@ export function useReplay(
   const callback = useRef(onReady);
   const position = useRef(tick);
   position.current = tick;
-  const previousId = useRef<string | undefined>(undefined);
+  const previous = useRef<{ id?: string; linkedTick?: number; key: string }>(undefined);
   const identity = `${id || ''}:${userId || ''}`;
+  const positionKey = 'cswatch.replay-position:' + identity;
   const [loadedFor, setLoadedFor] = useState(identity);
   const [metadataFor, setMetadataFor] = useState(identity);
+  const savedPosition = useRef<{ key: string; tick: number }>(undefined);
+  if (manifest && loadedFor === identity) savedPosition.current = { key: positionKey, tick };
   callback.current = onReady;
 
   useEffect(() => {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
-    const resumeTick = previousId.current === id ? position.current : undefined;
-    previousId.current = id;
+    const prior = previous.current;
+    const sameLocation = prior && prior.id === id && prior.linkedTick === linkedTick;
+    const hasOpenPosition = id === 'sample' || savedPosition.current?.key === prior?.key;
+    const resumeTick = sameLocation && hasOpenPosition ? position.current : undefined;
+    previous.current = { id, linkedTick, key: positionKey };
     cache.current?.close();
     cache.current = null;
     setManifest(null);
@@ -44,12 +52,23 @@ export function useReplay(
     setBuffering(false);
     setData(id === 'sample' ? sample : null);
     if (id === 'sample') {
-      setBounds({ first: sample.frames[0].tick, last: sample.frames.at(-1)!.tick });
+      const first = sample.frames[0].tick;
+      const last = sample.frames.at(-1)!.tick;
+      const start =
+        linkedTick !== undefined && Number.isSafeInteger(linkedTick)
+          ? linkedTick
+          : (resumeTick ?? 400);
+      setBounds({ first, last });
       setLoadedFor(identity);
-      callback.current(sample, resumeTick ?? 400);
+      callback.current(sample, Math.max(first, Math.min(last, start)));
       return () => controller.abort();
     }
     const options = { signal: controller.signal };
+    let savedTick: number | undefined;
+    try {
+      const saved = sessionStorage.getItem(positionKey);
+      if (saved && /^\d+$/.test(saved)) savedTick = Number(saved);
+    } catch {}
     async function load() {
       try {
         const detail = await api<Demo>(`/api/demos/${id}`, options);
@@ -66,10 +85,7 @@ export function useReplay(
           api<PlaybackChunk>(`/api/demos/${id}/playback/chunks/${index}`, { signal }),
         );
         cache.current = next;
-        const start = Math.max(
-          metadata.firstTick,
-          Math.min(metadata.lastTick, resumeTick ?? metadata.firstTick),
-        );
+        const start = openingTick(metadata, linkedTick ?? resumeTick ?? savedTick);
         const initial = await next.at(start);
         if (controller.signal.aborted) {
           next.close();
@@ -91,7 +107,23 @@ export function useReplay(
       cache.current?.close();
       cache.current = null;
     };
-  }, [id, userId]);
+  }, [id, userId, linkedTick]);
+
+  useEffect(() => {
+    if (!id || id === 'sample' || !manifest || loadedFor !== identity) return;
+    function save() {
+      const value = savedPosition.current;
+      if (value?.key !== positionKey) return;
+      try {
+        sessionStorage.setItem(positionKey, String(Math.floor(value.tick)));
+      } catch {}
+    }
+    window.addEventListener('pagehide', save);
+    return () => {
+      window.removeEventListener('pagehide', save);
+      save();
+    };
+  }, [id, manifest, loadedFor, identity, positionKey]);
 
   const index = manifest ? chunkIndex(manifest, tick) : -1;
   useEffect(() => {

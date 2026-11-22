@@ -1,3 +1,4 @@
+import { ExternalLink } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
@@ -63,7 +64,7 @@ export default function SteamMatchHistory({ enabled }: { enabled: boolean }) {
       await api('/api/connections/steam/history', { method: 'PUT', body });
       form.reset();
       setEdit(false);
-      return 'Steam match codes verified.';
+      return 'Steam sync codes verified.';
     });
   }
   return (
@@ -83,15 +84,17 @@ export default function SteamMatchHistory({ enabled }: { enabled: boolean }) {
         <form onSubmit={save} aria-busy={busy}>
           <p className="muted">
             {t(
-              'Create a game authentication code on Steam Support and copy your most recent match token. To start earlier, copy a recent match sharing code from Your Matches in CS2.',
+              'Create a game authentication code on Steam Support and copy your most recent match sharing code. To start earlier, copy a recent match sharing code from Your Matches in CS2.',
             )}
           </p>
           <a
+            className="button"
             href="https://help.steampowered.com/en/wizard/HelpWithGameIssue/?appid=730&issueid=128"
             target="_blank"
             rel="noreferrer"
           >
-            {t('Get your match codes on Steam Support')}
+            {t('Get your codes on Steam Support')}
+            <ExternalLink size={15} aria-hidden="true" />
           </a>
           <p className="muted">
             {t(
@@ -124,7 +127,7 @@ export default function SteamMatchHistory({ enabled }: { enabled: boolean }) {
         </form>
       )}
       {history?.needs_codes && (
-        <p role="status">{t('Replace your Steam match codes to resume sync.')}</p>
+        <p role="status">{t('Replace your Steam sync codes to resume sync.')}</p>
       )}
       {history?.configured && (
         <div className="actions">
@@ -149,7 +152,7 @@ export default function SteamMatchHistory({ enabled }: { enabled: boolean }) {
               </button>
               {!edit && (
                 <button className="button" disabled={busy} onClick={() => setEdit(true)}>
-                  {t('Replace match codes')}
+                  {t('Replace Steam sync codes')}
                 </button>
               )}
             </>

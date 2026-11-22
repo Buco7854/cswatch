@@ -121,3 +121,21 @@ button.match-score:focus-visible {
     font-size: 22px;
   }
 }
+
+.match-score-alive {
+  color: var(--viewer-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.match-score-alive span {
+  color: var(--team-ct);
+  font-size: 8px;
+}
+.match-score-side[data-team='2'] .match-score-alive span {
+  color: var(--team-t);
+}
+@media (max-width: 540px) {
+  .match-score-alive span {
+    display: none;
+  }
+}

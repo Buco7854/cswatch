@@ -69,8 +69,6 @@ export default function ReplayTimeline({
   scope,
   onSeek,
   onReview,
-  roundsOpen,
-  onRoundsChange,
   optionsOpen,
   onCloseOptions,
 }: {
@@ -83,8 +81,6 @@ export default function ReplayTimeline({
   scope: 'match' | 'round';
   onSeek: (tick: number) => void;
   onReview: (trigger: HTMLButtonElement) => void;
-  roundsOpen: boolean;
-  onRoundsChange: (open: boolean) => void;
   optionsOpen: boolean;
   onCloseOptions: () => void;
 }) {
@@ -100,6 +96,21 @@ export default function ReplayTimeline({
     (scope === 'round'
       ? { start: Math.max(first, round.start), end: Math.min(last, round.end) }
       : { start: first, end: last });
+  const segments = useMemo(() => {
+    const ordered = [...data.rounds].sort((a, b) => a.tick - b.tick);
+    return ordered.flatMap((segment, index) => {
+      const start = Math.max(window.start, segment.tick);
+      const end = Math.min(window.end, ordered[index + 1]?.tick ?? last);
+      if (end <= start) return [];
+      return [
+        {
+          ...segment,
+          start: timelinePosition(start, window),
+          span: timelinePosition(end, window) - timelinePosition(start, window),
+        },
+      ];
+    });
+  }, [data.rounds, window.start, window.end, last]);
   const events = useMemo(
     () =>
       roundEvents(data, { number: 0, start: first, end: last }, selected, players).filter(
@@ -145,16 +156,29 @@ export default function ReplayTimeline({
     }
   }, [groups]);
   const progress = timelinePosition(tick, window) * 100;
-  const contextLabel = `${scope === 'round' ? t('Round {{round}}', { round: round.number }) : t('All match')} · ${players === 'player' ? player?.name || t('Selected player') : t('All players')}`;
   return (
     <section className="replay-timeline" aria-label={t('Replay timeline')}>
       <div className="timeline-context">
         <span className="timeline-time num">{clock((tick - first) / data.tickRate)}</span>
-        <span className="timeline-context-label" title={contextLabel}>
-          {contextLabel}
-        </span>
         <span className="timeline-duration num">{clock((last - first) / data.tickRate)}</span>
       </div>
+      {segments.length > 0 && (
+        <div className="timeline-round-lane" role="group" aria-label={t('Round timeline')}>
+          {segments.map((segment) => (
+            <span
+              key={segment.number}
+              className="timeline-round-segment"
+              data-winner={segment.winner}
+              aria-current={round.number === segment.number ? 'step' : undefined}
+              aria-label={t('Round {{round}}', { round: segment.number })}
+              title={t('Round {{round}}', { round: segment.number })}
+              style={{ left: `${segment.start * 100}%`, width: `${segment.span * 100}%` }}
+            >
+              {segment.span * width >= 15 ? segment.number : ''}
+            </span>
+          ))}
+        </div>
+      )}
       <div
         className={'replay-timeline-plot' + (!visible.length ? ' is-empty' : '')}
         ref={plot}
@@ -267,16 +291,26 @@ export default function ReplayTimeline({
         createPortal(
           <TimelineOptionsDialog close={onCloseOptions}>
             <div className="timeline-options-fields">
-              <label className="toggle-row">
-                <span>{t('Show round strip')}</span>
-                <input
-                  type="checkbox"
-                  role="switch"
-                  checked={roundsOpen}
-                  disabled={!data.rounds.length}
-                  onChange={(event) => onRoundsChange(event.target.checked)}
-                />
-              </label>
+              {!!data.rounds.length && (
+                <label className="timeline-options-field">
+                  <span>{t('Round')}</span>
+                  <SelectControl
+                    label={t('Round')}
+                    value={String(round.number)}
+                    onValueChange={(value) => {
+                      const target = data.rounds.find(({ number }) => number === Number(value));
+                      if (target) {
+                        onSeek(target.liveTick ?? target.tick);
+                        onCloseOptions();
+                      }
+                    }}
+                    options={data.rounds.map(({ number }) => ({
+                      value: String(number),
+                      label: t('Round {{round}}', { round: number }),
+                    }))}
+                  />
+                </label>
+              )}
               <label className="timeline-options-field">
                 <span>{t('Event players')}</span>
                 <SelectControl

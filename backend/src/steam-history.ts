@@ -256,9 +256,9 @@ export function steamHistoryRoutes(app: FastifyInstance, db: Store, c: Config) {
     try {
       const row = saved(operation.userId);
       if (!row || row.steam_id !== operation.subject)
-        throw new HttpError(400, 'Verify and save your Steam match codes first.');
+        throw new HttpError(400, 'Verify and save your Steam sync codes first.');
       if (row.needs_codes)
-        throw new HttpError(409, 'Replace your Steam match codes to resume sync.');
+        throw new HttpError(409, 'Replace your Steam sync codes to resume sync.');
       const authCode = unseal(readKey(c.steamSyncKeyFile), operation.binding, row.encrypted_code);
       let cursor = row.cursor as string;
       const seen = new Set([cursor]);
@@ -295,7 +295,7 @@ export function steamHistoryRoutes(app: FastifyInstance, db: Store, c: Config) {
           if (seen.has(next))
             throw new HttpError(
               502,
-              'Steam returned a repeated match code. Verify a newer starting code.',
+              'Steam returned a repeated match sharing code. Verify a newer starting match sharing code.',
             );
           addMatch(operation.userId, next);
           db.run('UPDATE steam_history SET cursor=? WHERE user_id=?', next, operation.userId);

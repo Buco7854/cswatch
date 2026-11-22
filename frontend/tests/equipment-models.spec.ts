@@ -1,3 +1,4 @@
+import { chooseCameraControl } from './fixtures/viewer-transport';
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { manualMapAssets } from './fixtures/map-assets';
 import { originalOverviewPNG, qaOverview } from './fixtures/original-map';
@@ -11,8 +12,7 @@ import {
 import type { EquipmentModelCatalog } from '../../shared/equipment-models';
 
 async function camera(page: Page, name: string) {
-  await page.getByRole('combobox', { name: 'Camera mode', exact: true }).click();
-  await page.getByRole('option', { name, exact: true }).click();
+  await chooseCameraControl(page, name);
 }
 async function install(
   page: Page,
@@ -35,7 +35,7 @@ async function install(
     ({ theme, quality, language }) => {
       localStorage.setItem('theme', theme);
       localStorage.setItem('cswatch.language', language);
-      for (const key of ['viewer-settings', 'viewer-settings-mobile'])
+      for (const key of ['viewer-settings-v2', 'viewer-settings-v2-mobile'])
         localStorage.setItem(
           key,
           JSON.stringify({
@@ -103,7 +103,7 @@ async function install(
   return { replay, counts };
 }
 async function open(page: Page) {
-  await page.goto('/watch/equipment-model-fixture');
+  await page.goto('/watch/equipment-model-fixture?tick=0');
   await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
   await expect(page.locator('.scene')).toHaveAttribute('data-equipment-model-state', 'ready');
 }
@@ -126,7 +126,7 @@ test('model catalog completeness is strictly validated, retains partial models o
     if (reads === 4) return route.fulfill({ status: 503, json: {} });
     return route.fulfill({ json: { ...originalEquipmentCatalog(), complete: reads >= 5 } });
   });
-  await page.goto('/watch/equipment-model-fixture');
+  await page.goto('/watch/equipment-model-fixture?tick=0');
   const scene = page.locator('.scene');
   // Admit renderer frames under the paused clock without consuming a catalog retry.
   await expect
@@ -218,6 +218,8 @@ for (const theme of ['dark', 'light'])
       page.on('pageerror', (error) => errors.push(error.message));
       const { counts } = await install(page, { theme, quality: width === 390 ? 'low' : 'high' });
       await open(page);
+      await camera(page, 'Overhead');
+      await page.locator('.timeline-slider').fill('0');
       const scene = page.locator('.scene');
       await expect(scene).toHaveAttribute('data-equipment-ready-count', '10');
       await expect(scene).toHaveAttribute('data-equipment-expected-count', '10');
@@ -291,6 +293,8 @@ test('failed equipment is isolated from map and other models, retains low-tier g
     },
   });
   await open(page);
+  await camera(page, 'Overhead');
+  await page.locator('.timeline-slider').fill('0');
   const scene = page.locator('.scene');
   await expect(scene).toHaveAttribute('data-equipment-error-count', '1');
   await expect(scene).toHaveAttribute('data-equipment-ready-count', '9');
@@ -314,6 +318,8 @@ test('failed equipment is isolated from map and other models, retains low-tier g
   await page.getByRole('link', { name: 'Back to home', exact: true }).click();
   await expect(page.locator('.viewer-frame')).toHaveCount(0);
   await page.goBack();
+  await camera(page, 'Overhead');
+  await page.locator('.timeline-slider').fill('0');
   await expect(scene).toHaveAttribute('data-equipment-ready-count', '10');
   await expect(scene).toHaveAttribute('data-equipment-error-count', '0');
   expect(counts.get('smokegrenade')).toBe(2);
@@ -331,6 +337,8 @@ test('missing model packs expose availability without fake bodies and incomplete
     coverage: false,
   });
   await open(page);
+  await chooseCameraControl(page, 'Vue du dessus', 'Mode de caméra');
+  await page.locator('.timeline-slider').fill('0');
   const scene = page.locator('.scene');
   await expect(scene).toHaveAttribute('data-equipment-ready-count', '3');
   await expect(scene).toHaveAttribute('data-equipment-expected-count', '5');

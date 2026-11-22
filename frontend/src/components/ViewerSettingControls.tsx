@@ -45,7 +45,7 @@ export function RangeSetting({
   value: number;
   min: number;
   max: number;
-  step: number;
+  step: number | 'any';
   display: string;
   description?: string;
   onChange: (value: number) => void;

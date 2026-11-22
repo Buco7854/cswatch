@@ -6,7 +6,6 @@
     var(--review-objective-bottom, 0px),
     var(--viewer-score-bottom, 0px)
   );
-  --review-bank-top: max(var(--viewer-team-top, 230px), var(--review-hud-top));
   position: absolute;
   inset: var(--review-hud-top) var(--viewer-edge, 16px)
     calc(var(--viewer-dock-height, 180px) + 16px + var(--review-communications-gap, 0px));
@@ -25,7 +24,7 @@
   min-height: 0;
 }
 .viewer-review-hud[data-layout='split'] .review-economy-frame {
-  inset: calc(var(--review-bank-top) - var(--review-hud-top)) 0 0;
+  inset: 0;
   width: 100%;
   max-height: none;
 }
@@ -42,11 +41,17 @@
   left: 0;
   bottom: 0;
 }
+.viewer-frame:has(.position-radar) .review-team-frame[data-team='3'] {
+  top: max(
+    0px,
+    calc(var(--viewer-radar-top) + var(--viewer-radar-size) + 10px - var(--review-hud-top))
+  );
+}
 .viewer-frame:has(.review-feed) .review-team-frame[data-team='2'] {
   top: max(
     0px,
     calc(
-      var(--viewer-feed-top, 64px) + var(--review-feed-height, 0px) + 16px - var(--review-bank-top)
+      var(--viewer-feed-top, 64px) + var(--review-feed-height, 0px) + 16px - var(--review-hud-top)
     )
   );
 }
@@ -89,10 +94,10 @@
      aside's upper space still reserves captions and the measured playback deck. */
   .review-inputs-panel {
     bottom: calc(-1 * (var(--viewer-dock-height, 116px) + var(--review-communications-gap, 0px)));
-    max-height: min(280px, calc(100dvh - var(--viewer-team-top, 230px) - 104px));
+    max-height: min(280px, calc(100dvh - var(--review-hud-top) - 104px));
   }
   .viewer-frame .communication-overlay {
-    width: min(720px, calc(100% - 2 * var(--viewer-bottom-lane)));
+    width: min(720px, calc(100% - 2 * var(--viewer-input-lane)));
   }
   .viewer-review-hud[data-inputs='true'] .review-team-frame[data-team='3'] {
     bottom: max(
@@ -131,7 +136,7 @@
   /* The narrow screen reserves this bounded prompt lane from the first frame,
      based on the saved option rather than whether a moment currently exists. */
   .viewer-frame[data-review-prompts='true'] .review-economy-frame {
-    bottom: 204px;
+    bottom: 148px;
   }
 }
 @media (max-width: 360px) {
@@ -158,7 +163,7 @@
 @media (max-width: 360px) {
   .viewer-frame[data-review-prompts='true'] .viewer-review-hud[data-inputs='true'] {
     bottom: calc(
-      var(--viewer-dock-height, 180px) + 12px + var(--review-communications-gap, 0px) + 204px
+      var(--viewer-dock-height, 180px) + 12px + var(--review-communications-gap, 0px) + 148px
     );
   }
 }
@@ -178,5 +183,14 @@
   }
   .viewer-review-hud .review-inputs-player {
     display: none;
+  }
+}
+
+@media (min-width: 1101px) and (max-width: 1360px) {
+  .viewer-review-hud .review-inputs-panel {
+    bottom: 0;
+  }
+  .viewer-review-hud[data-inputs='true'] .review-team-frame[data-team='3'] {
+    bottom: calc(var(--review-input-height, 126px) + 16px);
   }
 }

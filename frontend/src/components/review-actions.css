@@ -191,44 +191,57 @@
 .viewer-frame .viewer-context-actions .review-action > span:last-child {
   min-width: 0;
 }
-@media (max-width: 760px) {
+@media (min-width: 600px) {
   .viewer-frame .viewer-context-actions {
-    width: 190px;
-  }
-  .viewer-frame:has(.review-inputs-panel) .viewer-context-actions {
-    width: min(190px, calc(100% - 208px));
-  }
-  .viewer-frame .viewer-context-actions.is-combat {
-    width: min(320px, calc(100% - 16px));
-  }
-  .viewer-frame:has(.review-inputs-panel) .viewer-context-actions.is-combat {
-    width: min(190px, calc(100% - 208px));
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    width: min(350px, calc(100% - 2 * max(var(--viewer-roster-lane), var(--viewer-input-lane))));
   }
 }
-@media (max-width: 360px) {
-  .viewer-frame .viewer-context-actions,
-  .viewer-frame:has(.review-inputs-panel) .viewer-context-actions {
-    width: calc(100% - 16px);
-  }
-  .viewer-frame:has(.review-inputs-panel) .viewer-context-actions.is-combat {
-    width: calc(100% - 16px);
-  }
-  .viewer-frame .viewer-context-actions .review-action {
-    flex: 1;
-  }
-}
-@media (min-width: 600px) and (max-width: 1100px) {
-  /* A prompt has its own lane, horizontally outside both instruments. Its
-     presence and recorded input marks never change a lineup's height. */
-  .viewer-frame:has(.review-economy-frame) .viewer-context-actions {
-    right: var(--viewer-roster-lane);
-    width: min(386px, calc(100% - var(--viewer-input-lane) - var(--viewer-roster-lane)));
-  }
-}
-@media (min-width: 1101px) {
+@media (max-width: 599px) {
   .viewer-frame .viewer-context-actions {
     right: var(--viewer-edge);
-    bottom: var(--viewer-edge);
-    width: var(--viewer-roster-width);
+    width: min(320px, calc(100% - 2 * var(--viewer-edge)));
   }
+}
+@media (min-width: 361px) and (max-width: 599px) {
+  .viewer-frame:has(.review-inputs-panel) .viewer-context-actions {
+    width: min(320px, calc(100% - var(--viewer-input-width) - 2 * var(--viewer-edge) - 8px));
+  }
+}
+@media (min-width: 760px) {
+  .viewer-frame .viewer-context-actions.is-combat:has(.combat-kill-line) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    width: min(540px, calc(100% - 2 * max(var(--viewer-roster-lane), var(--viewer-input-lane))));
+  }
+  .viewer-frame .viewer-context-actions.is-combat:has(.combat-kill-line) .review-action {
+    flex: 0 0 auto;
+  }
+}
+.combat-kill-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 30px;
+  padding: 4px 8px;
+  font-size: 13px;
+}
+.combat-kill-line strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.combat-kill-line [data-team='3'] {
+  color: var(--team-ct);
+}
+.combat-kill-line [data-team='2'] {
+  color: var(--team-t);
+}
+.viewer-frame .combat-kill-line .equipment-glyph.is-weapon {
+  width: 38px;
 }

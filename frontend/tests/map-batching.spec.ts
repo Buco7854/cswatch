@@ -45,7 +45,7 @@ test('static batching reduces original map submissions while preserving actual o
   await page.addInitScript(() => {
     localStorage.setItem('cswatch.language', 'en');
     localStorage.setItem(
-      'viewer-settings',
+      'viewer-settings-v2',
       JSON.stringify({
         quality: 'low',
         autoHideControls: false,

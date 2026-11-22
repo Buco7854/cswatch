@@ -22,6 +22,8 @@ import {
   Play,
   SkipBack,
   SkipForward,
+  RotateCcw,
+  RotateCw,
   Trash2,
   Share2,
   Eye,
@@ -37,6 +39,7 @@ import {
   MapPin,
 } from 'lucide-react';
 import { api } from '../api';
+import { openingPlayer, playerShortcut } from '../replay-opening';
 import { useReplay } from '../useReplay';
 import { useViewerChrome } from '../useViewerChrome';
 import { useReviewLayout } from '../useReviewLayout';
@@ -126,17 +129,10 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     setCameraNotice(true);
     cameraNoticeTimer.current = setTimeout(() => setCameraNotice(false), 900);
   }
-  function selectPlayer(playerId: string, dismissPicker = false) {
-    if (!data?.players.some((player) => player.id === playerId)) return;
-    deathFollow.current.reset();
-    setSelected(playerId);
-    setGrenadeFocus(undefined);
-    if (mode !== '2d') {
-      setMode('pov');
-      cueCameraChange();
-    }
-    if (dismissPicker) closePanel();
-  }
+  const query = new URLSearchParams(location.search);
+  const tickParam = query.get('tick');
+  const linkedTick = tickParam && /^\d+$/.test(tickParam) ? Number(tickParam) : undefined;
+  const linkedPlayer = query.get('player') || undefined;
   const previous = location.state?.from;
   const backTo =
     typeof previous === 'string' && ['/', '/library'].includes(previous)
@@ -147,8 +143,8 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
   const [playing, setPlaying] = useState(false),
     [tick, setTick] = useState(0),
     [speed, setSpeed] = useState(1),
-    [mode, setMode] = useState('orbit'),
-    [selected, setSelected] = useState('0'),
+    [mode, setMode] = useState(id === 'sample' ? 'orbit' : 'pov'),
+    [selected, setSelected] = useState(''),
     [tab, setTab] = useState('events'),
     [bookmarks, setBookmarks] = useState<Bookmark[]>([]),
     [label, setLabel] = useState(''),
@@ -171,15 +167,34 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     (replay, initialTick) => {
       playbackClock.current.reset(initialTick, performance.now());
       setTick(initialTick);
-      setSelected((previous) =>
-        replay.players.some((player) => player.id === previous)
-          ? previous
-          : (replay.players[0]?.id ?? ''),
+      const player = openingPlayer(replay, initialTick, linkedPlayer);
+      setSelected(player);
+      setMode((previous) =>
+        previous === '2d' ? previous : replay.sample ? 'orbit' : player ? 'pov' : 'tactical',
       );
       setPlaying(false);
     },
     user?.id,
+    linkedTick,
   );
+  const selectPlayer = useCallback(
+    (playerId: string, dismissPicker = false) => {
+      if (!data?.players.some((player) => player.id === playerId)) return;
+      deathFollow.current.reset();
+      setSelected(playerId);
+      setGrenadeFocus(undefined);
+      if (mode !== '2d') {
+        setMode('pov');
+        cueCameraChange();
+      }
+      if (dismissPicker) closePanel();
+    },
+    [data?.players, mode],
+  );
+  useEffect(() => {
+    if (linkedPlayer && data?.players.some((player) => player.id === linkedPlayer))
+      setSelected(linkedPlayer);
+  }, [linkedPlayer, data?.players]);
   useEffect(() => {
     // Download the renderer while the authorized replay manifest and first slice load.
     if (demo?.status === 'ready') void loadScene().catch(() => {});
@@ -276,7 +291,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     playing: playing && !buffering,
     speed,
     selected,
-    mode,
+    mode: using2D ? '2d' : mode,
     settings,
     cameraReady: audioCameraReady,
   });
@@ -289,6 +304,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
   const [timelineOptionsOpen, setTimelineOptionsOpen] = useState(false);
   const [timelineScope, setTimelineScope] = useState<'match' | 'round'>('match');
   const [scoreboardOpen, setScoreboardOpen] = useState(false);
+  const [compactFeedOpen, setCompactFeedOpen] = useState<boolean>();
   const [feedTab, setFeedTab] = useState<ReviewFeedTab>('kills');
   const scoreboardHeld = useRef(false);
   const scoreboardTrigger = useRef<HTMLElement | null>(null);
@@ -343,17 +359,27 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     }
   }, [communicationsOpen]);
   const [panel, setPanel] = useState<'players' | 'review' | null>(null);
+  const [compactPanels, setCompactPanels] = useState(
+    () => window.matchMedia('(max-width:540px),(max-height:560px)').matches,
+  );
+  useEffect(() => {
+    const media = window.matchMedia('(max-width:540px),(max-height:560px)');
+    const update = () => setCompactPanels(media.matches);
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+  const compactFeedVisible = compactPanels && (compactFeedOpen ?? (mobile && settings.reviewFeed));
   const showReviewFeed =
-    settings.reviewFeed &&
+    (compactFeedVisible || (settings.reviewFeed && !compactPanels)) &&
     !panel &&
     !buffering &&
+    !mapLoading &&
     !options &&
     !manage &&
     !communicationsOpen &&
     !timelineOptionsOpen &&
     !scoreboardOpen;
   const mutationScope = useRef({ active: true });
-  const [roundsOpen, setRoundsOpen] = useState(false);
   const [eventReviewKey, setEventReviewKey] = useState(0);
   const panelClose = useRef<HTMLButtonElement>(null);
   const panelTrigger = useRef<HTMLElement | null>(null);
@@ -365,6 +391,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
   const playTrigger = useRef<HTMLButtonElement>(null);
   const mobileMoreTrigger = useRef<HTMLButtonElement>(null);
   const eventMenuTrigger = useRef<HTMLElement | null>(null);
+  const reviewFeedTrigger = useRef<HTMLElement | null>(null);
   const optionsTrigger = useRef<HTMLButtonElement>(null);
   const panelElement = useRef<HTMLElement>(null);
   const setControlsHidden = useCallback(
@@ -388,8 +415,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       communicationsOpen ||
       timelineOptionsOpen ||
       scoreboardOpen ||
-      settings.reviewFeed ||
-      roundsOpen ||
+      compactFeedVisible ||
       buffering,
     ready: Boolean(data),
   });
@@ -412,50 +438,35 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     // React removes the native dialog before its normal close algorithm can
     // restore the opener. Wait for teardown and never steal another modal's focus.
     requestAnimationFrame(() => {
-      if (
-        !full.current?.isConnected ||
-        document.querySelector('dialog[open]:not(.review-feed-inline)')
-      )
-        return;
+      if (!full.current?.isConnected || document.querySelector('dialog[open]')) return;
       restoreViewerFocus(optionsTrigger.current, focusReturn);
     });
   }
-  function openScoreboard(trigger: HTMLElement | null, held = false) {
-    scoreboardHeld.current = held;
-    scoreboardTrigger.current = trigger;
-    setScoreboardOpen(true);
-    chrome.show();
-  }
+  const openScoreboard = useCallback(
+    (trigger: HTMLElement | null, held = false) => {
+      scoreboardHeld.current = held;
+      scoreboardTrigger.current = trigger;
+      setScoreboardOpen(true);
+      chrome.show();
+    },
+    [chrome.show],
+  );
+  const openScoreFromHeader = useCallback(
+    () => openScoreboard(full.current?.querySelector<HTMLElement>('.viewer-match-score') ?? null),
+    [openScoreboard],
+  );
   function closeScoreboard() {
     const focusReturn = captureFocusReturn();
     const held = scoreboardHeld.current;
     scoreboardHeld.current = false;
     setScoreboardOpen(false);
     requestAnimationFrame(() => {
-      if (
-        !full.current?.isConnected ||
-        document.querySelector('dialog[open]:not(.review-feed-inline)')
-      )
-        return;
+      if (!full.current?.isConnected || document.querySelector('dialog[open]')) return;
       if (held && scoreboardTrigger.current === stage.current)
         restoreViewerFocus(stage.current, focusReturn);
       else restoreViewerFocus(scoreboardTrigger.current, focusReturn);
     });
   }
-  function closeReviewFeed() {
-    const focusReturn = captureFocusReturn();
-    setSettings((value) => ({ ...value, reviewFeed: false }));
-    requestAnimationFrame(() => restoreViewerFocus(optionsTrigger.current, focusReturn));
-  }
-  const [compactPanels, setCompactPanels] = useState(
-    () => window.matchMedia('(max-width:540px),(max-height:560px)').matches,
-  );
-  useEffect(() => {
-    const media = window.matchMedia('(max-width:540px),(max-height:560px)');
-    const update = () => setCompactPanels(media.matches);
-    media.addEventListener('change', update);
-    return () => media.removeEventListener('change', update);
-  }, []);
   useEffect(() => {
     const dock = playbackDock.current;
     if (!dock) return;
@@ -482,7 +493,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     // A closing native dialog may return focus after this commit. Wait for its
     // teardown before handing focus to the scene rather than an inert trigger.
     const handoff = requestAnimationFrame(() => {
-      if (!document.querySelector('dialog[open]:not(.review-feed-inline),[aria-modal="true"]'))
+      if (!document.querySelector('dialog[open],[aria-modal="true"]'))
         stage.current?.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(handoff);
@@ -511,7 +522,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
         compactPanels &&
         panel &&
         !e.defaultPrevented &&
-        !document.querySelector('dialog[open]:not(.review-feed-inline)') &&
+        !document.querySelector('dialog[open]') &&
         !document.querySelector('[role="listbox"],[role="menu"]')
       ) {
         const candidates = [
@@ -537,7 +548,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
         !e.defaultPrevented &&
         e.key === 'Escape' &&
         panel &&
-        !document.querySelector('dialog[open]:not(.review-feed-inline)')
+        !document.querySelector('dialog[open]')
       )
         closePanel();
     }
@@ -575,6 +586,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     setBusy(false);
     setTab('events');
     setPanel(null);
+    setCompactFeedOpen(undefined);
     setOptions(false);
     setManage(false);
     setCommunicationsOpen(false);
@@ -676,10 +688,8 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       if (!viewer || (target !== document.body && !viewer.contains(target))) return;
       if (
         e.code === 'Escape' &&
-        settings.reviewFeed &&
-        !document.querySelector(
-          'dialog[open]:not(.review-feed-inline),[role="menu"],[role="listbox"]',
-        )
+        compactFeedVisible &&
+        !document.querySelector('dialog[open],[role="menu"],[role="listbox"]')
       ) {
         e.preventDefault();
         closeReviewFeed();
@@ -695,7 +705,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
         !e.repeat &&
         !typingOrDialog(target) &&
         !document.querySelector(
-          'dialog[open]:not(.review-feed-inline),[aria-modal="true"],[role="menu"],[role="listbox"]',
+          'dialog[open],[aria-modal="true"],[role="menu"],[role="listbox"]',
         ) &&
         !scoreboardOpen
       ) {
@@ -708,7 +718,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
         !target.closest(
           'input,select,textarea,dialog,[role="dialog"],[contenteditable],[data-keyboard-managed]',
         ) &&
-        !document.querySelector('dialog[open]:not(.review-feed-inline),[aria-modal="true"]')
+        !document.querySelector('dialog[open],[aria-modal="true"]')
       ) {
         if (e.repeat) return;
         e.preventDefault();
@@ -728,6 +738,18 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
         e.preventDefault();
         chrome.toggle();
         return;
+      }
+      if (
+        !typingOrDialog(target) &&
+        !document.querySelector('dialog[open],[role="menu"],[role="listbox"]')
+      ) {
+        const key = e.code.startsWith('Digit') ? e.code.slice(5) : e.key;
+        const shortcut = data?.players.find((_, index) => key === playerShortcut(index));
+        if (shortcut) {
+          e.preventDefault();
+          selectPlayer(shortcut.id);
+          return;
+        }
       }
       if (target.closest('input,select,textarea,button,a,dialog,[data-keyboard-managed]')) return;
       if (e.code === 'Space') {
@@ -758,7 +780,9 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     chrome.show,
     panel,
     scoreboardOpen,
-    settings.reviewFeed,
+    compactFeedVisible,
+    data?.players,
+    mode,
     playing,
     enableAudio,
     audio,
@@ -777,6 +801,84 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       window.removeEventListener('blur', blur);
     };
   }, [scoreboardOpen]);
+  const seekEvent = useCallback(
+    (value: number) => {
+      setPlaying(false);
+      seek(value);
+    },
+    [seek],
+  );
+  function replayCombat(prompt: CombatMoment, perspective: 'attacker' | 'victim') {
+    enableAudio();
+    const playerId = perspective === 'attacker' ? prompt.attackerId : prompt.victimId;
+    if (!data || !playerId) return;
+    setSelected(playerId);
+    setGrenadeFocus(undefined);
+    if (mode !== '2d') setMode('pov');
+    seek(replayLeadInTick(data, prompt.tick, settings.killLeadIn, first, last));
+    setPlaying(true);
+    chrome.show();
+    requestAnimationFrame(() => playTrigger.current?.focus({ preventScroll: true }));
+  }
+  function replayThrow(prompt: ThrowPrompt) {
+    enableAudio();
+    if (!data) return;
+    setSelected(prompt.throwerId);
+    setGrenadeFocus(undefined);
+    if (mode !== '2d') setMode('pov');
+    seek(replayLeadInTick(data, prompt.tick, settings.utilityLeadIn, first, last));
+    setPlaying(true);
+    chrome.show();
+    requestAnimationFrame(() => playTrigger.current?.focus({ preventScroll: true }));
+  }
+  function viewGrenadeLanding(prompt: LandingPrompt) {
+    enableAudio();
+    seek(Math.max(first, Math.floor(prompt.impactTick - rate / 4)));
+    setGrenadeFocus({
+      id: `${prompt.id}:${++focusSequence.current}`,
+      target: prompt.target,
+      origin: prompt.origin,
+      fromTick: prompt.tick,
+      untilTick: prompt.endTick,
+    });
+    if (mode !== '2d') setMode('orbit');
+    setPlaying(true);
+    chrome.show();
+    requestAnimationFrame(() => playTrigger.current?.focus({ preventScroll: true }));
+  }
+  // The event rows are static across playback. Event actions read the current
+  // camera/transport session only when invoked.
+  const feedTransport = useRef({ replayCombat, replayThrow, viewGrenadeLanding });
+  feedTransport.current = { replayCombat, replayThrow, viewGrenadeLanding };
+  const closeReviewFeed = useCallback(() => {
+    const focusReturn = captureFocusReturn();
+    setCompactFeedOpen(false);
+    setSettings((value) => ({ ...value, reviewFeed: false }));
+    requestAnimationFrame(() => restoreViewerFocus(reviewFeedTrigger.current, focusReturn));
+  }, [setSettings]);
+  const reviewFeedActions = useMemo(
+    () => ({
+      onSeek: (value: number) => {
+        if (compactPanels) closeReviewFeed();
+        seekEvent(value);
+      },
+      onReplayKill: (momentId: string, perspective: 'attacker' | 'victim') => {
+        const moment = reviewIndex?.kills.find((value) => value.id === momentId);
+        if (!moment) return;
+        if (compactPanels) closeReviewFeed();
+        feedTransport.current.replayCombat(moment, perspective);
+      },
+      onReviewUtility: (momentId: string, action: 'throw' | 'landing') => {
+        const moment = reviewIndex?.utilities.find((value) => value.id === momentId);
+        if (!moment) return;
+        if (compactPanels) closeReviewFeed();
+        if (action === 'landing' && moment.landing)
+          feedTransport.current.viewGrenadeLanding(moment.landing);
+        else if (action === 'throw') feedTransport.current.replayThrow(moment);
+      },
+    }),
+    [compactPanels, reviewIndex, closeReviewFeed, seekEvent],
+  );
   const feedRound = data ? roundAt(data, tick, last) : undefined;
   const { feedKills, feedUtilities } = useMemo(() => {
     if (!data || !feedRound) return { feedKills: [], feedUtilities: [] };
@@ -990,48 +1092,6 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     setEventReviewKey((value) => value + 1);
     setPanel('review');
   }
-  function seekEvent(value: number) {
-    setPlaying(false);
-    seek(value);
-  }
-  function replayCombat(prompt: CombatMoment, perspective: 'attacker' | 'victim') {
-    enableAudio();
-    const playerId = perspective === 'attacker' ? prompt.attackerId : prompt.victimId;
-    if (!data || !playerId) return;
-    setSelected(playerId);
-    setGrenadeFocus(undefined);
-    if (mode !== '2d') setMode('pov');
-    seek(replayLeadInTick(data, prompt.tick, settings.killLeadIn, first, last));
-    setPlaying(true);
-    chrome.show();
-    requestAnimationFrame(() => playTrigger.current?.focus({ preventScroll: true }));
-  }
-  function replayThrow(prompt: ThrowPrompt) {
-    enableAudio();
-    if (!data) return;
-    setSelected(prompt.throwerId);
-    setGrenadeFocus(undefined);
-    if (mode !== '2d') setMode('pov');
-    seek(replayLeadInTick(data, prompt.tick, settings.utilityLeadIn, first, last));
-    setPlaying(true);
-    chrome.show();
-    requestAnimationFrame(() => playTrigger.current?.focus({ preventScroll: true }));
-  }
-  function viewGrenadeLanding(prompt: LandingPrompt) {
-    enableAudio();
-    seek(Math.max(first, Math.floor(prompt.impactTick - rate / 4)));
-    setGrenadeFocus({
-      id: `${prompt.id}:${++focusSequence.current}`,
-      target: prompt.target,
-      origin: prompt.origin,
-      fromTick: prompt.tick,
-      untilTick: prompt.endTick,
-    });
-    if (mode !== '2d') setMode('orbit');
-    setPlaying(true);
-    chrome.show();
-    requestAnimationFrame(() => playTrigger.current?.focus({ preventScroll: true }));
-  }
   const momentActions: MenuAction[] = [
     {
       id: 'scoreboard',
@@ -1076,7 +1136,6 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     !buffering && selectedPosition
       ? recordedCrosshairAt(crosshairTimeline, selected, tick)
       : undefined;
-  const round = data.rounds.filter((r) => r.tick <= tick).at(-1);
   const reviewRound = roundAt(data, tick, last);
   const reviewActions: ReviewAction[] = [];
   let reviewHeading: ReactNode;
@@ -1206,6 +1265,26 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       disabled: !has3DMap,
     },
   ];
+  function changeCamera(value: string) {
+    deathFollow.current.reset();
+    setGrenadeFocus(undefined);
+    if (
+      value !== '2d' &&
+      using2D &&
+      (mapRender?.failure === 'model' || mapRender?.failure === 'webgl')
+    )
+      setSceneAttempt((attempt) => attempt + 1);
+    setMode(value);
+    cueCameraChange();
+  }
+  function changeSpeed(value: number) {
+    audio.flush();
+    setSpeed(value);
+  }
+  const nextRound = data.rounds.find((round) => round.number > reviewRound.number);
+  const previousRound = data.rounds.filter((round) => round.number < reviewRound.number).at(-1);
+  const speeds = [0.25, 0.5, 1, 2, 4];
+  const radarInterval = Math.max(1, Math.floor((rate * speed) / 12));
   return (
     <div
       className={'viewer-frame' + (settings.inputs || settings.economy ? ' has-review-hud' : '')}
@@ -1247,7 +1326,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
               {data.sample && <span>{t('Interactive sample')}</span>}
               {!settings.matchScore && (
                 <span>
-                  {t('Round')} {round?.number ?? 1}
+                  {t('Round')} {reviewRound.number}
                 </span>
               )}
               {!data.sample && (
@@ -1288,14 +1367,15 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
                     </span>
                   </span>
                 )}
-              {data.deadTimes?.some((period) => tick >= period.start && tick < period.end) && (
-                <span>
-                  {t(
-                    data.deadTimes.find((period) => tick >= period.start && tick < period.end)
-                      ?.kind || '',
-                  )}
-                </span>
-              )}
+              {!settings.matchScore &&
+                data.deadTimes?.some((period) => tick >= period.start && tick < period.end) && (
+                  <span>
+                    {t(
+                      data.deadTimes.find((period) => tick >= period.start && tick < period.end)
+                        ?.kind || '',
+                    )}
+                  </span>
+                )}
             </div>
           </div>
         </div>
@@ -1310,23 +1390,31 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
                 })
               : ''}
           </span>
+          <div className="viewer-camera-row" role="group" aria-label={t('Camera mode')}>
+            {['pov', 'follow', 'orbit', 'tactical', '2d'].map((value) => {
+              const option = cameraOptions.find((item) => item.value === value)!;
+              return (
+                <button
+                  type="button"
+                  key={value}
+                  aria-pressed={activeCamera === value || (fallbackCamera && value === '2d')}
+                  disabled={option.disabled}
+                  aria-label={option.label}
+                  data-fallback={fallbackCamera && value === '2d' ? true : undefined}
+                  title={option.label}
+                  onClick={() => changeCamera(value)}
+                >
+                  {option.compactLabel}
+                </button>
+              );
+            })}
+          </div>
           <SelectControl
             label={t('Camera mode')}
             className="camera-select"
             icon={<Eye size={16} />}
             value={activeCamera}
-            onValueChange={(value) => {
-              deathFollow.current.reset();
-              setGrenadeFocus(undefined);
-              if (
-                value !== '2d' &&
-                using2D &&
-                (mapRender?.failure === 'model' || mapRender?.failure === 'webgl')
-              )
-                setSceneAttempt((attempt) => attempt + 1);
-              setMode(value);
-              cueCameraChange();
-            }}
+            onValueChange={changeCamera}
             options={cameraOptions}
           />
           <button
@@ -1358,6 +1446,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
         {settings.matchScore && !buffering && (
           <MatchScore
             data={data}
+            frame={frame}
             tick={tick}
             objective={
               objective && !panel ? <ObjectiveHud value={objective} variant="score" /> : undefined
@@ -1367,11 +1456,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
             }
             objectiveDescription={objective && !panel ? objectiveDescription(objective) : undefined}
             chromeVisible={controlsVisible && !(panel && compactPanels)}
-            onOpenScoreboard={() =>
-              openScoreboard(
-                full.current?.querySelector('.viewer-match-score') as HTMLElement | null,
-              )
-            }
+            onOpenScoreboard={openScoreFromHeader}
           />
         )}
         {showReviewFeed && (
@@ -1382,26 +1467,9 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
             onTabChange={setFeedTab}
             chromeVisible={controlsVisible}
             modal={compactPanels}
-            focusOnOpen
+            focusOnOpen={compactPanels}
             onClose={closeReviewFeed}
-            onSeek={(value) => {
-              if (compactPanels) closeReviewFeed();
-              seekEvent(value);
-            }}
-            onReplayKill={(momentId, perspective) => {
-              const moment = reviewIndex?.kills.find((value) => value.id === momentId);
-              if (moment) {
-                if (compactPanels) closeReviewFeed();
-                replayCombat(moment, perspective);
-              }
-            }}
-            onReviewUtility={(momentId, action) => {
-              const moment = reviewIndex?.utilities.find((value) => value.id === momentId);
-              if (!moment) return;
-              if (compactPanels) closeReviewFeed();
-              if (action === 'landing' && moment.landing) viewGrenadeLanding(moment.landing);
-              else if (action === 'throw') replayThrow(moment);
-            }}
+            {...reviewFeedActions}
           />
         )}
 
@@ -1468,6 +1536,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
           )}
           {scopeFov === undefined &&
             settings.crosshair &&
+            selectedPosition?.alive &&
             mode === 'pov' &&
             !using2D &&
             (settings.crosshairSource === 'player' ? (
@@ -1481,7 +1550,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
             inert={!controlsVisible}
             aria-hidden={!controlsVisible}
           >
-            {settings.killfeed && !settings.reviewFeed && (
+            {settings.killfeed && (
               <div className="killfeed">
                 {data.events
                   .filter(
@@ -1516,7 +1585,11 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
             {settings.radar && !using2D && (
               <TacticalPlot
                 data={data}
-                tick={tick}
+                tick={
+                  playing && !buffering
+                    ? Math.max(first, Math.floor(tick / radarInterval) * radarInterval)
+                    : tick
+                }
                 selected={selected}
                 settings={settings}
                 compact
@@ -1670,7 +1743,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
           inert={!controlsVisible || (Boolean(panel) && compactPanels)}
           data-viewer-chrome
           aria-hidden={!controlsVisible}
-          className={'viewer-dock' + (roundsOpen ? ' rounds-visible' : '')}
+          className="viewer-dock"
           role="region"
           aria-label={t('Playback controls')}
         >
@@ -1684,8 +1757,6 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
             scope={timelineScope}
             onSeek={seekEvent}
             onReview={() => openRoundReview(mobileMoreTrigger.current)}
-            roundsOpen={roundsOpen}
-            onRoundsChange={setRoundsOpen}
             optionsOpen={timelineOptionsOpen}
             onCloseOptions={() => {
               setTimelineOptionsOpen(false);
@@ -1714,13 +1785,45 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
                 ]}
               />
             </div>
+            <div className="viewer-speed-row" role="group" aria-label={t('Playback speed')}>
+              {speeds.map((value) => (
+                <button
+                  type="button"
+                  key={value}
+                  aria-pressed={speed === value}
+                  onClick={() => changeSpeed(value)}
+                >
+                  {value.toLocaleString(i18n.language)}×
+                </button>
+              ))}
+            </div>
             <div className="viewer-transport">
               <button
-                className="icon-button transport-step"
-                aria-label={t('Rewind five seconds')}
-                onClick={() => seek(tick - rate * 5)}
+                className="icon-button transport-round"
+                aria-label={t('Previous round')}
+                title={t('Previous round')}
+                disabled={!previousRound}
+                onClick={() => previousRound && seek(previousRound.liveTick ?? previousRound.tick)}
               >
                 <SkipBack size={18} />
+              </button>
+              <button
+                className="icon-button transport-long"
+                aria-label={t('Rewind fifteen seconds')}
+                title={t('Rewind fifteen seconds')}
+                onClick={() => seek(tick - rate * 15)}
+              >
+                <RotateCcw size={18} />
+                <small>15</small>
+              </button>
+              <button
+                className="icon-button transport-step transport-back"
+                aria-label={t('Rewind five seconds')}
+                title={t('Rewind five seconds')}
+                onClick={() => seek(tick - rate * 5)}
+              >
+                <RotateCcw size={18} />
+                <small>5</small>
               </button>
               <button
                 className="play-button"
@@ -1736,9 +1839,29 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
                 {playing ? <Pause size={18} /> : <Play size={18} fill="currentColor" />}
               </button>
               <button
-                className="icon-button transport-step"
+                className="icon-button transport-step transport-forward"
                 aria-label={t('Forward five seconds')}
+                title={t('Forward five seconds')}
                 onClick={() => seek(tick + rate * 5)}
+              >
+                <RotateCw size={18} />
+                <small>5</small>
+              </button>
+              <button
+                className="icon-button transport-long"
+                aria-label={t('Forward fifteen seconds')}
+                title={t('Forward fifteen seconds')}
+                onClick={() => seek(tick + rate * 15)}
+              >
+                <RotateCw size={18} />
+                <small>15</small>
+              </button>
+              <button
+                className="icon-button transport-round"
+                aria-label={t('Next live round')}
+                title={t('Next live round')}
+                disabled={!nextRound}
+                onClick={() => nextRound && seek(nextRound.liveTick ?? nextRound.tick)}
               >
                 <SkipForward size={18} />
               </button>
@@ -1746,56 +1869,12 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
                 label={t('Playback speed')}
                 className="speed-select"
                 value={String(speed)}
-                onValueChange={(value) => {
-                  audio.flush();
-                  setSpeed(Number(value));
-                }}
-                options={[0.25, 0.5, 1, 2, 4].map((value) => ({
+                onValueChange={(value) => changeSpeed(Number(value))}
+                options={speeds.map((value) => ({
                   value: String(value),
-                  label: value + '×',
+                  label: value.toLocaleString(i18n.language) + '×',
                 }))}
               />
-            </div>
-            <div className="viewer-round-controls">
-              <SelectControl
-                label={t('Round')}
-                className="round-select"
-                value={String(round?.number ?? data.rounds[0]?.number ?? '')}
-                disabled={!data.rounds.length}
-                onValueChange={(value) => {
-                  const r = data.rounds.find((r) => r.number === Number(value));
-                  if (r) seek(r.tick);
-                }}
-                options={data.rounds.map((r) => ({
-                  value: String(r.number),
-                  label: t('Round') + ' ' + r.number,
-                }))}
-              />
-              <button
-                className="icon-button"
-                aria-label={t('Next live round')}
-                title={t('Next live round')}
-                onClick={() => {
-                  const next = data.rounds.find((r) => (r.liveTick ?? r.tick) > tick);
-                  if (next) seek(next.liveTick ?? next.tick);
-                  else notify('You are in the last recorded round.');
-                }}
-              >
-                <SkipForward size={17} />
-              </button>
-              <button
-                className="button skip-dead-time"
-                aria-label={t('Skip dead time')}
-                title={t('Skip dead time')}
-                onClick={() => {
-                  const target = skipDeadTime(data, tick, 'all', last);
-                  if (target === tick) notify('No freeze period or timeout at this position.');
-                  else seek(target);
-                }}
-              >
-                <FastForward size={16} />
-                <span>{t('Skip dead time')}</span>
-              </button>
             </div>
             <div className="viewer-panel-controls">
               <button
@@ -1866,23 +1945,45 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
                     onSelect: () => openRoundReview(mobileMoreTrigger.current),
                   },
                   {
+                    id: 'round-events',
+                    label: t('Kills and utility'),
+                    onSelect: () => {
+                      reviewFeedTrigger.current = mobileMoreTrigger.current;
+                      if (compactPanels) setCompactFeedOpen(true);
+                      else setSettings((value) => ({ ...value, reviewFeed: true }));
+                    },
+                  },
+                  {
                     id: 'timeline-options',
                     label: t('Timeline options'),
                     icon: <SlidersHorizontal size={16} />,
                     onSelect: () => setTimelineOptionsOpen(true),
                   },
                   {
+                    id: 'previous-round',
+                    label: t('Previous round'),
+                    icon: <SkipBack size={16} />,
+                    separatorBefore: true,
+                    disabled: !previousRound,
+                    onSelect: () =>
+                      previousRound && seek(previousRound.liveTick ?? previousRound.tick),
+                  },
+                  {
                     id: 'next-live-round',
                     label: t('Next live round'),
                     icon: <SkipForward size={16} />,
-                    separatorBefore: true,
-                    onSelect: () => {
-                      const next = data.rounds.find(
-                        (round) => (round.liveTick ?? round.tick) > tick,
-                      );
-                      if (next) seek(next.liveTick ?? next.tick);
-                      else notify('You are in the last recorded round.');
-                    },
+                    disabled: !nextRound,
+                    onSelect: () => nextRound && seek(nextRound.liveTick ?? nextRound.tick),
+                  },
+                  {
+                    id: 'rewind-fifteen',
+                    label: t('Rewind fifteen seconds'),
+                    onSelect: () => seek(tick - rate * 15),
+                  },
+                  {
+                    id: 'forward-fifteen',
+                    label: t('Forward fifteen seconds'),
+                    onSelect: () => seek(tick + rate * 15),
                   },
                   {
                     id: 'skip-dead-time',
@@ -1930,26 +2031,6 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
               />
             </div>
           </div>
-          <div className="viewer-review-rails">
-            {roundsOpen && (
-              <div className="viewer-rounds-rail" role="region" aria-label={t('Round timeline')}>
-                <div className="round-strip">
-                  {data.rounds.map((r) => (
-                    <button
-                      key={r.number}
-                      aria-current={round?.number === r.number ? 'step' : undefined}
-                      className={round?.number === r.number ? 'active' : ''}
-                      onClick={() => seek(r.tick)}
-                      aria-label={t('Jump to round ') + r.number}
-                    >
-                      <span>{String(r.number).padStart(2, '0')}</span>
-                      <i />
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
         </div>
         {!(mapAssets.acquisition?.acquisition === 'failed' && mapAssets.acquisition.canAcquire) && (
           <ReviewActions actions={reviewActions} heading={reviewHeading} recap={reviewRecap} />
@@ -1984,7 +2065,13 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
           recordedMapIdentity={data.mapIdentity}
           audio={audio}
           gameAudio={gameAudio}
-          onChange={setSettings}
+          onChange={(value) => {
+            if (value.reviewFeed !== settings.reviewFeed) {
+              reviewFeedTrigger.current = optionsTrigger.current;
+              setCompactFeedOpen(value.reviewFeed);
+            }
+            setSettings(value);
+          }}
           close={closeViewerOptions}
           openCommunications={() => {
             communicationsTrigger.current = optionsTrigger.current;
@@ -2021,6 +2108,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
                 ? 'Loading map overview…'
                 : 'Loading 3D map…'
           }
+          map={data.map.replace(/^de_/, '')}
           model={using2D ? undefined : mapRender?.modelProgress}
         />
       )}

@@ -57,7 +57,7 @@ async function open(
     ({ language, theme }) => {
       localStorage.setItem('theme', theme);
       localStorage.setItem('cswatch.language', language);
-      ['viewer-settings', 'viewer-settings-mobile'].forEach((key) =>
+      ['viewer-settings-v2', 'viewer-settings-v2-mobile'].forEach((key) =>
         localStorage.setItem(
           key,
           JSON.stringify({

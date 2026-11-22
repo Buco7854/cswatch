@@ -98,7 +98,7 @@ test('broadcast HUD shows recorded loadouts and inputs without inventing missing
   test.skip(Boolean(process.env.E2E_PRIVATE));
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.addInitScript(() =>
-    ['viewer-settings', 'viewer-settings-mobile'].forEach((key) =>
+    ['viewer-settings-v2', 'viewer-settings-v2-mobile'].forEach((key) =>
       localStorage.setItem(
         key,
         JSON.stringify({
@@ -283,9 +283,11 @@ test('broadcast HUD shows recorded loadouts and inputs without inventing missing
     await page.evaluate(() => {
       const value = JSON.parse(
         localStorage.getItem(
-          window.matchMedia('(max-width:760px),(pointer:coarse) and (max-height:560px)').matches
-            ? 'viewer-settings-mobile'
-            : 'viewer-settings',
+          window.matchMedia(
+            '(max-width:760px),(max-width:960px) and (max-height:560px),(pointer:coarse) and (max-height:560px)',
+          ).matches
+            ? 'viewer-settings-v2-mobile'
+            : 'viewer-settings-v2',
         ) || '{}',
       );
       return value.inputs === false && value.economy === true && value.inputLayout === 'zqsd';

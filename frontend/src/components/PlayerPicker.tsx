@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import type { Frame, Player } from '../types';
 import { t } from '../i18n';
-import { PlayerRow, SelectedLoadout } from './MatchEconomy';
+import { LoadoutRow, SelectedLoadout } from './MatchEconomy';
 
 /** The picker reuses the broadcast player row instead of a second selected
  * player card. Inventory is a quiet disclosure beside the selected row. */
@@ -35,7 +35,7 @@ export default function PlayerPicker({
             </h3>
             <ul className="broadcast-roster">
               {members.map((player) => (
-                <PlayerRow
+                <LoadoutRow
                   key={player.id}
                   member={{ player, state: states.get(player.id) }}
                   selected={player.id === selected}

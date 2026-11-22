@@ -25,7 +25,7 @@ const syntheticPng = Buffer.concat([
 async function enableEquipment(page: Page) {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.addInitScript(() =>
-    ['viewer-settings', 'viewer-settings-mobile'].forEach((key) =>
+    ['viewer-settings-v2', 'viewer-settings-v2-mobile'].forEach((key) =>
       localStorage.setItem(key, JSON.stringify({ economy: true, inputs: false, quality: 'low' })),
     ),
   );

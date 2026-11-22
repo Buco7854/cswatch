@@ -1,6 +1,3 @@
-.review-feed-inline[open] {
-  display: contents;
-}
 .review-feed-dialog {
   position: fixed;
   top: 50%;
@@ -28,7 +25,8 @@
   max-height: calc(100dvh - 24px);
 }
 .review-feed-dialog .review-feed-list {
-  max-height: min(440px, calc(100dvh - 100px));
+  height: min(440px, calc(100dvh - 100px));
+  max-height: none;
 }
 .viewer-frame:has(.review-feed-dialog[open])
   :is(
@@ -45,7 +43,7 @@
   top: var(--viewer-feed-top, calc(var(--viewer-toolbar-height, 48px) + 16px));
   right: var(--viewer-edge, 16px);
   z-index: 3;
-  width: 360px;
+  width: clamp(248px, 20vw, 340px);
   max-width: calc(100% - 32px);
   max-height: max(
     52px,
@@ -110,7 +108,8 @@
 .review-feed-list {
   flex: 1;
   min-height: 0;
-  max-height: 96px;
+  height: 88px;
+  max-height: 88px;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
@@ -204,11 +203,6 @@ div.review-feed-summary {
   color: var(--muted);
   font-size: 12px;
   line-height: 18px;
-}
-@media (max-width: 1200px) {
-  .review-feed-list {
-    max-height: 72px;
-  }
 }
 @media (max-width: 760px), (max-height: 560px) {
   .review-feed {

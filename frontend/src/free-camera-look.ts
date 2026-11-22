@@ -19,9 +19,7 @@ export function turnFreeCamera(camera: PerspectiveCamera, dx: number, dy: number
 
 type Pointer = { x: number; y: number; pan: boolean };
 const blocked = () =>
-  !!document.querySelector(
-    'dialog[open]:not(.review-feed-inline),[aria-modal="true"],[role="menu"],[role="listbox"]',
-  );
+  !!document.querySelector('dialog[open],[aria-modal="true"],[role="menu"],[role="listbox"]');
 
 /** Canvas-only mouse/touch look for recorded-map noclip. The caller owns the
  * mounted viewer lifetime; disposing releases every held pointer and listener. */
