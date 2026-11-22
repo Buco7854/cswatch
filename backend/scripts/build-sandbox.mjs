@@ -12,6 +12,7 @@ for (const name of [
   'recorded-equipment',
   'equipment-models',
   'map-previews',
+  'compact-map',
   'gameplay-sounds',
   'viewmodels',
 ])

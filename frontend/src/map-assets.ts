@@ -43,6 +43,9 @@ export function validateMapAssets(value: unknown, map: string, packId?: string):
   const phone = packId
     ? `/api/map-packs/${packId}/models/${map}/mobile/scene.glb`
     : `/map-assets/${map}/mobile/scene.glb`;
+  const compactUrl = packId
+    ? `/api/map-packs/${packId}/models/${map}/compact/scene.glb`
+    : `/map-assets/${map}/compact/scene.glb`;
   if (
     !/^[a-zA-Z0-9_-]{1,80}$/.test(map) ||
     !value ||
@@ -52,7 +55,8 @@ export function validateMapAssets(value: unknown, map: string, packId?: string):
     throw new Error('Invalid map assets');
   const input = value as Record<string, unknown>;
   const model = input.model ?? null,
-    mobile = input.mobile ?? null;
+    mobile = input.mobile ?? null,
+    compact = input.compact ?? null;
   if (
     model !== null &&
     model !== desktop &&
@@ -60,6 +64,7 @@ export function validateMapAssets(value: unknown, map: string, packId?: string):
   )
     throw new Error('Invalid map model');
   if (mobile !== null && mobile !== phone) throw new Error('Invalid mobile map model');
+  if (compact !== null && compact !== compactUrl) throw new Error('Invalid compact map model');
   let overview: MapOverview | null = null;
   if (input.overview !== undefined && input.overview !== null) {
     const item = input.overview as Partial<MapOverview>;
@@ -118,7 +123,13 @@ export function validateMapAssets(value: unknown, map: string, packId?: string):
       ...(item.fog !== undefined ? { fog: validateMapCubeFog(item.fog) } : {}),
     };
   }
-  return { model: model as string | null, mobile: mobile as string | null, overview, environment };
+  return {
+    model: model as string | null,
+    mobile: mobile as string | null,
+    ...(compact ? { compact } : {}),
+    overview,
+    environment,
+  };
 }
 function publish(entry: Entry, value: MapAssetState) {
   if (entries.get(entry.key) !== entry) return;
@@ -143,7 +154,8 @@ async function discover(entry: Entry) {
     const assets = validateMapAssets(JSON.parse(text), entry.map);
     if (controller.signal.aborted || entry.controller !== controller) return;
     publish(entry, {
-      status: assets.model || assets.mobile || assets.overview ? 'ready' : 'missing',
+      status:
+        assets.model || assets.mobile || assets.compact || assets.overview ? 'ready' : 'missing',
       assets,
       overviewStatus: assets.overview ? 'pending' : 'missing',
     });

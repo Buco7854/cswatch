@@ -16,6 +16,7 @@ import { batchMapMeshes } from './batch-map-meshes.mjs';
 import { MapBakedLightingExtension } from './map-baked-lighting-extension.mjs';
 import { bindBakedLighting, prepareBakedLightingAtlas } from './prepare-baked-lighting.mjs';
 import { readMapLayerImages } from './prepare-map-layers.mjs';
+import { prepareCompactMap } from './prepare-compact-map.mjs';
 const { values: v } = parseArgs({
   options: {
     s2v: { type: 'string' },
@@ -128,6 +129,15 @@ for (const tier of ['desktop', 'mobile']) {
     `${tier}: ${(packed.manifest.bytes / 1024 ** 2).toFixed(1)} MB, ${(packed.manifest.textureBudget.decodedRGBABytes / 1024 ** 2).toFixed(1)} MiB decoded RGBA${batching ? `, static primitives ${batching.initialPrimitives} -> ${batching.finalPrimitives}` : ', mobile culling granularity preserved'}`,
   );
 }
+const compact = await prepareCompactMap({
+  input: join(root, 'mobile', 'scene.glb'),
+  output: join(root, 'compact'),
+  map: v.map,
+});
+if (compact)
+  console.log(
+    `compact: ${compact.bytes} bytes, ${compact.triangles} triangles in ${compact.primitives} batches`,
+  );
 console.log(
   'Prepared map. Install the resulting map directory into DATA_DIR/maps. Source exports may be removed after archiving.',
 );

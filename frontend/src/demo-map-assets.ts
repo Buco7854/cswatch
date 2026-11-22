@@ -180,7 +180,8 @@ export function validateDemoMapAssets(value: unknown, map: string): DemoMapState
     map,
     typeof input.packId === 'string' ? input.packId : undefined,
   );
-  const hasAssets = Boolean(assets.model || assets.mobile || assets.overview || assets.environment);
+  const hasModel = Boolean(assets.model || assets.mobile || assets.compact);
+  const hasAssets = hasModel || Boolean(assets.overview || assets.environment);
   if (input.verification === 'operator-approved' || input.verification === 'latest-official') {
     if (
       input.acquisition !== 'ready' ||
@@ -196,7 +197,7 @@ export function validateDemoMapAssets(value: unknown, map: string): DemoMapState
     if (
       input.packId !== null ||
       input.acquisition !== 'disabled' ||
-      (!assets.model && !assets.mobile && !assets.overview)
+      (!hasModel && !assets.overview)
     )
       throw new Error('Invalid manual map');
   } else if (hasAssets) throw new Error('Unverified prepared map');

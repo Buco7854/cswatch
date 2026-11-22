@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { FileHandle } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import type { ReadStream } from 'node:fs';
 import {
   bytesFrom,
@@ -13,6 +14,16 @@ import { legacyMapLocation, type MapAssetLocation } from './map-asset-location.j
 import type { FastifyRequest } from 'fastify';
 
 export const mapModelBytes = 2 * 1024 ** 3;
+const compactMapBytes = JSON.parse(
+  readFileSync(
+    new URL(
+      import.meta.url.endsWith('.ts') ? '../../shared/compact-map.json' : './compact-map.json',
+      import.meta.url,
+    ),
+    'utf8',
+  ),
+).bytes as number;
+const modelLimit = (parts: string[]) => (parts[1] === 'compact' ? compactMapBytes : mapModelBytes);
 type ModelFile = { file: FileHandle; size: number; version: string };
 
 /** Discovery and delivery share the same no-follow, single-link, bounded GLB boundary. */
@@ -23,7 +34,7 @@ export async function openMapModel(
   baseParts: string[] = ['maps'],
 ): Promise<ModelFile | undefined> {
   return withDirectory(root, [...baseParts, ...parts], async (directory) => {
-    const file = await regularFile(directory, filename, 24, mapModelBytes);
+    const file = await regularFile(directory, filename, 24, modelLimit(parts));
     if (!file) return;
     let keep = false;
     try {
@@ -62,7 +73,7 @@ const reserved = new Set([
 function modelPath(value: string) {
   const agent = /^agents\/(ct|t)\.glb$/.exec(value);
   if (agent) return { parts: ['agents'], filename: `${agent[1]}.glb` };
-  const map = /^([a-zA-Z0-9_-]{1,80})\/(desktop|mobile)\/scene\.glb$/.exec(value);
+  const map = /^([a-zA-Z0-9_-]{1,80})\/(desktop|mobile|compact)\/scene\.glb$/.exec(value);
   if (map && !reserved.has(map[1].toLowerCase()))
     return { parts: [map[1], map[2]], filename: 'scene.glb' };
 }
@@ -146,7 +157,7 @@ export async function mapModelFileRoutes(
         // Fresh content proof also prevents same-size/same-timestamp rewrites from satisfying an old ETag.
         let digest: string;
         try {
-          digest = await proveContent(model.file, mapModelBytes, cancellation.signal);
+          digest = await proveContent(model.file, modelLimit(path.parts), cancellation.signal);
         } catch {
           throw new HttpError(404, 'Map model not found.');
         }

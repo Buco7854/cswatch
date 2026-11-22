@@ -15,7 +15,7 @@ cswatch is a public-capable, self-hostable review product with private-by-defaul
 - Desktop, mobile/touch, TV/keyboard/remote; low-power/2D fallback; English/French; dark/light.
 - Docker without a bundled reverse proxy, durable storage/queue, bounded untrusted parsing, weekly image rebuild and dependency maintenance.
 - Premier/Competitive/Wingman demos use the normal CS2 file pipeline. Steam identity is separate from download authorization. External HLTV demos are downloaded at their source and uploaded; no HLTV catalog or scraping wrapper.
-- Advanced review follows the reference viewer as a completeness reference: recorded scores/clocks, native-counter scoreboard, symmetric kill/death replays, round kill/utility lists, throw/landing navigation, all-player economy/status/inventory, event-bound throw inputs and continuous inputs with WASD/ZQSD labels, voice, chat and optional local speech subtitles. Present these progressively and preserve unknown/missing data.
+- Advanced review includes recorded scores/clocks, native-counter scoreboard, symmetric kill/death replays, round kill/utility lists, throw/landing navigation, all-player economy/status/inventory, event-bound throw inputs and continuous inputs with WASD/ZQSD labels, voice, chat and optional local speech subtitles. Present these progressively and preserve unknown/missing data.
 
 ## Product surfaces
 

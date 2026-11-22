@@ -102,11 +102,18 @@ test('fixed map tiers and team agents stream bounded GLBs behind instance policy
     assert.equal(result.headers['content-type'], 'model/gltf-binary');
     mkdirSync(join(f.root, 'maps', 'de_fixture', 'mobile'));
     writeFileSync(join(f.root, 'maps', 'de_fixture', 'mobile', 'scene.glb'), f.bytes);
+    mkdirSync(join(f.root, 'maps', 'de_fixture', 'compact'));
+    writeFileSync(join(f.root, 'maps', 'de_fixture', 'compact', 'scene.glb'), f.bytes);
+    assert.equal(
+      (await f.get('/map-assets/de_fixture/compact/scene.glb', {}, 'GET', false)).statusCode,
+      401,
+    );
     mkdirSync(join(f.root, 'maps', 'agents'));
     writeFileSync(join(f.root, 'maps', 'agents', 'ct.glb'), f.bytes);
     writeFileSync(join(f.root, 'maps', 'agents', 't.glb'), f.bytes);
     for (const url of [
       '/map-assets/de_fixture/mobile/scene.glb',
+      '/map-assets/de_fixture/compact/scene.glb',
       '/map-assets/agents/ct.glb',
       '/map-assets/agents/t.glb',
     ])
@@ -115,6 +122,7 @@ test('fixed map tiers and team agents stream bounded GLBs behind instance policy
     for (const url of [
       '/map-assets/de_fixture.glb',
       '/map-assets/de_fixture/desktop/manifest.json',
+      '/map-assets/de_fixture/compact/manifest.json',
       '/map-assets/de_fixture/desktop/other.glb',
       '/map-assets/agents/other.glb',
       '/map-assets/de_fixture/desktop/scene.gltf',
