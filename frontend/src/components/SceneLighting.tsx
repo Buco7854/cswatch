@@ -1,13 +1,7 @@
-import { useLayoutEffect, useMemo, useRef, type RefObject } from 'react';
+import { useContext, useLayoutEffect, useMemo, useRef, type RefObject } from 'react';
 import { useThree } from '@react-three/fiber';
-import {
-  Color,
-  Object3D,
-  type AmbientLight,
-  type DirectionalLight,
-  type HemisphereLight,
-} from 'three';
-import { mapGradeBurstLights, mapGradeExposure, mapGradeLighting } from '../map-grade';
+import { Color, Object3D, type DirectionalLight } from 'three';
+import { mapGradeBurstLights, MapGradeContext, mapGradeExposureGain } from '../map-grade';
 import { applySunShadow, type MapSun } from '../map-sun';
 
 const fallbackShadow = { left: -45, right: 45, bottom: -45, top: 45, near: 0.5, far: 500 };
@@ -29,58 +23,45 @@ export default function SceneLighting({
 }) {
   const internalRef = useRef<DirectionalLight>(null),
     ref = directionalRef ?? internalRef,
-    ambient = useRef<AmbientLight>(null),
-    hemisphere = useRef<HemisphereLight>(null),
+    authored = useContext(MapGradeContext),
+    lighting = authored?.lighting,
     target = useMemo(() => new Object3D(), []),
-    color = useMemo(() => (sun ? new Color().fromArray(sun.color) : new Color('#ffffff')), [sun]),
+    color = useMemo(() => {
+      if (sun && lighting) {
+        // T3 changes directional intensity to shade the weapon. Three's
+        // Lambert convention belongs in the authored color conversion.
+        return new Color().fromArray(lighting.sun).multiplyScalar(Math.PI / 1.8);
+      }
+      return sun ? new Color().fromArray(sun.color) : new Color('#ffffff');
+    }, [sun, lighting]),
+    skyColor = useMemo(
+      () => (lighting ? new Color().fromArray(lighting.sky) : '#e1ecf0'),
+      [lighting],
+    ),
     { scene, invalidate } = useThree();
-  const ambientIntensity = sample ? 0.9 : skylight ? 0.08 : 0.35;
-  const hemisphereIntensity = sample ? 2 : skylight ? 0.12 : 0.6;
+  const ambientIntensity = sample ? 0.9 : lighting ? 0 : skylight ? 0.08 : 0.35;
+  const hemisphereIntensity = sample
+    ? 2
+    : skylight
+      ? lighting
+        ? 0
+        : 0.12
+      : lighting
+        ? Math.PI
+        : 0.6;
+  const headroom = Math.max(1, mapGradeExposureGain(authored) * 1.35);
   useLayoutEffect(() => {
     const original = scene.onBeforeRender;
-    let authored = false;
-    const restore = () => {
-      if (!authored || !ref.current || !ambient.current || !hemisphere.current) return;
-      ref.current.color.copy(color);
-      ambient.current.intensity = ambientIntensity;
-      hemisphere.current.intensity = hemisphereIntensity;
-      hemisphere.current.color.set('#e1ecf0');
-      hemisphere.current.groundColor.set('#7c694b');
-      authored = false;
-    };
     scene.onBeforeRender = function (...args) {
       original.apply(this, args);
-      const target = args[0].getRenderTarget();
       const burst = mapGradeBurstLights.get(scene);
-      if (burst) {
-        const gain = target && mapGradeExposure.get(target);
-        // Retain local highlight detail before the authored exposure and LUT.
-        const headroom = gain ? Math.max(1, gain * 1.35) : 1;
-        burst.light.intensity = burst.intensity() / headroom;
-      }
-      const lighting = !sample && target ? mapGradeLighting.get(target) : undefined;
-      if (!lighting) {
-        restore();
-        return;
-      }
-      if (!ref.current || !ambient.current || !hemisphere.current) return;
-      if (sun) {
-        // Three divides direct diffuse by pi. Keep the public intensity on the
-        // DirectionalLight so another pass can attenuate it independently.
-        ref.current.color.fromArray(lighting.sun).multiplyScalar(Math.PI / 1.8);
-      }
-      ambient.current.intensity = 0;
-      hemisphere.current.color.fromArray(lighting.sky);
-      hemisphere.current.groundColor.setRGB(0, 0, 0);
-      // The filtered scene sky already supplies broad diffuse and reflection.
-      hemisphere.current.intensity = skylight ? 0 : Math.PI;
-      authored = true;
+      if (burst) burst.light.intensity = burst.intensity() / headroom;
     };
+    invalidate();
     return () => {
       scene.onBeforeRender = original;
-      restore();
     };
-  }, [scene, ref, color, sample, sun, skylight, ambientIntensity, hemisphereIntensity]);
+  }, [scene, headroom, invalidate]);
   useLayoutEffect(() => {
     target.position.set(...(sun?.target || [0, 0, 0]));
     target.updateMatrixWorld(true);
@@ -90,8 +71,8 @@ export default function SceneLighting({
   return (
     <>
       <primitive object={target} />
-      <ambientLight ref={ambient} intensity={ambientIntensity} />
-      <hemisphereLight ref={hemisphere} args={['#e1ecf0', '#7c694b', hemisphereIntensity]} />
+      <ambientLight intensity={ambientIntensity} />
+      <hemisphereLight args={[skyColor, lighting ? '#000000' : '#7c694b', hemisphereIntensity]} />
       <directionalLight
         ref={ref}
         target={target}

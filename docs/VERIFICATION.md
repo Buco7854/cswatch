@@ -103,8 +103,6 @@ The table reports mean linear Rec.709 luminance of 7 × 7 screenshot patches. Co
 
 The fire-wall crop clips zero of 26,862 pixels at both ticks, compared with 128 red-255 pixels at tick 43128 in the first grading attempt. The worst central scene crop has 1,797 of 284,700 pixels reaching 255 in any channel at tick 21176, including small sunlit highlights and the muzzle flash. The largest connected region reaching 255 in any channel has 383 pixels in a 42 × 22 box at the lit forearm. Small exterior highlights still reach the output limit. The sampled main exterior patch stays below clipping and gains luminance.
 
-The version 1 and unavailable-grade paths keep the original shader source and cache keys. The separate reviewed desktop, tablet and phone matrix exercised both themes and reduced motion. At 75% render resolution, the six targets used 4× MSAA at 720 × 405, 576 × 675 and 292 × 633, matching their drawing buffers. A visible through-wall silhouette issued its stencil test with 8 stencil bits and 4 samples on the graded framebuffer. The build, ramp, formatting, 42 backend cases and 22 asset cases passed. Local probes, bloom, automatic exposure metering, physical GPUs and a newly downloaded sparse post-processing entry remain unverified. The runtime is Node 22.23.5.
-
 ### Integration with the first-person lens at `095c227`
 
 The uncommitted grading change was applied to detached integration tip `095c227`. T3 retains the half-metre eye cache, its directional intensity adjustment and its one local PMREM multiplier. T5 scales the authored sun color on the graded target and applies the output curve and LUT to the composed frame. WebGL recorded a color/depth/stencil clear at the start of the graded frame, followed by two depth-only clears for the world and POV layers. The graded X-ray draw used eight stencil bits and four samples. All four reviewed Mirage captures at ticks 43128, 21176, 43193 and 21241 show the weapon in the lower right, with the map and effects visible around it. Both runs used 960 × 540 Chromium SwiftShader with 4× MSAA and reported no shader or page faults. Both TypeScript checks, both builds, 42 backend tests, 22 asset tests, the grade ramp and all six POV tests passed. No commits or release artifacts were created.
@@ -230,6 +228,26 @@ On Node 22.23.5, both production builds, formatting and English/French message c
 Public Chromium passed 243 tests with the private-entry and first-admin cases skipped. Each private registration policy passed 53 tests with 192 environment skips. First-admin enrollment passed four tests with the environment-credential case covered by the public run. All seven shader-preflight tests passed. Production-browser screenshots of the synthetic QA map were inspected in both themes at 1440 × 900, 768 × 1024 and 390 × 844, covering the 3D radar and 2D overview under software rendering.
 
 The additional backend unused-local check reported two baseline imports in the replay and server modules. Those files are part of the replay-format work.
+
+## Unified map lighting and output, 2026-11-22
+
+Chromium with SwiftShader drew the pinned Mirage recording at ticks 18077, 43128 and 21176, and at aligned ticks 18142, 43193 and 21241. All six captures were inspected. The indoor walls retain contact shadows, the outdoor walls remain bright, and the POV weapon and effects are present. The pinned cache contains only Mirage’s map VPK. The ungraded Training Courtyard ran in both themes on desktop, tablet and phone. Synthetic current-version packs exercise sky lighting with missing or invalid authored grading, and the neutral and authored GPU ramps are compared to independent CPU calculations.
+
+The initial and final R3 builds matched in all 284,700 RGB pixels of a central world crop for each of the six Mirage views. Sampled 7 × 7 linear-luminance means are 0.1951 for the fire scene wall, 0.0818 for its shadow and 0.1143 for its floor. The kill scene exterior and sky measure 0.5401 and 0.7052. The ramp test switches between authored and neutral outputs and observes one WebGL program.
+
+The WebGL probe recorded RGBA16F color and DEPTH24_STENCIL8 allocations. These estimates are attachment payloads and exclude driver overhead, the canvas framebuffer and scene resources.
+
+| Drawing buffer | Profile | MSAA samples | Target payload | MSAA overhead |
+| -------------- | ------- | ------------ | -------------- | ------------- |
+| 960 × 540      | High    | 4            | 29.663 MiB     | 23.730 MiB    |
+| 768 × 900      | High    | 4            | 39.551 MiB     | 31.641 MiB    |
+| 390 × 844      | Low     | 1            | 3.767 MiB      | 0 MiB         |
+
+The target keeps the drawing-buffer resolution as long as a single-sample allocation fits the hardware limits and 384 MiB attachment budget. High selects up to four supported samples within that budget. Low and Compact have one full-screen grade draw and no offscreen multisample resolve. Compact retains its existing geometry and render-resolution policy and skips sky cube filtering. Disabling the float color-buffer extensions in the browser probe caused zero grade-target allocations. The practice scene still rendered with Three’s canvas tone mapping. The captures are under ignored `var/grade-work/r3-captures/`. Physical GPU time and driver memory remain unmeasured.
+
+The production build, formatting, English and French locale checks, and runtime image-layout smoke check passed on Node 22.23.5. Node 24 is the project target. The backend passed all 425 tests with the pinned demo and offline speech model. The asset suite passed 302. Playwright passed 243 public cases with two configured skips, 53 cases for each private registration policy with 192 configured skips each, and four first-admin setup cases with one configured skip.
+
+The separate reviewed desktop, tablet and phone matrix exercised both themes and reduced motion. At 75% render resolution, the six targets used 4× MSAA at 720 × 405, 576 × 675 and 292 × 633, matching their drawing buffers. A visible through-wall silhouette issued its stencil test with 8 stencil bits and 4 samples on the graded framebuffer. The build, ramp, formatting, 42 backend cases and 22 asset cases passed. Local probes, bloom, automatic exposure metering, physical GPUs and a newly downloaded sparse post-processing entry remain unverified. The runtime is Node 22.23.5.
 
 ## Replay motion, texture detail and C4 wave, 2026-11-22
 

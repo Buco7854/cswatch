@@ -58,12 +58,7 @@ export function validateMapAssets(value: unknown, map: string, packId?: string):
   const model = input.model ?? null,
     mobile = input.mobile ?? null,
     compact = input.compact ?? null;
-  if (
-    model !== null &&
-    model !== desktop &&
-    (packId !== undefined || model !== `/map-assets/${map}.glb`)
-  )
-    throw new Error('Invalid map model');
+  if (model !== null && model !== desktop) throw new Error('Invalid map model');
   if (mobile !== null && mobile !== phone) throw new Error('Invalid mobile map model');
   if (compact !== null && compact !== compactUrl) throw new Error('Invalid compact map model');
   let overview: MapOverview | null = null;

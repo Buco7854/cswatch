@@ -23,7 +23,7 @@ const curves = [
     whiteStops: 4,
   },
 ];
-const inputs = Array.from({ length: 129 }, (_, i) => i * 2 ** -6);
+const inputs = [...Array.from({ length: 129 }, (_, i) => i * 2 ** -6), 3, 4, 8];
 const exposure = { min: 0.8, max: 1, bias: 0 };
 
 // Independent double-precision reference, in the original rational form.
@@ -38,7 +38,7 @@ function cpuGrade(input: number, curve: (typeof curves)[number]) {
   return Math.round(255 * (y <= 0.0031308 ? 12.92 * y : 1.055 * y ** (1 / 2.4) - 0.055));
 }
 
-test('WebGL authored grade matches a neutral ramp reference and samples RGB LUT axes', async ({
+test('WebGL authored and neutral grades match CPU ramp references and sample RGB LUT axes', async ({
   page,
 }) => {
   const root = fileURLToPath(new URL('../../', import.meta.url));
@@ -84,6 +84,8 @@ test('WebGL authored grade matches a neutral ramp reference and samples RGB LUT 
         T.FloatType,
       );
       source.needsUpdate = true;
+      const out = createGradeOutput();
+      out.material.uniforms.sceneColor.value = source;
       const render = (curve, axisTest: boolean) => {
         const data = new Uint8Array(32);
         for (let i = 0; i < 8; i++)
@@ -93,21 +95,23 @@ test('WebGL authored grade matches a neutral ramp reference and samples RGB LUT 
               : [255 * (i & 1), 255 * ((i >> 1) & 1), 255 * (i >> 2), 255],
             i * 4,
           );
-        const out = createGradeOutput({ curve, exposure, lut: { size: 2 } }, data);
-        out.material.uniforms.sceneColor.value = source;
+        out.setGrade(curve && { grade: { curve, exposure, lut: { size: 2 } }, bytes: data });
         renderer.render(out.scene, out.camera);
         const pixels = new Uint8Array(inputs.length * 4);
         context.readPixels(0, 0, inputs.length, 1, context.RGBA, context.UNSIGNED_BYTE, pixels);
-        out.dispose();
         return Array.from(pixels);
       };
       const ramps = curves.map((curve) => render(curve, false));
+      const neutral = render(undefined, false);
       source.image.data.set([0, 2, 2, 1, 2, 0, 0, 1]);
       source.needsUpdate = true;
       const axes = render(curves[0], true).slice(0, 8);
+      const neutralAxes = render(undefined, false).slice(0, 8);
+      const programs = renderer.info.programs.length;
+      out.dispose();
       source.dispose();
       renderer.dispose();
-      return { ramps, axes };
+      return { ramps, axes, neutral, neutralAxes, programs };
     },
     { inputs, curves, exposure },
   );
@@ -124,5 +128,20 @@ test('WebGL authored grade matches a neutral ramp reference and samples RGB LUT 
   // at sqrt(8). At scene 0.25, 0.50, 1.00 this gives linear 0.19844,
   // 0.39665, 0.79242 and sRGB bytes 123, 169, 230.
   expect([16, 32, 64].map((i) => output.ramps[0][i * 4])).toEqual([123, 169, 230]);
+  const srgbByte = (x: number) =>
+    Math.round(255 * (x <= 0.0031308 ? 12.92 * x : 1.055 * x ** (1 / 2.4) - 0.055));
+  const neutral = inputs.map((input) => {
+    const x = Math.min(input, 4);
+    return srgbByte(1 - (1 - x / 4) ** 2 / (1 + x / 2));
+  });
+  expect(
+    Math.max(
+      ...output.neutral.map((pixel, i) =>
+        Math.abs(pixel - (i % 4 === 3 ? 255 : neutral[Math.floor(i / 4)])),
+      ),
+    ),
+  ).toBeLessThanOrEqual(1);
   expect(output.axes).toEqual([0, 0, 0, 255, 255, 0, 0, 255]);
+  expect(output.neutralAxes).toEqual([0, 240, 240, 255, 240, 0, 0, 255]);
+  expect(output.programs).toBe(1);
 });

@@ -34,7 +34,7 @@ const assetVersion = z.string().trim().min(1).max(100);
 const sha256 = z.string().regex(/^[a-f0-9]{64}$/);
 const metadataSchema = z
   .object({
-    schemaVersion: z.union([z.literal(1), z.literal(2)]),
+    schemaVersion: z.literal(2),
     map: mapName,
     assetVersion,
     source: z.string().trim().min(1).max(500),
@@ -50,8 +50,7 @@ const metadataSchema = z
       })
       .strict(),
   })
-  .strict()
-  .refine((value) => value.schemaVersion === 2 || value.grade === undefined);
+  .strict();
 const mapManifestSchema = z.object({
   schemaVersion: z.literal(1),
   map: mapName,

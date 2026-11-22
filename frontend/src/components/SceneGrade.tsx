@@ -1,35 +1,44 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { HalfFloatType, LinearFilter, Vector2, WebGLRenderTarget } from 'three';
 import { mapGradeFile } from '../../../shared/map-grade.mjs';
-import type { MapGrade } from '../../../shared/map-grade.mjs';
+import type { MapEnvironment } from '../../../shared/map-assets';
 import {
   createGradeOutput,
   loadGradeLut,
-  mapGradeExposure,
-  mapGradeExposureGain,
   mapGradeLighting,
-  mapGradeTargets,
+  MapGradeContext,
+  type AuthoredGrade,
 } from '../map-grade';
 
+const attachmentBudget = 384 * 1024 ** 2;
+const attachmentBytesPerPixel = 12; // RGBA16F and DEPTH24_STENCIL8
+
 export default function SceneGrade({
-  grade,
-  firstFace,
+  environment,
+  low,
+  revision,
   manualWorld,
+  children,
 }: {
-  grade: MapGrade;
-  firstFace: string;
+  environment: MapEnvironment | null;
+  low: boolean;
+  revision: number;
   manualWorld: boolean;
+  children: ReactNode;
 }) {
   const gl = useThree((state) => state.gl);
   const context = gl.getContext() as WebGL2RenderingContext;
-  const url = firstFace.slice(0, -'px.png'.length) + mapGradeFile;
-  const [loaded, setLoaded] = useState<{ grade: MapGrade; url: string; bytes: Uint8Array }>();
+  const [loaded, setLoaded] = useState<AuthoredGrade & { url: string }>();
+  const grade = environment?.grade;
+  const url = environment?.sky.faces[0].replace(/px\.png$/, mapGradeFile);
+  const renderableFloat =
+    gl.extensions.has('EXT_color_buffer_float') || gl.extensions.has('EXT_color_buffer_half_float');
   useEffect(() => {
     if (
+      !grade ||
+      !url ||
       !globalThis.crypto?.subtle ||
-      (!gl.extensions.has('EXT_color_buffer_float') &&
-        !gl.extensions.has('EXT_color_buffer_half_float')) ||
       context.getParameter(context.MAX_3D_TEXTURE_SIZE) < grade.lut.size
     )
       return;
@@ -37,7 +46,7 @@ export default function SceneGrade({
     const timeout = setTimeout(() => controller.abort(), 15000);
     loadGradeLut(url, grade, controller.signal)
       .then((bytes) => {
-        if (!controller.signal.aborted) setLoaded({ grade, url, bytes });
+        if (!controller.signal.aborted) setLoaded({ grade, bytes, url });
       })
       .catch(() => {})
       .finally(() => clearTimeout(timeout));
@@ -45,114 +54,119 @@ export default function SceneGrade({
       clearTimeout(timeout);
       controller.abort();
     };
-  }, [context, gl, grade, url]);
-  return loaded?.grade === grade && loaded.url === url ? (
-    <GradeFrames grade={grade} bytes={loaded.bytes} manualWorld={manualWorld} />
-  ) : null;
+  }, [context, grade, url]);
+  const authored = loaded && loaded.grade === grade && loaded.url === url ? loaded : undefined;
+  return (
+    <MapGradeContext.Provider value={authored?.grade}>
+      {renderableFloat && (
+        <GradeFrames key={revision} authored={authored} low={low} manualWorld={manualWorld} />
+      )}
+      {children}
+    </MapGradeContext.Provider>
+  );
 }
 
 function GradeFrames({
-  grade,
-  bytes,
+  authored,
+  low,
   manualWorld,
 }: {
-  grade: MapGrade;
-  bytes: Uint8Array;
+  authored?: AuthoredGrade;
+  low: boolean;
   manualWorld: boolean;
 }) {
   const resources = useRef<{
-    output: ReturnType<typeof createGradeOutput>;
     target: WebGLRenderTarget;
+    output: ReturnType<typeof createGradeOutput>;
     size: Vector2;
-    usable: boolean;
-    checked: boolean;
     samples: number[];
     maxEdge: number;
+    tested: Vector2;
+    usable: boolean;
   }>(null);
   const { gl, invalidate } = useThree();
   useLayoutEffect(() => {
-    const output = createGradeOutput(grade, bytes);
     const target = new WebGLRenderTarget(1, 1, {
       type: HalfFloatType,
       minFilter: LinearFilter,
       magFilter: LinearFilter,
       stencilBuffer: true,
     });
-    mapGradeTargets.add(target);
-    mapGradeExposure.set(target, mapGradeExposureGain(grade.exposure));
-    if (grade.lighting) mapGradeLighting.set(target, grade.lighting);
     const context = gl.getContext() as WebGL2RenderingContext;
     const available = (format: number): number[] =>
       Array.from(context.getInternalformatParameter(context.RENDERBUFFER, format, context.SAMPLES));
-    const depthSamples = available(context.DEPTH24_STENCIL8);
-    const maxSamples = Math.min(4, context.getParameter(context.MAX_SAMPLES));
-    const antialias = context.getContextAttributes()?.antialias === true;
-    const samples = antialias
-      ? available(context.RGBA16F).filter(
-          (count) => count <= maxSamples && depthSamples.includes(count),
-        )
-      : [0];
+    const samples = [0];
+    if (!low && context.getContextAttributes()?.antialias) {
+      const depth = available(context.DEPTH24_STENCIL8);
+      const max = Math.min(4, context.getParameter(context.MAX_SAMPLES));
+      samples.unshift(
+        ...available(context.RGBA16F).filter((n) => n > 0 && n <= max && depth.includes(n)),
+      );
+    }
+    const output = createGradeOutput();
     output.material.uniforms.sceneColor.value = target.texture;
     resources.current = {
-      output,
       target,
+      output,
       size: new Vector2(),
-      usable: false,
-      checked: false,
       samples,
       maxEdge: Math.min(
         gl.capabilities.maxTextureSize,
         context.getParameter(context.MAX_RENDERBUFFER_SIZE),
       ),
+      tested: new Vector2(),
+      usable: false,
     };
-    invalidate();
     return () => {
       resources.current = null;
       if (gl.getRenderTarget() === target) gl.setRenderTarget(null);
       output.dispose();
       target.dispose();
     };
-  }, [grade, bytes, gl, invalidate]);
+  }, [gl, low]);
+  useLayoutEffect(() => {
+    const { target, output } = resources.current!;
+    output.setGrade(authored);
+    if (authored?.grade.lighting) mapGradeLighting.set(target, authored.grade.lighting);
+    invalidate();
+    return () => {
+      mapGradeLighting.delete(target);
+    };
+  }, [authored, gl, invalidate, low]);
 
   useFrame(({ gl }) => {
     const frame = resources.current;
     if (!frame || gl.getRenderTarget()) return;
-    const { target, size } = frame;
+    const { target, size, samples, maxEdge } = frame;
     gl.getDrawingBufferSize(size);
-    // Grade at the exact viewer drawing-buffer size. If the device cannot
-    // fit multisampled HDR at this resolution, keep the native canvas path.
-    const context = gl.getContext() as WebGL2RenderingContext;
-    const width = Math.max(1, size.x),
-      height = Math.max(1, size.y);
-    const budget = 384 * 1024 ** 2;
-    const samples = frame.samples.find((count) => width * height * 12 * (count + 1) <= budget);
-    if (Math.max(width, height) > frame.maxEdge || samples === undefined) {
-      if (frame.checked) {
+    if (!size.x || !size.y) return;
+    if (!frame.tested.equals(size)) {
+      // Preserve the selected resolution before spending memory on MSAA.
+      // Scale only when a single-sample target would exceed allocation limits.
+      const scale = Math.min(
+        1,
+        maxEdge / Math.max(size.x, size.y),
+        Math.sqrt(attachmentBudget / (attachmentBytesPerPixel * size.x * size.y)),
+      );
+      const width = Math.max(1, Math.floor(size.x * scale));
+      const height = Math.max(1, Math.floor(size.y * scale));
+      const context = gl.getContext();
+      frame.tested.copy(size);
+      frame.usable = false;
+      for (const count of samples) {
+        if (width * height * attachmentBytesPerPixel * (count + 1) > attachmentBudget) continue;
         target.dispose();
-        frame.checked = frame.usable = false;
-      }
-      return;
-    }
-    if (
-      !frame.checked ||
-      target.width !== width ||
-      target.height !== height ||
-      target.samples !== samples
-    ) {
-      frame.checked = true;
-      if (target.samples !== samples) target.dispose();
-      target.samples = samples;
-      target.setSize(width, height);
-      gl.setRenderTarget(target);
-      frame.usable =
-        context.checkFramebufferStatus(context.FRAMEBUFFER) === context.FRAMEBUFFER_COMPLETE;
-      if (!frame.usable) {
+        target.samples = count;
+        target.setSize(width, height);
+        gl.setRenderTarget(target);
+        if (context.checkFramebufferStatus(context.FRAMEBUFFER) === context.FRAMEBUFFER_COMPLETE) {
+          frame.usable = true;
+          break;
+        }
         gl.setRenderTarget(null);
-        target.dispose();
       }
+      if (!frame.usable) target.dispose();
     } else if (frame.usable) gl.setRenderTarget(target);
-    // Three writes ordinary render targets in scene-linear space. The
-    // fullscreen material also opts out of Three's display tone mapping.
   }, 0.99);
 
   useFrame(({ gl, scene, camera }) => {
@@ -161,11 +175,16 @@ function GradeFrames({
       if (manualWorld) gl.render(scene, camera);
       return;
     }
+    const autoClear = gl.autoClear;
     try {
       if (manualWorld) gl.render(scene, camera);
       gl.setRenderTarget(null);
-      gl.render(frame.output.scene, frame.output.camera);
+      // The output triangle writes every pixel, including alpha.
+      gl.autoClear = false;
+      const { output } = frame;
+      gl.render(output.scene, output.camera);
     } finally {
+      gl.autoClear = autoClear;
       gl.setRenderTarget(null);
     }
   }, 3);

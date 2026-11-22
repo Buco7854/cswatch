@@ -1,3 +1,4 @@
+import { createContext } from 'react';
 import {
   BufferAttribute,
   BufferGeometry,
@@ -16,16 +17,25 @@ import {
 import { mapGradeBytes, mapGradeCurve } from '../../shared/map-grade.mjs';
 import type { MapGrade } from '../../shared/map-grade.mjs';
 
-// A renderer-local target identifies the graded path even when two canvases
-// share the same cached map material.
-export const mapGradeTargets = new WeakSet<WebGLRenderTarget>();
+export type AuthoredGrade = { grade: MapGrade; bytes: Uint8Array };
+export const MapGradeContext = createContext<MapGrade | undefined>(undefined);
+
+// Shared with the smoke volume, which reads the lighting of its current target.
 export const mapGradeLighting = new WeakMap<WebGLRenderTarget, NonNullable<MapGrade['lighting']>>();
-export const mapGradeExposure = new WeakMap<WebGLRenderTarget, number>();
 export const mapGradeBurstLights = new WeakMap<
   Scene,
   { light: PointLight; intensity: () => number }
 >();
-export const mapGradeExposureGain = ({ min, bias }: MapGrade['exposure']) => 2.8 * min * 2 ** bias;
+export const mapGradeExposureGain = (grade?: MapGrade) =>
+  grade ? 2.8 * grade.exposure.min * 2 ** grade.exposure.bias : 1;
+
+// RGB runs along X, Y and Z respectively. An identity cube fits in eight texels.
+const identityLut = Uint8Array.from({ length: 32 }, (_, i) =>
+  i % 4 === 3 || ((i >> 2) & (1 << (i % 4))) !== 0 ? 255 : 0,
+);
+
+// Unit slope at black and a flat shoulder at four times scene white.
+const neutralCurve = { a: -1 / 16, b: 1, c: 1, white: 4, whiteScale: 1 };
 
 export async function loadGradeLut(url: string, grade: MapGrade, signal: AbortSignal) {
   const response = await fetch(url, { credentials: 'same-origin', signal });
@@ -56,19 +66,11 @@ export async function loadGradeLut(url: string, grade: MapGrade, signal: AbortSi
 
 // Curve and output order adapted from ValveResourceFormat at
 // 942df5b37ebbde6153f6c488880b91d4bed003e6 (public/licenses/valve-resource-format.txt).
-export function createGradeOutput(grade: MapGrade, data: Uint8Array) {
-  const { size } = grade.lut;
-  const lut = new Data3DTexture(data, size, size, size);
-  lut.minFilter = lut.magFilter = LinearFilter;
-  lut.needsUpdate = true;
+export function createGradeOutput() {
   const geometry = new BufferGeometry().setAttribute(
     'position',
     new BufferAttribute(new Float32Array([-1, -1, 0, 3, -1, 0, -1, 3, 0]), 3),
   );
-  // Without a replay exposure meter, use the authored lower endpoint to
-  // retain highlight headroom and make every seek return the same grade.
-  const { curve, exposure } = grade;
-  const { a, b, c, white, whiteScale } = mapGradeCurve(curve);
   const material = new ShaderMaterial({
     glslVersion: GLSL3,
     toneMapped: false,
@@ -77,11 +79,9 @@ export function createGradeOutput(grade: MapGrade, data: Uint8Array) {
     blending: NoBlending,
     uniforms: {
       sceneColor: { value: null },
-      lut: { value: lut },
-      numerator: { value: new Vector4(a * whiteScale, b * whiteScale, white, size) },
-      denominator: {
-        value: new Vector4(curve.shoulder, curve.linear, c, mapGradeExposureGain(exposure)),
-      },
+      lut: { value: null },
+      numerator: { value: new Vector4() },
+      denominator: { value: new Vector4() },
     },
     vertexShader: `
       out vec2 gradeUv;
@@ -109,6 +109,30 @@ export function createGradeOutput(grade: MapGrade, data: Uint8Array) {
       }
     `,
   });
+  let lut: Data3DTexture | undefined;
+  let current: AuthoredGrade | undefined;
+  const setGrade = (authored?: AuthoredGrade) => {
+    if (lut && authored === current) return;
+    current = authored;
+    const grade = authored?.grade;
+    const size = grade?.lut.size ?? 2;
+    lut?.dispose();
+    lut = new Data3DTexture(authored?.bytes ?? identityLut, size, size, size);
+    lut.minFilter = lut.magFilter = LinearFilter;
+    lut.needsUpdate = true;
+    // The lower endpoint retains highlight headroom and keeps seeks deterministic.
+    const curve = grade?.curve;
+    const { a, b, c, white, whiteScale } = curve ? mapGradeCurve(curve) : neutralCurve;
+    material.uniforms.lut.value = lut;
+    material.uniforms.numerator.value.set(a * whiteScale, b * whiteScale, white, size);
+    material.uniforms.denominator.value.set(
+      curve?.shoulder ?? 0,
+      curve?.linear ?? 0.5,
+      c,
+      mapGradeExposureGain(grade),
+    );
+  };
+  setGrade();
   const scene = new Scene(),
     camera = new OrthographicCamera();
   const mesh = new Mesh(geometry, material);
@@ -118,10 +142,11 @@ export function createGradeOutput(grade: MapGrade, data: Uint8Array) {
     camera,
     scene,
     material,
+    setGrade,
     dispose() {
       geometry.dispose();
       material.dispose();
-      lut.dispose();
+      lut?.dispose();
     },
   };
 }
