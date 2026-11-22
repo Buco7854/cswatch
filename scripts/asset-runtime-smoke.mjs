@@ -78,6 +78,9 @@ const { mapWorkerOptions, lockMapWorker, processOneMapRequest } = await import(
 const { validatePreparedMap } = await import(
   pathToFileURL(join(root, 'tools/assets/prepared-map-publication.mjs')).href
 );
+const { writeMapTier } = await import(
+  pathToFileURL(join(root, 'tools/assets/map-tier-output.mjs')).href
+);
 const options = mapWorkerOptions(process.env),
   boundary = options.networkDeny;
 assert.equal(Number(process.versions.node.split('.')[0]), 24);
@@ -123,6 +126,7 @@ if (inContainer) {
     'ADMIN_USERNAME',
     'ADMIN_PASSWORD',
     'STEAM_API_KEY',
+    'STEAM_SYNC_KEY_FILE',
     'FACEIT_API_KEY',
     'FACEIT_DOWNLOAD_TOKEN',
   ])
@@ -430,22 +434,19 @@ assert.equal(
 async function prepareOriginal(output, entry) {
   const map = entry.identity.map,
     assetVersion = entry.assetVersion;
-  for (const tier of ['desktop', 'mobile']) {
-    const folder = join(output, map, tier);
-    await mkdir(folder, { recursive: true });
-    await writeFile(join(folder, 'scene.glb'), model);
-    await writeFile(
-      join(folder, 'manifest.json'),
-      JSON.stringify({
-        schemaVersion: 1,
-        map,
-        tier,
-        assetVersion,
-        bytes: model.length,
-        outputSha256: hash(model),
-      }),
-    );
-  }
+  const io = new NodeIO();
+  await mkdir(join(output, map), { recursive: true });
+  for (const tier of ['desktop', 'mobile'])
+    await writeMapTier({
+      document: await io.readBinary(model),
+      io,
+      target: join(output, map, tier),
+      map,
+      tier,
+      assetVersion,
+      source: { file: 'original-ci.glb', sha256: hash(model), bytes: model.length },
+      s2v: 'original CI',
+    });
   const overview = join(output, 'overviews', map),
     environment = join(output, 'environments', map);
   await mkdir(overview, { recursive: true });
@@ -472,7 +473,7 @@ async function prepareOriginal(output, entry) {
   await writeFile(
     join(environment, 'environment.json'),
     JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
       map,
       assetVersion,
       source: 'Original CI pixels, not game content',
