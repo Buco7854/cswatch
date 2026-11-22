@@ -1,5 +1,7 @@
 # Feature status
 
+- Local T6 adds bounded optional per-tick yaw and pitch to new chunked replays. Camera and rendered actors use the shared pose sampler. Older replays retain their existing interpolation. [Fixture verification](VERIFICATION.md#local-per-tick-aim-t6-2026-11-22)
+
 The local first-person pass has an independent lens for authored and static weapons. Recorded yaw, pitch and travel drive weapon motion, with a landing cue inferred from vertical samples. Prepared static geometry can attenuate POV sunlight indoors. [Verification](VERIFICATION.md#first-person-lens-and-motion-2026-11-22)
 
 The viewer follow-up smooths the CT/T gait and first-person weapon cycles at recorded sample boundaries and draws a short C4 shockwave when the demo establishes its origin. New replay chunks retain distance anchors for consistent gait phase after seeks. FSR 3, an optional WebGPU path and round-by-round ingestion are roadmap work. [Renderer roadmap](product/NATIVE-RENDERER.md#renderer-and-replay-roadmap)

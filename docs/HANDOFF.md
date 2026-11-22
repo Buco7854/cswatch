@@ -1,5 +1,7 @@
 # Current handoff
 
+Local T6 adds optional per-tick aim to newly prepared replay chunks and uses it in the shared pose sampler. Older artifacts use their existing angles. See the [fixture verification](VERIFICATION.md#local-per-tick-aim-t6-2026-11-22) for accuracy, chunk growth and confined parser costs. The change is unreleased.
+
 Local first-person presentation follow-up, 2026-11-22. Authored and static held weapons share a dedicated lens, right-handed framing, recorded turn lag and a short dip inferred from descent and settling. Prepared static map geometry can shade the weapon. The existing pinned rigs contain fire and reload clips, and the viewer can sample a draw clip when a pack supplies one. [Verification](VERIFICATION.md#first-person-lens-and-motion-2026-11-22)
 
 Released motion and effects follow-up `b4cbe22`, 2026-11-22. Both images passed [exact-revision CI and anonymous registry checks](VERIFICATION.md#replay-motion-texture-detail-and-c4-wave-2026-11-22). The viewer aligns gait phase with recorded travel where available, blends authored firing poses, sharpens detailed desktop map sampling and draws a depth-tested C4 shockwave at the recorded origin. The [renderer roadmap](product/NATIVE-RENDERER.md#renderer-and-replay-roadmap) tracks FSR 3, WebGPU, round-by-round ingestion and utility fidelity. Keep WebGL/2D recovery and CPU-only hosting.

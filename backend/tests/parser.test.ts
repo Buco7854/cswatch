@@ -12,16 +12,71 @@ import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { gunzipSync, zstdCompressSync } from 'node:zlib';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { parseTicks } from '@laihoe/demoparser2';
+import { decodeAimChunk, sampleAim } from '../../shared/aim-track.mjs';
+import type { PlaybackManifest } from '../../shared/playback.js';
+import { shortestAngle } from '../../frontend/src/player-pose.js';
 import { parse } from '../src/parser.js';
 import { validateReplayArtifacts } from '../src/replay.js';
 import { collectFrameState } from '../src/frame-state.js';
 import { buildReviewPrompts } from '../../frontend/src/review-prompts.js';
 const fixture = resolve(process.env.DEMO_FIXTURE || '../var/fixture/input.dem');
+const pinnedFixture = '84a1a4191302bdd2a3bbb5a727842093744b1fb1a228aeec630369e44b622cb2';
+
+function verifyAim(folder: string, manifest: PlaybackManifest) {
+  const actors = new Set(manifest.players.map((player) => player.id));
+  const decoded = manifest.chunks.map(({ index, startTick, endTick }) => {
+    const chunk = JSON.parse(
+      gunzipSync(readFileSync(join(folder, 'chunks', `${index}.json.gz`))).toString(),
+    );
+    return decodeAimChunk(chunk.aim, startTick, endTick, actors);
+  });
+  const errors = { yaw: [] as number[], pitch: [] as number[], worstAxis: [] as number[] };
+  let outside = 0;
+  const file = join(folder, 'input.dem');
+  for (let start = 0; start <= manifest.lastTick + 4; start += 16384) {
+    const end = Math.min(manifest.lastTick + 4, start + 16383);
+    const wanted = Array.from({ length: end - start + 1 }, (_, i) => start + i);
+    const source = parseTicks(file, ['yaw', 'pitch', 'is_alive'], wanted, undefined, true);
+    for (const [i, tick] of (source.tick as number[]).entries()) {
+      if (source.is_alive[i] !== true) continue;
+      if (tick < manifest.firstTick || tick > manifest.lastTick) {
+        outside++;
+        continue;
+      }
+      const id = source.steamid[i];
+      const chunk = manifest.chunks.findLastIndex((candidate) => candidate.startTick <= tick);
+      const track = decoded[chunk].get(id);
+      const aim = track && sampleAim(track, tick);
+      assert.ok(aim, `Missing aim for alive tick ${tick}`);
+      const yaw = Math.abs(shortestAngle(source.yaw[i], aim.yaw));
+      const pitch = Math.abs(shortestAngle(source.pitch[i], aim.pitch));
+      errors.yaw.push(yaw);
+      errors.pitch.push(pitch);
+      errors.worstAxis.push(Math.max(yaw, pitch));
+    }
+  }
+  assert.equal(outside, 0, 'Living fixture samples outside replay bounds');
+  assert.ok(errors.yaw.length > 400000);
+  const percentiles = (values: number[]) => {
+    values.sort((a, b) => a - b);
+    const at = (p: number) => values[Math.ceil(values.length * p) - 1];
+    return { p50: at(0.5), p95: at(0.95), p99: at(0.99), max: at(1) };
+  };
+  const metrics = Object.fromEntries(
+    Object.entries(errors).map(([axis, values]) => [axis, percentiles(values)]),
+  );
+  assert.ok(metrics.worstAxis.p99 < 0.05);
+  assert.ok(metrics.worstAxis.max <= 1 / 256);
+  return { aliveSamples: errors.yaw.length, outside, degrees: metrics };
+}
+
 for (const compressed of [false, true])
   test(
     `real Mirage ${compressed ? '.dem.zst' : '.dem'} parses rounds, positions, utilities, dead time and string Steam IDs`,
     { skip: !existsSync(fixture) },
-    async () => {
+    async (t) => {
       const dir = mkdtempSync(join(tmpdir(), 'cswatch-parse-'));
       try {
         if (compressed)
@@ -29,6 +84,18 @@ for (const compressed of [false, true])
         else copyFileSync(fixture, join(dir, 'input.dem'));
         await parse(dir, 2048 * 1024 ** 2);
         const { manifest } = validateReplayArtifacts(dir);
+        if (!compressed)
+          await t.test('pinned Mirage aim matches all living samples', (context) => {
+            if (
+              createHash('sha256')
+                .update(readFileSync(join(dir, 'input.dem')))
+                .digest('hex') !== pinnedFixture
+            ) {
+              context.skip('accuracy reference uses the pinned Mirage recording');
+              return;
+            }
+            context.diagnostic(JSON.stringify(verifyAim(dir, manifest)));
+          });
         const frames = manifest.chunks.flatMap((part, index) => {
           const chunk = JSON.parse(
             gunzipSync(readFileSync(join(dir, 'chunks', `${index}.json.gz`))).toString(),
