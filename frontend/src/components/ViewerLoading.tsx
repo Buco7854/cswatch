@@ -7,9 +7,11 @@ const noSubscription = () => () => {};
 
 export default function ViewerLoading({
   label,
+  map,
   model,
 }: {
   label: string;
+  map?: string;
   model?: ModelProgressSource;
 }) {
   const progress = useSyncExternalStore(
@@ -27,7 +29,15 @@ export default function ViewerLoading({
   return (
     <div className="viewer-map-loading">
       <div className="viewer-loading-panel">
-        <span role="status">{description}</span>
+        {map && <h1>{map}</h1>}
+        <div className="viewer-loading-status">
+          <span role="status">{description}</span>
+          {percentText && (
+            <span className="viewer-loading-percent" aria-hidden="true">
+              {percentText}
+            </span>
+          )}
+        </div>
         <div
           className="viewer-loading-track"
           role="progressbar"
@@ -37,11 +47,6 @@ export default function ViewerLoading({
         >
           <span style={percent === undefined ? undefined : { width: `${percent}%` }} />
         </div>
-        {percent !== undefined && (
-          <span className="viewer-loading-percent" aria-hidden="true">
-            {percentText}
-          </span>
-        )}
       </div>
     </div>
   );

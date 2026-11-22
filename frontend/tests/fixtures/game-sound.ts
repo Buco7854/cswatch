@@ -88,7 +88,7 @@ export async function installGameSoundFixture(page: Page) {
   const requests: string[] = [];
   await page.addInitScript(() => {
     localStorage.setItem(
-      'viewer-settings',
+      'viewer-settings-v2',
       JSON.stringify({
         autoHideControls: false,
         killReplay: false,
@@ -97,7 +97,7 @@ export async function installGameSoundFixture(page: Page) {
       }),
     );
     localStorage.setItem(
-      'viewer-settings-mobile',
+      'viewer-settings-v2-mobile',
       JSON.stringify({
         autoHideControls: false,
         killReplay: false,

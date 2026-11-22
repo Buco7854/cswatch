@@ -146,7 +146,7 @@ test('the production WebGL viewer submits only active, depth-tested utility spri
   await page.addInitScript(() => {
     localStorage.setItem('cswatch.language', 'en');
     localStorage.setItem(
-      'viewer-settings',
+      'viewer-settings-v2',
       JSON.stringify({
         quality: 'high',
         autoHideControls: false,

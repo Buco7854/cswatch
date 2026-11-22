@@ -132,13 +132,13 @@ export const defaultSettings: ViewerSettings = {
   crosshair: true,
   crosshairStyle: defaultCrosshairStyle,
   crosshairSource: 'custom',
-  cameraFov: 48,
+  cameraFov: 73.74,
   lookSensitivity: 1,
   invertLook: false,
   freeCameraSpeed: 8,
   teamLayout: 'split',
   matchScore: true,
-  reviewFeed: false,
+  reviewFeed: true,
   utilities: true,
   trajectories: 'all',
   trails: false,
@@ -150,13 +150,13 @@ export const defaultSettings: ViewerSettings = {
   mouseInput: false,
   inputDetails: false,
   controlsHidden: false,
-  autoHideControls: true,
+  autoHideControls: false,
   grenadeLanding: true,
   killReplay: true,
   killLeadIn: 3,
   utilityLeadIn: 1.5,
   renderResolution: RENDER_RESOLUTION_MAX,
-  economy: false,
+  economy: true,
   inputLayout: 'zqsd',
   voice: false,
   subtitles: false,
@@ -186,10 +186,16 @@ export function shotTracersEnabled(
   );
 }
 
-export function readSettings(key = 'viewer-settings'): ViewerSettings {
+export const viewerPreferenceKey = (mobile: boolean) =>
+  mobile ? 'viewer-settings-v2-mobile' : 'viewer-settings-v2';
+
+export function readSettings(mobile = false): ViewerSettings {
+  const defaults = mobile
+    ? { ...defaultSettings, economy: false, reviewFeed: false }
+    : defaultSettings;
   try {
-    const saved = JSON.parse(localStorage.getItem(key) || '{}');
-    const settings = { ...defaultSettings };
+    const saved = JSON.parse(localStorage.getItem(viewerPreferenceKey(mobile)) || '{}');
+    const settings = { ...defaults };
     if (typeof saved.shotTracers === 'boolean') settings.shotTracers = saved.shotTracers;
     for (const k of Object.keys(defaultSettings) as (keyof ViewerSettings)[]) {
       if (
@@ -221,6 +227,6 @@ export function readSettings(key = 'viewer-settings'): ViewerSettings {
     settings.crosshairStyle = normalizeCrosshairStyle(saved.crosshairStyle);
     return settings;
   } catch {
-    return { ...defaultSettings, crosshairStyle: { ...defaultCrosshairStyle } };
+    return { ...defaults, crosshairStyle: { ...defaultCrosshairStyle } };
   }
 }

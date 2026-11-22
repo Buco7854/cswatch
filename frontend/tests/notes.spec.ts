@@ -9,7 +9,7 @@ test('a late private note response cannot reopen review after leaving and revisi
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE));
   await page.addInitScript(() =>
-    ['viewer-settings', 'viewer-settings-mobile'].forEach((key) =>
+    ['viewer-settings-v2', 'viewer-settings-v2-mobile'].forEach((key) =>
       localStorage.setItem(key, JSON.stringify({ quality: 'low' })),
     ),
   );

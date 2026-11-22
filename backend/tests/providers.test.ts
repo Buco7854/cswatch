@@ -394,7 +394,7 @@ test('Steam match sync verifies before saving, resumes and protects user credent
     upstream = () => new Response(null, { status: 403 });
     assert.equal((await sync()).statusCode, 403);
     assert.equal((await list()).json().needs_codes, true);
-    assert.match((await sync()).body, /Replace your Steam match codes/);
+    assert.match((await sync()).body, /Replace your Steam sync codes/);
     db.run('UPDATE steam_history SET needs_codes=0');
     db.run('DELETE FROM rate_limits');
     writeFileSync(keyFile, '22'.repeat(32) + '\n');

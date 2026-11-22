@@ -104,10 +104,30 @@
   text-align: center;
 }
 .viewer-loading-panel {
-  width: min(280px, calc(100vw - 48px));
+  width: min(360px, calc(100vw - 48px));
+  padding: 20px 24px;
+  border: 1px solid var(--viewer-line, var(--control));
+  border-radius: 8px;
+  background: var(--viewer-plane, var(--surface));
+  text-align: left;
   display: grid;
   gap: 12px;
   font-weight: 600;
+}
+.viewer-loading-panel h1 {
+  margin: 0;
+  font-size: 26px;
+  line-height: 32px;
+  text-transform: capitalize;
+  overflow-wrap: anywhere;
+}
+.viewer-loading-status {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--viewer-muted, var(--muted));
+  font-size: 13px;
 }
 .viewer-loading-track {
   height: 5px;

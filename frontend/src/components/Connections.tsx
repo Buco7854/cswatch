@@ -233,7 +233,9 @@ export default function Connections() {
                   ? t(
                       'Your FACEIT profile is verified. Load your recent matches to start a review.',
                     )
-                  : t('Connect Steam first, then verify the FACEIT account linked to it.')}
+                  : steam
+                    ? t('Verify the FACEIT account linked to your Steam account.')
+                    : t('Connect Steam first, then verify the FACEIT account linked to it.')}
               </p>
               {config.faceit_enabled && (
                 <div className="actions">

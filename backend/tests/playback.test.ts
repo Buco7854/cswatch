@@ -37,7 +37,7 @@ test('saved display settings validate current fields and default invalid prefere
     assert.equal(settings.inputLayout, 'wasd');
     assert.equal(settings.quality, 'low');
     assert.equal(settings.teamLayout, 'split');
-    assert.equal(settings.cameraFov, 48);
+    assert.equal(settings.cameraFov, 73.74);
     stored = JSON.stringify({
       teamLayout: 'right',
       cameraFov: 110,
@@ -61,13 +61,17 @@ test('saved display settings validate current fields and default invalid prefere
     ]) {
       stored = typeof value === 'string' ? value : JSON.stringify(value);
       assert.equal(readSettings().teamLayout, 'split');
-      assert.equal(readSettings().cameraFov, 48);
+      assert.equal(readSettings().cameraFov, 73.74);
       assert.equal(readSettings().crosshairStyle.color, defaultSettings.crosshairStyle.color);
     }
     stored = 'malformed';
     const fallback = readSettings();
-    fallback.economy = true;
-    assert.equal(readSettings().economy, false);
+    fallback.economy = false;
+    assert.equal(readSettings().economy, true);
+    assert.equal(readSettings().reviewFeed, true);
+    assert.equal(readSettings(true).economy, false);
+    assert.equal(readSettings(true).reviewFeed, false);
+    assert.equal(readSettings(true).cameraFov, 73.74);
   } finally {
     if (original) Object.defineProperty(globalThis, 'localStorage', original);
     else Reflect.deleteProperty(globalThis, 'localStorage');

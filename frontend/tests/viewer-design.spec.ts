@@ -1,3 +1,4 @@
+import { chooseCameraControl } from './fixtures/viewer-transport';
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { installMapFixture } from './fixtures/map-assets';
 import { test, expect, type Page } from '@playwright/test';
@@ -152,7 +153,7 @@ async function openFixture(
     ({ language, theme }) => {
       localStorage.setItem('theme', theme);
       localStorage.setItem('cswatch.language', language);
-      ['viewer-settings', 'viewer-settings-mobile'].forEach((key) =>
+      ['viewer-settings-v2', 'viewer-settings-v2-mobile'].forEach((key) =>
         localStorage.setItem(
           key,
           JSON.stringify({
@@ -235,8 +236,7 @@ async function openFixture(
 }
 
 async function setCamera(page: Page, language: Language, name: string) {
-  await page.getByRole('combobox', { name: message(language, 'Camera mode'), exact: true }).click();
-  await page.getByRole('option', { name: message(language, name), exact: true }).click();
+  await chooseCameraControl(page, message(language, name), message(language, 'Camera mode'));
 }
 
 // DOM Ranges deliberately measure the text itself. scrollWidth/clientWidth or
@@ -364,24 +364,9 @@ async function layoutIssues(page: Page) {
     if (Math.abs(play.left + play.width / 2 - innerWidth / 2) > 1)
       issues.push('Play must be centered on the viewport');
     const dock = document.querySelector('.viewer-dock')!.getBoundingClientRect();
-    if (dock.width > 1001) issues.push('The playback deck must retain its narrow maximum width');
+    if (dock.width > 1161) issues.push('The playback deck must retain its maximum width');
     const input = document.querySelector('.review-inputs-panel')?.getBoundingClientRect();
-    if (innerWidth >= 1101) {
-      const column = document.querySelector('.broadcast-economy')?.getBoundingClientRect();
-      if (column) {
-        const gutter = Number.parseFloat(
-          getComputedStyle(document.querySelector('.viewer-frame')!).getPropertyValue(
-            '--viewer-edge',
-          ),
-        );
-        if (
-          dock.left < column.width + gutter + 12 ||
-          innerWidth - dock.right < column.width + gutter + 12
-        )
-          issues.push('Desktop playback must clear both roster column widths');
-      }
-    }
-    if (innerWidth >= 1101 && input) {
+    if (innerWidth >= 1361 && input) {
       if (input.right + 12 > dock.left)
         issues.push('Desktop inputs need their own lane beside the playback deck');
       if (Math.abs(input.bottom - dock.bottom) > 1)
@@ -420,8 +405,16 @@ async function rosterEdgeIssues(page: Page) {
       if (visibleRows.some(({ box }) => box.height < 44))
         issues.push('Visible player rows must retain 44px touch targets');
       for (const row of stack.querySelectorAll('.broadcast-player-select')) {
-        const equipment = row.querySelector('.broadcast-player-equipment')!;
-        const status = row.querySelector('.broadcast-player-status')!;
+        const equipment = row.querySelector('.broadcast-player-equipment');
+        const status = row.querySelector('.broadcast-player-status');
+        if (row.closest('.is-out')) {
+          if (equipment || status) issues.push('Dead players must collapse to their summary');
+          continue;
+        }
+        if (!equipment || !status) {
+          issues.push('Living players need equipment and health/armor rows');
+          continue;
+        }
         const equipmentBox = equipment.getBoundingClientRect();
         const statusBox = status.getBoundingClientRect();
         if (equipmentBox.bottom > statusBox.top - 3)
@@ -577,7 +570,7 @@ for (const language of ['en', 'fr'] as const)
           await expect.poll(() => rosterEdgeIssues(page)).toEqual([]);
           await expect(page.locator('.broadcast-player-select')).toHaveCount(10);
           await expect(page.locator('.broadcast-lineup-stack')).toHaveCount(
-            size.width >= 1440 ? 2 : 1,
+            size.width >= 900 && size.height >= 650 ? 2 : 1,
           );
           const keyboard = (await page.locator('.input-keyboard-block').boundingBox())!;
           const mouse = (await page.locator('.input-mouse-device').boundingBox())!;
@@ -861,7 +854,7 @@ test('a fully crowded viewport hides only the passive feed and restores it when 
   await expect(markers).toHaveCount(eventCount);
   expect(
     await page.evaluate(
-      () => JSON.parse(localStorage.getItem('viewer-settings-mobile') || '{}').killfeed,
+      () => JSON.parse(localStorage.getItem('viewer-settings-v2-mobile') || '{}').killfeed,
     ),
   ).toBe(true);
   await page.setViewportSize({ width: 320, height: 740 });

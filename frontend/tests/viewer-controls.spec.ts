@@ -1,3 +1,4 @@
+import { chooseCameraControl, expectCameraControl } from './fixtures/viewer-transport';
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { installMapFixture } from './fixtures/map-assets';
 import { test, expect, type Page } from '@playwright/test';
@@ -34,7 +35,7 @@ async function fixture(
   await page.addInitScript(
     (settings) =>
       localStorage.setItem(
-        'viewer-settings',
+        'viewer-settings-v2',
         JSON.stringify({ quality: 'low', autoHideControls: false, ...settings }),
       ),
     settings,
@@ -87,9 +88,7 @@ test('plain Tab opens the scoreboard from playback controls and player clicks se
   await expect(page.getByRole('dialog', { name: 'Scoreboard', exact: true })).toHaveCount(0);
   await expect(play).toBeFocused();
   await page.locator('.review-economy-frame .broadcast-player-select').nth(1).click();
-  await expect(page.getByRole('combobox', { name: 'Camera mode' })).toHaveText(
-    'Player perspective',
-  );
+  await expectCameraControl(page, 'Player perspective');
   await expect(page.locator('.viewer-camera-tools')).toHaveAttribute('data-camera-changed', 'true');
   await expect(
     page.locator('.review-economy-frame .broadcast-player-select').nth(1),
@@ -98,9 +97,7 @@ test('plain Tab opens the scoreboard from playback controls and player clicks se
   await expect(page.locator('.viewer-drawer .broadcast-player-select')).toHaveCount(10);
   await page.locator('.viewer-drawer .broadcast-player-select').nth(2).click();
   await expect(page.locator('.viewer-drawer')).toHaveCount(0);
-  await expect(page.getByRole('combobox', { name: 'Camera mode' })).toHaveText(
-    'Player perspective',
-  );
+  await expectCameraControl(page, 'Player perspective');
 });
 
 test('processing and failed demo pages keep ordinary Tab navigation before a viewer exists', async ({
@@ -225,16 +222,17 @@ test('mobile personal recap stays enabled while the round list stays off and rep
   await replayKill.click();
   await page.getByRole('button', { name: 'Pause', exact: true }).click();
   expect(Number(await seek.inputValue())).toBeLessThan(640);
-  await expect(page.getByRole('combobox', { name: 'Camera mode' })).toHaveText(
-    'Player perspective',
-  );
+  await expectCameraControl(page, 'Player perspective');
   await players(page);
   await expect(
     page.locator(`.viewer-drawer .broadcast-player[data-player-id="${ids[1]}"] button`),
   ).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Close panel', exact: true }).click();
   await seek.fill('640');
-  await expect(recap.locator('.combat-recap-title')).toHaveText('You killedmarlow');
+  await expect(page.locator('.combat-kill-line')).toHaveAttribute(
+    'aria-label',
+    /echo killed marlow with/,
+  );
   await expect(page.getByRole('button', { name: 'Replay death', exact: true })).toHaveText(
     'See death',
   );
@@ -276,7 +274,7 @@ test.describe('compact recap with captions', () => {
             localStorage.setItem('cswatch.language', language);
             localStorage.setItem('theme', theme);
             localStorage.setItem(
-              'viewer-settings-mobile',
+              'viewer-settings-v2-mobile',
               JSON.stringify({ subtitles: true, autoHideControls: false, quality: 'low' }),
             );
           },
@@ -453,6 +451,7 @@ test('free camera keyboard movement changes real rendered pixels and ignores key
   cameraReplay.grenades = [];
   await installOriginalCameraProbe(page);
   await fixture(page, {}, cameraReplay);
+  await chooseCameraControl(page, 'Free camera');
   const canvas = page.locator('.scene canvas');
   await expect(canvas).toBeVisible();
   await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');

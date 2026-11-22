@@ -1,3 +1,4 @@
+import { choosePlaybackSpeed } from './fixtures/viewer-transport';
 import { expect, test } from '@playwright/test';
 import { installGameSoundFixture, observeActualAudio } from './fixtures/game-sound';
 
@@ -55,8 +56,7 @@ test('gameplay and voice share real decoded audio under CSP, flush on pause/seek
   );
   await page.getByRole('button', { name: 'Pause', exact: true }).click();
   await slider.fill('400');
-  await page.getByRole('combobox', { name: 'Playback speed' }).click();
-  await page.getByRole('option', { name: '2×', exact: true }).click();
+  await choosePlaybackSpeed(page, '2×');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   await expect.poll(() => page.evaluate(() => (window as any).__audioQA.game.at(-1)?.rate)).toBe(2);
   await page.getByRole('button', { name: 'Options', exact: true }).click();

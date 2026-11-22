@@ -80,7 +80,7 @@ async function install(page: Page) {
   await page.addInitScript(() => {
     localStorage.setItem('cswatch.language', 'en');
     localStorage.setItem(
-      'viewer-settings',
+      'viewer-settings-v2',
       JSON.stringify({
         autoHideControls: false,
         killReplay: false,

@@ -1,3 +1,4 @@
+import { chooseCameraControl } from './fixtures/viewer-transport';
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { installDemoMapDescriptor } from './fixtures/map-assets';
 import { test, expect, type Page } from '@playwright/test';
@@ -181,7 +182,7 @@ async function fixture(
     ({ language, theme }) => {
       localStorage.setItem('cswatch.language', language);
       localStorage.setItem('theme', theme);
-      ['viewer-settings', 'viewer-settings-mobile'].forEach((key) =>
+      ['viewer-settings-v2', 'viewer-settings-v2-mobile'].forEach((key) =>
         localStorage.setItem(
           key,
           JSON.stringify({
@@ -249,14 +250,15 @@ async function fixture(
     }),
   );
   await installDemoMapDescriptor(page, 'scoreboard-fixture');
-  await page.goto('/watch/scoreboard-fixture');
+  await page.goto('/watch/scoreboard-fixture?tick=0');
   await expect(
     page.getByRole('heading', { name: 'scoreboard_fixture', exact: true }),
   ).toBeVisible();
-  await page.getByRole('combobox', { name: message(language, 'Camera mode'), exact: true }).click();
-  await page
-    .getByRole('option', { name: message(language, '2D tactical · low power'), exact: true })
-    .click();
+  await chooseCameraControl(
+    page,
+    message(language, '2D tactical · low power'),
+    message(language, 'Camera mode'),
+  );
 }
 const openScore = (page: Page, language: Language = 'en') =>
   page.getByRole('button', { name: message(language, 'Open scoreboard'), exact: true }).click();

@@ -1,3 +1,4 @@
+import { chooseCameraControl } from './fixtures/viewer-transport';
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { originalMapReplay } from './fixtures/original-map';
@@ -9,7 +10,7 @@ async function viewer(page: Page, catalog: (route: Route) => Promise<unknown>) {
   await page.addInitScript(() => {
     localStorage.setItem('cswatch.language', 'en');
     localStorage.setItem(
-      'viewer-settings',
+      'viewer-settings-v2',
       JSON.stringify({ autoHideControls: false, quality: 'low', gameSounds: false }),
     );
   });
@@ -36,6 +37,7 @@ async function viewer(page: Page, catalog: (route: Route) => Promise<unknown>) {
   );
   await page.goto('/watch/discovery-fixture');
   await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
+  await chooseCameraControl(page, 'Overhead');
   await page.clock.pauseAt(new Date((await page.evaluate(() => Date.now())) + 100));
 }
 test('newly prepared agents are discovered progressively, preserve a valid partial catalog on transient failure and stop polling when complete', async ({

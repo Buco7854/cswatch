@@ -1,4 +1,5 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { memo, useLayoutEffect, useRef, useState } from 'react';
 import { t } from '../i18n';
 import type { Frame, Playback } from '../types';
 import type { ViewerSettings } from '../playback';
@@ -6,10 +7,10 @@ import PlayerInputs from './PlayerInputs';
 import MatchEconomy from './MatchEconomy';
 import './review-hud.css';
 
-const splitViewport = '(min-width: 1101px) and (min-height: 650px)';
+const splitViewport = '(min-width: 900px) and (min-height: 650px)';
 
 /** Settings own display preferences; these edge instruments only present the replay. */
-export default function ReviewHud({
+function ReviewHud({
   data,
   frame,
   selected,
@@ -26,6 +27,7 @@ export default function ReviewHud({
   chromeVisible?: boolean;
   onSelect: (id: string) => void;
 }) {
+  useTranslation();
   const hudRef = useRef<HTMLElement>(null);
   const inputRef = useRef<HTMLElement>(null);
   const restorePlayer = useRef<string | undefined>(undefined);
@@ -148,3 +150,5 @@ export default function ReviewHud({
     </aside>
   );
 }
+
+export default memo(ReviewHud);

@@ -1,3 +1,4 @@
+import { chooseCameraControl } from './fixtures/viewer-transport';
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { expect, test } from '@playwright/test';
 import { indexBombShockwaves } from '../src/bomb-shockwave';
@@ -44,7 +45,7 @@ test('the normal WebGL viewer draws the C4 wave during the recorded window and r
   await page.addInitScript(() => {
     localStorage.setItem('cswatch.language', 'en');
     localStorage.setItem(
-      'viewer-settings',
+      'viewer-settings-v2',
       JSON.stringify({ quality: 'low', autoHideControls: false, utilities: true }),
     );
     const locations = new WeakSet<WebGLUniformLocation>();
@@ -90,8 +91,7 @@ test('the normal WebGL viewer draws the C4 wave during the recorded window and r
   const scene = page.locator('.scene'),
     slider = page.getByRole('slider', { name: 'Playback position' });
   await expect(scene).toHaveAttribute('data-map-model-state', 'ready');
-  await page.getByRole('combobox', { name: 'Camera mode', exact: true }).click();
-  await page.getByRole('option', { name: 'Overhead', exact: true }).click();
+  await chooseCameraControl(page, 'Overhead');
   const draws = () =>
     page.evaluate(
       () => (window as unknown as { bombWaveProbe: { draws: number[] } }).bombWaveProbe.draws,

@@ -1,3 +1,4 @@
+import { chooseCameraControl } from './fixtures/viewer-transport';
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { createHash } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -66,7 +67,7 @@ async function fixture(page: Page, wall = false) {
   catalog.items.ak47.bytes = body.length;
   await page.addInitScript(() => {
     localStorage.setItem('cswatch.language', 'en');
-    for (const key of ['viewer-settings', 'viewer-settings-mobile'])
+    for (const key of ['viewer-settings-v2', 'viewer-settings-v2-mobile'])
       localStorage.setItem(
         key,
         JSON.stringify({
@@ -127,7 +128,7 @@ async function fixture(page: Page, wall = false) {
   );
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  await page.goto('/watch/fire-qa');
+  await page.goto('/watch/fire-qa?tick=0');
   await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
   return errors;
 }
@@ -166,8 +167,7 @@ async function waitForRenderedPov(page: Page) {
 }
 
 async function pov(page: Page) {
-  await page.getByRole('combobox', { name: 'Camera mode', exact: true }).click();
-  await page.getByRole('option', { name: 'Player perspective', exact: true }).click();
+  await chooseCameraControl(page, 'Player perspective');
   await expect(page.locator('.scene')).toHaveAttribute(
     'data-equipment-ready-instances',
     new RegExp('pov:' + qaActor),
@@ -307,6 +307,7 @@ test('first-person equipment has independent depth and remains visible when a re
   test.skip(Boolean(process.env.E2E_PRIVATE));
   await page.setViewportSize({ width: 1440, height: 900 });
   const errors = await fixture(page, true);
+  await chooseCameraControl(page, 'Free camera');
   expect(
     await firePixels(page, true),
     'The actual near wall occludes world equipment in free view',

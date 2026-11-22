@@ -1,3 +1,4 @@
+import { chooseCameraControl, expectCameraControl } from './fixtures/viewer-transport';
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { manualMapAssets } from './fixtures/map-assets';
 import { expect, test, type Page } from '@playwright/test';
@@ -30,8 +31,7 @@ test('follow camera retracts at an opaque wall and reproduces its position after
 });
 
 async function mode(page: Page, name: string) {
-  await page.getByRole('combobox', { name: 'Camera mode', exact: true }).click();
-  await page.getByRole('option', { name, exact: true }).click();
+  await chooseCameraControl(page, name);
 }
 
 test('third-person follow renders the selected actor, follows real recorded transforms and backward seeks without changing POV or FOV', async ({
@@ -43,7 +43,7 @@ test('third-person follow renders the selected actor, follows real recorded tran
     localStorage.setItem('theme', 'dark');
     localStorage.setItem('cswatch.language', 'en');
     localStorage.setItem(
-      'viewer-settings',
+      'viewer-settings-v2',
       JSON.stringify({
         quality: 'low',
         cameraFov: 75,
@@ -183,7 +183,7 @@ test('third-person follow renders the selected actor, follows real recorded tran
   await page.route('**/api/assets/equipment-models/*.glb', (route) =>
     route.fulfill({ contentType: 'model/gltf-binary', body: originalEquipmentGLB() }),
   );
-  await page.goto('/watch/follow-fixture');
+  await page.goto('/watch/follow-fixture?tick=0');
   const scene = page.locator('.scene'),
     position = () =>
       page.evaluate(
@@ -202,6 +202,7 @@ test('third-person follow renders the selected actor, follows real recorded tran
       .toBeLessThan(0.00001);
   };
   await expect(scene).toHaveAttribute('data-map-model-state', 'ready');
+  await mode(page, 'Free camera');
   await mode(page, 'Third-person follow');
   await expect(scene).toHaveAttribute('data-agent-ready-count', '2');
   await expect(scene).toHaveAttribute(
@@ -217,9 +218,7 @@ test('third-person follow renders the selected actor, follows real recorded tran
       `.review-economy-frame .broadcast-player[data-player-id="${other}"] .broadcast-player-select`,
     )
     .click();
-  await expect(page.getByRole('combobox', { name: 'Camera mode', exact: true })).toHaveText(
-    'Player perspective',
-  );
+  await expectCameraControl(page, 'Player perspective');
   await checkPosition([6.5024, 1.65, 3.2512]);
   await mode(page, 'Third-person follow');
   await checkPosition([4.9024, 1.6, 1.1012]);

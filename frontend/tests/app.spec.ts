@@ -1,3 +1,4 @@
+import { expectCameraControl, chooseCameraControl } from './fixtures/viewer-transport';
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { activateViewerAction } from './fixtures/viewer-actions';
 import { test, expect, type Page } from '@playwright/test';
@@ -83,7 +84,7 @@ test('the single public page uploads a private guest demo into the whole-tab vie
       .locator('.viewer-frame')
       .evaluate((element) => Math.abs(element.getBoundingClientRect().height - innerHeight) < 2),
   ).toBe(true);
-  await choose(page, 'Camera mode', '2D tactical · low power');
+  await chooseCameraControl(page, '2D tactical · low power');
   await expect(page.getByRole('status', { name: 'Map unavailable', exact: true })).toBeVisible();
   const slider = page.getByRole('slider', { name: 'Playback position' });
   const before = await slider.inputValue();
@@ -176,7 +177,7 @@ test('French covers public pages, viewer, auth errors and saved language choice'
   // presenting an example demo as the anonymous upload feature.
   await page.goto('/watch/sample');
   await expect(page.getByRole('heading', { name: 'Cour d’entraînement' })).toBeVisible();
-  await choose(page, 'Mode de caméra', 'Vue tactique 2D · économe');
+  await chooseCameraControl(page, 'Vue tactique 2D · économe', 'Mode de caméra');
   await page.getByRole('button', { name: 'Options', exact: true }).click();
   await expect(page.getByRole('switch', { name: /Silhouettes à travers les murs/ })).toBeVisible();
   await page.getByRole('button', { name: 'Fermer les options du lecteur' }).click();
@@ -299,9 +300,7 @@ test('viewer keeps scene, dock, panels and fullscreen within the browser tab', a
   await activateViewerAction(page, 'Players');
   await page.getByRole('button', { name: /echo/ }).click();
   await expect(page.locator('.viewer-drawer')).toHaveCount(0);
-  await expect(page.getByRole('combobox', { name: 'Camera mode' })).toContainText(
-    'Player perspective',
-  );
+  await expectCameraControl(page, 'Player perspective');
   await activateViewerAction(page, 'Players');
   await expect(
     page.getByRole('button', { name: 'Select player echo', exact: true }),
@@ -359,26 +358,34 @@ test('viewer menus support keyboard selection, bounded touch lists and fullscree
       await page.keyboard.press('Shift+Tab');
       await expect(page.getByRole('button', { name: 'Options', exact: true })).toBeFocused();
       await page.keyboard.press('Shift+Tab');
-      await expect(camera).toBeFocused();
-      await page.keyboard.press('ArrowDown');
-      await expect(page.getByRole('listbox')).toBeVisible();
-      expect(
-        await page.getByRole('listbox').evaluate((el) => {
-          const bounds = el.getBoundingClientRect();
-          return (
-            bounds.left >= 0 &&
-            bounds.top >= 0 &&
-            bounds.right <= innerWidth &&
-            bounds.bottom <= innerHeight
-          );
-        }),
-      ).toBe(true);
-      await page.keyboard.press('End');
-      await expect(
-        page.getByRole('option', { name: 'Player perspective', exact: true }),
-      ).toBeFocused();
-      await page.keyboard.press('Enter');
-      await expect(camera).toContainText('Player perspective');
+      if (await camera.isVisible()) {
+        await expect(camera).toBeFocused();
+        await page.keyboard.press('ArrowDown');
+        await expect(page.getByRole('listbox')).toBeVisible();
+        expect(
+          await page.getByRole('listbox').evaluate((el) => {
+            const bounds = el.getBoundingClientRect();
+            return (
+              bounds.left >= 0 &&
+              bounds.top >= 0 &&
+              bounds.right <= innerWidth &&
+              bounds.bottom <= innerHeight
+            );
+          }),
+        ).toBe(true);
+        await page.keyboard.press('End');
+        await expect(
+          page.getByRole('option', { name: 'Player perspective', exact: true }),
+        ).toBeFocused();
+        await page.keyboard.press('Enter');
+        await expect(camera).toContainText('Player perspective');
+      } else {
+        const direct = page.getByRole('group', { name: 'Camera mode', exact: true });
+        await expect(direct.getByRole('button', { name: '2D tactical · low power' })).toBeFocused();
+        await direct.getByRole('button', { name: 'Player perspective', exact: true }).focus();
+        await page.keyboard.press('Enter');
+        await expectCameraControl(page, 'Player perspective');
+      }
       const compact = width <= 760 || (width <= 1100 && height <= 560);
       const triggerName = 'Replay tools';
       const menuName = 'Replay tools';
@@ -423,7 +430,7 @@ test('viewer menus support keyboard selection, bounded touch lists and fullscree
   if (await page.evaluate(() => document.fullscreenEnabled)) {
     await page.getByRole('button', { name: 'Toggle fullscreen' }).click();
     await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBe(true);
-    await choose(page, 'Camera mode', 'Overhead');
+    await chooseCameraControl(page, 'Overhead');
     await page.getByRole('button', { name: 'Options', exact: true }).click();
     await selectOptionsCategory(page, 'Performance');
     await choose(page, 'Rendering quality', 'Low · reduced resolution, no shadows');

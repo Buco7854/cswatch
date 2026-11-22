@@ -1,6 +1,9 @@
 import { useLayoutEffect, type RefObject } from 'react';
 
 type Box = { left: number; top: number; right: number; bottom: number };
+const blockerSelector =
+  '.viewer-titlebar,.viewer-dock,.review-feed,.review-inputs-panel,.broadcast-lineup-stack,.viewer-context-actions,.voice-caption,.position-radar,.viewer-match-score,.objective-hud';
+const observedSelector = blockerSelector + ',.killfeed';
 const clearKillfeedPlacement = (root: HTMLElement) => {
   delete root.dataset.killfeedPlaced;
   for (const property of ['left', 'top', 'width'])
@@ -11,7 +14,7 @@ const clearKillfeedPlacement = (root: HTMLElement) => {
  * gap. It must not resize the player list or sit on a replay/input control. */
 function placeKillfeed(root: HTMLElement, blockers: HTMLElement[]) {
   const feed = root.querySelector<HTMLElement>('.killfeed');
-  if (!feed || (root.clientWidth > 1100 && root.clientHeight > 560)) {
+  if (!feed) {
     clearKillfeedPlacement(root);
     delete root.dataset.killfeedCrowded;
     return;
@@ -104,11 +107,7 @@ export function useReviewLayout(frame: RefObject<HTMLElement | null>, ready: boo
       const score = root.querySelector<HTMLElement>('.viewer-match-score');
       const candidate = root.querySelector<HTMLElement>('.review-feed');
       const feed = candidate?.closest('.review-feed-dialog') ? null : candidate;
-      const blockers = [
-        ...root.querySelectorAll<HTMLElement>(
-          '.viewer-titlebar,.viewer-dock,.review-inputs-panel,.broadcast-lineup-stack,.viewer-context-actions,.voice-caption,.position-radar,.viewer-match-score,.objective-hud',
-        ),
-      ];
+      const blockers = [...root.querySelectorAll<HTMLElement>(blockerSelector)];
       const killfeed = root.querySelector<HTMLElement>('.killfeed');
       const wanted = new Set(
         [objective, score, feed, killfeed, ...blockers].filter(
@@ -144,7 +143,21 @@ export function useReviewLayout(frame: RefObject<HTMLElement | null>, ready: boo
       if (scheduled === undefined) scheduled = requestAnimationFrame(measure);
     };
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule);
-    const changes = new MutationObserver(schedule);
+    // ResizeObserver handles resizing inside existing panels. Watch the DOM
+    // for panels entering or leaving so roster and scene updates skip layout work.
+    const changes = new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of [...record.addedNodes, ...record.removedNodes]) {
+          if (
+            node instanceof Element &&
+            (node.matches(observedSelector) || node.querySelector(observedSelector))
+          ) {
+            schedule();
+            return;
+          }
+        }
+      }
+    });
     changes.observe(root, { childList: true, subtree: true });
     window.addEventListener('resize', schedule);
     measure();

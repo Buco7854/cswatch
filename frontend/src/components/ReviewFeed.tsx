@@ -1,4 +1,5 @@
-import { useEffect, useId, useLayoutEffect, useRef, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
+import { memo, useEffect, useId, useLayoutEffect, useRef, type ReactNode } from 'react';
 import { Crosshair, Eye, Keyboard, MapPin, Skull, X } from 'lucide-react';
 import { t } from '../i18n';
 import { equipmentName } from '../equipment-display';
@@ -37,7 +38,7 @@ function PlayerName({ player }: { player: ReviewFeedPlayer }) {
 
 /** Domain association, exact seek targets and recorded input availability belong
  * to the caller. This panel only presents those recorded rows and actions. */
-export default function ReviewFeed({
+function ReviewFeed({
   kills,
   utilities,
   activeTab,
@@ -64,6 +65,7 @@ export default function ReviewFeed({
   focusOnOpen?: boolean;
   modal?: boolean;
 }) {
+  useTranslation();
   const id = useId();
   const dialog = useRef<HTMLDialogElement>(null);
   const rememberedFocus = useRef<HTMLElement | null>(null);
@@ -71,8 +73,7 @@ export default function ReviewFeed({
   useLayoutEffect(() => {
     const element = dialog.current;
     if (!element) return;
-    if (modal) element.showModal();
-    else element.show();
+    element.showModal();
     if (rememberedFocus.current?.isConnected)
       rememberedFocus.current.focus({ preventScroll: true });
     rememberedFocus.current = null;
@@ -295,12 +296,12 @@ export default function ReviewFeed({
       </div>
     </section>
   );
+  if (!modal) return content;
   return (
     <dialog
       ref={dialog}
-      className={modal ? 'review-feed-dialog' : 'review-feed-inline'}
-      role={modal ? 'dialog' : 'presentation'}
-      aria-label={modal ? t('Round review') : undefined}
+      className="review-feed-dialog"
+      aria-label={t('Round review')}
       onCancel={(event) => {
         event.preventDefault();
         onClose?.();
@@ -313,3 +314,5 @@ export default function ReviewFeed({
     </dialog>
   );
 }
+
+export default memo(ReviewFeed);

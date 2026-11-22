@@ -1,5 +1,6 @@
+import { useTranslation } from 'react-i18next';
 import { t } from '../i18n';
-import { useCallback, useId, useMemo } from 'react';
+import { memo, useCallback, useId, useMemo } from 'react';
 import type { Playback } from '../types';
 import type { MapOverview } from '../../../shared/map-assets';
 import { overviewPoint, overviewRadius } from '../tactical-coordinates';
@@ -14,7 +15,7 @@ import TacticalGrenadePaths from './TacticalGrenadePaths';
 import MapUnavailable, { type MapUnavailableAction } from './MapUnavailable';
 import type { MapUnavailableReason } from '../map-availability';
 import './tactical-plot.css';
-export default function TacticalPlot({
+function TacticalPlot({
   data,
   tick,
   selected,
@@ -41,6 +42,7 @@ export default function TacticalPlot({
   overviewStatus?: AssetStatus;
   onOverviewState?: (image: string, version: string, status: 'ready' | 'error') => void;
 }) {
+  useTranslation();
   const clip = useId().replace(/:/g, '');
   const calibrated = overview && overviewStatus !== 'error' ? overview : null;
   const bounds = useMemo(() => {
@@ -277,6 +279,16 @@ export default function TacticalPlot({
                 stroke={p.id === selected ? tacticalPalette.selected : 'none'}
                 strokeWidth=".5"
               />
+              {p.id === selected && (
+                <path
+                  d="M0 0L9 -4A9.85 9.85 0 0 1 9 4Z"
+                  fill={tacticalPalette.selected}
+                  fillOpacity=".26"
+                  stroke={tacticalPalette.selected}
+                  strokeWidth=".35"
+                  transform={'rotate(' + -p.yaw + ')'}
+                />
+              )}
               <path
                 d="M0 0h4"
                 stroke={p.team === 3 ? tacticalPalette.ct : tacticalPalette.t}
@@ -289,3 +301,5 @@ export default function TacticalPlot({
     </svg>
   );
 }
+
+export default memo(TacticalPlot);

@@ -1,3 +1,4 @@
+import { chooseCameraControl } from './fixtures/viewer-transport';
 import { test, expect, type Locator, type Page, type TestInfo } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -21,12 +22,14 @@ async function openPractice(
       localStorage.setItem('theme', theme);
       if (
         !localStorage.getItem(
-          window.matchMedia('(max-width:760px),(pointer:coarse) and (max-height:560px)').matches
-            ? 'viewer-settings-mobile'
-            : 'viewer-settings',
+          window.matchMedia(
+            '(max-width:760px),(max-width:960px) and (max-height:560px),(pointer:coarse) and (max-height:560px)',
+          ).matches
+            ? 'viewer-settings-v2-mobile'
+            : 'viewer-settings-v2',
         )
       )
-        ['viewer-settings', 'viewer-settings-mobile'].forEach((key) =>
+        ['viewer-settings-v2', 'viewer-settings-v2-mobile'].forEach((key) =>
           localStorage.setItem(
             key,
             JSON.stringify({
@@ -52,16 +55,17 @@ const closeOptions = (page: Page, language: Language = 'en') =>
     .getByRole('button', { name: message(language, 'Close viewer options'), exact: true })
     .click();
 const chooseCamera = async (page: Page, language: Language, option: string) => {
-  await page.getByRole('combobox', { name: message(language, 'Camera mode'), exact: true }).click();
-  await page.getByRole('option', { name: message(language, option), exact: true }).click();
+  await chooseCameraControl(page, message(language, option), message(language, 'Camera mode'));
 };
 const saved = (page: Page) =>
   page.evaluate(() =>
     JSON.parse(
       localStorage.getItem(
-        window.matchMedia('(max-width:760px),(pointer:coarse) and (max-height:560px)').matches
-          ? 'viewer-settings-mobile'
-          : 'viewer-settings',
+        window.matchMedia(
+          '(max-width:760px),(max-width:960px) and (max-height:560px),(pointer:coarse) and (max-height:560px)',
+        ).matches
+          ? 'viewer-settings-v2-mobile'
+          : 'viewer-settings-v2',
       ) || '{}',
     ),
   );

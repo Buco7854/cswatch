@@ -18,7 +18,7 @@ for (const language of ['en', 'fr'] as const)
       ({ language, theme }) => {
         localStorage.setItem('cswatch.language', language);
         localStorage.setItem('theme', theme);
-        ['viewer-settings', 'viewer-settings-mobile'].forEach((key) =>
+        ['viewer-settings-v2', 'viewer-settings-v2-mobile'].forEach((key) =>
           localStorage.setItem(
             key,
             JSON.stringify({
@@ -67,9 +67,11 @@ for (const language of ['en', 'fr'] as const)
       await page.evaluate(() => {
         const settings = JSON.parse(
           localStorage.getItem(
-            window.matchMedia('(max-width:760px),(pointer:coarse) and (max-height:560px)').matches
-              ? 'viewer-settings-mobile'
-              : 'viewer-settings',
+            window.matchMedia(
+              '(max-width:760px),(max-width:960px) and (max-height:560px),(pointer:coarse) and (max-height:560px)',
+            ).matches
+              ? 'viewer-settings-v2-mobile'
+              : 'viewer-settings-v2',
           ) || '{}',
         );
         return settings.subtitles === true && settings.voice === false;

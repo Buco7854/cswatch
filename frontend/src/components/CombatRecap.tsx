@@ -38,7 +38,7 @@ function DamageColumn({
   );
 }
 
-/** A small broadcast-style personal recap, independent of the opt-in round list. */
+/** A small broadcast-style personal recap, independent of the round review panel. */
 export default function CombatRecap({
   moment,
   selected,
@@ -49,16 +49,38 @@ export default function CombatRecap({
   damage: CombatDamage;
 }) {
   const death = moment.victimId === selected;
-  const opponent = (death ? moment.attacker : moment.victim) || t('Unknown player');
-  const opponentTeam = death ? moment.attackerTeam : moment.victimTeam;
+  if (!death) {
+    const attacker = moment.attacker || t('Unknown player');
+    const victim = moment.victim || t('Unknown player');
+    const weapon = moment.weapon ? equipmentName(moment.weapon) : t('Unknown weapon');
+    return (
+      <div
+        className="combat-kill-line"
+        data-perspective="attacker"
+        aria-label={t('{{attacker}} killed {{victim}} with {{weapon}}', {
+          attacker,
+          victim,
+          weapon,
+        })}
+      >
+        <strong data-team={moment.attackerTeam} title={attacker}>
+          {attacker}
+        </strong>
+        <span role="img" aria-label={weapon} title={weapon}>
+          <EquipmentGlyph item={moment.weapon} />
+        </span>
+        <strong data-team={moment.victimTeam} title={victim}>
+          {victim}
+        </strong>
+      </div>
+    );
+  }
+  const opponent = moment.attacker || t('Unknown player');
+  const opponentTeam = moment.attackerTeam;
   return (
-    <div
-      className="combat-recap"
-      data-perspective={death ? 'victim' : 'attacker'}
-      data-coverage={damage.coverage}
-    >
+    <div className="combat-recap" data-perspective="victim" data-coverage={damage.coverage}>
       <div className="combat-recap-title">
-        <span>{t(death ? 'Killed by' : 'You killed')}</span>
+        <span>{t('Killed by')}</span>
         <strong data-team={opponentTeam} title={opponent}>
           {opponent}
         </strong>

@@ -1,3 +1,4 @@
+import { chooseCameraControl } from './fixtures/viewer-transport';
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { manualMapAssets } from './fixtures/map-assets';
 import { expect, test, type Page, type Route } from '@playwright/test';
@@ -14,7 +15,7 @@ async function install(
     localStorage.setItem('theme', 'dark');
     localStorage.setItem('cswatch.language', 'en');
     localStorage.setItem(
-      'viewer-settings',
+      'viewer-settings-v2',
       JSON.stringify({
         quality: 'high',
         autoHideControls: false,
@@ -83,8 +84,7 @@ async function install(
   return counts;
 }
 async function camera(page: Page, name: string) {
-  await page.getByRole('combobox', { name: 'Camera mode', exact: true }).click();
-  await page.getByRole('option', { name, exact: true }).click();
+  await chooseCameraControl(page, name);
 }
 async function navigate(page: Page, id: string) {
   await page.evaluate((path) => {

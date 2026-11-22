@@ -1,3 +1,4 @@
+import { chooseCameraControl } from './fixtures/viewer-transport';
 import { fulfillReplayFixture, replayFixture } from './fixtures/streamed-replay';
 import { expect, test, type Page } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
@@ -116,14 +117,14 @@ async function fixture(
   ];
   await page.addInitScript(() => {
     localStorage.setItem('cswatch.language', 'en');
-    for (const key of ['viewer-settings', 'viewer-settings-mobile'])
+    for (const key of ['viewer-settings-v2', 'viewer-settings-v2-mobile'])
       localStorage.setItem(
         key,
         JSON.stringify({
           quality: 'low',
           xray: true,
           playerLabels: true,
-          economy: key === 'viewer-settings',
+          economy: key === 'viewer-settings-v2',
           autoHideControls: false,
           killReplay: false,
           grenadeLanding: false,
@@ -172,8 +173,7 @@ async function fixture(
   return data;
 }
 async function camera(page: Page, name: string) {
-  await page.getByRole('combobox', { name: 'Camera mode', exact: true }).click();
-  await page.getByRole('option', { name, exact: true }).click();
+  await chooseCameraControl(page, name);
 }
 async function option(
   page: Page,
@@ -268,7 +268,7 @@ test('native labels project the posed head and restore the same placement on bac
   test.skip(Boolean(process.env.E2E_PRIVATE));
   await page.setViewportSize({ width: 1100, height: 800 });
   await fixture(page, 'spectator-head-label', { wall: true, native: 'head' });
-  await page.goto('/watch/spectator-head-label');
+  await page.goto('/watch/spectator-head-label?tick=0');
   const scene = page.locator('.scene');
   await expect(scene).toHaveAttribute('data-map-model-state', 'ready');
   await camera(page, 'Player perspective');
@@ -281,11 +281,13 @@ test('native labels project the posed head and restore the same placement on bac
   };
   // The fixture's posed head plus the label gap lies below the viewer's fixed eye height.
   // The generic standing-height label would be above it.
-  await expect.poll(offset).toBeGreaterThan(5);
+  // Convert the original pixel thresholds to the wider default projection.
+  const projectionScale = Math.tan((48 * Math.PI) / 360) / Math.tan((73.74 * Math.PI) / 360);
+  await expect.poll(offset).toBeGreaterThan(5 * projectionScale);
   const standing = await offset();
   const slider = page.getByRole('slider', { name: 'Playback position' });
   await slider.fill('64');
-  await expect.poll(offset).toBeGreaterThan(standing + 35);
+  await expect.poll(offset).toBeGreaterThan(standing + 35 * projectionScale);
   await slider.fill('0');
   await expect.poll(async () => Math.abs((await offset()) - standing)).toBeLessThan(1);
 });
@@ -477,7 +479,7 @@ test('three seconds after a watched death POV follows a living teammate and a la
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE));
   await fixture(page, 'spectator-follow', { death: true });
-  await page.goto('/watch/spectator-follow');
+  await page.goto('/watch/spectator-follow?tick=0');
   await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
   await camera(page, 'Player perspective');
   const selected = page.getByRole('button', {
@@ -554,7 +556,7 @@ test('a chunk stall after the watched death freezes its camera delay and resumes
     await route.fulfill({ json: chunks[index] }).catch(() => {});
   });
   try {
-    await page.goto('/watch/spectator-buffer');
+    await page.goto('/watch/spectator-buffer?tick=0');
     await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
     await camera(page, 'Player perspective');
     const selected = page.getByRole('button', {
@@ -630,8 +632,9 @@ test('recorded-map free camera turns in place, moves with ZQSD, preserves its vi
     };
   });
   await fixture(page, 'spectator-free');
-  await page.goto('/watch/spectator-free');
+  await page.goto('/watch/spectator-free?tick=0');
   await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
+  await camera(page, 'Free camera');
   const view = () =>
     page.evaluate(
       () =>

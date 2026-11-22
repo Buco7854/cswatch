@@ -1,3 +1,4 @@
+import { chooseCameraControl, expectCameraControl } from './fixtures/viewer-transport';
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { manualMapAssets } from './fixtures/map-assets';
 import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
@@ -39,7 +40,7 @@ async function install(
     ({ theme, crosshair, language, quality }) => {
       localStorage.setItem('theme', theme);
       localStorage.setItem('cswatch.language', language);
-      ['viewer-settings', 'viewer-settings-mobile'].forEach((key) =>
+      ['viewer-settings-v2', 'viewer-settings-v2-mobile'].forEach((key) =>
         localStorage.setItem(
           key,
           JSON.stringify({
@@ -107,9 +108,56 @@ async function open(page: Page, id = 'original-map-fixture') {
   await expect(page.locator('.timeline-slider')).toBeVisible();
   return response;
 }
+for (const profile of [
+  { adapter: 'ANGLE (NVIDIA GeForce RTX 4060)', device: 'hardware', tier: 'desktop' },
+  { adapter: 'ANGLE (Google, Vulkan SwiftShader Device)', device: 'software', tier: 'compact' },
+  { adapter: 'ANGLE (Intel(R) Iris Xe Graphics)', device: 'integrated', tier: 'mobile' },
+]) {
+  test(`Auto starts with the ${profile.tier} map for ${profile.device} renderer evidence`, async ({
+    page,
+  }) => {
+    test.skip(Boolean(process.env.E2E_PRIVATE));
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.addInitScript((adapter) => {
+      Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 2 });
+      const gl = WebGL2RenderingContext.prototype;
+      const getExtension = gl.getExtension;
+      const getParameter = gl.getParameter;
+      gl.getExtension = function (name: string) {
+        return name === 'WEBGL_debug_renderer_info'
+          ? { UNMASKED_RENDERER_WEBGL: 0x9246 }
+          : getExtension.call(this, name);
+      } as typeof getExtension;
+      gl.getParameter = function (name: number) {
+        return name === 0x9246 ? adapter : getParameter.call(this, name);
+      };
+    }, profile.adapter);
+    const paths: string[] = [];
+    page.on('request', (request) => {
+      const path = new URL(request.url()).pathname;
+      if (path.startsWith(`/map-assets/${qaMap}/`)) paths.push(path);
+    });
+    await install(
+      page,
+      {
+        model: `/map-assets/${qaMap}/desktop/scene.glb`,
+        mobile: `/map-assets/${qaMap}/mobile/scene.glb`,
+        compact: `/map-assets/${qaMap}/compact/scene.glb`,
+        overview: qaOverview,
+      },
+      { quality: 'auto' },
+    );
+    await open(page);
+    const scene = page.locator('.scene');
+    await expect(scene).toHaveAttribute('data-render-device', profile.device);
+    await expect(scene).toHaveAttribute('data-map-tier', profile.tier);
+    await expect(scene).toHaveAttribute('data-map-model-state', 'ready');
+    expect(paths).toEqual([`/map-assets/${qaMap}/${profile.tier}/scene.glb`]);
+  });
+}
+
 async function camera(page: Page, value: string) {
-  await page.getByRole('combobox', { name: 'Camera mode', exact: true }).click();
-  await page.getByRole('option', { name: value, exact: true }).click();
+  await chooseCameraControl(page, value);
 }
 async function mapPalette(plot: Locator) {
   return plot.evaluate((svg) => {
@@ -350,12 +398,16 @@ test('discovery and overview image decoding keep recorded markers hidden until a
     });
   });
   await page.goto('/watch/original-map-fixture');
-  await expect(page.locator('.viewer-map-loading')).toHaveText('Loading map assets…');
+  await expect(page.locator('.viewer-map-loading [role="status"]')).toHaveText(
+    'Loading map assets…',
+  );
   await expect(page.locator('.scene canvas,.tactical-plot,.position-radar')).toHaveCount(0);
   revealAssets();
   await expect(page.locator('.tactical-plot')).toHaveAttribute('data-map-image-state', 'pending');
   await expect(page.locator('.tactical-plot [data-player-id] circle').first()).toBeHidden();
-  await expect(page.locator('.viewer-map-loading')).toHaveText('Loading map overview…');
+  await expect(page.locator('.viewer-map-loading [role="status"]')).toHaveText(
+    'Loading map overview…',
+  );
   revealImage();
   await expect(page.locator('.tactical-plot')).toHaveAttribute('data-map-image-state', 'ready');
   await expect(page.locator('.tactical-plot [data-player-id] circle').first()).toBeVisible();
@@ -559,7 +611,7 @@ test('3D map readiness waits for an actual GLB and a failed map retries without 
     },
   });
   await page.goto('/watch/original-map-fixture');
-  await expect(page.locator('.viewer-map-loading')).toHaveText('Loading 3D map…');
+  await expect(page.locator('.viewer-map-loading [role="status"]')).toHaveText('Loading 3D map…');
   await expect(page.getByRole('slider', { name: 'Playback position' })).toHaveCount(0);
   await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'pending');
   release();
@@ -725,7 +777,7 @@ test('an explicit camera retries failed WebGL and stale same-map context events 
   await expect(page.locator('.viewer-map-status')).toHaveText('3D unavailable');
   await expect(page.locator('.position-radar')).toHaveCount(0);
   await expect(page.locator('.viewer-crosshair')).toHaveCount(0);
-  await expect(page.getByRole('combobox', { name: 'Camera mode' })).toHaveText('2D map fallback');
+  await expectCameraControl(page, '2D map fallback');
   await page.evaluate(() =>
     (window as unknown as { recoverOriginalQAContext: () => void }).recoverOriginalQAContext(),
   );
@@ -1304,6 +1356,8 @@ test('paused viewer stops native rendering and camera, held keys, POV seeks and 
   };
   await open(page);
   await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
+  await page.locator('.timeline-slider').fill('0');
+  await camera(page, 'Free camera');
   await idle();
   const initial = await frames();
   await Promise.all(

@@ -1,3 +1,4 @@
+import { chooseCameraControl, expectCameraControl } from './fixtures/viewer-transport';
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { installMapFixture } from './fixtures/map-assets';
 import { test, expect, type Page, type TestInfo } from '@playwright/test';
@@ -22,12 +23,14 @@ async function openFixture(page: Page, current: () => Playback, language: 'en' |
     localStorage.setItem('cswatch.language', language);
     if (
       !localStorage.getItem(
-        window.matchMedia('(max-width:760px),(pointer:coarse) and (max-height:560px)').matches
-          ? 'viewer-settings-mobile'
-          : 'viewer-settings',
+        window.matchMedia(
+          '(max-width:760px),(max-width:960px) and (max-height:560px),(pointer:coarse) and (max-height:560px)',
+        ).matches
+          ? 'viewer-settings-v2-mobile'
+          : 'viewer-settings-v2',
       )
     )
-      ['viewer-settings', 'viewer-settings-mobile'].forEach((key) =>
+      ['viewer-settings-v2', 'viewer-settings-v2-mobile'].forEach((key) =>
         localStorage.setItem(
           key,
           JSON.stringify({
@@ -133,8 +136,7 @@ test('low quality renders the first recorded projectile without trails and real 
   await expect(page.locator('.viewer-map-status')).toBeVisible();
   // Both captures use a fixed projection that includes the fixture's throw and
   // detonation, regardless of which pawn supplies the initial free camera.
-  await page.getByRole('combobox', { name: 'Camera mode', exact: true }).click();
-  await page.getByRole('option', { name: 'Overhead', exact: true }).click();
+  await chooseCameraControl(page, 'Overhead');
   const scene = page.locator('.scene');
   await seek(page, 256);
   await expect(scene).toHaveAttribute('data-quality', 'low');
@@ -145,8 +147,7 @@ test('low quality renders the first recorded projectile without trails and real 
   // Same world bounds, actor positions, camera, theme and tick: only the recorded projectile is absent.
   await page.reload();
   await show(page);
-  await page.getByRole('combobox', { name: 'Camera mode', exact: true }).click();
-  await page.getByRole('option', { name: 'Overhead', exact: true }).click();
+  await chooseCameraControl(page, 'Overhead');
   await seek(page, 256);
   await expect(scene).toHaveAttribute('data-projectile-count', '0');
   const empty = await captureScene(page, info, 'low-quality-no-projectile-control');
@@ -161,8 +162,7 @@ test('low quality renders the first recorded projectile without trails and real 
   current = recordedReplay();
   await page.reload();
   await show(page);
-  await page.getByRole('combobox', { name: 'Camera mode', exact: true }).click();
-  await page.getByRole('option', { name: '2D tactical · low power', exact: true }).click();
+  await chooseCameraControl(page, '2D tactical · low power');
   const plot = page.locator('svg.tactical-plot');
   await seek(page, 256);
   await expect(plot.locator('.tactical-projectile')).toHaveCount(1);
@@ -172,7 +172,7 @@ test('low quality renders the first recorded projectile without trails and real 
   await expect(plot.locator('.tactical-utility-zone[data-kind="smoke"]')).toHaveCount(1);
 });
 
-test('automatic quality responds to viewport changes and keeps a coarse-pointer landscape phone low', async ({
+test('automatic quality uses viewport and pointer fallback when the GPU identity is masked', async ({
   page,
   browser,
 }) => {
@@ -180,7 +180,11 @@ test('automatic quality responds to viewport changes and keeps a coarse-pointer 
   const autoQuality = async (targetPage: Page) =>
     targetPage.addInitScript(() => {
       Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8, configurable: true });
-      ['viewer-settings', 'viewer-settings-mobile'].forEach((key) =>
+      const getExtension = WebGL2RenderingContext.prototype.getExtension;
+      WebGL2RenderingContext.prototype.getExtension = function (name: string) {
+        return name === 'WEBGL_debug_renderer_info' ? null : getExtension.call(this, name);
+      } as typeof getExtension;
+      ['viewer-settings-v2', 'viewer-settings-v2-mobile'].forEach((key) =>
         localStorage.setItem(key, JSON.stringify({ quality: 'auto', autoHideControls: false })),
       );
     });
@@ -220,22 +224,21 @@ test('recorded moment actions seek into ordinary playback without changing speed
   await openFixture(page, recordedReplay);
   const scene = page.locator('.scene');
   const slider = page.getByRole('slider', { name: 'Playback position', exact: true });
-  const camera = page.getByRole('combobox', { name: 'Camera mode', exact: true });
-  const speed = page.getByRole('combobox', { name: 'Playback speed', exact: true });
+  const speed = page
+    .getByRole('group', { name: 'Playback speed' })
+    .getByRole('button', { name: '2×', exact: true });
   const noReturn = page.getByRole('button', { name: 'Return to playback', exact: true });
   await option(page, 'Economy and loadouts', true);
   const observed = page.locator(
     '.broadcast-player[data-player-id="' + actor + '"] .broadcast-player-select',
   );
-  await camera.click();
-  await page.getByRole('option', { name: 'Overhead', exact: true }).click();
+  await chooseCameraControl(page, 'Overhead');
   await speed.click();
-  await page.getByRole('option', { name: '2×', exact: true }).click();
   await seek(page, 800);
   await opaqueSharedCard(page);
   await page.getByRole('button', { name: 'Replay kill', exact: true }).click();
   await expect(scene).toHaveAttribute('data-camera-mode', 'pov');
-  await expect(speed).toContainText('2×');
+  await expect(speed).toHaveAttribute('aria-pressed', 'true');
   await expect(observed).toHaveAttribute('aria-pressed', 'true');
   expect(Number(await slider.inputValue())).toBeGreaterThanOrEqual(576);
   expect(Number(await slider.inputValue())).toBeLessThan(704);
@@ -254,7 +257,7 @@ test('recorded moment actions seek into ordinary playback without changing speed
   await expect(scene).toHaveAttribute('data-focus-x', '320');
   await expect(scene).toHaveAttribute('data-focus-y', '0');
   await expect(scene).toHaveAttribute('data-focus-z', '0');
-  await expect(speed).toContainText('2×');
+  await expect(speed).toHaveAttribute('aria-pressed', 'true');
   await expect(observed).toHaveAttribute('aria-pressed', 'true');
   expect(Number(await slider.inputValue())).toBeGreaterThanOrEqual(496);
   expect(Number(await slider.inputValue())).toBeLessThan(640);
@@ -268,19 +271,18 @@ test('recorded moment actions seek into ordinary playback without changing speed
   await seek(page, 700);
   await expect(slider).toHaveValue('700');
   await expect(scene).toHaveAttribute('data-camera-mode', 'orbit');
-  await camera.click();
-  await page.getByRole('option', { name: '2D tactical · low power', exact: true }).click();
+  await chooseCameraControl(page, '2D tactical · low power');
   await seek(page, 800);
   await page.getByRole('button', { name: 'Replay kill', exact: true }).click();
-  await expect(camera).toContainText('2D tactical');
-  await expect(speed).toContainText('2×');
+  await expectCameraControl(page, '2D tactical · low power');
+  await expect(speed).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('.viewer-stage canvas')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Pause', exact: true }).click();
   await seek(page, 320);
   await landing.click();
-  await expect(camera).toContainText('2D tactical');
-  await expect(speed).toContainText('2×');
+  await expectCameraControl(page, '2D tactical · low power');
+  await expect(speed).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('.viewer-stage canvas')).toHaveCount(0);
   const recordedTarget = page.locator('.tactical-review-target');
   await expect(recordedTarget).toBeVisible();
@@ -292,7 +294,7 @@ test('recorded moment actions seek into ordinary playback without changing speed
     .poll(async () => Number(await slider.inputValue()), { timeout: 7000 })
     .toBeGreaterThan(640);
   await expect(recordedTarget).toHaveCount(0);
-  await expect(camera).toContainText('2D tactical');
+  await expectCameraControl(page, '2D tactical · low power');
   await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
   await expect(noReturn).toHaveCount(0);
 });
