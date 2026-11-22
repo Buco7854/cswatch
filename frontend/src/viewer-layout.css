@@ -437,7 +437,8 @@
 .viewer-frame .killfeed span {
   color: var(--muted);
 }
-.replay-buffer {
+.replay-buffer,
+.smoke-unavailable {
   position: absolute;
   z-index: 2;
   top: 40%;
@@ -452,6 +453,9 @@
   font-size: 14px;
   line-height: 1.5;
   text-align: center;
+}
+.smoke-unavailable {
+  pointer-events: none;
 }
 .replay-buffer .button {
   margin: 12px auto 0;

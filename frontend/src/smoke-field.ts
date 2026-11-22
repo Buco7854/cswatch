@@ -113,7 +113,7 @@ export function lightField(density: Uint8Array, sun: XYZ) {
   return { texels, bounds };
 }
 
-export function approximateField(sun: XYZ) {
+export function analyticSmokeField(sun: XYZ) {
   const density = new Uint8Array(GRID ** 3);
   const metres = (i: number) => (i + 0.5) * CELL - HALF_GRID;
   for (let z = 0; z < GRID; z++)

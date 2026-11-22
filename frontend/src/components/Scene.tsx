@@ -58,7 +58,7 @@ import {
 } from '../pov-camera';
 import { smokeHidesLabel } from '../smoke-render-state';
 import type { SmokeSample } from '../smoke-field';
-import { SmokeEffects } from './RecordedSmoke';
+import Smoke from './Smoke';
 import { mapSurface, type MapUnavailableReason } from '../map-availability';
 import MapUnavailable from './MapUnavailable';
 import { mapAcquisitionMessage, type DemoMapState } from '../demo-map-assets';
@@ -130,6 +130,7 @@ export type MapRenderState = {
   landscape: AssetStatus;
   resolution?: number;
   shadowsPaused?: boolean;
+  smokeUnavailable?: boolean;
   equipment?: EquipmentRenderState;
 };
 type MapResources = DemoMapState & {
@@ -604,6 +605,7 @@ function World({
   utilityState,
   items,
   onAudioListener,
+  onSmokeUnavailable,
 }: {
   data: Playback;
   low: boolean;
@@ -633,6 +635,7 @@ function World({
   focus?: SceneFocus;
   utilityState: UtilityPresentation;
   items: PresentItem[];
+  onSmokeUnavailable: (unavailable: boolean) => void;
   onAudioListener?: (pose: ListenerPose | null) => void;
 }) {
   const { camera, gl, invalidate } = useThree();
@@ -1102,11 +1105,12 @@ function World({
         )}
         {!preview && <RecordedEquipment items={items} />}
         {!preview && settings.utilities && (
-          <SmokeEffects
+          <Smoke
             data={data}
             zones={utilityState.zones}
             tick={tick}
-            nativeVolume={modelReady}
+            modelReady={modelReady}
+            onUnavailable={onSmokeUnavailable}
             sunTrace={smokeSunTrace}
             low={low}
             xray={settings.xray}
@@ -1590,6 +1594,7 @@ export default function Scene({
     equipmentAssets.status === 'pending' || equipmentAssets.status === 'error'
       ? 0
       : unavailableEquipment;
+  const [smokeUnavailable, setSmokeUnavailable] = useState(false);
   const surface = mapSurface({
     sample: Boolean(data.sample),
     requested2D: mode === '2d',
@@ -1608,6 +1613,8 @@ export default function Scene({
             expectedEquipment.length - equipmentReady - equipmentFailed - equipmentUnavailable,
           )
         : 0;
+  const smokeEnabled = surface === '3d' && !preview && settings.utilities;
+  const smokeFailed = smokeEnabled && smokeUnavailable;
   const equipmentReport = useMemo<EquipmentRenderState>(
     () => ({
       status: equipmentAssets.status,
@@ -1651,6 +1658,7 @@ export default function Scene({
         landscape: landscapeStatus,
         resolution: surface === '3d' ? resolution : undefined,
         shadowsPaused: surface === '3d' && adaptive && !low && !shadows,
+        smokeUnavailable: smokeFailed,
         equipment: equipmentReport,
       }),
     [
@@ -1673,6 +1681,7 @@ export default function Scene({
       surface,
       mapAssets.status,
       equipmentReport,
+      smokeFailed,
     ],
   );
   const unavailableReason: MapUnavailableReason =
@@ -1746,6 +1755,7 @@ export default function Scene({
       data-recorded-item-rotation-count={
         liveItems.filter((item) => item.pitch !== undefined).length
       }
+      data-smoke-state={smokeEnabled ? (smokeFailed ? 'unavailable' : 'ready') : undefined}
       data-camera-mode={mode}
       data-map-model-state={data.sample ? 'ready' : modelStatus}
       data-environment-state={environmentStatus}
@@ -1842,6 +1852,7 @@ export default function Scene({
                       utilityState={utilityState}
                       items={liveItems}
                       onAudioListener={reportAudioListener}
+                      onSmokeUnavailable={setSmokeUnavailable}
                     />
                   </AgentModels.Provider>
                 </EquipmentModels.Provider>

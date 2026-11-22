@@ -90,7 +90,7 @@ class Surface {
     this.from = upload((this.previous = smoke.previous));
     this.to = upload((this.current = smoke.current));
     this.mesh = new Mesh(geometry, this.surfaceMaterial);
-    this.mesh.name = 'recorded-smoke-volume';
+    this.mesh.name = 'smoke-volume';
     this.mesh.frustumCulled = false;
     this.mesh.raycast = () => {};
     this.mesh.onBeforeRender = (renderer) => {
@@ -192,6 +192,14 @@ export class SmokeVolumePass {
   private readonly geometry = new PlaneGeometry();
   private readonly surfaces = new Map<string, Surface>();
   private readonly sunlight = new Map<string, number>();
+  private targetStatus = new WeakMap<
+    WebGLRenderTarget,
+    {
+      width: number;
+      height: number;
+      complete: boolean;
+    }
+  >();
   private readonly depth = new WebGLRenderTarget(1, 1, {
     minFilter: NearestFilter,
     magFilter: NearestFilter,
@@ -265,20 +273,20 @@ export class SmokeVolumePass {
     low: boolean,
     xray: boolean,
   ) {
+    this.hide();
     const keys = new Set(smoke.map(({ key }) => key));
     for (const [key, surface] of this.surfaces) {
       if (!keys.has(key)) {
         surface.dispose();
         this.surfaces.delete(key);
         this.sunlight.delete(key);
-      } else surface.mesh.visible = false;
+      }
     }
     if (!smoke.length || !this.group.visible) return true;
     gl.getDrawingBufferSize(this.size);
     if (this.size.x === 0 || this.size.y === 0) return true;
     if (Math.max(this.size.x, this.size.y) > gl.capabilities.maxTextureSize) return false;
-    const context = gl.getContext();
-    if (context.isContextLost()) return true;
+    if (gl.getContext().isContextLost()) return false;
 
     camera.updateMatrixWorld();
     this.eye.setFromMatrixPosition(camera.matrixWorld);
@@ -320,20 +328,16 @@ export class SmokeVolumePass {
       const crop = { x: left, y: bottom, width: right - left, height: top - bottom };
       const width = Math.ceil(crop.width / 32) * 32;
       const height = Math.ceil(crop.height / 32) * 32;
-      const resized = width !== this.depth.width || height !== this.depth.height;
-      if (resized) this.depth.setSize(width, height);
+      if (width !== this.depth.width || height !== this.depth.height)
+        this.depth.setSize(width, height);
       this.depth.viewport.set(0, 0, crop.width, crop.height);
       cropSmokeCamera(this.depthCamera, camera, crop, this.size.x, this.size.y, far + 0.01);
-      gl.setRenderTarget(this.depth);
-      if (
-        resized &&
-        context.checkFramebufferStatus(context.FRAMEBUFFER) !== context.FRAMEBUFFER_COMPLETE
-      )
-        return false;
+      if (!this.bindTarget(gl, this.depth)) return false;
       this.depthPass.render(gl, world, this.depthCamera);
       gl.autoClear = false;
-      visible.forEach(({ cloud, rect }, i) =>
-        this.renderCloud(
+      const rendered = [];
+      for (const [i, { cloud, rect }] of visible.entries()) {
+        const surface = this.renderCloud(
           gl,
           camera,
           cloud,
@@ -343,13 +347,36 @@ export class SmokeVolumePass {
           low,
           xray,
           7 + i / visible.length,
-        ),
-      );
+        );
+        if (!surface) return false;
+        rendered.push(surface);
+      }
+      for (const surface of rendered) surface.mesh.visible = true;
       return true;
     } finally {
       gl.setRenderTarget(oldTarget);
       gl.autoClear = autoClear;
     }
+  }
+
+  hide() {
+    for (const surface of this.surfaces.values()) surface.mesh.visible = false;
+  }
+
+  revalidateTargets() {
+    this.targetStatus = new WeakMap();
+  }
+
+  private bindTarget(gl: WebGLRenderer, target: WebGLRenderTarget) {
+    gl.setRenderTarget(target);
+    const { width, height } = target;
+    const cached = this.targetStatus.get(target);
+    if (cached?.width === width && cached.height === height) return cached.complete;
+    const context = gl.getContext();
+    const complete =
+      context.checkFramebufferStatus(context.FRAMEBUFFER) === context.FRAMEBUFFER_COMPLETE;
+    this.targetStatus.set(target, { width, height, complete });
+    return complete;
   }
 
   private setBox(smoke: SmokeSample) {
@@ -455,20 +482,18 @@ export class SmokeVolumePass {
       u.blastHoles.value[i].set(...position, radius);
       u.blastStrength.value[i] = strength;
     });
-    gl.setRenderTarget(target);
+    if (!this.bindTarget(gl, target)) return;
     gl.render(this.quadScene, this.quadCamera);
 
     out.clipRect.value.copy(rectUv).multiplyScalar(2).subScalar(1);
     out.depthRect.value.copy(u.depthRect.value);
     out.cameraRange.value.copy(u.cameraRange.value);
-    // The shader writes linear light on SceneGrade's render target. Three
-    // enables its display transform only for the default framebuffer.
     out.opaqueDepth.value = this.depth.depthTexture;
     out.marchSize.value.set(width, height);
     out.targetSize.value.set(target.width, target.height);
     surface.surfaceMaterial.stencilWrite = xray;
     surface.mesh.renderOrder = order;
-    surface.mesh.visible = true;
+    return surface;
   }
 
   dispose() {
@@ -476,6 +501,7 @@ export class SmokeVolumePass {
     this.surfaces.clear();
     this.sunlight.clear();
     this.depth.dispose();
+    this.revalidateTargets();
     this.depthPass.dispose();
     this.detail.dispose();
     this.marchMaterial.dispose();

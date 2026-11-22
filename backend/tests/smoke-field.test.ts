@@ -7,6 +7,7 @@ import {
   GRID,
   HALF_GRID,
   lightField,
+  analyticSmokeField,
   activeSmokeHoles,
   indexSmokeBlasts,
   occupiedBounds,
@@ -195,4 +196,23 @@ test('HE clearing is tied to recorded detonation time and occupied space', () =>
   assert.ok(closing[0].radius < opened[0].radius && closing[0].strength < 0.5);
   assert.deepEqual(activeSmokeHoles(blasts, cloud, 90, 171, 64), []);
   assert.deepEqual(activeSmokeHoles(blasts, cloud, 102, 111, 64), []);
+});
+
+test('the analytic field supplies a lit, bounded cloud without a journal', () => {
+  const current = analyticSmokeField([0, 1, 0]);
+  assert.ok(current.bounds);
+  assert.equal(current.texels.length, GRID ** 3 * 2);
+  assert.deepEqual(current, analyticSmokeField([0, 1, 0]));
+  const cloud = {
+    origin: [0, 0, 0] as [number, number, number],
+    scale: 1,
+    previous: current,
+    current,
+    mix: 1,
+    bounds: current.bounds,
+    amount: 1,
+    holes: [],
+  };
+  assert.ok(smokeTransmittance(cloud, [-1, 1.3, 0], [1, 1.3, 0]) < 0.02);
+  assert.equal(smokeTransmittance(cloud, [-4, 5, 0], [4, 5, 0]), 1);
 });

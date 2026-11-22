@@ -1456,6 +1456,11 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
               )}
             </div>
           )}
+          {!buffering && !using2D && settings.utilities && mapRender?.smokeUnavailable && (
+            <div className="smoke-unavailable" role="status">
+              {t('Smoke rendering is unavailable.')}
+            </div>
+          )}
           {scopeFov !== undefined && (
             <div className="viewer-scope" aria-hidden="true" data-scope-fov={scopeFov}>
               {settings.crosshair && <span />}
