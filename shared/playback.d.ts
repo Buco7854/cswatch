@@ -128,6 +128,7 @@ export type Playback = {
   crosshairs?: CrosshairData;
   itemSamples?: ItemSample[];
   itemState?: ItemStateInfo;
+  strideAnchor?: { tick: number; players: [id: string, centimeters: number][] };
   /** Global Source-coordinate bounds keep cameras and plots stable while time slices change. */
   worldBounds?: {
     minX: number;
@@ -148,10 +149,12 @@ export type ReplayChunkInfo = {
   frames: number;
   /** Decoded JSON byte length, bounded independently of compressed transfer size. */
   bytes: number;
+  /** Observed distance at the first primary sample. Older archives omit it. */
+  stride?: [id: string, centimeters: number][];
 };
 export type PlaybackManifest = Omit<
   Playback,
-  'version' | 'frames' | 'grenades' | 'voice' | 'sounds' | 'itemSamples'
+  'version' | 'frames' | 'grenades' | 'voice' | 'sounds' | 'itemSamples' | 'strideAnchor'
 > & {
   version: 2;
   firstTick: number;

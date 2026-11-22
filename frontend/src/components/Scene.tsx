@@ -24,7 +24,11 @@ import {
   type ProjectileState,
   type UtilityZone,
 } from '../utility-state';
-type UtilityPresentation = { projectiles: ProjectileState[]; zones: UtilityZone[] };
+type UtilityPresentation = {
+  projectiles: ProjectileState[];
+  zones: UtilityZone[];
+  bombWave?: BombShockwaveSample;
+};
 export type SceneFocus = {
   id: string;
   target: { x: number; y: number; z: number };
@@ -60,7 +64,7 @@ import { projectileEquipment } from '../projectile-equipment';
 import { useAgentAssets } from '../agent-assets';
 import { useModelLeases } from '../equipment-loader';
 import { playerPose, type PoseTiming } from '../player-pose';
-import { recordedLocomotion } from '../agent-locomotion';
+import { indexRecordedTravel, recordedMotion, type PreviousPose } from '../recorded-motion';
 import './spectator-hud.css';
 import RenderAgent, {
   GenericAgentBody,
@@ -87,6 +91,9 @@ import { useMapShadowCache } from '../useMapShadowCache';
 import SceneLighting from './SceneLighting';
 import { mapSun, type MapSun } from '../map-sun';
 import { useMapSkyLighting } from '../useMapSkyLighting';
+import { indexBombShockwaves, type BombShockwaveSample } from '../bomb-shockwave';
+import BombShockwave from './BombShockwave';
+import { useReducedMotion } from '../reduced-motion';
 export type MapRenderState = {
   map: string;
   model: AssetStatus;
@@ -381,10 +388,9 @@ function Agent({
   showMarkers,
   model,
   tick,
-  rate,
-  frameTick,
-  nextTick,
-  roundBoundary,
+  timing,
+  previous,
+  travelMeters,
 }: {
   position: Position;
   next?: Position;
@@ -397,18 +403,12 @@ function Agent({
   showMarkers: boolean;
   model: string | null;
   tick: number;
-  rate: number;
-  frameTick: number;
-  nextTick: number;
-  roundBoundary: boolean;
+  timing: PoseTiming;
+  previous?: PreviousPose;
+  travelMeters?: number;
 }) {
-  const pose = playerPose(position, next, alpha, {
-    fromTick: frameTick,
-    nextTick,
-    tickRate: rate,
-    roundBoundary,
-  });
-  const motion = recordedLocomotion(position, next, frameTick, nextTick, rate, alpha);
+  const pose = playerPose(position, next, alpha, timing);
+  const motion = recordedMotion(position, next, alpha, timing, previous);
   const weaponAnchor = useRef<THREE.Object3D | null>(null);
   const registerWeaponAnchor = useCallback((bone: THREE.Object3D) => {
     weaponAnchor.current = bone;
@@ -464,8 +464,9 @@ function Agent({
           url={model}
           id={position.id}
           tick={tick}
-          rate={rate}
-          speed={roundBoundary ? 0 : motion.speed}
+          rate={timing.tickRate}
+          speed={motion.speed}
+          travelMeters={travelMeters}
           duck={pose.duck ?? 0}
           xrayColor={xray ? color : undefined}
           registerWeaponAnchor={registerWeaponAnchor}
@@ -695,7 +696,24 @@ function World({
   }, [mode, preview, gl, invalidate]);
   const freeView = useRef<{ position: THREE.Vector3; target: THREE.Vector3 } | null>(null);
   const previousMode = useRef<string | undefined>(undefined);
-  const { frame, next, alpha } = frameAt(data, tick);
+  const { previous, frame, next, alpha } = frameAt(data, tick);
+  const recordedTravel = useMemo(
+    () => indexRecordedTravel(data.frames, data.strideAnchor, data.rounds, data.tickRate),
+    [data.frames, data.strideAnchor, data.rounds, data.tickRate],
+  );
+  const nextPlayers = useMemo(() => new Map(next.players.map((p) => [p.id, p])), [next]);
+  const previousPlayers = useMemo(() => {
+    if (!previous) return;
+    const crossedRound = data.rounds.some(
+      (round) => round.tick > previous.tick && round.tick <= frame.tick,
+    );
+    return new Map(
+      previous.players.map((position): [string, PreviousPose] => [
+        position.id,
+        { position: crossedRound ? undefined : position, tick: previous.tick },
+      ]),
+    );
+  }, [previous, frame.tick, data.rounds]);
   const viewedPlayer = frame.players.find((player) => player.id === selected);
   const scopeFov = mode === 'pov' ? scopedVerticalFov(viewedPlayer) : undefined;
   const fov = scopeFov ?? settings.cameraFov;
@@ -831,7 +849,7 @@ function World({
     }
     const p = viewedPlayer;
     if (!p) return;
-    const n = next.players.find((n) => n.id === p.id);
+    const n = nextPlayers.get(p.id);
     if (mode === 'follow') {
       const follow = thirdPersonFollow(p, n, alpha, poseTiming);
       if (!follow) return;
@@ -903,7 +921,7 @@ function World({
             <Agent
               key={p.id}
               position={p}
-              next={next.players.find((n) => n.id === p.id)}
+              next={nextPlayers.get(p.id)}
               alpha={alpha}
               selected={p.id === selected && !preview}
               xray={settings.xray && !preview}
@@ -917,10 +935,9 @@ function World({
               showMarkers={!(mode === 'follow' && p.id === selected)}
               model={!preview ? (p.team === 3 ? agents.ct : agents.t) : null}
               tick={tick}
-              rate={data.tickRate}
-              frameTick={frame.tick}
-              nextTick={next.tick}
-              roundBoundary={Boolean(poseTiming.roundBoundary)}
+              timing={poseTiming}
+              previous={previousPlayers?.get(p.id)}
+              travelMeters={recordedTravel?.(frame, next, p.id, alpha)}
             />
           ))}
         {!preview &&
@@ -937,7 +954,9 @@ function World({
               <PovViewmodel
                 native={!data.sample}
                 position={viewedPlayer}
-                next={next.players.find((player) => player.id === viewedPlayer.id)}
+                next={nextPlayers.get(viewedPlayer.id)}
+                previous={previousPlayers?.get(viewedPlayer.id)}
+                travelMeters={recordedTravel?.(frame, next, viewedPlayer.id, alpha)}
                 alpha={alpha}
                 timing={poseTiming}
               />
@@ -1005,7 +1024,7 @@ function UtilityLayer({
   settings: ViewerSettings;
   utilityState: UtilityPresentation;
 }) {
-  const { zones: utility, projectiles } = utilityState;
+  const { zones: utility, projectiles, bombWave } = utilityState;
   const smoke = useSmokeDensity(
     settings.utilities && nativeVolume ? data.smokeTracks : undefined,
     tick,
@@ -1033,6 +1052,7 @@ function UtilityLayer({
   }, [data, tick, selected, settings.trails]);
   return (
     <>
+      {bombWave && <BombShockwave wave={bombWave} />}
       {smoke.map(({ key, track, cells }) => (
         <RecordedSmoke key={key} track={track} cells={cells} tick={tick} rate={data.tickRate} />
       ))}
@@ -1305,18 +1325,28 @@ export default function Scene({
     () => buildUtilityZoneIndex(data.events, data.tickRate),
     [data.events, data.tickRate],
   );
+  const bombWaveAt = useMemo(
+    () => indexBombShockwaves(data.events, data.tickRate),
+    [data.events, data.tickRate],
+  );
+  const reducedMotion = useReducedMotion();
   const utilityState = useMemo(
     () => ({
       projectiles: preview
         ? []
         : projectilesAt(data.grenades || [], tick, data.tickRate, settings.trajectories),
       zones: preview || !settings.utilities ? [] : zonesAt(tick),
+      bombWave:
+        preview || !settings.utilities || reducedMotion ? undefined : bombWaveAt(tick, itemIndex),
     }),
     [
       data.grenades,
       data.tickRate,
       tick,
       zonesAt,
+      bombWaveAt,
+      itemIndex,
+      reducedMotion,
       preview,
       settings.utilities,
       settings.trajectories,
@@ -1325,8 +1355,8 @@ export default function Scene({
   const expectedEquipment =
     !preview && !data.sample
       ? [
-          ...frameAt(data, tick)
-            .frame.players.filter((player) => player.alive && player.weapon)
+          ...currentPlayers
+            .filter((player) => player.alive && player.weapon)
             .map((player) => player.weapon),
           ...liveItems.map((item) => item.equipment),
           ...(!hasRecordedProjectiles(data)

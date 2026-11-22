@@ -24,7 +24,7 @@ export function playbackBounds(data: Playback) {
 export function frameAt(
   data: Playback,
   tick: number,
-): { frame: Frame; next: Frame; alpha: number } {
+): { previous?: Frame; frame: Frame; next: Frame; alpha: number } {
   let lo = 0,
     hi = data.frames.length - 1;
   while (lo < hi) {
@@ -35,6 +35,7 @@ export function frameAt(
   const frame = data.frames[lo],
     next = data.frames[Math.min(lo + 1, data.frames.length - 1)];
   return {
+    previous: data.frames[lo - 1],
     frame,
     next,
     alpha:

@@ -1,9 +1,10 @@
 import { expect, test } from '@playwright/test';
 import { Group, Matrix4, Object3D } from 'three';
-import { indexWeaponFire, weaponFireAt } from '../src/weapon-fire';
+import { indexWeaponFire, nativeWeaponPose, weaponFireAt } from '../src/weapon-fire';
 import { nativeMuzzleFrame } from '../src/equipment-model';
 import { createMuzzleResources } from '../src/muzzle-resources';
 import { povMovement } from '../src/pov-movement';
+import { recordedMotion } from '../src/recorded-motion';
 import type { Playback, Position } from '../src/types';
 
 const id = '76561198000000001',
@@ -40,6 +41,55 @@ test('held rigs move with contiguous recorded motion and replay the same stride 
   expect(povMovement(actor, { ...next, id: other }, 0.25, timing)).toBeUndefined();
   expect(povMovement(actor, { ...next, z: 300 }, 0.25, timing)).toBeUndefined();
   expect(povMovement(actor, next, 0.25, { ...timing, roundBoundary: true })).toBeUndefined();
+});
+
+test('recorded motion blends across sample boundaries and wraps camera turns', () => {
+  const current = { ...actor, x: 8, yaw: 179 };
+  const next = { ...actor, x: 13, yaw: -179 };
+  const later = { ...actor, x: 32, yaw: -177 };
+  const at = recordedMotion(current, next, 1, { fromTick: 8, nextTick: 12, tickRate: 64 });
+  const after = recordedMotion(
+    next,
+    later,
+    0,
+    { fromTick: 12, nextTick: 16, tickRate: 64 },
+    {
+      position: current,
+      tick: 8,
+    },
+  );
+  expect(after).toEqual(at);
+  expect(at.yaw).toBe(32);
+  expect(
+    recordedMotion(next, { ...later, x: 20_000 }, 0.5, {
+      fromTick: 12,
+      nextTick: 16,
+      tickRate: 64,
+    }).speed,
+  ).toBe(0);
+});
+
+test('rapid authored shots keep the ongoing pose at the next recorded fire boundary', () => {
+  const index = indexWeaponFire(
+    recording(
+      [64, 71].map((tick) => ({
+        type: 'weapon_fire',
+        tick,
+        user_steamid: id,
+        weapon: 'ak47',
+      })),
+    ),
+  );
+  const pose = (tick: number) => nativeWeaponPose(index, actor, tick, 64, 0.25, 1, true);
+  const before = pose(71 - 1e-6);
+  const boundary = pose(71);
+  expect(boundary.fire).toEqual({ age: 0, weight: 0 });
+  expect(boundary.priorFire?.age).toBeCloseTo(before.fire!.age, 6);
+  expect(boundary.priorFire?.weight).toBeCloseTo(before.fire!.weight, 6);
+  expect(pose(72).fire?.weight).toBeGreaterThan(0);
+  expect(pose(74).priorFire).toBeUndefined();
+  expect(pose(71)).toEqual(boundary);
+  expect(nativeWeaponPose(index, actor, 72, 64, 0.25, 1, false)).toEqual({});
 });
 
 test('shots require recorded firearm events, exact immutable identity and current weapon, with no input inference', () => {

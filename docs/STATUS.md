@@ -1,5 +1,7 @@
 # Feature status
 
+The viewer follow-up smooths the CT/T gait and first-person weapon cycles at recorded sample boundaries and draws a short C4 shockwave when the demo establishes its origin. New replay chunks retain distance anchors for consistent gait phase after seeks. FSR 3, an optional WebGPU path and round-by-round ingestion are roadmap work. [Renderer roadmap](product/NATIVE-RENDERER.md#renderer-and-replay-roadmap)
+
 Compact 3D is available for prepared packs that include the optional compact tier. Auto prefers it on phones, and Performance settings allow an explicit choice between compact and textured rendering. Compact uses simplified static geometry and material colors with the same replay cameras, player and weapon rendering, and calibrated radar. Existing packs keep their detailed views until compact assets are prepared. [Verification](VERIFICATION.md#compact-3d-2026-11-22)
 
 Local, unreleased viewer work uses authored AK, M4A4, AWP and Glock first-person actions and a pinned Mirage pack with native irradiance, sun occlusion, directional maps and selected two-way color layers. New recordings can supply smoke journals, sniper FOV and recorded spectator eye offsets. Full Source 2 fidelity and hardware performance remain unverified. [Native rendering](product/NATIVE-RENDERER.md) [Verification](VERIFICATION.md#local-expanded-pov-and-camera-evidence-2026-11-20)

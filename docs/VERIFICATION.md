@@ -1,5 +1,27 @@
 # Verification record
 
+## Replay motion, texture detail and C4 wave, 2026-11-22
+
+The original 8× filtering trial for all map samplers fell from 5.48 to 4.29 render submissions per second and increased p95 intervals from 450 to 600 ms on SwiftShader. A narrower 2× mobile base-color trial reached 5.26 submissions per second against 5.62 baseline, with p95 intervals of 450 ms against 433 ms. These experiments retain the same map and include the other motion changes. The shipping filter requests 4× for the textured desktop base color. Three caps it to the renderer's supported value. The mobile and compact tiers, and auxiliary textures, keep their existing sampling.
+
+The 2× mobile trial at Mirage tick 10,721 gives a 180 × 45 pavement crop horizontal adjacent-pixel contrast of 1.038 against the baseline's 0.745 in weighted RGB units. The wall crop moves from 1.402 to 1.488. This shows a clarity and rendering-cost tradeoff on the test machine. The desktop path changes only runtime sampling and uses the same installed pack and bytes.
+
+Two real `bomb_exploded` events in the confined Mirage replay have a unique recorded planted entity immediately before the event. The overhead capture at tick 38,840 paints the wave over the real map. A separate WebGL test verifies the actual shader draw, expiry, exact pixels after backward seeking and suppression under reduced motion, with an original QA map. Tests cover ambiguous and absent item origins.
+
+The writer and browser reconstruct the same traveled distance before, at and after byte-adaptive shared boundaries with cold cache eviction. The actual Three mixer evaluates at most once for repeated identical samples and shares phase across differently timed walk, run and crouch cycles. The browser probes actual skinned vertex inputs across dark desktop and light phone profiles. The muzzle guard skips anchor transforms outside flash intervals. The shot regression verifies continuous weight and phase when the next recorded shot begins. Older replays retain demo-time motion and the existing event/position safeguards.
+
+Four alternating baseline and final runs used the same confined 31-chunk Mirage replay, installed mobile GLB, free camera, 720 × 480 viewport, 540 × 360 drawing buffer and Low preset. Chromium used SwiftShader with fresh contexts, disabled browser cache, 40 ms latency and 100 Mbit/s throughput. A cold seek required a previously unfetched slice. The render count deduplicates default-framebuffer draws per animation frame over 8.2 seconds.
+
+| Median across runs            | Baseline `7f5847c` |  Final |
+| ----------------------------- | -----------------: | -----: |
+| First usable painted map      |             7.81 s | 7.83 s |
+| Uncached seek                 |             223 ms | 233 ms |
+| Cached seek                   |              70 ms |  66 ms |
+| p95 render interval           |             433 ms | 433 ms |
+| Render submissions per second |               5.63 |   5.31 |
+
+The known savings are duplicate skeleton sampling, unused x-ray resources and idle muzzle transforms. This matched detailed-map run does not establish a frame-rate gain. The faster compact map remains available on capable prepared packs, with the separately measured startup and rendering tradeoff below. Physical GPU and cross-viewer performance remain unmeasured. Captures and probes are under ignored `var/viewer-benchmark/`.
+
 ## Compact 3D, 2026-11-22
 
 The prepared official Mirage mobile tier at manifest `8225060435969537482` produced a 1,228,488-byte Compact 3D GLB through the existing Linux conversion boundary. Output hash `b24c2d7b76cc2d77bff97e2e2678f4fbff138cb98c840472063cdc9e172a8a7f` matches the publication check. The result has 167,156 triangles in 54 spatial batches and no embedded images. The prepared source is 62,485,472 bytes. The retained textured desktop and mobile maps remain intact.

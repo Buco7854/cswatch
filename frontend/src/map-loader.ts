@@ -6,6 +6,7 @@ import { loadScopedGLTF } from './scoped-gltf-loader';
 import { ModelCache, type ModelScope } from './model-cache';
 import { mapModelResources } from './map-model-resources';
 import { registerMapBakedLighting } from './map-baked-lighting';
+import { improveMapTextureDetail } from './map-texture-detail';
 
 const MiB = 1024 * 1024;
 const inactiveLimit = () =>
@@ -20,7 +21,19 @@ const cache = new ModelCache<GLTF>({
   clear: (url) => useLoader.clear(MapGLTFLoader, url),
   inspect: mapModelResources,
   load: (url, callbacks) =>
-    loadScopedGLTF(url, callbacks, undefined, false, registerMapBakedLighting),
+    loadScopedGLTF(
+      url,
+      {
+        ...callbacks,
+        loaded(gltf) {
+          if (url.split('/').at(-2) === 'desktop') improveMapTextureDetail(gltf.scenes);
+          callbacks.loaded(gltf);
+        },
+      },
+      undefined,
+      false,
+      registerMapBakedLighting,
+    ),
 });
 
 /** Private map loader class gives useLoader a cache namespace separate from agent assets. */
