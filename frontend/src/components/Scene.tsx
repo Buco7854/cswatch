@@ -10,7 +10,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
-import type { ReactNode } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import type { ListenerPose } from '../viewer-audio';
 import { AdaptiveResolution, type RenderQuality } from '../adaptive-resolution';
 import { Canvas, createPortal, useFrame, useThree } from '@react-three/fiber';
@@ -56,8 +56,9 @@ import {
   recordedEyePosition,
   scopedVerticalFov,
 } from '../pov-camera';
-import { useSmokeDensity } from '../smoke-render-state';
-import { ApproximateSmoke, RecordedSmoke } from './RecordedSmoke';
+import { smokeHidesLabel } from '../smoke-render-state';
+import type { SmokeSample } from '../smoke-field';
+import { SmokeEffects } from './RecordedSmoke';
 import { mapSurface, type MapUnavailableReason } from '../map-availability';
 import MapUnavailable from './MapUnavailable';
 import { mapAcquisitionMessage, type DemoMapState } from '../demo-map-assets';
@@ -407,6 +408,7 @@ function Agent({
   xray,
   name,
   labels,
+  labelSmoke,
   hideNearCamera,
   showMarkers,
   model,
@@ -424,6 +426,7 @@ function Agent({
   xray: boolean;
   name?: string;
   labels: boolean;
+  labelSmoke: RefObject<SmokeSample[]>;
   hideNearCamera: boolean;
   showMarkers: boolean;
   model: string | null;
@@ -450,6 +453,7 @@ function Agent({
   }, []);
   const ref = useRef<THREE.Group>(null);
   const labelAnchor = useRef<THREE.Group>(null);
+  const labelElement = useRef<HTMLDivElement>(null);
   const headAnchor = useRef<THREE.Bone | null>(null);
   const headPosition = useMemo(() => new THREE.Vector3(), []);
   const registerHeadAnchor = useCallback((bone: THREE.Bone) => {
@@ -481,11 +485,24 @@ function Agent({
     const anchor = labelAnchor.current;
     if (!group || !anchor) return;
     anchor.position.set(0, fallbackLabelHeight, 0);
-    if (!headAnchor.current) return;
-    // The native locomotion pose is sampled at priority -2. Project the head from that pose.
-    const head = group.worldToLocal(headAnchor.current.getWorldPosition(headPosition));
-    if (head.y >= 0.25 && head.y <= 2.3 && Math.hypot(head.x, head.z) <= 0.8)
-      anchor.position.set(head.x, head.y + 0.24, head.z);
+    if (headAnchor.current) {
+      // The native locomotion pose is sampled at priority -2. Project the head from that pose.
+      const head = group.worldToLocal(headAnchor.current.getWorldPosition(headPosition));
+      if (head.y >= 0.25 && head.y <= 2.3 && Math.hypot(head.x, head.z) <= 0.8)
+        anchor.position.set(head.x, head.y + 0.24, head.z);
+    }
+    const label = labelElement.current;
+    if (label)
+      label.style.visibility =
+        !xray &&
+        labelSmoke.current.length &&
+        smokeHidesLabel(
+          labelSmoke.current,
+          camera.position.toArray(),
+          anchor.getWorldPosition(headPosition).toArray(),
+        )
+          ? 'hidden'
+          : '';
   }, -1);
   const color = position.team === 3 ? '#9ec7da' : '#e7ba73';
   if (!position.alive) return null;
@@ -528,6 +545,7 @@ function Agent({
             style={{ pointerEvents: 'none' }}
           >
             <div
+              ref={labelElement}
               className="actor-label"
               data-team={position.team}
               data-player={position.id}
@@ -566,7 +584,6 @@ function World({
   data,
   low,
   tick,
-  playing,
   shadows,
   mode,
   selected,
@@ -591,7 +608,6 @@ function World({
   data: Playback;
   low: boolean;
   tick: number;
-  playing: boolean;
   shadows: boolean;
   mode: string;
   selected: string;
@@ -620,6 +636,18 @@ function World({
   onAudioListener?: (pose: ListenerPose | null) => void;
 }) {
   const { camera, gl, invalidate } = useThree();
+  const labelSmoke = useRef<SmokeSample[]>([]);
+  const [contextRevision, setContextRevision] = useState(0);
+  useLayoutEffect(() => {
+    const restored = () => {
+      // The filtered sky and static shadows were rendered into the lost context.
+      gl.shadowMap.needsUpdate = true;
+      setContextRevision((revision) => revision + 1);
+      invalidate();
+    };
+    gl.domElement.addEventListener('webglcontextrestored', restored);
+    return () => gl.domElement.removeEventListener('webglcontextrestored', restored);
+  }, [gl, invalidate]);
   useMapShadowCache(!data.sample && shadows);
   const [followModel, setFollowModel] = useState<THREE.Group | null>(null);
   const registerFollowModel = useCallback((map: THREE.Group) => {
@@ -635,6 +663,7 @@ function World({
     () => (tracers ? followTrace?.fork() : undefined),
     [followTrace, tracers],
   );
+  const smokeSunTrace = useMemo(() => followTrace?.fork(), [followTrace]);
   const fogResources = useRef<SourceFogResources>({ fog: null, cube: null });
   const movement = useRef(new Set<string>());
   const fastMovement = useRef(false);
@@ -949,6 +978,7 @@ function World({
   return (
     <>
       <EnvironmentBackground
+        key={contextRevision}
         environment={environment}
         sample={Boolean(data.sample)}
         report={reportEnvironment}
@@ -1006,6 +1036,7 @@ function World({
               xray={settings.xray && !preview}
               name={data.players.find((player) => player.id === p.id)?.name}
               labels={settings.playerLabels && !preview && (Boolean(data.sample) || modelReady)}
+              labelSmoke={labelSmoke}
               hideNearCamera={
                 !preview &&
                 !data.sample &&
@@ -1070,11 +1101,23 @@ function World({
           />
         )}
         {!preview && <RecordedEquipment items={items} />}
+        {!preview && settings.utilities && (
+          <SmokeEffects
+            data={data}
+            zones={utilityState.zones}
+            tick={tick}
+            nativeVolume={modelReady}
+            sunTrace={smokeSunTrace}
+            low={low}
+            xray={settings.xray}
+            sun={sun}
+            labelSmoke={labelSmoke}
+          />
+        )}
         {!preview && (
           <UtilityLayer
             data={data}
             tick={tick}
-            playing={playing}
             nativeVolume={modelReady}
             staticMap={followModel}
             lightBursts={!low}
@@ -1119,7 +1162,6 @@ function World({
 function UtilityLayer({
   data,
   tick,
-  playing,
   nativeVolume,
   staticMap,
   lightBursts,
@@ -1129,7 +1171,6 @@ function UtilityLayer({
 }: {
   data: Playback;
   tick: number;
-  playing: boolean;
   nativeVolume: boolean;
   staticMap: THREE.Group | null;
   lightBursts: boolean;
@@ -1139,23 +1180,6 @@ function UtilityLayer({
 }) {
   const { zones: utility, projectiles, bombWave } = utilityState;
   const reducedMotion = useReducedMotion();
-  const smoke = useSmokeDensity(
-    settings.utilities && nativeVolume ? data.smokeTracks : undefined,
-    tick,
-    data.tickRate,
-    playing,
-  );
-  const approximateZones = utility.filter(
-    (zone) =>
-      zone.kind !== 'smoke' ||
-      !smoke.some(
-        ({ track }) =>
-          track.entity === zone.entity &&
-          Math.abs(track.origin[0] - zone.x) <= 1 &&
-          Math.abs(track.origin[1] - zone.y) <= 1 &&
-          Math.abs(track.origin[2] - zone.z) <= 1,
-      ),
-  );
   const trail = useMemo(() => {
     if (!settings.trails) return [];
     const frames = data.frames.filter((f) => f.tick <= tick && f.tick > tick - data.tickRate * 5);
@@ -1167,15 +1191,6 @@ function UtilityLayer({
   return (
     <>
       {bombWave && <BombShockwave wave={bombWave} />}
-      {smoke.map(({ key, track, cells }) => (
-        <RecordedSmoke key={key} track={track} cells={cells} tick={tick} rate={data.tickRate} />
-      ))}
-      {approximateZones
-        .filter((zone) => zone.kind === 'smoke')
-        .slice(0, 8)
-        .map((zone) => (
-          <ApproximateSmoke key={zone.id} zone={zone} tick={tick} rate={data.tickRate} />
-        ))}
       {settings.utilities && (
         <>
           <GrenadeBurst
@@ -1799,7 +1814,6 @@ export default function Scene({
                       data={data}
                       low={low}
                       tick={tick}
-                      playing={playing}
                       shadows={shadows}
                       mode={mode}
                       selected={selected}
