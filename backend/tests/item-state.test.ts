@@ -286,7 +286,7 @@ test('streamed world equipment survives byte-bounded chunking and rejects altere
     await writeReplay(folder, {
       ...sample,
       frames,
-      itemState: { complete: true },
+      itemState: { complete: true, coverage: { dropped: true, planted: true, projectile: true } },
       itemSamples: [present(0), present(2000), { id: 'item:1:1:0', tick: 3500, present: false }],
     });
     const manifest = validateReplayArtifacts(folder).manifest;

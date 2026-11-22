@@ -1,3 +1,4 @@
+import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { manualMapAssets } from './fixtures/map-assets';
 import { expect, test, type Page } from '@playwright/test';
 import {
@@ -79,7 +80,7 @@ async function install(
     }),
   );
   await page.route('**/api/demos/original-source-material/playback', (route) =>
-    route.fulfill({ json: originalMapReplay() }),
+    fulfillReplayFixture(route, originalMapReplay()),
   );
   await page.route('**/api/demos/original-source-material/map-assets', (route) =>
     route.fulfill({

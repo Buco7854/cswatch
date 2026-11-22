@@ -4,7 +4,6 @@ export const actor = '76561198000000001',
 /** Original protocol-shaped fixture, never a user's match or claimed Source 2 artwork. */
 export function recordedReplay(): Playback {
   return {
-    version: 1,
     map: 'de_review_prompts_fixture',
     sample: false,
     tickRate: 64,

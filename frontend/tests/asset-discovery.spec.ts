@@ -1,3 +1,4 @@
+import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { originalMapReplay } from './fixtures/original-map';
 import { installMapFixture } from './fixtures/map-assets';
@@ -26,7 +27,7 @@ async function viewer(page: Page, catalog: (route: Route) => Promise<unknown>) {
     }),
   );
   await page.route('**/api/demos/discovery-fixture/playback', (route) =>
-    route.fulfill({ json: data }),
+    fulfillReplayFixture(route, data),
   );
   await installMapFixture(page, data.map, 'discovery-fixture');
   await page.route('**/api/assets/agents', catalog);

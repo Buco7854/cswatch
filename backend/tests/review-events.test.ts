@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { roundAt, roundEvents } from '../../frontend/src/review-events.js';
 import type { Playback } from '../../shared/playback.js';
 const data: Playback = {
-  version: 1,
   map: 'de_mirage',
   sample: false,
   tickRate: 64,

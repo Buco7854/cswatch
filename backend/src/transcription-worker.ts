@@ -43,9 +43,9 @@ export function requeueTranscription(
       return { status: current.transcription_status };
     let voice: unknown;
     try {
-      voice = JSON.parse(current.metadata || '{}').communications?.voice;
+      voice = JSON.parse(current.metadata).communications.voice;
     } catch {
-      /* Legacy replay has no recorded voice contract. */
+      /* Invalid metadata cannot establish recorded voice. */
     }
     if (voice !== 'available' && voice !== 'partial')
       throw new HttpError(409, 'No supported recorded voice is available for transcription.');

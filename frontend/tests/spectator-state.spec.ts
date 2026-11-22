@@ -23,7 +23,6 @@ function recording(): Playback {
     weapon: 'AK47',
   }));
   return {
-    version: 1,
     sample: false,
     tickRate: 64,
     map: 'de_original_spectator_qa',

@@ -10,9 +10,9 @@ import { validInfernoBank } from '../../shared/inferno-state.mjs';
 export const streamedReplayViews = new WeakSet<Playback>();
 
 export function validateManifest(value: PlaybackManifest): PlaybackManifest {
-  value.gameplaySounds = validateGameplaySoundInfo(value.gameplaySounds);
   if (
-    value.version !== 2 ||
+    !value ||
+    value.version !== 3 ||
     !Number.isSafeInteger(value.firstTick) ||
     !Number.isSafeInteger(value.lastTick) ||
     value.firstTick < 0 ||
@@ -21,10 +21,26 @@ export function validateManifest(value: PlaybackManifest): PlaybackManifest {
     !value.chunks.length ||
     value.chunks.length > 512 ||
     !Array.isArray(value.players) ||
-    !Array.isArray(value.events)
+    !Array.isArray(value.events) ||
+    !Array.isArray(value.deadTimes) ||
+    !Array.isArray(value.warnings) ||
+    !Array.isArray(value.chat) ||
+    !Array.isArray(value.throwInputs) ||
+    !Array.isArray(value.objectives?.samples) ||
+    !Array.isArray(value.matchState?.samples) ||
+    !Array.isArray(value.crosshairs?.samples) ||
+    !value.communications ||
+    !value.eventAvailability ||
+    !value.capabilities ||
+    !value.itemState?.coverage ||
+    !value.worldBounds ||
+    !['minX', 'minY', 'minZ', 'maxX', 'maxY', 'maxZ'].every((key) =>
+      Number.isFinite(value.worldBounds[key as keyof typeof value.worldBounds]),
+    )
   )
     throw new Error('Replay metadata is invalid.');
-  validateItemState(value.itemState);
+  value.itemState = validateItemState(value.itemState);
+  value.gameplaySounds = validateGameplaySoundInfo(value.gameplaySounds);
   if (!validAgentDeaths(value.agentDeaths)) delete value.agentDeaths;
   if (
     value.gaitHistory !== undefined &&
@@ -144,7 +160,6 @@ export class ReplayCache {
     const descriptor = this.manifest.chunks[index];
     const value: Playback = {
       ...metadata,
-      version: 1,
       frames: part.frames,
       grenades: part.grenades,
       voice: part.voice,
@@ -176,10 +191,14 @@ export class ReplayCache {
           throw new DOMException('Replay closed', 'AbortError');
         const info = this.manifest.chunks[index];
         if (
-          part.version !== 2 ||
+          part.version !== 3 ||
           part.index !== index ||
           !Array.isArray(part.frames) ||
           !Array.isArray(part.grenades) ||
+          !Array.isArray(part.voice) ||
+          part.voice.length > 50000 ||
+          !Array.isArray(part.sounds) ||
+          !Array.isArray(part.itemSamples) ||
           part.frames.length !== info.frames ||
           part.frames[0]?.tick !== info.firstFrameTick ||
           part.frames.at(-1)?.tick !== info.endTick ||
@@ -195,8 +214,6 @@ export class ReplayCache {
           info.endTick,
           this.manifest.lastTick,
         );
-        if (Boolean(this.manifest.itemState) !== (part.itemSamples !== undefined))
-          throw new Error('Replay item metadata is invalid.');
         attachAim(part, info, new Set(this.manifest.players.map((player) => player.id)));
         this.cache.set(index, part);
         while (this.cache.size > 3) {

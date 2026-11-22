@@ -199,7 +199,7 @@ test('job requests bind immutable approval hash, coalesce concurrent authorizati
     );
     assert.equal(
       mapJobRequestSchema.safeParse({ schemaVersion: 1, packId: id, approval }).success,
-      true,
+      false,
     );
     assert.equal(
       mapJobRequestSchema.safeParse({
@@ -211,7 +211,12 @@ test('job requests bind immutable approval hash, coalesce concurrent authorizati
       false,
     );
     assert.equal(
-      mapJobRequestSchema.safeParse({ schemaVersion: 1, packId: 'b'.repeat(64), approval }).success,
+      mapJobRequestSchema.safeParse({
+        schemaVersion: 1,
+        packId: 'b'.repeat(64),
+        approval,
+        generation: 'a'.repeat(32),
+      }).success,
       false,
     );
     assert.equal(
@@ -322,7 +327,6 @@ test('global map identity is retained by bounded replay publication and rejects 
       weapon: 'ak47',
     };
     const data: Playback = {
-      version: 1,
       map: 'de_mirage',
       mapIdentity: approval.identity,
       sample: false,

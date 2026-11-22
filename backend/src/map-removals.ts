@@ -22,7 +22,7 @@ export const mapRemovalRequestSchema = z
     schemaVersion: z.literal(1),
     packId: packIdSchema,
     requestId: packIdSchema,
-    generation: z.string().regex(/^(?:initial|[a-f0-9]{32})$/),
+    generation: z.string().regex(/^[a-f0-9]{32}$/),
     removalId: z.string().regex(/^[a-f0-9]{32}$/),
     map: officialMapName,
     manifest: z
@@ -229,8 +229,7 @@ export async function listManagedMaps(assets: string, jobs: string): Promise<Man
     const removal = await readMapRemoval(jobs, pack.packId),
       outcome = await readMapRemovalResult(jobs, pack.packId);
     const current =
-      removal?.markerSha256 === pack.version &&
-      removal.generation === (request.generation || 'initial');
+      removal?.markerSha256 === pack.version && removal.generation === request.generation;
     maps.push({
       ...pack,
       removal: current
@@ -249,7 +248,7 @@ export async function listManagedMaps(assets: string, jobs: string): Promise<Man
     if (!removal || (outcome?.removalId === removal.removalId && outcome.status === 'removed'))
       continue;
     const request = await readMapRequest(jobs, removal.requestId);
-    if (!request || (request.generation || 'initial') !== removal.generation) continue;
+    if (!request || request.generation !== removal.generation) continue;
     maps.push({
       packId: id,
       map: removal.map,
@@ -276,8 +275,7 @@ export function enqueueMapRemoval(
     const existing = await readMapRemoval(jobs, packId);
     if (existing?.markerSha256 === version && (await pendingMapRemoval(jobs, packId))) {
       const request = await readMapRequest(jobs, existing.requestId);
-      if (!request || (request.generation || 'initial') !== existing.generation)
-        return 'changed' as const;
+      if (!request || request.generation !== existing.generation) return 'changed' as const;
       authorize();
       return 'queued' as const;
     }
@@ -297,7 +295,7 @@ export function enqueueMapRemoval(
         outcome?.removalId === existing.removalId &&
         outcome.status === 'failed' &&
         request &&
-        (request.generation || 'initial') === existing.generation &&
+        request.generation === existing.generation &&
         (result?.status === 'ready' || result?.code === 'removed_by_admin')
       ) {
         authorize();
@@ -327,7 +325,7 @@ export function enqueueMapRemoval(
           schemaVersion: 1,
           packId,
           requestId,
-          generation: request.generation || 'initial',
+          generation: request.generation,
           removalId: randomBytes(16).toString('hex'),
           map: pack.map,
           manifest: pack.manifest,

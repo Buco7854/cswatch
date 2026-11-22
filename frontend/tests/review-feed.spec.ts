@@ -1,3 +1,4 @@
+import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { installMapFixture } from './fixtures/map-assets';
 import { enableViewerOverlay } from './fixtures/viewer-options';
 import { test, expect, type Page } from '@playwright/test';
@@ -89,7 +90,9 @@ async function open(
       },
     }),
   );
-  await page.route('**/api/demos/review-feed-fixture/playback', (r) => r.fulfill({ json: data }));
+  await page.route('**/api/demos/review-feed-fixture/playback', (r) =>
+    fulfillReplayFixture(r, data),
+  );
   await installMapFixture(page, data.map, 'review-feed-fixture');
   await page.goto('/watch/review-feed-fixture');
   await expect(page.locator('.timeline-slider')).toBeVisible();

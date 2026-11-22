@@ -1,3 +1,4 @@
+import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { expect, test } from '@playwright/test';
 import { equipmentIconKey, validateEquipmentIcons } from '../src/equipment-icons';
 import { installMapFixture } from './fixtures/map-assets';
@@ -58,7 +59,7 @@ test('a mounted viewer replaces recorded weapon text when its artwork is prepare
     }),
   );
   await page.route(`**/api/demos/${id}/playback`, (route) =>
-    route.fulfill({ json: originalMapReplay() }),
+    fulfillReplayFixture(route, originalMapReplay()),
   );
   await page.route('**/api/assets/equipment', (route) => {
     discoveries++;

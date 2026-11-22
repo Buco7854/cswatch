@@ -162,7 +162,7 @@ const position = {
   weapon: 'ak47',
 };
 
-test('writer and viewer share aim samples at seams, preserve old poses, and sample 128 Hz ticks', async () => {
+test('writer and viewer share aim samples at seams, preserve sparse poses, and sample 128 Hz ticks', async () => {
   const folder = mkdtempSync(join(tmpdir(), 'cswatch-aim-'));
   try {
     const seam = replayLimits.chunkFrames * 4;
@@ -171,7 +171,6 @@ test('writer and viewer share aim samples at seams, preserve old poses, and samp
       players: [{ ...position }],
     }));
     const replay: Playback = {
-      version: 1,
       map: 'training',
       tickRate: 128,
       sample: false,
@@ -188,7 +187,7 @@ test('writer and viewer share aim samples at seams, preserve old poses, and samp
       sample(seam, -175, 8, true),
       sample(seam + 1, -165, 9, true),
     ];
-    await writeReplay(folder, replay, false, (start, end) =>
+    await writeReplay(folder, replay, (start, end) =>
       encodeAimChunk(start, end, one(samples.filter(([tick]) => tick >= start && tick <= end))),
     );
     const { manifest } = validateReplayArtifacts(folder);
@@ -213,7 +212,7 @@ test('writer and viewer share aim samples at seams, preserve old poses, and samp
     assert.equal(playerPose(first, next, 0.125, timing).yaw, -170);
     assert.equal(playerPose(first, next, 0.125, timing).pitch, 8.5);
     assert.equal(playerPose(first, next, 0.75, timing).yaw, 10); // missing ticks use legacy pose
-    assert.equal(playerPose(position, position, 0, timing), position); // old replay
+    assert.equal(playerPose(position, position, 0, timing), position); // no attached aim evidence
 
     right.aim = encodeAimChunk(seam, seam + 4, one([sample(seam, -170, 8, false)]))!;
     const json = JSON.stringify(right);

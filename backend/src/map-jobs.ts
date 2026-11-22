@@ -30,10 +30,7 @@ export const packIdSchema = z.string().regex(/^[a-f0-9]{64}$/);
 const mapJobIdentity = {
   schemaVersion: z.literal(1),
   packId: packIdSchema,
-  generation: z
-    .string()
-    .regex(/^[a-f0-9]{32}$/)
-    .optional(),
+  generation: z.string().regex(/^[a-f0-9]{32}$/),
 };
 export const mapJobRequestSchema = z.union([
   z
@@ -460,22 +457,25 @@ function enqueueMapJob(
     await prepareMapJobs(root);
     if (await readMapRequest(root, packId)) return 'existing' as const;
     if (!(await queueHasRoom(root, true))) return 'full' as const;
-    await atomicMapJobWrite(root, 'requests', packId, {
-      ...request,
-      generation: randomBytes(16).toString('hex'),
-    });
+    await atomicMapJobWrite(root, 'requests', packId, request);
     return 'queued' as const;
   });
   enqueueQueue = operation.catch(() => undefined);
   return operation;
 }
 export function enqueueMapRequest(root: string, approval: ApprovedMapEntry) {
-  return enqueueMapJob(root, { schemaVersion: 1, packId: mapPackId(approval), approval });
+  return enqueueMapJob(root, {
+    schemaVersion: 1,
+    packId: mapPackId(approval),
+    approval,
+    generation: randomBytes(16).toString('hex'),
+  });
 }
 export function enqueueLatestMapRequest(root: string, selection: LatestOfficialSelection) {
   return enqueueMapJob(root, {
     schemaVersion: 1,
     packId: latestMapRequestId(selection),
+    generation: randomBytes(16).toString('hex'),
     kind: 'latest-official',
     selection,
   });

@@ -323,7 +323,6 @@ export async function parse(folder: string, maxExpanded: number) {
   );
   warnings.push(...media.warnings);
   const data: Playback = {
-    version: 1,
     map: String(header.map_name || 'unknown').slice(0, 80),
     tickRate,
     sample: false,
@@ -351,19 +350,7 @@ export async function parse(folder: string, maxExpanded: number) {
     eventAvailability,
     throwInputs: throwInputs.snapshots,
   };
-  await writeReplay(folder, data, true, aim);
-  writeFileSync(
-    join(folder, 'summary.json'),
-    JSON.stringify({
-      map: data.map,
-      duration: (frames.at(-1)!.tick - frames[0].tick) / tickRate,
-      rounds: rounds.length,
-      players: data.players,
-      firstTick: frames[0].tick,
-      lastTick: frames.at(-1)!.tick,
-      warnings,
-    }),
-  );
+  await writeReplay(folder, data, aim);
   if (existsSync(expanded)) unlinkSync(expanded);
 }
 if (process.argv[1] === fileURLToPath(import.meta.url) && process.argv[2])

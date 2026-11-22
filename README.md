@@ -155,6 +155,8 @@ APP_URL=http://localhost:8000 COOKIE_SECURE=false npm start
 APP_URL=http://localhost:8000 COOKIE_SECURE=false npm run worker
 ```
 
+cswatch initializes its complete SQLite schema in an empty data directory. A server or worker pointed at an incompatible database exits with an instruction to use an empty data directory. Keep the original directory if you need to retain its contents.
+
 The local data directory defaults to `../var` relative to `backend/`. Environment files are not loaded implicitly by application code; export variables in your shell, use Node's `--env-file`, or use Docker Compose's `env_file`. For hot UI development, Vite's proxy is available; use `APP_URL=http://localhost:5173` for the backend so origin/host validation matches the browser. Do not weaken production checks for development.
 
 ```sh

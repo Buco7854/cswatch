@@ -9,7 +9,7 @@ import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import { z, ZodError } from 'zod';
 import { loadConfig, flagDefaults, type Config, type Flag } from './config.js';
-import { Store, now } from './db.js';
+import { Store, now, openStoreForStartup } from './db.js';
 import { buildInfo } from './build-info.js';
 import {
   HttpError,
@@ -328,20 +328,28 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
   app.get<{ Params: { id: string } }>('/api/demos/:id', async (r) =>
     visible(accessDemo(db, r.params.id, r.user, false, r.guest), r.user?.id, r.guest?.id),
   );
+  const requireReplay = (demo: ReturnType<typeof accessDemo>) => {
+    let version: unknown;
+    try {
+      version = JSON.parse(demo.metadata || '{}')?.replayVersion;
+    } catch {
+      /* Invalid metadata cannot establish a playable replay. */
+    }
+    if (demo.status !== 'ready' || version !== 3)
+      throw new HttpError(409, 'This demo is not ready.');
+  };
   app.get<{ Params: { id: string } }>('/api/demos/:id/playback', async (r, reply) => {
     const d = accessDemo(db, r.params.id, r.user, false, r.guest);
-    if (d.status !== 'ready') throw new HttpError(409, 'This demo is not ready.');
+    requireReplay(d);
+    const path = join(db.root, 'demos', d.id, 'manifest.json.gz');
+    if (!existsSync(path)) throw new HttpError(404, 'Replay file not found.');
     reply.type('application/json').header('Content-Encoding', 'gzip');
-    const folder = join(db.root, 'demos', d.id);
-    const file = existsSync(join(folder, 'manifest.json.gz'))
-      ? 'manifest.json.gz'
-      : 'playback.json.gz';
-    return reply.send(createReadStream(join(folder, file)));
+    return reply.send(createReadStream(path));
   });
   app.get<{ Params: { id: string } }>('/api/demos/:id/captions', async (r, reply) => {
     const demo = accessDemo(db, r.params.id, r.user, false, r.guest);
-    if (demo.status !== 'ready') throw new HttpError(409, 'This demo is not ready.');
-    const status = demo.transcription_status || 'disabled';
+    requireReplay(demo);
+    const status = demo.transcription_status;
     if (status === 'ready' && demo.transcription_artifact) {
       let name: string;
       try {
@@ -359,6 +367,7 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
   app.post<{ Params: { id: string } }>('/api/demos/:id/captions/retry', async (r, reply) => {
     const user = requireUser(r),
       demo = accessDemo(db, r.params.id, user, true);
+    requireReplay(demo);
     rateLimit(db, r, 'subtitle-retry', 3, 3600, user.id);
     z.object({})
       .strict()
@@ -372,7 +381,7 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
     '/api/demos/:id/playback/chunks/:index',
     async (r, reply) => {
       const d = accessDemo(db, r.params.id, r.user, false, r.guest);
-      if (d.status !== 'ready') throw new HttpError(409, 'This demo is not ready.');
+      requireReplay(d);
       if (!/^(0|[1-9]\d{0,2})$/.test(r.params.index) || Number(r.params.index) >= 512)
         throw new HttpError(404, 'Replay chunk not found.');
       const path = join(db.root, 'demos', d.id, 'chunks', `${r.params.index}.json.gz`);
@@ -514,7 +523,7 @@ export async function createApp(c: Config, db = new Store(c.dataDir)) {
 }
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const c = loadConfig();
-  const app = await createApp(c);
+  const app = await createApp(c, openStoreForStartup(c.dataDir));
   await app.listen({ port: c.port, host: '0.0.0.0' });
   const shutdown = async () => {
     await app.close();

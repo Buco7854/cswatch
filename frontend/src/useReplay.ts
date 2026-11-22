@@ -2,12 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api';
 import { sample } from './sample';
 import { ReplayCache, chunkIndex, validateManifest } from './replay-cache';
-import { validateItemSamples, validateItemState } from './item-state';
-import { validateGameplaySoundInfo, validateGameplaySoundCues } from './gameplay-sound-assets';
 import type { Demo, Playback } from './types';
 import type { PlaybackChunk, PlaybackManifest } from '../../shared/playback';
-import { validSmokeTracks } from '../../shared/smoke-state.mjs';
-import { validInfernoBank } from '../../shared/inferno-state.mjs';
 
 export function useReplay(
   id: string | undefined,
@@ -63,57 +59,27 @@ export function useReplay(
           if (detail.status !== 'failed') timer = setTimeout(load, 3000);
           return;
         }
-        const replay = await api<Playback | PlaybackManifest>(`/api/demos/${id}/playback`, options);
+        const replay = await api<PlaybackManifest>(`/api/demos/${id}/playback`, options);
         if (controller.signal.aborted) return;
-        if (replay.version === 2) {
-          const metadata = validateManifest(replay);
-          const next = new ReplayCache(metadata, (index, signal) =>
-            api<PlaybackChunk>(`/api/demos/${id}/playback/chunks/${index}`, { signal }),
-          );
-          cache.current = next;
-          const start = Math.max(
-            metadata.firstTick,
-            Math.min(metadata.lastTick, resumeTick ?? metadata.firstTick),
-          );
-          const initial = await next.at(start);
-          if (controller.signal.aborted) {
-            next.close();
-            return;
-          }
-          setData(initial);
-          setBounds({ first: metadata.firstTick, last: metadata.lastTick });
-          setManifest(metadata);
-          setLoadedFor(identity);
-          callback.current(initial, start);
-        } else {
-          if (replay.version !== 1 || !replay.frames?.length)
-            throw new Error('Replay metadata is invalid.');
-          validateItemState(replay.itemState);
-          if (!validSmokeTracks(replay.smokeTracks, replay.frames.at(-1)!.tick))
-            delete replay.smokeTracks;
-          if (!validInfernoBank(replay.infernos, replay.frames.at(-1)!.tick))
-            delete replay.infernos;
-          replay.gameplaySounds = validateGameplaySoundInfo(replay.gameplaySounds);
-          replay.sounds = validateGameplaySoundCues(
-            replay.sounds,
-            replay.frames[0].tick,
-            replay.frames.at(-1)!.tick,
-            replay.frames.at(-1)!.tick,
-          );
-          replay.itemSamples = validateItemSamples(replay.itemSamples, replay.frames.at(-1)!.tick);
-          if (Boolean(replay.itemState) !== (replay.itemSamples !== undefined))
-            throw new Error('Replay item metadata is invalid.');
-          setData(replay);
-          setBounds({ first: replay.frames[0].tick, last: replay.frames.at(-1)!.tick });
-          setLoadedFor(identity);
-          callback.current(
-            replay,
-            Math.max(
-              replay.frames[0].tick,
-              Math.min(replay.frames.at(-1)!.tick, resumeTick ?? replay.frames[0].tick),
-            ),
-          );
+        const metadata = validateManifest(replay);
+        const next = new ReplayCache(metadata, (index, signal) =>
+          api<PlaybackChunk>(`/api/demos/${id}/playback/chunks/${index}`, { signal }),
+        );
+        cache.current = next;
+        const start = Math.max(
+          metadata.firstTick,
+          Math.min(metadata.lastTick, resumeTick ?? metadata.firstTick),
+        );
+        const initial = await next.at(start);
+        if (controller.signal.aborted) {
+          next.close();
+          return;
         }
+        setData(initial);
+        setBounds({ first: metadata.firstTick, last: metadata.lastTick });
+        setManifest(metadata);
+        setLoadedFor(identity);
+        callback.current(initial, start);
       } catch (e) {
         if (!controller.signal.aborted) setError((e as Error).message);
       }

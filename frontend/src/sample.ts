@@ -1,7 +1,6 @@
 import type { Playback } from './types';
 // An original, deterministic training scene. Never presented as an uploaded match.
 export const sample: Playback = {
-  version: 1,
   map: 'Training courtyard',
   tickRate: 64,
   sample: true,

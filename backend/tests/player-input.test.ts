@@ -202,7 +202,15 @@ test('capabilities describe actual available source fields and recorded grenade 
     replayCapabilities(frames, [{ type: 'grenade_thrown', tick: 4 }]).utilityThrows,
     true,
   );
-  const payload = { version: 2, index: 0, frames, grenades: [] };
+  const payload = {
+    version: 3,
+    index: 0,
+    frames,
+    grenades: [],
+    voice: [],
+    sounds: [],
+    itemSamples: [],
+  };
   assert.equal(chunkSchema.safeParse(payload).success, true);
   const malicious = structuredClone(payload);
   malicious.frames[0].players[0].input!.buttons = '18446744073709551616';

@@ -150,7 +150,7 @@ export async function processOneMapRemoval(options) {
       if (
         !request ||
         !result ||
-        (request.generation || 'initial') !== removal.generation ||
+        request.generation !== removal.generation ||
         managedPackId(request, result) !== removal.packId ||
         !(
           result.status === 'ready' ||

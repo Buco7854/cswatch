@@ -2,11 +2,8 @@ import equipment from './equipment-models.json' with { type: 'json' };
 import { strideDisplacement } from './stride-distance.mjs';
 
 const classes = ['rifle', 'pistol', 'knife'];
-// V1: end tick, span, distance in millimetres, relative bearing, duck, class.
-const v1Bytes = 10;
-// V2 adds a world bearing and keeps stationary intervals for continuity.
-const v2Bytes = 12;
-const bytesFor = (version) => (version === 2 ? v2Bytes : v1Bytes);
+// End tick, span, distance in millimetres, relative bearing, duck, class and world bearing.
+const bytesPerStep = 12;
 const maxSteps = 240000;
 const maxTick = 64 * 60 * 180;
 const normalize = (weapon) =>
@@ -100,11 +97,11 @@ export function encodeGaitHistory({ frames, players, rounds, tickRate }) {
   return {
     version: 2,
     players: [...records].map(([id, rows]) => {
-      const bytes = new Uint8Array(rows.length * v2Bytes);
+      const bytes = new Uint8Array(rows.length * bytesPerStep);
       const view = new DataView(bytes.buffer);
       for (let i = 0; i < rows.length; i++) {
         const [end, ticks, distance, angle, duck, weapon, worldBearing] = rows[i];
-        const offset = i * v2Bytes;
+        const offset = i * bytesPerStep;
         view.setUint32(offset, end, true);
         view.setUint8(offset + 4, ticks);
         view.setUint16(offset + 5, distance, true);
@@ -130,12 +127,11 @@ export function validGaitHistory(history, actors, first = 0, last = maxTick, rat
   if (
     !Number.isFinite(rate) ||
     rate <= 0 ||
-    (history?.version !== 1 && history?.version !== 2) ||
+    history?.version !== 2 ||
     !Array.isArray(history.players) ||
     history.players.length > 128
   )
     return false;
-  const bytesPerStep = bytesFor(history.version);
   const seen = new Set();
   let count = 0;
   for (const pair of history.players) {
@@ -172,7 +168,6 @@ export function validGaitHistory(history, actors, first = 0, last = maxTick, rat
         end - ticks < previousEnd ||
         !ticks ||
         ticks > rate * 0.25 ||
-        (history.version === 1 && !distance) ||
         distance > Math.ceil(Math.max(128, (4096 * ticks) / rate) * 25.4) ||
         view.getUint8(i + 9) >= classes.length
       )
@@ -184,9 +179,8 @@ export function validGaitHistory(history, actors, first = 0, last = maxTick, rat
 }
 
 /** Prefix sums are built once per actor and installed stride profile. Pauses are gaps in this table. */
-export function integrateGait(text, rate, strideAt, version) {
+export function integrateGait(text, rate, strideAt) {
   if (!text) return () => 0;
-  const bytesPerStep = bytesFor(version);
   const view = unbox(text);
   const length = view.byteLength / bytesPerStep;
   const ends = new Uint32Array(length);
@@ -229,14 +223,14 @@ const stationary = Object.freeze({ speed: 0, velocityX: 0, velocityY: 0, coheren
 export function centeredGaitMotion(text, rate) {
   if (!text) return () => stationary;
   const view = unbox(text);
-  const count = view.byteLength / v2Bytes;
+  const count = view.byteLength / bytesPerStep;
   const ends = new Uint32Array(count),
     spans = new Uint8Array(count);
   const vx = new Float32Array(count),
     vy = new Float32Array(count),
     speeds = new Float32Array(count);
   for (let i = 0; i < count; i++) {
-    const offset = i * v2Bytes;
+    const offset = i * bytesPerStep;
     ends[i] = view.getUint32(offset, true);
     spans[i] = view.getUint8(offset + 4);
     const angle = view.getUint16(offset + 10, true) * ((2 * Math.PI) / 65536);

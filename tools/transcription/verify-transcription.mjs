@@ -200,7 +200,6 @@ export function fixtureReplay(voice) {
     weapon: 'knife',
   };
   return {
-    version: 1,
     map: 'de_mirage',
     sample: true,
     tickRate: 64,
@@ -209,6 +208,12 @@ export function fixtureReplay(voice) {
     events: [],
     frames: Array.from({ length: 241 }, (_, i) => ({ tick: i * 4, players: [player] })),
     grenades: [],
+    communications: {
+      voice: voice.length ? 'available' : 'absent',
+      chat: 'absent',
+      captions: voice.length ? 'disabled' : 'unavailable',
+      unsupportedPackets: 0,
+    },
     voice,
   };
 }

@@ -1,3 +1,4 @@
+import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { manualMapAssets } from './fixtures/map-assets';
 import { expect, test, type Page } from '@playwright/test';
 import { originalMapGLB, originalMapReplay, qaActor } from './fixtures/original-map';
@@ -151,7 +152,7 @@ test('third-person follow renders the selected actor, follows real recorded tran
     }),
   );
   await page.route('**/api/demos/follow-fixture/playback', (route) =>
-    route.fulfill({ json: replay }),
+    fulfillReplayFixture(route, replay),
   );
   await page.route('**/api/demos/follow-fixture/map-assets', (route) =>
     route.fulfill({

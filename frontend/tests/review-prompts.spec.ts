@@ -1,3 +1,4 @@
+import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { installMapFixture } from './fixtures/map-assets';
 import { test, expect, type Page, type TestInfo } from '@playwright/test';
 import { createHash } from 'node:crypto';
@@ -59,7 +60,7 @@ async function openFixture(page: Page, current: () => Playback, language: 'en' |
     }),
   );
   await page.route('**/api/demos/review-prompts-fixture/playback', (route) =>
-    route.fulfill({ json: current() }),
+    fulfillReplayFixture(route, current()),
   );
   await installMapFixture(page, current().map, 'review-prompts-fixture');
   await page.route('**/api/assets/agents', (route) =>

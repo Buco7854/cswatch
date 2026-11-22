@@ -145,7 +145,7 @@ try {
   });
   assert.equal(playback.statusCode, 200, playback.body);
   const manifest = JSON.parse(gunzipSync(playback.rawPayload).toString());
-  assert.equal(manifest.version, 2);
+  assert.equal(manifest.version, 3);
   assert.equal(manifest.map, 'de_mirage');
   assert.equal(
     manifest.gameplaySounds?.coverage.footstep,
@@ -355,7 +355,10 @@ try {
     db.run(
       "UPDATE demos SET status='ready',transcription_status='queued',size=?,metadata=? WHERE id=?",
       prepared.bytes,
-      JSON.stringify({ communications: { voice: 'available' } }),
+      JSON.stringify({
+        replayVersion: prepared.manifest.version,
+        communications: prepared.manifest.communications,
+      }),
       speech.id,
     );
     const asrConfig = {

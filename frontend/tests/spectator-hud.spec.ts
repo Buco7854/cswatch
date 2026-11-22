@@ -1,3 +1,4 @@
+import { fulfillReplayFixture, replayFixture } from './fixtures/streamed-replay';
 import { expect, test, type Page } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
 import { installDemoMapDescriptor } from './fixtures/map-assets';
@@ -143,7 +144,7 @@ async function fixture(
       },
     }),
   );
-  await page.route(`**/api/demos/${id}/playback`, (route) => route.fulfill({ json: data }));
+  await page.route(`**/api/demos/${id}/playback`, (route) => fulfillReplayFixture(route, data));
   const model = `/map-assets/${data.map}/desktop/scene.glb`;
   await installDemoMapDescriptor(page, id, {
     model,
@@ -506,26 +507,32 @@ test('a chunk stall after the watched death freezes its camera delay and resumes
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE));
   const data = await fixture(page, 'spectator-buffer', { death: true });
-  const { frames, grenades: _grenades, ...metadata } = data;
+  const { frames } = data;
+  const { manifest } = await replayFixture(data);
   const chunks = [
     {
-      version: 2 as const,
+      version: 3 as const,
       index: 0,
       frames: frames.filter((frame) => frame.tick <= 128),
       grenades: [],
+      voice: [],
+      sounds: [],
+      itemSamples: [],
     },
     {
-      version: 2 as const,
+      version: 3 as const,
       index: 1,
       frames: frames.filter((frame) => frame.tick >= 128),
       grenades: [],
+      voice: [],
+      sounds: [],
+      itemSamples: [],
     },
   ];
   await page.route('**/api/demos/spectator-buffer/playback', (route) =>
     route.fulfill({
       json: {
-        ...metadata,
-        version: 2,
+        ...manifest,
         firstTick: 0,
         lastTick: 640,
         chunks: chunks.map((chunk, index) => ({

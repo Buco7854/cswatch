@@ -14,9 +14,9 @@ export type PresentItemSample = {
   roll?: number;
 };
 export type ItemSample = PresentItemSample | { id: string; tick: number; present: false };
-/** Missing metadata means this replay predates recorded world equipment support. */
+/** Coverage describes observed recorded equipment by category. */
 export type ItemStateInfo = {
   complete: boolean;
   /** A missing item category must not invalidate unrelated recorded evidence. */
-  coverage?: { dropped: boolean; planted: boolean; projectile: boolean };
+  coverage: { dropped: boolean; planted: boolean; projectile: boolean };
 };

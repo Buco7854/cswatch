@@ -1,3 +1,4 @@
+import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { expect, test } from '@playwright/test';
 import { BoxGeometry, Group, Mesh, MeshBasicMaterial } from 'three';
 import { indexFireEffects, maxFireSprites } from '../src/utility-effects';
@@ -230,7 +231,7 @@ test('the production WebGL viewer submits only active, depth-tested utility spri
       },
     }),
   );
-  await page.route(`**/api/demos/${id}/playback`, (route) => route.fulfill({ json: replay }));
+  await page.route(`**/api/demos/${id}/playback`, (route) => fulfillReplayFixture(route, replay));
   await installDemoMapDescriptor(page, id, { model, mobile: null, overview: null });
   await page.route(`**${model}`, (route) =>
     route.fulfill({ contentType: 'model/gltf-binary', body: originalMapGLB() }),

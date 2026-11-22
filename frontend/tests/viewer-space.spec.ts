@@ -1,3 +1,4 @@
+import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { installMapFixture } from './fixtures/map-assets';
 import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
@@ -20,7 +21,6 @@ const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const firstPlayer = '76561198000000001',
   secondPlayer = '76561198000000002';
 const replay = {
-  version: 1,
   map: 'de_viewer_space_fixture',
   sample: false,
   tickRate: 64,
@@ -138,7 +138,7 @@ async function fixture(
     }),
   );
   await page.route('**/api/demos/viewer-space-fixture/playback', (route) =>
-    route.fulfill({ json: replay }),
+    fulfillReplayFixture(route, replay),
   );
   await installMapFixture(page, replay.map, 'viewer-space-fixture');
   await page.goto('/watch/viewer-space-fixture');

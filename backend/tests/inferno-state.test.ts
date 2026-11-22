@@ -221,7 +221,6 @@ test('an optional inferno bank survives a real streamed boundary and old artifac
   const decode = (path: string) => JSON.parse(gunzipSync(readFileSync(path)).toString());
   try {
     const data = {
-      version: 1 as const,
       sample: true,
       map: sample.map,
       tickRate: sample.tickRate,

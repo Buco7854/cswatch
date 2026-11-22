@@ -1,3 +1,4 @@
+import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { activateViewerAction } from './fixtures/viewer-actions';
 import { test, expect, type Page } from '@playwright/test';
 import { selectOptionsCategory } from './fixtures/viewer-options';
@@ -60,7 +61,7 @@ test('the single public page uploads a private guest demo into the whole-tab vie
     }),
   );
   await page.route('**/api/demos/guest-fixture/playback', (route) =>
-    route.fulfill({ json: { ...sample, sample: false, map: 'de_guest_fixture' } }),
+    fulfillReplayFixture(route, { ...sample, sample: false, map: 'de_guest_fixture' }),
   );
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Review your CS2 demos.' })).toBeVisible();

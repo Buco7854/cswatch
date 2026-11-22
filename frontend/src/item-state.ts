@@ -6,12 +6,11 @@ export type ItemIndex = ReadonlyMap<string, readonly ItemSample[]>;
 
 /** Category evidence stays independent of unrelated missing native entity properties. */
 export function hasRecordedProjectiles(data: {
-  itemState?: { complete: boolean; coverage?: { projectile: boolean } };
+  itemState?: { complete: boolean; coverage: { projectile: boolean } };
 }) {
-  return data.itemState?.coverage?.projectile === true || data.itemState?.complete === true;
+  return data.itemState?.coverage.projectile === true;
 }
-export function validateItemState(value: unknown): ItemStateInfo | undefined {
-  if (value === undefined) return undefined;
+export function validateItemState(value: unknown): ItemStateInfo {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new Error('Replay item metadata is invalid.');
   const info = value as Record<string, unknown>;
@@ -20,23 +19,19 @@ export function validateItemState(value: unknown): ItemStateInfo | undefined {
     Object.keys(info).some((key) => key !== 'complete' && key !== 'coverage')
   )
     throw new Error('Replay item metadata is invalid.');
-  if (info.coverage !== undefined) {
-    if (
-      !info.coverage ||
-      typeof info.coverage !== 'object' ||
-      Array.isArray(info.coverage) ||
-      Object.keys(info.coverage).some(
-        (key) => !['dropped', 'planted', 'projectile'].includes(key),
-      ) ||
-      !['dropped', 'planted', 'projectile'].every(
-        (key) => typeof (info.coverage as Record<string, unknown>)[key] === 'boolean',
-      )
+  if (
+    !info.coverage ||
+    typeof info.coverage !== 'object' ||
+    Array.isArray(info.coverage) ||
+    Object.keys(info.coverage).some((key) => !['dropped', 'planted', 'projectile'].includes(key)) ||
+    !['dropped', 'planted', 'projectile'].every(
+      (key) => typeof (info.coverage as Record<string, unknown>)[key] === 'boolean',
     )
-      throw new Error('Replay item metadata is invalid.');
-    const coverage = info.coverage as Record<string, boolean>;
-    if (info.complete !== (coverage.dropped && coverage.planted && coverage.projectile))
-      throw new Error('Replay item metadata is invalid.');
-  }
+  )
+    throw new Error('Replay item metadata is invalid.');
+  const coverage = info.coverage as Record<string, boolean>;
+  if (info.complete !== (coverage.dropped && coverage.planted && coverage.projectile))
+    throw new Error('Replay item metadata is invalid.');
   return value as ItemStateInfo;
 }
 
@@ -53,8 +48,7 @@ const coordinate = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 1e7;
 
 /** Validate optional streamed world-item evidence before indexing it. */
-export function validateItemSamples(value: unknown, lastTick: number): ItemSample[] | undefined {
-  if (value === undefined) return undefined;
+export function validateItemSamples(value: unknown, lastTick: number): ItemSample[] {
   if (!Array.isArray(value) || value.length > 50000) throw new Error('Replay items are invalid.');
   const identities = new Map<string, { equipment: string; kind: string; tick: number }>();
   const live = new Set<string>();

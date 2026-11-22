@@ -1,3 +1,4 @@
+import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { createHash } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 import { installDemoMapDescriptor } from './fixtures/map-assets';
@@ -96,7 +97,7 @@ async function fixture(page: Page, wall = false) {
       },
     }),
   );
-  await page.route('**/api/demos/fire-qa/playback', (route) => route.fulfill({ json: replay }));
+  await page.route('**/api/demos/fire-qa/playback', (route) => fulfillReplayFixture(route, replay));
   const model = `/map-assets/${replay.map}/desktop/scene.glb`;
   await installDemoMapDescriptor(page, 'fire-qa', {
     model,

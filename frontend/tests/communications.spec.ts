@@ -1,3 +1,4 @@
+import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { test, expect } from '@playwright/test';
 import { sample } from '../src/sample';
 import { mkdirSync } from 'node:fs';
@@ -63,7 +64,7 @@ test('recorded voice decodes under the production CSP, subtitles/chat follow see
           ],
         },
       });
-    else if (path.endsWith('/playback')) await route.fulfill({ json: data });
+    else if (path.endsWith('/playback')) await fulfillReplayFixture(route, data);
     else
       await route.fulfill({
         json: {

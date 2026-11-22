@@ -1,3 +1,4 @@
+import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { installDemoMapDescriptor } from './fixtures/map-assets';
 import { test, expect, type Page } from '@playwright/test';
 import { readFileSync, mkdirSync } from 'node:fs';
@@ -34,7 +35,6 @@ const players = [
   team: i === 1 || i >= 6 ? 2 : 3,
 }));
 const replay = {
-  version: 1,
   sample: false,
   map: 'de_scoreboard_fixture',
   tickRate: 64,
@@ -215,39 +215,37 @@ async function fixture(
     }),
   );
   await page.route('**/api/demos/scoreboard-fixture/playback', (route) =>
-    route.fulfill({
-      json: {
-        ...replay,
-        ...(policy.legacy || policy.eventOnly
+    fulfillReplayFixture(route, {
+      ...replay,
+      ...(policy.legacy || policy.eventOnly
+        ? {
+            frames: replay.frames.map((frame) => ({
+              ...frame,
+              players: frame.players.map((player) => ({ ...player, stats: undefined })),
+            })),
+          }
+        : {}),
+      ...(policy.legacy
+        ? { matchState: undefined, eventAvailability: undefined }
+        : policy.incomplete || policy.wideScores || policy.scorePairs
           ? {
-              frames: replay.frames.map((frame) => ({
-                ...frame,
-                players: frame.players.map((player) => ({ ...player, stats: undefined })),
-              })),
+              matchState: {
+                ...replay.matchState,
+                complete: !policy.incomplete,
+                samples: (policy.incomplete
+                  ? replay.matchState.samples.slice(0, 2)
+                  : replay.matchState.samples
+                ).map((sample, index) => {
+                  const pair = policy.scorePairs?.[index];
+                  return pair
+                    ? { ...sample, ctScore: pair.ct, tScore: pair.t, roundNumber: pair.round }
+                    : policy.wideScores
+                      ? { ...sample, ctScore: 13, tScore: 15, roundNumber: 29 }
+                      : sample;
+                }),
+              },
             }
           : {}),
-        ...(policy.legacy
-          ? { matchState: undefined, eventAvailability: undefined }
-          : policy.incomplete || policy.wideScores || policy.scorePairs
-            ? {
-                matchState: {
-                  ...replay.matchState,
-                  complete: !policy.incomplete,
-                  samples: (policy.incomplete
-                    ? replay.matchState.samples.slice(0, 2)
-                    : replay.matchState.samples
-                  ).map((sample, index) => {
-                    const pair = policy.scorePairs?.[index];
-                    return pair
-                      ? { ...sample, ctScore: pair.ct, tScore: pair.t, roundNumber: pair.round }
-                      : policy.wideScores
-                        ? { ...sample, ctScore: 13, tScore: 15, roundNumber: 29 }
-                        : sample;
-                  }),
-                },
-              }
-            : {}),
-      },
     }),
   );
   await installDemoMapDescriptor(page, 'scoreboard-fixture');

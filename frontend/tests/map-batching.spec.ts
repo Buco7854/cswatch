@@ -1,3 +1,4 @@
+import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { test, expect } from '@playwright/test';
 import { NodeIO } from '../../tools/assets/node_modules/@gltf-transform/core/dist/index.js';
 import { batchMapMeshes } from '../../tools/assets/batch-map-meshes.mjs';
@@ -80,7 +81,7 @@ test('static batching reduces original map submissions while preserving actual o
         },
       }),
     );
-    await page.route(`**/api/demos/${id}/playback`, (route) => route.fulfill({ json: data }));
+    await page.route(`**/api/demos/${id}/playback`, (route) => fulfillReplayFixture(route, data));
     await installDemoMapDescriptor(page, id, {
       model: `/map-assets/${map}/desktop/scene.glb`,
       mobile: null,

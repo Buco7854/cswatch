@@ -12,7 +12,6 @@ const killer = '76561198000000001',
   victim = '76561198000000002';
 function fixture(): Playback {
   return {
-    version: 1,
     map: 'de_fixture',
     sample: false,
     tickRate: 64,

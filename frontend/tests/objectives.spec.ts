@@ -1,3 +1,4 @@
+import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { installDemoMapDescriptor } from './fixtures/map-assets';
 import { test, expect } from '@playwright/test';
 import { selectOptionsCategory } from './fixtures/viewer-options';
@@ -6,7 +7,6 @@ import { selectOptionsCategory } from './fixtures/viewer-options';
 const planter = '76561198000000001',
   defuser = '76561198000000002';
 const replay = {
-  version: 1,
   map: 'de_objective_fixture',
   sample: false,
   tickRate: 64,
@@ -165,7 +165,7 @@ test('broadcast objective HUD follows recorded custom timers, interruptions and 
     }),
   );
   await page.route('**/api/demos/objective-fixture/playback', (route) =>
-    route.fulfill({ json: replay }),
+    fulfillReplayFixture(route, replay),
   );
   await installDemoMapDescriptor(page, 'objective-fixture');
   await page.goto('/watch/objective-fixture');
@@ -307,13 +307,9 @@ test('opening a replay mid-defuse registers the live region before its first not
     }),
   );
   await page.route('**/api/demos/objective-mid-recording/playback', (route) =>
-    route.fulfill({
-      json: {
-        ...replay,
-        frames: replay.frames.map((frame, index) =>
-          index === 0 ? { ...frame, tick: 1984 } : frame,
-        ),
-      },
+    fulfillReplayFixture(route, {
+      ...replay,
+      frames: replay.frames.map((frame, index) => (index === 0 ? { ...frame, tick: 1984 } : frame)),
     }),
   );
   await installDemoMapDescriptor(page, 'objective-mid-recording');

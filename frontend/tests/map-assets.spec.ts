@@ -1,3 +1,4 @@
+import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { manualMapAssets } from './fixtures/map-assets';
 import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
 import {
@@ -73,7 +74,7 @@ async function install(
     }),
   );
   await page.route(`**/api/demos/${id}/playback`, (route) =>
-    route.fulfill({ json: options.playback || originalMapReplay(map) }),
+    fulfillReplayFixture(route, options.playback || originalMapReplay(map)),
   );
   await page.route(`**/api/demos/${id}/map-assets`, (route) => {
     discoveries++;

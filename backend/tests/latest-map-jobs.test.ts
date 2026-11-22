@@ -152,6 +152,7 @@ test('latest publication identity requires pinned membership selection and compl
     schemaVersion: 1 as const,
     kind: 'latest-official' as const,
     packId: queueId,
+    generation: 'a'.repeat(32),
     selection,
   };
   assert.equal(mapJobRequestSchema.safeParse(request).success, true);
