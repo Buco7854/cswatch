@@ -9,6 +9,8 @@
 
 ## Integrated viewer fidelity pass, 2026-11-22
 
+The first pushed revision `0390c34` failed CI at container startup and published no image. `demo-map-assets.ts` and `map-environment.ts` loaded `shared/map-grade.mjs` at runtime, which the runtime image does not contain. Both now use the dist copy, and `image-modules.test.ts` rejects runtime imports from `shared` and dist modules the build does not copy. A local copy of the runtime image layout reproduced the failure, then started and answered its health check with the fix. Docker itself was not available for that check.
+
 The merged first-person lens, aim track, combat feedback, authored grading, agent animation, utility effects and smoke volumes ran together on Node 22.23.5. The supported target is Node 24. Backend finished with 420 passes and three offline speech-model skips, assets with 302 passes, and public browser checks with 243 passes and two environment skips. No test failed. The two builds, formatting and English/French coverage passed.
 
 The checksum-pinned Mirage fixture parsed under the required sandbox and rendered at ticks 18142, 43193 and 21241 with a regenerated Mirage environment pack, 87-clip agents and the pinned rigs. The captures had no page or shader faults. An independent read of the stored chunks matched 430,110 recorded aim samples with none missing and a maximum error of 0.0039 degrees.

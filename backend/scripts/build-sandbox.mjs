@@ -26,6 +26,7 @@ for (const name of [
   'aim-track',
   'agent-deaths',
   'agent-gait-history',
+  'map-grade',
 ])
   copyFileSync(resolve(root, `../shared/${name}.mjs`), resolve(root, `dist/${name}.mjs`));
 if (process.platform !== 'linux') {
