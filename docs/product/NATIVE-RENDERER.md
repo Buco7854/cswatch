@@ -2,9 +2,11 @@
 
 The released sunlight/sky correction improves the existing PBR path. The local follow-up adds four authored first-person rigs and an initial set of native map shaders. Keep cswatch's interface, CPU-only hosting and the existing replay-access model.
 
+Compact 3D is a separate optional tier for responsive playback. The offline converter keeps placed opaque world surfaces and samples their base colors, while simplifying geometry and omitting textured materials, blended and masked surfaces, and the separate sky landscape. The full tier retains detailed materials and native lighting work. Both paths use the same cameras, timeline, radar and recorded actors. [Matched verification](../VERIFICATION.md#compact-3d-2026-11-22)
+
 ## Source evidence
 
-The [reference review](CSDEMO-REFERENCE-REVIEW.md) identifies native irradiance/directional/shadow lightmaps, local probes, layered materials, visibility/LOD and native viewmodels. The [S2V export limitations](https://s2v.app/ValveResourceFormat/guides/format-support.html#gltf-export) explain why standard glTF cannot supply all of these automatically. Retained Ancient exports have primary UVs and four-component layer/paint attributes, but no usable secondary lightmap channel or binding. Never substitute UV0 or the blend attribute for native lightmap coordinates.
+The [S2V export limitations](https://s2v.app/ValveResourceFormat/guides/format-support.html#gltf-export) explain why standard glTF cannot supply all of these automatically. Retained Ancient exports have primary UVs and four-component layer/paint attributes, but no usable secondary lightmap channel or binding. Never substitute UV0 or the blend attribute for native lightmap coordinates.
 
 The earlier AK/arms diagnostic established 1,163,745 seed bytes while the workspace was below its 512 MiB reserve. The local worker later verified one fixed official Mirage manifest and completed the map and AK/arms packs. The ordinary viewer admits those packs in the isolated test instance. [Viewer checkpoints](VIEWER-COMPARISON.md) records the authored actions and the failed pixel gate for derived visibility.
 

@@ -24,6 +24,7 @@ function pathsFor(map) {
   for (const tier of ['desktop', 'mobile'])
     for (const name of ['scene.glb', 'manifest.json', 'texture-plan.json'])
       files.add(`maps/${map}/${tier}/${name}`);
+  for (const name of ['scene.glb', 'manifest.json']) files.add(`maps/${map}/compact/${name}`);
   for (const name of ['overview.png', 'overview.json', 'provenance.json'])
     files.add(`maps/overviews/${map}/${name}`);
   for (const name of [

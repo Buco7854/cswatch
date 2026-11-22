@@ -152,6 +152,44 @@ export async function validatePreparedMap(prepared, map, assetVersion) {
     )
       throw new Error('Prepared texture plan has no manifest binding.');
   }
+  const compact = join(prepared, map, 'compact');
+  const compactDirectory = await lstat(compact).catch((error) => {
+    if (error.code !== 'ENOENT') throw error;
+  });
+  if (compactDirectory) {
+    if (!compactDirectory.isDirectory() || compactDirectory.isSymbolicLink())
+      throw new Error('Invalid compact tier directory.');
+    const model = await verifyPreparedGlb(join(compact, 'scene.glb'), { compact: true });
+    const manifest = join(compact, 'manifest.json');
+    const info = await regular(manifest, 16384);
+    const data = JSON.parse(await readFile(manifest, 'utf8'));
+    const mobile = files.find((file) => file.path === `${map}/mobile/scene.glb`);
+    if (
+      data.schemaVersion !== 1 ||
+      data.map !== map ||
+      data.tier !== 'compact' ||
+      data.assetVersion !== assetVersion ||
+      data.sourceFile !== 'scene.glb' ||
+      data.sourceSha256 !== mobile.sha256 ||
+      data.sourceBytes !== mobile.bytes ||
+      data.outputSha256 !== model.sha256 ||
+      data.bytes !== model.bytes ||
+      data.bytes >= mobile.bytes ||
+      data.triangles !== model.triangles ||
+      data.primitives !== model.primitives ||
+      !Number.isSafeInteger(data.sourceTriangles) ||
+      data.sourceTriangles < data.triangles
+    )
+      throw new Error('Compact map must match its hashed mobile source and output manifest.');
+    files.push(
+      { path: `${map}/compact/scene.glb`, bytes: model.bytes, sha256: model.sha256 },
+      {
+        path: `${map}/compact/manifest.json`,
+        bytes: info.size,
+        sha256: await fileHash(manifest, 'sha256', 16384),
+      },
+    );
+  }
   const overview = join(prepared, 'overviews', map),
     metadata = join(overview, 'overview.json'),
     image = join(overview, 'overview.png');

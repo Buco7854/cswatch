@@ -201,7 +201,9 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
   const using2D = mode === '2d' || mapRender?.renderer === '2d';
   const fallbackCamera = using2D && mode !== '2d';
   const activeCamera = fallbackCamera ? 'fallback' : mode;
-  const has3DMap = Boolean(data?.sample || mapAssets.assets.model || mapAssets.assets.mobile);
+  const has3DMap = Boolean(
+    data?.sample || mapAssets.assets.model || mapAssets.assets.mobile || mapAssets.assets.compact,
+  );
   const mapStatus: AssetStatus =
     mapAssets.status === 'pending'
       ? 'pending'
@@ -211,14 +213,15 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
           ? mapAssets.overviewStatus
           : mapRender
             ? mapRender.model
-            : mapAssets.assets.model || mapAssets.assets.mobile
+            : has3DMap
               ? 'pending'
               : 'missing';
-  const environmentStatus: AssetStatus = mapAssets.assets.environment
-    ? mapRender?.environmentVersion === mapAssets.assets.environment.assetVersion
-      ? mapRender.environment
-      : 'pending'
-    : 'missing';
+  const environmentStatus: AssetStatus =
+    !mapRender?.compact && mapAssets.assets.environment
+      ? mapRender?.environmentVersion === mapAssets.assets.environment.assetVersion
+        ? mapRender.environment
+        : 'pending'
+      : 'missing';
   const mapLoading = Boolean(data && !data.sample && mapStatus === 'pending');
   const mapNoticeStatus =
     !using2D &&
@@ -244,11 +247,13 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
               ? 'Map overview failed to load'
               : 'Map unavailable'
         : mapStatus === 'ready'
-          ? environmentStatus === 'pending'
-            ? '3D map · loading sky…'
-            : environmentStatus === 'error'
-              ? '3D map · sky unavailable'
-              : '3D map'
+          ? mapRender?.compact
+            ? 'Compact 3D'
+            : environmentStatus === 'pending'
+              ? '3D map · loading sky…'
+              : environmentStatus === 'error'
+                ? '3D map · sky unavailable'
+                : '3D map'
           : mapStatus === 'pending'
             ? 'Loading 3D map…'
             : mapStatus === 'error'

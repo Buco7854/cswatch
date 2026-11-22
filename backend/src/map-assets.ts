@@ -158,15 +158,17 @@ export async function mapAssetRoutes(
   });
   const describe = async (name: string, location = defaultLocation): Promise<MapAssets> => {
     mapName.parse(name);
-    const [desktop, mobile, overview, environment] = await Promise.all([
+    const [desktop, mobile, compact, overview, environment] = await Promise.all([
       hasGlb(location, [name, 'desktop'], 'scene.glb'),
       hasGlb(location, [name, 'mobile'], 'scene.glb'),
+      hasGlb(location, [name, 'compact'], 'scene.glb'),
       loadOverview(name, location),
       loadEnvironment(name, location),
     ]);
     return {
       model: desktop ? `${location.modelPrefix}/${name}/desktop/scene.glb` : null,
       mobile: mobile ? `${location.modelPrefix}/${name}/mobile/scene.glb` : null,
+      ...(compact ? { compact: `${location.modelPrefix}/${name}/compact/scene.glb` } : {}),
       overview: overview?.overview ?? null,
       environment: environment?.environment ?? null,
     };

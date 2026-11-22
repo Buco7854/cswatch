@@ -90,6 +90,7 @@ import { useMapSkyLighting } from '../useMapSkyLighting';
 export type MapRenderState = {
   map: string;
   model: AssetStatus;
+  compact?: boolean;
   modelProgress?: ModelProgressSource;
   renderer: '3d' | '2d';
   failure?: 'webgl' | 'model' | 'assets';
@@ -1272,7 +1273,18 @@ export default function Scene({
     update();
     return () => media.removeEventListener('change', update);
   }, []);
-  const low = settings.quality === 'low' || (settings.quality === 'auto' && autoLow);
+  const prefersCompact = settings.quality === 'compact' || (settings.quality === 'auto' && autoLow);
+  const wantsLow = settings.quality === 'low' || prefersCompact;
+  const detailedModel = wantsLow
+    ? mapAssets.assets.mobile || mapAssets.assets.model
+    : mapAssets.assets.model || mapAssets.assets.mobile;
+  const compactModel = mapAssets.assets.compact;
+  const [failedCompact, setFailedCompact] = useState<string>();
+  const compact = Boolean(
+    compactModel && (!detailedModel || (prefersCompact && failedCompact !== compactModel)),
+  );
+  const model = compact ? compactModel! : detailedModel;
+  const low = wantsLow || compact;
   const [adaptiveQuality, setAdaptiveQuality] = useState({
     resolution: settings.renderResolution,
     shadows: true,
@@ -1328,9 +1340,6 @@ export default function Scene({
     const id = equipmentIconKey(equipment);
     return !id || !equipmentAssets.catalog.items[id];
   }).length;
-  const model = low
-    ? mapAssets.assets.mobile || mapAssets.assets.model
-    : mapAssets.assets.model || mapAssets.assets.mobile;
   const [modelLoad, setModelLoad] = useState<{
     url: string;
     status: 'ready' | 'error';
@@ -1348,7 +1357,8 @@ export default function Scene({
       landscape: AssetStatus = 'missing',
       sun: MapSun | null = null,
     ) => {
-      if (currentModel.current === url)
+      if (currentModel.current === url) {
+        if (status === 'error' && url === compactModel && detailedModel) setFailedCompact(url);
         setModelLoad((previous) =>
           previous?.url === url &&
           previous.status === status &&
@@ -1358,8 +1368,9 @@ export default function Scene({
             ? previous
             : { url, status, sky, landscape, sun },
         );
+      }
     },
-    [],
+    [compactModel, detailedModel],
   );
   const modelStatus: AssetStatus =
     mapAssets.status === 'pending'
@@ -1379,7 +1390,7 @@ export default function Scene({
   const currentRendererAttempt = useRef(rendererAttempt);
   currentRendererAttempt.current = rendererAttempt;
   const modelScope = useMapModelScope(data.sample ? null : model, rendererAttempt);
-  const environment = mapAssets.assets.environment || null,
+  const environment = compact ? null : mapAssets.assets.environment || null,
     environmentIdentity = mapEnvironmentKey(environment);
   const [environmentLoad, setEnvironmentLoad] = useState<{
     identity: string | null;
@@ -1469,6 +1480,7 @@ export default function Scene({
       onMapStatus?.({
         map: data.map,
         model: data.sample ? 'ready' : modelStatus,
+        compact,
         modelProgress:
           surface === '3d' && modelStatus === 'pending' ? modelScope?.progress : undefined,
         renderer: surface === 'plot' ? '2d' : '3d',
@@ -1491,6 +1503,7 @@ export default function Scene({
       data.map,
       data.sample,
       modelStatus,
+      compact,
       modelScope,
       mode,
       rendererFailure,
@@ -1552,6 +1565,7 @@ export default function Scene({
     <div
       className="scene"
       data-quality={low ? 'low' : 'high'}
+      data-map-tier={compact ? 'compact' : model === mapAssets.assets.mobile ? 'mobile' : 'desktop'}
       data-render-resolution={resolution}
       data-live-shadows={shadows}
       data-agent-model-state={agentAssets.status}

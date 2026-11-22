@@ -263,7 +263,9 @@ export async function demoMapAssetRoutes(
     // Automatic mode never quietly substitutes a same-name/current map pack.
     if (!enabled && /^[a-zA-Z0-9_-]{1,80}$/.test(demo.map || '')) {
       const assets = await repository.describe(demo.map);
-      const renderable = Boolean(assets.model || assets.mobile || assets.overview);
+      const renderable = Boolean(
+        assets.model || assets.mobile || assets.compact || assets.overview,
+      );
       return {
         resolution,
         acquisition: 'disabled',

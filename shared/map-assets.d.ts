@@ -36,6 +36,7 @@ export type MapEnvironment = {
 export type MapAssets = {
   model: string | null;
   mobile: string | null;
+  compact?: string;
   overview: MapOverview | null;
   environment?: MapEnvironment | null;
 };

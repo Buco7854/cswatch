@@ -27,6 +27,7 @@ async function install(
     image?: (route: Route) => Promise<void>;
     playback?: ReturnType<typeof originalMapReplay>;
     crosshair?: boolean;
+    quality?: string;
   } = {},
 ) {
   const map = options.map || qaMap,
@@ -34,14 +35,14 @@ async function install(
   let discoveries = 0,
     models = 0;
   await page.addInitScript(
-    ({ theme, crosshair, language }) => {
+    ({ theme, crosshair, language, quality }) => {
       localStorage.setItem('theme', theme);
       localStorage.setItem('cswatch.language', language);
       ['viewer-settings', 'viewer-settings-mobile'].forEach((key) =>
         localStorage.setItem(
           key,
           JSON.stringify({
-            quality: 'high',
+            quality,
             autoHideControls: false,
             matchScore: false,
             killReplay: false,
@@ -55,6 +56,7 @@ async function install(
       theme: options.theme || 'dark',
       crosshair: options.crosshair ?? false,
       language: options.language || 'en',
+      quality: options.quality || 'high',
     },
   );
   await page.route(`**/api/demos/${id}`, (route) =>
@@ -744,6 +746,59 @@ test('an explicit camera retries failed WebGL and stale same-map context events 
 
 test.describe('touch camera recovery', () => {
   test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } });
+
+  test('Auto uses the compact 3D map on phones and retries a detailed map if it fails', async ({
+    page,
+  }) => {
+    test.skip(Boolean(process.env.E2E_PRIVATE));
+    let failCompact = false;
+    const requests: string[] = [];
+    await install(
+      page,
+      {
+        model: `/map-assets/${qaMap}/desktop/scene.glb`,
+        mobile: `/map-assets/${qaMap}/mobile/scene.glb`,
+        compact: `/map-assets/${qaMap}/compact/scene.glb`,
+        overview: qaOverview,
+      },
+      {
+        quality: 'auto',
+        model: (route) => {
+          const path = new URL(route.request().url()).pathname;
+          requests.push(path);
+          return route.fulfill({
+            contentType: 'model/gltf-binary',
+            body:
+              failCompact && path.includes('/compact/')
+                ? Buffer.from('Invalid compact GLB')
+                : model,
+          });
+        },
+      },
+    );
+    await open(page);
+    await expect(
+      page.locator('.scene[data-map-tier="compact"][data-map-model-state="ready"] canvas'),
+    ).toBeVisible();
+    expect(requests).toEqual([`/map-assets/${qaMap}/compact/scene.glb`]);
+    const cameraPicker = page.getByRole('combobox', { name: 'Camera mode' });
+    await cameraPicker.tap();
+    await page.getByRole('option', { name: 'Player perspective', exact: true }).tap();
+    await expect(page.locator('.scene[data-camera-mode="pov"] canvas')).toBeVisible();
+    await expect(page.locator('.position-radar')).toBeVisible();
+
+    failCompact = true;
+    requests.length = 0;
+    await page.reload();
+    await expect(
+      page.locator('.scene[data-map-tier="mobile"][data-map-model-state="ready"] canvas'),
+    ).toBeVisible();
+    await expect(page.locator('.tactical-plot')).toHaveCount(0);
+    expect(requests).toEqual([
+      `/map-assets/${qaMap}/compact/scene.glb`,
+      `/map-assets/${qaMap}/mobile/scene.glb`,
+    ]);
+  });
 
   test('an explicit 3D camera retries a failed phone map and keeps the actual view selected', async ({
     page,

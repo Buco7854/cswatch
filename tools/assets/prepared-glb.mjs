@@ -4,6 +4,7 @@ import { open } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { steamAssetLimits } from './steam-assets-plan.mjs';
 import { MeshoptDecoder } from './meshopt-glb.mjs';
+import compactLimits from '../../shared/compact-map.json' with { type: 'json' };
 
 const integer = (value, minimum = 0) => Number.isSafeInteger(value) && value >= minimum;
 const identity = (info) => `${info.dev}:${info.ino}:${info.size}:${info.mtimeNs}:${info.ctimeNs}`;
@@ -13,7 +14,7 @@ const exact = (object, keys) =>
   typeof object === 'object' &&
   !Array.isArray(object) &&
   Object.keys(object).sort().join(',') === [...keys].sort().join(',');
-function validateBuffers(data, binaryBytes) {
+function validateBuffers(data, binaryBytes, geometryBytes) {
   const buffers = data.buffers,
     views = data.bufferViews;
   const required =
@@ -36,7 +37,7 @@ function validateBuffers(data, binaryBytes) {
     (!required ||
       !data.extensionsUsed?.includes(meshopt) ||
       !integer(buffers[1]?.byteLength, 1) ||
-      buffers[1].byteLength > steamAssetLimits.modelBytes ||
+      buffers[1].byteLength > geometryBytes ||
       !exact(buffers[1].extensions, [meshopt]) ||
       !exact(buffers[1].extensions[meshopt], ['fallback']) ||
       buffers[1].extensions[meshopt].fallback !== true)
@@ -96,8 +97,7 @@ function validateBuffers(data, binaryBytes) {
       )
         throw new Error('Invalid Meshopt mode, count or stride.');
       decoded += view.byteLength;
-      if (decoded > steamAssetLimits.modelBytes)
-        throw new Error('Decoded Meshopt geometry exceeds 2 GiB.');
+      if (decoded > geometryBytes) throw new Error('Decoded Meshopt geometry exceeds its budget.');
       compressed.push(extension);
     } else if (view.buffer !== 0 || offset + view.byteLength > buffers[0].byteLength)
       throw new Error('Prepared GLB buffer view escapes its embedded binary chunk.');
@@ -121,7 +121,7 @@ function validateBuffers(data, binaryBytes) {
       !component ||
       !parts ||
       !integer(accessor.count, 1) ||
-      accessor.count * element > steamAssetLimits.modelBytes ||
+      accessor.count * element > geometryBytes ||
       !integer(offset) ||
       offset % component
     )
@@ -141,11 +141,8 @@ function validateBuffers(data, binaryBytes) {
     if (accessor.sparse !== undefined)
       throw new Error('Sparse prepared map accessors are unsupported.');
   }
-  if (
-    [...used].reduce((sum, index) => sum + views[index].byteLength, zeroBytes) >
-    steamAssetLimits.modelBytes
-  )
-    throw new Error('Decoded prepared geometry exceeds 2 GiB.');
+  if ([...used].reduce((sum, index) => sum + views[index].byteLength, zeroBytes) > geometryBytes)
+    throw new Error('Decoded prepared geometry exceeds its budget.');
   return compressed;
 }
 async function readFully(file, length, position) {
@@ -159,7 +156,7 @@ async function readFully(file, length, position) {
   return result;
 }
 
-export async function verifyPreparedGlb(path) {
+export async function verifyPreparedGlb(path, { compact = false } = {}) {
   const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   try {
     const info = await file.stat({ bigint: true });
@@ -167,7 +164,7 @@ export async function verifyPreparedGlb(path) {
       !info.isFile() ||
       info.nlink !== 1n ||
       info.size < 48n ||
-      info.size > BigInt(steamAssetLimits.modelBytes)
+      info.size > BigInt(compact ? compactLimits.bytes : steamAssetLimits.modelBytes)
     )
       throw new Error('Expected a bounded regular prepared GLB no larger than 2 GiB.');
     const size = Number(info.size);
@@ -204,7 +201,11 @@ export async function verifyPreparedGlb(path) {
       throw new Error(
         'Prepared map must contain real scene meshes and self-contained buffers/textures.',
       );
-    const compressed = validateBuffers(data, binaryBytes);
+    const compressed = validateBuffers(
+      data,
+      binaryBytes,
+      compact ? 64 * 1024 ** 2 : steamAssetLimits.modelBytes,
+    );
     const images = data.images ?? [];
     if (
       !Array.isArray(images) ||
@@ -222,6 +223,35 @@ export async function verifyPreparedGlb(path) {
       )
     )
       throw new Error('Prepared GLB textures must reference bounded embedded image views.');
+    let compactGeometry;
+    if (compact) {
+      const primitives = data.meshes.flatMap((mesh) => mesh.primitives ?? []);
+      let triangles = 0;
+      if (
+        images.length ||
+        data.animations?.length ||
+        data.skins?.length ||
+        data.nodes.length > 4 * compactLimits.primitives ||
+        !primitives.length ||
+        primitives.length > compactLimits.primitives
+      )
+        throw new Error('Invalid compact map surfaces.');
+      for (const primitive of primitives) {
+        const accessor = data.accessors[primitive.indices];
+        if (
+          (primitive.mode ?? 4) !== 4 ||
+          accessor?.type !== 'SCALAR' ||
+          accessor.count % 3 ||
+          ![5123, 5125].includes(accessor.componentType) ||
+          !Object.hasOwn(primitive.attributes ?? {}, 'COLOR_0')
+        )
+          throw new Error('Compact maps require indexed triangles with vertex colors.');
+        triangles += accessor.count / 3;
+      }
+      if (triangles > compactLimits.triangles)
+        throw new Error('Compact map triangle limit exceeded.');
+      compactGeometry = { triangles, primitives: primitives.length };
+    }
     if (compressed.length) {
       await MeshoptDecoder.ready;
       for (const view of compressed) {
@@ -257,7 +287,7 @@ export async function verifyPreparedGlb(path) {
     }
     if (identity(info) !== identity(await file.stat({ bigint: true })))
       throw new Error('Prepared GLB changed during verification.');
-    return { bytes: size, sha256: hash.digest('hex') };
+    return { bytes: size, sha256: hash.digest('hex'), ...compactGeometry };
   } finally {
     await file.close();
   }
