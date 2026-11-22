@@ -3,7 +3,14 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { HalfFloatType, LinearFilter, Vector2, WebGLRenderTarget } from 'three';
 import { mapGradeFile } from '../../../shared/map-grade.mjs';
 import type { MapGrade } from '../../../shared/map-grade.mjs';
-import { createGradeOutput, loadGradeLut, mapGradeLighting, mapGradeTargets } from '../map-grade';
+import {
+  createGradeOutput,
+  loadGradeLut,
+  mapGradeExposure,
+  mapGradeExposureGain,
+  mapGradeLighting,
+  mapGradeTargets,
+} from '../map-grade';
 
 export default function SceneGrade({
   grade,
@@ -72,6 +79,7 @@ function GradeFrames({
       stencilBuffer: true,
     });
     mapGradeTargets.add(target);
+    mapGradeExposure.set(target, mapGradeExposureGain(grade.exposure));
     if (grade.lighting) mapGradeLighting.set(target, grade.lighting);
     const context = gl.getContext() as WebGL2RenderingContext;
     const available = (format: number): number[] =>

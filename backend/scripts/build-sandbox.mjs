@@ -21,6 +21,7 @@ for (const name of [
   'gameplay-sound-files',
   'auth-navigation',
   'smoke-state',
+  'inferno-state',
   'stride-distance',
   'aim-track',
   'agent-deaths',

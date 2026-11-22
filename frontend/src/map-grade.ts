@@ -10,6 +10,7 @@ import {
   Scene,
   ShaderMaterial,
   Vector4,
+  type PointLight,
   type WebGLRenderTarget,
 } from 'three';
 import { mapGradeBytes, mapGradeCurve } from '../../shared/map-grade.mjs';
@@ -19,6 +20,12 @@ import type { MapGrade } from '../../shared/map-grade.mjs';
 // share the same cached map material.
 export const mapGradeTargets = new WeakSet<WebGLRenderTarget>();
 export const mapGradeLighting = new WeakMap<WebGLRenderTarget, NonNullable<MapGrade['lighting']>>();
+export const mapGradeExposure = new WeakMap<WebGLRenderTarget, number>();
+export const mapGradeBurstLights = new WeakMap<
+  Scene,
+  { light: PointLight; intensity: () => number }
+>();
+export const mapGradeExposureGain = ({ min, bias }: MapGrade['exposure']) => 2.8 * min * 2 ** bias;
 
 export async function loadGradeLut(url: string, grade: MapGrade, signal: AbortSignal) {
   const response = await fetch(url, { credentials: 'same-origin', signal });
@@ -73,12 +80,7 @@ export function createGradeOutput(grade: MapGrade, data: Uint8Array) {
       lut: { value: lut },
       numerator: { value: new Vector4(a * whiteScale, b * whiteScale, white, size) },
       denominator: {
-        value: new Vector4(
-          curve.shoulder,
-          curve.linear,
-          c,
-          2.8 * exposure.min * 2 ** exposure.bias,
-        ),
+        value: new Vector4(curve.shoulder, curve.linear, c, mapGradeExposureGain(exposure)),
       },
     },
     vertexShader: `

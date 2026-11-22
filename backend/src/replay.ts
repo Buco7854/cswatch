@@ -28,6 +28,8 @@ import type { GaitHistory } from '../../shared/agent-gait-history.mjs';
 import { encodeGaitHistory, validGaitHistory } from './replay-gait-history.js';
 import type { AgentDeathAnchor } from '../../shared/agent-deaths.mjs';
 import { replayAgentDeaths, validAgentDeaths } from './replay-agent-deaths.js';
+import { validInfernoBank } from './inferno-state-wire.js';
+import type { InfernoBank } from '../../shared/inferno-state.mjs';
 import { replayStride } from './replay-stride.js';
 import { aimBoundary, decodeAimChunk } from './aim-track-wire.js';
 import type { AimSlices } from './aim-track.js';
@@ -398,6 +400,7 @@ export const manifestSchema = z
       .max(1000),
     events: z.array(event).max(100000),
     smokeTracks: z.custom<SmokeTrack[]>().optional(),
+    infernos: z.custom<InfernoBank>().optional(),
     deadTimes: z
       .array(
         z
@@ -823,6 +826,7 @@ async function writeReplayCore(
     offset = end;
   }
   if (!validSmokeTracks(manifest.smokeTracks, manifest.lastTick)) delete manifest.smokeTracks;
+  if (!validInfernoBank(manifest.infernos, manifest.lastTick)) delete manifest.infernos;
   let json = replayJSON(manifest);
   if (manifest.gaitHistory && Buffer.byteLength(json) > replayLimits.manifestBytes) {
     delete manifest.gaitHistory;
@@ -830,6 +834,10 @@ async function writeReplayCore(
   }
   if (manifest.agentDeaths && Buffer.byteLength(json) > replayLimits.manifestBytes) {
     delete manifest.agentDeaths;
+    json = replayJSON(manifest);
+  }
+  if (manifest.infernos && Buffer.byteLength(json) > replayLimits.manifestBytes) {
+    delete manifest.infernos;
     json = replayJSON(manifest);
   }
   if (stride && Buffer.byteLength(json) > replayLimits.manifestBytes) {
@@ -870,6 +878,8 @@ export function validateReplayArtifacts(folder: string): {
     !validSmokeTracks(manifest.smokeTracks, manifest.lastTick)
   )
     throw new Error('Invalid recorded smoke bank');
+  if (manifest.infernos !== undefined && !validInfernoBank(manifest.infernos, manifest.lastTick))
+    throw new Error('Invalid recorded inferno bank');
   if (
     manifest.firstTick > manifest.lastTick ||
     manifest.chunks[0].startTick !== manifest.firstTick ||

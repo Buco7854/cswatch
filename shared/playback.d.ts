@@ -11,6 +11,7 @@ import type { GameplaySoundCue, GameplaySoundInfo } from './gameplay-sounds.js';
 import type { MapIdentity } from './map-acquisition.js';
 import type { AgentDeathAnchor } from './agent-deaths.mjs';
 import type { SmokeTrack } from './smoke-state.mjs';
+import type { InfernoBank } from './inferno-state.mjs';
 export type Player = { id: string; name: string; team: number };
 /** Recorded actions, independent of the player's physical keyboard layout/binds. */
 export type RecordedInput = {
@@ -116,6 +117,7 @@ export type Playback = {
   deadTimes?: DeadTime[];
   grenades?: Grenade[];
   smokeTracks?: SmokeTrack[];
+  infernos?: InfernoBank;
   warnings?: string[];
   capabilities?: ReplayCapabilities;
   voice?: VoicePacket[];

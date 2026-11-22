@@ -5,6 +5,7 @@ import { validateItemSamples, validateItemState } from './item-state';
 import { validateGameplaySoundInfo, validateGameplaySoundCues } from './gameplay-sound-assets';
 import { validAgentDeaths } from '../../shared/agent-deaths.mjs';
 import { validSmokeTracks } from '../../shared/smoke-state.mjs';
+import { validInfernoBank } from '../../shared/inferno-state.mjs';
 
 export const streamedReplayViews = new WeakSet<Playback>();
 
@@ -37,6 +38,7 @@ export function validateManifest(value: PlaybackManifest): PlaybackManifest {
   )
     delete value.gaitHistory;
   if (!validSmokeTracks(value.smokeTracks, value.lastTick)) delete value.smokeTracks;
+  if (!validInfernoBank(value.infernos, value.lastTick)) delete value.infernos;
   for (const [i, part] of value.chunks.entries()) {
     if (
       part.index !== i ||

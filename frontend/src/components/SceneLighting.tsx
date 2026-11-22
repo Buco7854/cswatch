@@ -7,7 +7,7 @@ import {
   type DirectionalLight,
   type HemisphereLight,
 } from 'three';
-import { mapGradeLighting } from '../map-grade';
+import { mapGradeBurstLights, mapGradeExposure, mapGradeLighting } from '../map-grade';
 import { applySunShadow, type MapSun } from '../map-sun';
 
 const fallbackShadow = { left: -45, right: 45, bottom: -45, top: 45, near: 0.5, far: 500 };
@@ -51,6 +51,13 @@ export default function SceneLighting({
     scene.onBeforeRender = function (...args) {
       original.apply(this, args);
       const target = args[0].getRenderTarget();
+      const burst = mapGradeBurstLights.get(scene);
+      if (burst) {
+        const gain = target && mapGradeExposure.get(target);
+        // Retain local highlight detail before the authored exposure and LUT.
+        const headroom = gain ? Math.max(1, gain * 1.35) : 1;
+        burst.light.intensity = burst.intensity() / headroom;
+      }
       const lighting = !sample && target ? mapGradeLighting.get(target) : undefined;
       if (!lighting) {
         restore();

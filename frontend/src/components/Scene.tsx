@@ -112,6 +112,8 @@ import SceneLighting from './SceneLighting';
 import { mapSun, type MapSun } from '../map-sun';
 import { useMapSkyLighting } from '../useMapSkyLighting';
 import { indexBombShockwaves, type BombShockwaveSample } from '../bomb-shockwave';
+import GrenadeBurst from './GrenadeBurst';
+import InfernoEffects from './InfernoEffects';
 import BombShockwave from './BombShockwave';
 import { useReducedMotion } from '../reduced-motion';
 export type MapRenderState = {
@@ -1074,6 +1076,8 @@ function World({
             tick={tick}
             playing={playing}
             nativeVolume={modelReady}
+            staticMap={followModel}
+            lightBursts={!low}
             selected={selected}
             settings={settings}
             utilityState={utilityState}
@@ -1117,6 +1121,8 @@ function UtilityLayer({
   tick,
   playing,
   nativeVolume,
+  staticMap,
+  lightBursts,
   selected,
   settings,
   utilityState,
@@ -1125,11 +1131,14 @@ function UtilityLayer({
   tick: number;
   playing: boolean;
   nativeVolume: boolean;
+  staticMap: THREE.Group | null;
+  lightBursts: boolean;
   selected: string;
   settings: ViewerSettings;
   utilityState: UtilityPresentation;
 }) {
   const { zones: utility, projectiles, bombWave } = utilityState;
+  const reducedMotion = useReducedMotion();
   const smoke = useSmokeDensity(
     settings.utilities && nativeVolume ? data.smokeTracks : undefined,
     tick,
@@ -1167,32 +1176,28 @@ function UtilityLayer({
         .map((zone) => (
           <ApproximateSmoke key={zone.id} zone={zone} tick={tick} rate={data.tickRate} />
         ))}
-      {approximateZones
-        .filter((zone) => zone.kind !== 'smoke')
-        .map((zone) => (
-          <mesh
-            key={zone.id}
-            name={'utility-zone:' + zone.kind}
-            position={[
-              zone.x * UNIT,
-              zone.z * UNIT + (zone.kind === 'fire' ? 0.08 : 0.4),
-              -zone.y * UNIT,
-            ]}
-            rotation={zone.kind === 'fire' ? [-Math.PI / 2, 0, 0] : [0, 0, 0]}
-          >
-            {zone.kind === 'fire' ? (
-              <circleGeometry args={[3.2, 24]} />
-            ) : (
-              <sphereGeometry args={[0.9, 16, 12]} />
-            )}
-            <meshStandardMaterial
-              color={zone.kind === 'flash' ? '#f5f0d8' : '#e4a661'}
-              transparent
-              opacity={0.6}
-              depthWrite={false}
-            />
-          </mesh>
-        ))}
+      {settings.utilities && (
+        <>
+          <GrenadeBurst
+            zones={utility}
+            staticMap={staticMap}
+            lighting={lightBursts}
+            warm={nativeVolume || data.sample}
+            tick={tick}
+            rate={data.tickRate}
+            reducedMotion={reducedMotion}
+          />
+          <InfernoEffects
+            infernos={data.infernos}
+            warm={nativeVolume || data.sample}
+            lighting={lightBursts}
+            events={data.events}
+            tick={tick}
+            rate={data.tickRate}
+            reducedMotion={reducedMotion}
+          />
+        </>
+      )}
       {settings.trajectories !== 'off' && (
         <GrenadePaths data={data} tick={tick} selected={selected} mode={settings.trajectories} />
       )}
@@ -1425,7 +1430,7 @@ export default function Scene({
   const renderDpr =
     (low ? 1 : Math.min(MAX_DESKTOP_DPR, Math.max(1, displayDpr))) * (resolution / 100);
   const zonesAt = useMemo(
-    () => buildUtilityZoneIndex(data.events, data.tickRate),
+    () => buildUtilityZoneIndex(data.events, data.tickRate, true),
     [data.events, data.tickRate],
   );
   const bombWaveAt = useMemo(

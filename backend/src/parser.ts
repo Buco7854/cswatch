@@ -347,6 +347,7 @@ export async function parse(folder: string, maxExpanded: number) {
     itemSamples: media.itemSamples,
     itemState: media.itemState,
     smokeTracks: media.smokeTracks,
+    infernos: media.infernos,
     eventAvailability,
     throwInputs: throwInputs.snapshots,
   };
