@@ -86,17 +86,19 @@ test('client item validation rejects stale identity changes, duplicate samples, 
   const many = Array.from({ length: 129 }, (_, i) => body(0, { id: `item:${i}:0:0` }));
   assert.throws(() => validateItemSamples(many, 10));
   assert.equal(validateItemSamples([body(0, { id: 'item:1:131071:0' })], 10)!.length, 1);
-  assert.equal(validateItemSamples(undefined, 10), undefined);
+  assert.throws(() => validateItemSamples(undefined, 10));
   assert.equal(validateItemSamples([body(0, { pitch: 0, yaw: 0, roll: 0 })], 10)![0].present, true);
 });
 
 test('streamed item carry preserves full state after chunk eviction and a tombstone ends it exactly', async () => {
   const frame = (tick: number) => ({ tick, players: [] });
   const parts: PlaybackChunk[] = Array.from({ length: 4 }, (_, index) => ({
-    version: 2,
+    version: 3,
     index,
     frames: [frame(index * 10), frame(index * 10 + 10)],
     grenades: [],
+    voice: [],
+    sounds: [],
     itemSamples:
       index < 2
         ? [
@@ -106,7 +108,39 @@ test('streamed item carry preserves full state after chunk eviction and a tombst
         : [],
   }));
   const manifest = validateManifest({
-    version: 2,
+    version: 3,
+    deadTimes: [],
+    warnings: [],
+    chat: [],
+    throwInputs: [],
+    objectives: { samples: [], complete: false },
+    matchState: { samples: [], complete: false },
+    crosshairs: { samples: [], complete: false },
+    communications: {
+      voice: 'absent',
+      chat: 'absent',
+      captions: 'unavailable',
+      unsupportedPackets: 0,
+    },
+    eventAvailability: { player_death: false, player_hurt: false },
+    capabilities: {
+      economy: false,
+      equipment: false,
+      inventory: false,
+      inputButtons: 'unavailable',
+      mouseInput: false,
+      utilityThrows: false,
+    },
+    gameplaySounds: {
+      coverage: Object.fromEntries(
+        ['weapon', 'footstep', 'reload', 'utility', 'objective', 'round'].map((name) => [
+          name,
+          'unavailable',
+        ]),
+      ),
+      truncated: false,
+    },
+    worldBounds: { minX: 0, minY: 0, minZ: 0, maxX: 100, maxY: 100, maxZ: 100 },
     map: 'de_qa',
     tickRate: 64,
     sample: false,
@@ -115,7 +149,7 @@ test('streamed item carry preserves full state after chunk eviction and a tombst
     rounds: [],
     firstTick: 0,
     lastTick: 40,
-    itemState: { complete: true },
+    itemState: { complete: true, coverage: { dropped: true, planted: true, projectile: true } },
     chunks: parts.map((part, index) => ({
       index,
       startTick: index * 10,
@@ -150,8 +184,21 @@ test('category coverage keeps exact projectile state despite unrelated missing d
   const known = { complete: false, coverage: { dropped: false, planted: true, projectile: true } };
   assert.equal(validateItemState(known), known);
   assert.equal(hasRecordedProjectiles({ itemState: known }), true);
-  assert.equal(hasRecordedProjectiles({ itemState: { complete: true } }), true);
-  assert.equal(hasRecordedProjectiles({ itemState: { complete: false } }), false);
+  assert.equal(
+    hasRecordedProjectiles({
+      itemState: { complete: true, coverage: { dropped: true, planted: true, projectile: true } },
+    }),
+    true,
+  );
+  assert.equal(
+    hasRecordedProjectiles({
+      itemState: {
+        complete: false,
+        coverage: { dropped: false, planted: false, projectile: false },
+      },
+    }),
+    false,
+  );
   assert.equal(hasRecordedProjectiles({}), false);
   for (const value of [
     { complete: false, coverage: { dropped: true, planted: true, projectile: true } },

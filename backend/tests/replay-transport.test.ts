@@ -4,7 +4,13 @@ import { mkdtempSync, rmSync, readFileSync, writeFileSync, symlinkSync, existsSy
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { gunzipSync, gzipSync } from 'node:zlib';
-import { writeReplay, validateReplayArtifacts, replayLimits } from '../src/replay.js';
+import {
+  writeReplay,
+  validateReplayArtifacts,
+  replayLimits,
+  manifestSchema,
+  chunkSchema,
+} from '../src/replay.js';
 import { ReplayCache, chunkIndex, validateManifest } from '../../frontend/src/replay-cache.js';
 import { frameAt, skipDeadTime } from '../../frontend/src/playback.js';
 import { sample } from '../../frontend/src/sample.js';
@@ -136,7 +142,7 @@ test('rich replay chunks adapt to decoded bytes without losing boundary, five-se
     assert.ok(
       Buffer.byteLength(
         JSON.stringify({
-          version: 2,
+          version: 3,
           index: 0,
           frames: original.frames.slice(0, 481),
           grenades: [],
@@ -144,7 +150,7 @@ test('rich replay chunks adapt to decoded bytes without losing boundary, five-se
       ) > replayLimits.chunkBytes,
       'The fixture must exercise the fixed-frame writer overflow, not only ordinary frame packing',
     );
-    await writeReplay(dir, original, true);
+    await writeReplay(dir, original);
     const { manifest } = validateReplayArtifacts(dir);
     assert.deepEqual(validateManifest(manifest), manifest);
     assert.deepEqual(manifest.crosshairs, original.crosshairs);
@@ -194,7 +200,8 @@ test('rich replay chunks adapt to decoded bytes without losing boundary, five-se
       }
       if (offset >= 80) assert.equal(info.startTick - info.firstFrameTick, 5 * manifest.tickRate);
     }
-    const cache = new ReplayCache(manifest, async (index) =>
+    // The POV stride remains reproducible even when the gait bank exhausts its own budget.
+    const cache = new ReplayCache({ ...manifest, gaitHistory: undefined }, async (index) =>
       decode(join(dir, 'chunks', `${index}.json.gz`)),
     );
     const fullTravel = indexRecordedTravel(
@@ -336,7 +343,7 @@ test('a cold seek across a chunk boundary retains flight and post-detonation sam
       flash: 1.03,
     }));
     // Decline the aim slice to exercise the first whole-recording fallback.
-    await writeReplay(dir, original, false, () => null);
+    await writeReplay(dir, original, () => null);
     const { manifest } = validateReplayArtifacts(dir);
     const chunk = decode(join(dir, 'chunks', '1.json.gz')) as PlaybackChunk;
     assert.ok(manifest.chunks[1].firstFrameTick > path.points[0].tick);
@@ -354,7 +361,7 @@ test('chunked transport retains exact boundary interpolation, global navigation 
     const original = fixture();
     await writeReplay(dir, original);
     const { manifest, files, bytes } = validateReplayArtifacts(dir);
-    assert.equal(manifest.version, 2);
+    assert.equal(manifest.version, 3);
     assert.equal(manifest.chunks.length, 5);
     assert.equal(files.length, 6);
     assert.ok(bytes > 0);
@@ -451,5 +458,47 @@ test('untrusted parser output cannot publish traversal, symlinks, oversized or m
     assert.throws(() => validateReplayArtifacts(dir));
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the replay transport accepts one version and requires current coverage and chunk arrays', async () => {
+  const folder = mkdtempSync(join(tmpdir(), 'cswatch-replay-wire-'));
+  try {
+    await writeReplay(folder, fixture());
+    const { manifest } = validateReplayArtifacts(folder);
+    const chunk = decode(join(folder, 'chunks', '0.json.gz'));
+    for (const version of [1, 2, 4]) {
+      assert.equal(manifestSchema.safeParse({ ...manifest, version }).success, false);
+      assert.equal(chunkSchema.safeParse({ ...chunk, version }).success, false);
+      assert.throws(() => validateManifest({ ...manifest, version: version as 3 }));
+    }
+    for (const key of [
+      'worldBounds',
+      'deadTimes',
+      'warnings',
+      'chat',
+      'communications',
+      'gameplaySounds',
+      'objectives',
+      'matchState',
+      'crosshairs',
+      'itemState',
+      'eventAvailability',
+      'throwInputs',
+      'capabilities',
+    ] as const) {
+      const payload = { ...manifest, [key]: undefined };
+      assert.equal(manifestSchema.safeParse(payload).success, false, key);
+      assert.throws(() => validateManifest(payload as PlaybackManifest), key);
+    }
+    for (const key of ['voice', 'sounds', 'itemSamples']) {
+      const payload = { ...chunk, [key]: undefined };
+      assert.equal(chunkSchema.safeParse(payload).success, false, key);
+      const cache = new ReplayCache(manifest, async () => payload);
+      await assert.rejects(cache.at(manifest.firstTick), /Replay chunk is invalid/);
+      cache.close();
+    }
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
   }
 });

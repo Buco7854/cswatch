@@ -179,7 +179,7 @@ async function approved(options, request) {
 }
 
 async function reserveAttempt(jobs, request) {
-  const generation = request.generation || 'initial';
+  const generation = request.generation;
   const reserved = await withDirectory(jobs, ['locks'], async (directory) => {
     const name = `${request.packId}.attempts.json`;
     let count = 0;
@@ -195,7 +195,7 @@ async function reserveAttempt(jobs, request) {
           before !== (await fileVersion(file)) ||
           data.schemaVersion !== 1 ||
           data.packId !== request.packId ||
-          !/^(?:initial|[a-f0-9]{32})$/.test(data.generation) ||
+          !/^[a-f0-9]{32}$/.test(data.generation) ||
           !Number.isInteger(data.attempts) ||
           data.attempts < 1 ||
           data.attempts > mapWorkerLimits.attempts

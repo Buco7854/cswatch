@@ -300,7 +300,6 @@ export function originalMapGLB(
 }
 export function originalMapReplay(map = qaMap): Playback {
   return {
-    version: 1,
     map,
     sample: false,
     tickRate: 64,

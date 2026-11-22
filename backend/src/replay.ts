@@ -368,7 +368,7 @@ const descriptor = z
   .strict();
 export const manifestSchema = z
   .object({
-    version: z.literal(2),
+    version: z.literal(3),
     map: z.string().min(1).max(80),
     mapIdentity: mapIdentitySchema.optional(),
     tickRate: z.number().int().min(1).max(128),
@@ -407,21 +407,17 @@ export const manifestSchema = z
           .object({ start: tick, end: tick, kind: z.enum(['freeze', 'timeout', 'technical']) })
           .strict(),
       )
-      .max(10000)
-      .optional(),
-    warnings: z.array(z.string().max(1000)).max(100).optional(),
-    chat: z.array(chatMessageSchema).max(10000).optional(),
-    captions: z.array(captionCueSchema).max(20000).optional(),
-    communications: communicationInfoSchema.optional(),
-    gameplaySounds: gameplaySoundInfoSchema.optional(),
+      .max(10000),
+    warnings: z.array(z.string().max(1000)).max(100),
+    chat: z.array(chatMessageSchema).max(10000),
+    communications: communicationInfoSchema,
+    gameplaySounds: gameplaySoundInfoSchema,
     objectives: z
       .object({ samples: z.array(objectiveSampleSchema).max(10000), complete: z.boolean() })
-      .strict()
-      .optional(),
+      .strict(),
     matchState: z
       .object({ complete: z.boolean(), samples: z.array(matchStateSampleSchema).max(10000) })
-      .strict()
-      .optional(),
+      .strict(),
     crosshairs: z
       .object({
         samples: z
@@ -437,26 +433,18 @@ export const manifestSchema = z
           .max(10000),
         complete: z.boolean(),
       })
-      .strict()
-      .optional(),
+      .strict(),
     itemState: z
       .object({
         complete: z.boolean(),
         coverage: z
           .object({ dropped: z.boolean(), planted: z.boolean(), projectile: z.boolean() })
-          .strict()
-          .optional(),
+          .strict(),
       })
       .strict()
-      .refine(
-        (info) => !info.coverage || info.complete === Object.values(info.coverage).every(Boolean),
-      )
-      .optional(),
-    eventAvailability: z
-      .object({ player_death: z.boolean(), player_hurt: z.boolean() })
-      .strict()
-      .optional(),
-    throwInputs: z.array(throwInputSnapshotSchema).max(10000).optional(),
+      .refine((info) => info.complete === Object.values(info.coverage).every(Boolean)),
+    eventAvailability: z.object({ player_death: z.boolean(), player_hurt: z.boolean() }).strict(),
+    throwInputs: z.array(throwInputSnapshotSchema).max(10000),
     capabilities: z
       .object({
         economy: z.boolean(),
@@ -466,8 +454,7 @@ export const manifestSchema = z
         mouseInput: z.boolean(),
         utilityThrows: z.boolean(),
       })
-      .strict()
-      .optional(),
+      .strict(),
     worldBounds: z
       .object({
         minX: coordinate,
@@ -477,8 +464,7 @@ export const manifestSchema = z
         maxY: coordinate,
         maxZ: coordinate,
       })
-      .strict()
-      .optional(),
+      .strict(),
     agentDeaths: z.custom<AgentDeathAnchor[]>(validAgentDeaths).optional(),
     gaitHistory: z.custom<GaitHistory>().optional(),
     firstTick: tick,
@@ -488,7 +474,7 @@ export const manifestSchema = z
   .strict();
 export const chunkSchema = z
   .object({
-    version: z.literal(2),
+    version: z.literal(3),
     index: z
       .number()
       .int()
@@ -499,9 +485,9 @@ export const chunkSchema = z
       .min(1)
       .max(replayLimits.chunkFrames + replayLimits.contextFrames + 1),
     grenades: z.array(grenade).max(20000),
-    voice: z.array(voicePacketSchema).max(50000).optional(),
-    sounds: z.array(gameplaySoundCueSchema).max(gameplaySoundLimits.chunkSamples).optional(),
-    itemSamples: z.array(itemSampleSchema).max(itemChunkSampleLimit).optional(),
+    voice: z.array(voicePacketSchema).max(50000),
+    sounds: z.array(gameplaySoundCueSchema).max(gameplaySoundLimits.chunkSamples),
+    itemSamples: z.array(itemSampleSchema).max(itemChunkSampleLimit),
     aim: z.unknown().optional(),
   })
   .strict();
@@ -565,12 +551,7 @@ function trailFrame(frame: Frame, combatContext: boolean): Frame {
 }
 
 /** Each adjacent chunk shares its boundary frame, preserving interpolation across seeks. */
-export async function writeReplay(
-  folder: string,
-  data: Playback,
-  includeStride = false,
-  aim?: AimSlices,
-): Promise<void> {
+export async function writeReplay(folder: string, data: Playback, aim?: AimSlices): Promise<void> {
   const limits = [
     'Replay output limit',
     'Stored replay limit',
@@ -582,7 +563,7 @@ export async function writeReplay(
   let droppedAudio = false;
   for (;;) {
     try {
-      await writeReplayCore(folder, data, written, includeStride, combatContext, aim);
+      await writeReplayCore(folder, data, written, combatContext, aim);
       return;
     } catch (error) {
       if (
@@ -625,13 +606,12 @@ async function writeReplayCore(
   folder: string,
   data: Playback,
   written: string[],
-  includeStride: boolean,
   combatContext: boolean,
   aim?: AimSlices,
 ): Promise<void> {
   if (!data.frames.length) throw new Error('No replay frames');
   const {
-    version: _version,
+    captions: _captions,
     strideAnchor: _anchor,
     frames,
     grenades,
@@ -641,7 +621,7 @@ async function writeReplayCore(
     ...metadata
   } = data;
   const items = new ItemSliceIndex(itemSamples || []);
-  const stride = includeStride && data.players.length <= 128 ? replayStride(data) : undefined;
+  const stride = data.players.length <= 128 ? replayStride(data) : undefined;
   if (frames.length > replayLimits.chunks * replayLimits.chunkFrames + 1)
     throw new Error('Replay has too many chunks');
   // Count one frame at a time, retaining only small numeric prefix sums. A rich
@@ -658,15 +638,6 @@ async function writeReplayCore(
       1;
     if (frameBytes[index + 1] - 1 > replayLimits.totalBytes) throw new Error('Replay output limit');
   }
-  const manifest: PlaybackManifest = {
-    ...metadata,
-    version: 2,
-    firstTick: frames[0].tick,
-    lastTick: frames.at(-1)!.tick,
-    chunks: [],
-    agentDeaths: replayAgentDeaths(data),
-    gaitHistory: includeStride ? encodeGaitHistory(data) : undefined,
-  };
   const bounds = {
     minX: Infinity,
     minY: Infinity,
@@ -684,7 +655,60 @@ async function writeReplayCore(
       bounds.minZ = Math.min(bounds.minZ, player.z);
       bounds.maxZ = Math.max(bounds.maxZ, player.z);
     }
-  manifest.worldBounds = bounds;
+  const unavailable = 'unavailable' as const;
+  const coverage = data.itemState?.complete ?? false;
+  const manifest: PlaybackManifest = {
+    ...metadata,
+    version: 3,
+    worldBounds: bounds,
+    deadTimes: data.deadTimes ?? [],
+    warnings: data.warnings ?? [],
+    chat: data.chat ?? [],
+    communications: data.communications ?? {
+      voice: 'absent',
+      chat: 'absent',
+      captions: 'unavailable',
+      unsupportedPackets: 0,
+    },
+    gameplaySounds: data.gameplaySounds ?? {
+      truncated: false,
+      coverage: {
+        weapon: unavailable,
+        footstep: unavailable,
+        reload: unavailable,
+        utility: unavailable,
+        objective: unavailable,
+        round: unavailable,
+      },
+    },
+    objectives: data.objectives ?? { complete: false, samples: [] },
+    matchState: data.matchState ?? { complete: false, samples: [] },
+    crosshairs: data.crosshairs ?? { complete: false, samples: [] },
+    itemState: {
+      complete: coverage,
+      coverage: data.itemState?.coverage ?? {
+        dropped: coverage,
+        planted: coverage,
+        projectile: coverage,
+      },
+    },
+    eventAvailability: data.eventAvailability ?? { player_death: false, player_hurt: false },
+    throwInputs: data.throwInputs ?? [],
+    capabilities: data.capabilities ?? {
+      economy: false,
+      equipment: false,
+      inventory: false,
+      inputButtons: 'unavailable',
+      mouseInput: false,
+      utilityThrows: false,
+    },
+    firstTick: frames[0].tick,
+    lastTick: frames.at(-1)!.tick,
+    chunks: [],
+    agentDeaths: replayAgentDeaths(data),
+    gaitHistory: encodeGaitHistory(data),
+  };
+
   mkdirSync(join(folder, 'chunks'), { recursive: true, mode: 0o700 });
   let rawTotal = 0,
     storedTotal = 0;
@@ -694,19 +718,16 @@ async function writeReplayCore(
     const context = frames
       .slice(contextStart, offset)
       .map((frame) => trailFrame(frame, combatContext));
-    const hasVoice = Boolean(voice?.length);
-    const hasSounds = sounds !== undefined;
-    const hasItems = itemSamples !== undefined;
     const itemsAt = items.from(frames[contextStart].tick);
     const overhead = Buffer.byteLength(
       replayJSON({
-        version: 2,
+        version: 3,
         index,
         frames: [],
         grenades: [],
-        ...(hasVoice ? { voice: [] } : {}),
-        ...(hasSounds ? { sounds: [] } : {}),
-        ...(hasItems ? { itemSamples: [] } : {}),
+        voice: [],
+        sounds: [],
+        itemSamples: [],
       }),
     );
     const candidate = (end: number) => {
@@ -763,13 +784,13 @@ async function writeReplayCore(
         end,
         bytes,
         payload: {
-          version: 2 as const,
+          version: 3 as const,
           index,
           frames: [...context, ...frames.slice(offset, end + 1)],
           grenades: paths,
-          ...(hasVoice ? { voice: packets } : {}),
-          ...(hasSounds ? { sounds: soundSlice } : {}),
-          ...(hasItems ? { itemSamples: itemSlice } : {}),
+          voice: packets,
+          sounds: soundSlice,
+          itemSamples: itemSlice,
           ...(aimSlice ? { aim: aimSlice } : {}),
         },
       };
@@ -925,19 +946,19 @@ export function validateReplayArtifacts(folder: string): {
       strides.set(id, distance);
     }
   const itemValidator = new ItemArtifactValidator();
-  for (const [index, sample] of (manifest.crosshairs?.samples || []).entries()) {
+  for (const [index, sample] of manifest.crosshairs.samples.entries()) {
     if (
       sample.tick > manifest.lastTick ||
       !actors.has(sample.actor) ||
-      (index > 0 && sample.tick < manifest.crosshairs!.samples[index - 1].tick)
+      (index > 0 && sample.tick < manifest.crosshairs.samples[index - 1].tick)
     )
       throw new Error('Invalid recorded crosshair identity or time');
   }
-  for (const [index, sample] of (manifest.matchState?.samples || []).entries()) {
+  for (const [index, sample] of manifest.matchState.samples.entries()) {
     const clock = sample.clock;
     if (
       sample.tick > manifest.lastTick ||
-      (index > 0 && sample.tick < manifest.matchState!.samples[index - 1].tick) ||
+      (index > 0 && sample.tick < manifest.matchState.samples[index - 1].tick) ||
       (clock?.startTick !== undefined &&
         clock.endTick !== undefined &&
         clock.startTick > clock.endTick) ||
@@ -951,7 +972,7 @@ export function validateReplayArtifacts(folder: string): {
     )
       throw new Error('Invalid recorded match state time');
   }
-  for (const [index, snapshot] of (manifest.throwInputs || []).entries()) {
+  for (const [index, snapshot] of manifest.throwInputs.entries()) {
     const event = manifest.events[snapshot.eventIndex];
     if (
       !event ||
@@ -960,7 +981,7 @@ export function validateReplayArtifacts(folder: string): {
       snapshot.tick > manifest.lastTick ||
       event.user_steamid !== snapshot.actorId ||
       !actors.has(snapshot.actorId) ||
-      (index > 0 && snapshot.eventIndex <= manifest.throwInputs![index - 1].eventIndex)
+      (index > 0 && snapshot.eventIndex <= manifest.throwInputs[index - 1].eventIndex)
     )
       throw new Error('Invalid throw input event identity or time');
     if (snapshot.provenance !== 'unavailable') {
@@ -974,10 +995,10 @@ export function validateReplayArtifacts(folder: string): {
         throw new Error('Invalid throw input provenance or time');
     }
   }
-  for (const [index, sample] of (manifest.objectives?.samples || []).entries()) {
+  for (const [index, sample] of manifest.objectives.samples.entries()) {
     if (
       sample.tick > manifest.lastTick ||
-      (index > 0 && sample.tick < manifest.objectives!.samples[index - 1].tick) ||
+      (index > 0 && sample.tick < manifest.objectives.samples[index - 1].tick) ||
       (sample.actor !== undefined && !actors.has(sample.actor))
     )
       throw new Error('Invalid objective state identity or time');
@@ -1014,10 +1035,8 @@ export function validateReplayArtifacts(folder: string): {
     if (rawTotal > replayLimits.totalBytes || json.byteLength !== info.bytes)
       throw new Error('Replay size mismatch');
     const chunk = chunkSchema.parse(JSON.parse(json.toString('utf8')));
-    if (Boolean(manifest.gameplaySounds) !== (chunk.sounds !== undefined))
-      throw Error('Gameplay sound capability mismatch');
     const chunkSoundIds = new Set<string>();
-    for (const [n, cue] of (chunk.sounds || []).entries()) {
+    for (const [n, cue] of chunk.sounds.entries()) {
       const serialized = JSON.stringify(cue),
         previous = soundIdentities.get(cue.id);
       if (
@@ -1036,15 +1055,7 @@ export function validateReplayArtifacts(folder: string): {
       if (soundIdentities.size > gameplaySoundLimits.samples)
         throw Error('Gameplay sound sample limit');
     }
-    if (Boolean(manifest.itemState) !== (chunk.itemSamples !== undefined))
-      throw new Error('Recorded item capability mismatch');
-    if (chunk.itemSamples)
-      itemValidator.validate(
-        chunk.itemSamples,
-        info.firstFrameTick,
-        info.endTick,
-        manifest.lastTick,
-      );
+    itemValidator.validate(chunk.itemSamples, info.firstFrameTick, info.endTick, manifest.lastTick);
     if (
       chunk.index !== i ||
       chunk.frames.length !== info.frames ||

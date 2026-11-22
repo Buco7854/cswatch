@@ -17,7 +17,7 @@ test('clock horizon includes only decoded contiguous slices and synchronous look
       weapon: 'ak47',
     };
   const manifest = {
-    version: 2,
+    version: 3,
     map: 'de_qa',
     sample: false,
     tickRate: 64,
@@ -36,13 +36,16 @@ test('clock horizon includes only decoded contiguous slices and synchronous look
   const cache = new ReplayCache(manifest, async (index) => {
     if (index === 1) await gate;
     return {
-      version: 2,
+      version: 3,
       index,
       frames: [index * 4, index * 4 + 4].map((tick) => ({
         tick,
         players: [{ ...p, money: index ? 0 : 800 }],
       })),
       grenades: [],
+      voice: [],
+      sounds: [],
+      itemSamples: [],
     } as PlaybackChunk;
   });
   await cache.at(0);

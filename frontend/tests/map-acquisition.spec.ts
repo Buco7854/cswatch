@@ -1,3 +1,4 @@
+import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { test, expect, type Page } from '@playwright/test';
 import {
   originalMapReplay,
@@ -112,7 +113,7 @@ async function install(page: Page) {
       }),
     );
     await page.route(`**/api/demos/${id}/playback`, (route) =>
-      route.fulfill({ json: originalMapReplay() }),
+      fulfillReplayFixture(route, originalMapReplay()),
     );
   }
   let legacy = 0;
@@ -441,7 +442,7 @@ test('latest ready maps disclose layout uncertainty and raw recorded identity in
     addonPresence: 'none',
   };
   await page.route('**/api/demos/acquisition-a/playback', (route) =>
-    route.fulfill({ json: { ...originalMapReplay(), mapIdentity: recorded } }),
+    fulfillReplayFixture(route, { ...originalMapReplay(), mapIdentity: recorded }),
   );
   let posts = 0;
   await page.route('**/api/demos/acquisition-a/map-assets', (route) => {

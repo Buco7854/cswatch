@@ -45,7 +45,7 @@ type MapJobIdentity = {
   /** Queue identity. Latest jobs acquire a separate content pack ID after download. */
   packId: string;
   /** Server-issued retry generation, deliberately independent of pack identity. */
-  generation?: string;
+  generation: string;
 };
 export type MapJobRequest = MapJobIdentity &
   (

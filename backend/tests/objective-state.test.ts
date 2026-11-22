@@ -12,7 +12,6 @@ function replay(
   complete = true,
 ): Playback {
   return {
-    version: 1,
     sample: false,
     map: 'de_mirage',
     tickRate: 64,

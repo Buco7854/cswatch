@@ -195,7 +195,6 @@ test('draw, reload and fire use newest evidence, while a death anchor survives a
   const observer = { ...player, id: '123', team: 3 };
   const rounds = [{ number: 1, tick: 0, endTick: 640 }];
   const playback: Playback = {
-    version: 1,
     map: 'de_mirage',
     sample: false,
     tickRate: 64,
@@ -281,7 +280,6 @@ test('authored stride integrates across direction and crouch changes, holds acro
   ];
   const data: Playback = {
     map: 'de_mirage',
-    version: 1,
     sample: false,
     tickRate: 64,
     events: [],
@@ -294,7 +292,7 @@ test('authored stride integrates across direction and crouch changes, holds acro
   assert.equal(validGaitHistory(history, new Set([id]), 0, 24 - 8, 64), false);
   const folder = await mkdtemp(join(tmpdir(), 'agent-gait-replay-'));
   try {
-    await writeReplay(folder, data, true);
+    await writeReplay(folder, data);
     assert.deepEqual(validateReplayArtifacts(folder).manifest.gaitHistory, history);
   } finally {
     await rm(folder, { recursive: true, force: true });
@@ -304,16 +302,6 @@ test('authored stride integrates across direction and crouch changes, holds acro
     integrateGait(history.players[0][1], 64, calibration.strideAt, history.version);
   const continuously = sample(),
     cold = sample();
-  // Previous manifests keep their phase records without the world bearings or idle intervals.
-  const previous = Buffer.from(history.players[0][1], 'base64');
-  const legacyRows = [];
-  for (let i = 0; i < previous.length; i += 12)
-    if (previous.readUInt16LE(i + 5)) legacyRows.push(previous.subarray(i, i + 10));
-  const legacyEncoded = Buffer.concat(legacyRows).toString('base64');
-  const legacy = { version: 1 as const, players: [[id, legacyEncoded] as [string, string]] };
-  assert.ok(validGaitHistory(legacy, new Set([id]), 0, 28, 64));
-  assert.equal(agentCenteredMotionAt(legacy, id, 64), undefined);
-  assert.equal(integrateGait(legacyEncoded, 64, calibration.strideAt, 1)(20), continuously(20));
   assert.equal(continuously(16), continuously(8));
   assert.equal(continuously(28), continuously(20));
   for (const tick of [22, 1, 16, 5, 8, 17, 20]) {
@@ -350,7 +338,6 @@ test('centred motion cancels counter-strafes and uses identical evidence after a
     weapon: 'ak47',
   };
   const data: Playback = {
-    version: 1,
     map: 'de_mirage',
     sample: false,
     tickRate: 64,

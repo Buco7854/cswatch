@@ -58,7 +58,6 @@ async function state(body = outputRunner, env: Record<string, string> = {}) {
   db.run('INSERT INTO users VALUES(?,?,?,?,?)', 'caption-user', 'caption-user', null, 0, now());
   const demo = reserve(db, config, 'caption-user', 'fixture.dem', 'upload');
   await writeReplay(demo.folder, {
-    version: 1,
     map: 'training',
     tickRate: 64,
     sample: false,

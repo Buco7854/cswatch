@@ -9,7 +9,6 @@ const selected = '76561198000000001',
   support = '76561198000000003';
 function fixture(): Playback {
   return {
-    version: 1,
     sample: false,
     map: 'de_explicit_damage_fixture',
     tickRate: 64,

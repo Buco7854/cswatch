@@ -1,5 +1,8 @@
 # Feature status
 
+- Local T6 adds bounded optional per-tick yaw and pitch to new chunked replays. Camera and rendered actors use the shared pose sampler. Missing per-tick angle evidence uses sparse-frame interpolation. [Fixture verification](VERIFICATION.md#local-per-tick-aim-t6-2026-11-22)
+- Version 3 byte-adaptive replay chunks with global indexes/bounds, five seconds of spatial trail context, bounded browser caching/prefetch and cancelled irrelevant requests. Context-only samples never establish historical HUD state.
+
 - The directional agent pack supports CT/T rifle, pistol and knife locomotion with eight directions per gait, pitch aim and rigid weapon carry. Shot events, recorded reload starts and observed weapon changes drive class-based upper-body poses. Recorded deaths use an authored pose through round end when a nearby living anchor is available. The automatic presentation worker prepares both teams on a fresh installation. [Directional agent evidence](VERIFICATION.md#local-directional-agents-2026-11-22)
 
 - The 3D viewer uses one smoke volume renderer. Missing recorded density and failed workers use the analytic field. A failed volume target is reported and checked again after WebGL restoration.
@@ -11,8 +14,6 @@
 - Recorded damage uses a crisp POV edge frame, a center-clear glow and the recorded attacker direction when available. POV flash feedback uses the sampled pawn state and offers Off, Indicator only, Reduced tint and Strong tint. The default is Indicator only. Reduced motion keeps the hurt frame steady and shows a flash indicator.
 - Optional shot tracers sample recorded weapon-fire events and aim in 3D. The streak uses the rendered muzzle when available and clips against prepared opaque map surfaces. Tracers default on for desktop High and Auto profiles, default off for compact and mobile profiles, and are hidden under reduced motion. Saved choices override the profile default.
 - Recorded projectile visibility remains quality-independent. The 3D and 2D path preference supports all players, the followed player and off. Paths reveal sampled points, mark sharp turns and fade for five demo seconds after a matched detonation. Unidentified throwers use a neutral path color.
-
-- Local T6 adds bounded optional per-tick yaw and pitch to new chunked replays. Camera and rendered actors use the shared pose sampler. Older replays retain their existing interpolation. [Fixture verification](VERIFICATION.md#local-per-tick-aim-t6-2026-11-22)
 
 The local first-person pass has an independent lens for authored and static weapons. Recorded yaw, pitch and travel drive weapon motion, with a landing cue inferred from vertical samples. Prepared static geometry can attenuate POV sunlight indoors. [Verification](VERIFICATION.md#first-person-lens-and-motion-2026-11-22)
 
@@ -52,7 +53,6 @@ Inventory bootstrap uses private disposable HOME/CLI/bundle paths, the existing 
 - The public upload and member dialog show a file-only panel with a separate Steam and FACEIT link. Guests reach Connected accounts after sign-in and members can open it directly. Long filenames keep their supported extension when shortened for display. Real browser uploads of both formats reach private playback. [Verification](VERIFICATION.md#local-landing-redesign-2026-11-21)
 - Actual players/positions/angles/status, recorded inventory/economy, native counters/crosshair codes, events/rounds/dead time, grenade trajectories, objectives and world equipment when the recording supplies them. Missing fields remain unavailable.
 - Bounded raw recorded map identity, with explicit missing/addon/conflicting evidence and no inferred Steam manifest or map CRC.
-- Version 2 byte-adaptive replay chunks with global indexes/bounds, five seconds of spatial trail context, bounded browser caching/prefetch and cancelled irrelevant requests. Context-only samples never establish historical HUD state.
 - Three supplied complete recordings passed actual uploads, confined parsing, private transport and desktop/phone review before authorized deletion. Their position-fallback journeys are separate from game-asset validation.
 - Manual uploads accept source downloads from Premier/Competitive/Wingman, FACEIT and HLTV. Connected accounts provides a Steam match-history link, Steam next-match share-code discovery and verified-Steam FACEIT association, history and approved downloads. Live provider flows require external credentials/approval. Steam OpenID alone does not authorize automatic demo downloads.
 

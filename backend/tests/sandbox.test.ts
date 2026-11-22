@@ -307,7 +307,7 @@ test(
       assert.equal(row.status, 'ready', row.error);
       const output = validateReplayArtifacts(demo.folder);
       assert.equal(output.manifest.map, 'de_mirage');
-      assert.equal(JSON.parse(row.metadata).replayVersion, 2);
+      assert.equal(JSON.parse(row.metadata).replayVersion, 3);
       assert.equal(existsSync(join(demo.folder, 'expanded.dem')), false);
       assert.equal(existsSync(join(demo.folder, 'summary.json')), false);
       assert.equal(await processOne(db, config), false);
@@ -381,7 +381,6 @@ async function preparedRunner(state: ReturnType<typeof workerState>, sample = fa
   const template = join(state.dir, 'template');
   mkdirSync(template);
   await writeReplay(template, {
-    version: 1,
     map: 'training',
     tickRate: 64,
     sample,

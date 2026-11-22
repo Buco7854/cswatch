@@ -1,3 +1,4 @@
+import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { test, expect, type Page } from '@playwright/test';
 import { Matrix4, PerspectiveCamera, Vector3 } from 'three';
 import { createHash } from 'node:crypto';
@@ -60,7 +61,7 @@ async function fixture(page: Page, id: string, gpu = false, quality: 'low' | 'au
       },
     }),
   );
-  await page.route(`**/api/demos/${id}/playback`, (route) => route.fulfill({ json: data }));
+  await page.route(`**/api/demos/${id}/playback`, (route) => fulfillReplayFixture(route, data));
   await installMapFixture(page, data.map, id);
   await page.route('**/api/assets/agents', (route) =>
     route.fulfill({ json: { ct: null, t: null } }),

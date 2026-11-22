@@ -1,3 +1,4 @@
+import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { installMapFixture } from './fixtures/map-assets';
 import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
@@ -40,7 +41,6 @@ const players = [
 }));
 const actor = players[0].id;
 const replay: Playback = {
-  version: 1,
   map: 'de_viewer_design_fixture',
   sample: false,
   tickRate: 64,
@@ -193,7 +193,7 @@ async function openFixture(
     }),
   );
   await page.route('**/api/demos/viewer-design-fixture/playback', (route) =>
-    route.fulfill({ json: playback }),
+    fulfillReplayFixture(route, playback),
   );
   await page.route('**/api/demos/viewer-design-fixture/captions', (route) =>
     route.fulfill({

@@ -105,7 +105,6 @@ export type DeadTime = { start: number; end: number; kind: 'freeze' | 'timeout' 
 export type GrenadePoint = { tick: number; x: number; y: number; z: number };
 export type Grenade = { id: string; kind: string; points: GrenadePoint[] };
 export type Playback = {
-  version: 1;
   map: string;
   mapIdentity?: MapIdentity;
   tickRate: number;
@@ -134,7 +133,7 @@ export type Playback = {
   itemSamples?: ItemSample[];
   itemState?: ItemStateInfo;
   strideAnchor?: { tick: number; players: [id: string, centimeters: number][] };
-  /** Last nearby living pose for a recorded death. Optional on older artifacts. */
+  /** Last nearby living pose for a recorded death when recorded within budget. */
   agentDeaths?: AgentDeathAnchor[];
   /** Pack-independent movement intervals for deterministic directional gait. */
   gaitHistory?: GaitHistory;
@@ -149,7 +148,7 @@ export type Playback = {
   };
 };
 
-/** Version 2 transport keeps the version 1 rendering domain, but streams bounded time slices. */
+/** Version 3 transport streams bounded time slices. */
 export type ReplayChunkInfo = {
   index: number;
   startTick: number;
@@ -158,26 +157,41 @@ export type ReplayChunkInfo = {
   frames: number;
   /** Decoded JSON byte length, bounded independently of compressed transfer size. */
   bytes: number;
-  /** Observed distance at the first primary sample. Older archives omit it. */
+  /** Observed distance at the first primary sample, when it fits the manifest budget. */
   stride?: [id: string, centimeters: number][];
 };
+type RequiredReplayMetadata =
+  | 'deadTimes'
+  | 'warnings'
+  | 'chat'
+  | 'communications'
+  | 'gameplaySounds'
+  | 'objectives'
+  | 'matchState'
+  | 'crosshairs'
+  | 'itemState'
+  | 'eventAvailability'
+  | 'throwInputs'
+  | 'capabilities'
+  | 'worldBounds';
 export type PlaybackManifest = Omit<
   Playback,
-  'version' | 'frames' | 'grenades' | 'voice' | 'sounds' | 'itemSamples' | 'strideAnchor'
-> & {
-  version: 2;
-  firstTick: number;
-  lastTick: number;
-  chunks: ReplayChunkInfo[];
-};
+  'frames' | 'grenades' | 'voice' | 'sounds' | 'itemSamples' | 'strideAnchor' | 'captions'
+> &
+  Required<Pick<Playback, RequiredReplayMetadata>> & {
+    version: 3;
+    firstTick: number;
+    lastTick: number;
+    chunks: ReplayChunkInfo[];
+  };
 export type PlaybackChunk = {
   aim?: AimChunk;
-  version: 2;
+  version: 3;
   index: number;
   frames: Frame[];
   grenades: Grenade[];
-  voice?: VoicePacket[];
-  sounds?: GameplaySoundCue[];
+  voice: VoicePacket[];
+  sounds: GameplaySoundCue[];
   /** First live state before this slice plus changes. Tombstones close entity lifetimes. */
-  itemSamples?: ItemSample[];
+  itemSamples: ItemSample[];
 };

@@ -11,7 +11,7 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Store, now } from './db.js';
+import { type Store, now, openStoreForStartup } from './db.js';
 import { loadConfig, type Config } from './config.js';
 import { runParserJob } from './parser-job.js';
 import { validateReplayArtifacts } from './replay.js';
@@ -72,8 +72,8 @@ export async function processOne(db: Store, c: Config) {
       players: m.players,
       firstTick: m.firstTick,
       lastTick: m.lastTick,
-      warnings: m.warnings || [],
-      replayVersion: 2,
+      warnings: m.warnings,
+      replayVersion: m.version,
       communications: m.communications,
       capabilities: m.capabilities,
     };
@@ -112,7 +112,7 @@ export async function processOne(db: Store, c: Config) {
         summary.rounds,
         JSON.stringify(summary),
         output.bytes,
-        initialTranscriptionStatus(db, c, m.communications?.voice),
+        initialTranscriptionStatus(db, c, m.communications.voice),
         row.id,
       );
     });
@@ -189,7 +189,7 @@ export function housekeeping(db: Store, c: Config) {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   process.umask(0o077);
   const c = loadConfig(),
-    db = new Store(c.dataDir);
+    db = openStoreForStartup(c.dataDir);
   if (c.parserSandbox === 'off')
     console.warn(
       'Parser filesystem sandbox is disabled. Only process trusted demos in this development mode.',

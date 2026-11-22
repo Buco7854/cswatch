@@ -250,8 +250,7 @@ export default function Communications({
     .filter((message) => message.tick <= tick && message.tick > tick - data.tickRate * 8)
     .slice(-3);
   const recordedVoice =
-    ['available', 'partial'].includes(data.communications?.voice || '') ||
-    Boolean(data.voice?.length);
+    data.communications?.voice === 'available' || data.communications?.voice === 'partial';
   const allSpeakers = [
     ...new Set([
       ...data.players.map((player) => player.id),

@@ -33,7 +33,7 @@ export async function runTranscriptionJob(folder: string, options: Transcription
       readJson(join(folder, 'chunks', `${index}.json.gz`), replayLimits.chunkBytes),
     );
     if (chunk.index !== index) throw new Error('Invalid transcription chunk.');
-    for (const packet of chunk.voice ?? []) {
+    for (const packet of chunk.voice) {
       const previous = seen.get(packet.id);
       if (previous) {
         if (

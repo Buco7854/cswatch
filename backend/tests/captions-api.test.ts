@@ -41,7 +41,7 @@ test('captions and retries enforce demo access, owner mutation, Origin/CSRF, sta
     'ready',
     10,
     now(),
-    JSON.stringify({ communications: { voice: 'available' } }),
+    JSON.stringify({ replayVersion: 3, communications: { voice: 'available' } }),
     'failed',
   );
   const app = await createApp(config, db);

@@ -10,7 +10,6 @@ const first = 100,
   last = 4000;
 function replay(events: GameEvent[]): Playback {
   return {
-    version: 1,
     map: 'de_fixture',
     sample: false,
     tickRate: 64,

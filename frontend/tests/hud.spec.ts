@@ -1,3 +1,4 @@
+import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { installDemoMapDescriptor } from './fixtures/map-assets';
 import { activateViewerAction } from './fixtures/viewer-actions';
 import { test, expect } from '@playwright/test';
@@ -74,7 +75,6 @@ const frames = [0, 1280].map((tick) => ({
   })),
 }));
 const replay = {
-  version: 1,
   map: 'de_fixture',
   sample: false,
   tickRate: 64,
@@ -130,7 +130,9 @@ test('broadcast HUD shows recorded loadouts and inputs without inventing missing
       },
     }),
   );
-  await page.route('**/api/demos/hud-fixture/playback', (route) => route.fulfill({ json: replay }));
+  await page.route('**/api/demos/hud-fixture/playback', (route) =>
+    fulfillReplayFixture(route, replay),
+  );
   await installDemoMapDescriptor(page, 'hud-fixture');
   await page.goto('/watch/hud-fixture');
   const hud = page.getByRole('complementary', { name: 'Analysis HUD' });

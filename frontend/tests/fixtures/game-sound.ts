@@ -1,3 +1,4 @@
+import { fulfillReplayFixture } from './streamed-replay';
 import { createHash } from 'node:crypto';
 import type { Page } from '@playwright/test';
 import { originalMapReplay, qaActor } from './original-map';
@@ -136,7 +137,7 @@ export async function installGameSoundFixture(page: Page) {
       }),
     );
     await page.route(`**/api/demos/${id}/playback`, (route) =>
-      route.fulfill({ json: originalGameSoundReplay() }),
+      fulfillReplayFixture(route, originalGameSoundReplay()),
     );
     await page.route(`**/api/demos/${id}/map-assets`, (route) =>
       route.fulfill({

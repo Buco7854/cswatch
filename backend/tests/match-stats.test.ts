@@ -14,7 +14,6 @@ const a = '76561198000000001',
   c = '76561198000000003';
 function replay(): Playback {
   return {
-    version: 1,
     sample: false,
     map: 'de_explicit_stats_fixture',
     tickRate: 64,

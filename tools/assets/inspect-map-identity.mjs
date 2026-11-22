@@ -75,7 +75,7 @@ export async function inspectMapIdentity({ replay, catalog, input = process.stdi
     !manifest ||
     typeof manifest !== 'object' ||
     Array.isArray(manifest) ||
-    manifest.version !== 2 ||
+    manifest.version !== 3 ||
     typeof manifest.map !== 'string' ||
     !/^[A-Za-z0-9_-]{1,80}$/.test(manifest.map)
   )

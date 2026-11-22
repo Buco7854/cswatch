@@ -193,7 +193,7 @@ test('new deletions and explicit failed-cleanup retries reserve the same bounded
             schemaVersion: 1,
             packId: id,
             requestId: f.packId,
-            generation: 'initial',
+            generation: 'b'.repeat(32),
             removalId: 'a'.repeat(32),
             map: 'de_ancient',
             manifest: approval.source.manifest,

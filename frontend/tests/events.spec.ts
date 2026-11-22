@@ -1,3 +1,4 @@
+import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { installDemoMapDescriptor } from './fixtures/map-assets';
 import { test, expect } from '@playwright/test';
 
@@ -60,7 +61,6 @@ test('event stems and native scrubber share endpoint and midpoint coordinates', 
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE));
   const replay = {
-    version: 1,
     map: 'de_timeline_fixture',
     sample: false,
     tickRate: 64,
@@ -94,7 +94,7 @@ test('event stems and native scrubber share endpoint and midpoint coordinates', 
     }),
   );
   await page.route('**/api/demos/timeline-fixture/playback', (route) =>
-    route.fulfill({ json: replay }),
+    fulfillReplayFixture(route, replay),
   );
   await page.setViewportSize({ width: 768, height: 1024 });
   await installDemoMapDescriptor(page, 'timeline-fixture');

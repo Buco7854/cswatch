@@ -69,15 +69,13 @@ export function inspectParserScratch(folder: string, c: Config) {
         else if (!chunks && entry.name === 'manifest.json.gz') {
           limit = replayLimits.manifestBytes;
           stored += info.size;
-        } else if (!chunks && entry.name === 'summary.json') limit = 256 * 1024;
-        else if (!chunks && entry.name === 'failure.txt') limit = 1024;
+        } else if (!chunks && entry.name === 'failure.txt') limit = 1024;
         else throw new Error('Parser created an unexpected artifact');
         total += info.size;
         if (
           info.size > limit ||
           stored > replayLimits.storedBytes ||
-          total >
-            (c.maxUploadMb + c.maxExpandedMb) * 1024 ** 2 + replayLimits.storedBytes + 256 * 1024
+          total > (c.maxUploadMb + c.maxExpandedMb) * 1024 ** 2 + replayLimits.storedBytes + 1024
         )
           throw new Error('Parser scratch storage limit');
       }

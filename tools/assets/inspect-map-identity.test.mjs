@@ -33,7 +33,7 @@ const approval = {
   },
 };
 const manifest = {
-  version: 2,
+  version: 3,
   map: identity.map,
   mapIdentity: identity,
   actors: [{ steamid: '76561190000000000', name: 'PRIVATE_ACTOR_DO_NOT_PRINT' }],
@@ -78,8 +78,8 @@ test(
     }),
 );
 
-test('stdin inspection explains legacy missing identity and optional catalog without fabricating revisions', async () => {
-  const missing = await inspectMapIdentity({ input: input({ version: 2, map: 'de_mirage' }) });
+test('stdin inspection explains missing recorded identity and optional catalog without fabricating revisions', async () => {
+  const missing = await inspectMapIdentity({ input: input({ version: 3, map: 'de_mirage' }) });
   assert.equal(missing.resolution, 'unknown');
   assert.equal(missing.recordedIdentity, null);
   assert.equal(missing.selected, null);

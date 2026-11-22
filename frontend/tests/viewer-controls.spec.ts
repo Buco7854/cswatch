@@ -1,3 +1,4 @@
+import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { installMapFixture } from './fixtures/map-assets';
 import { test, expect, type Page } from '@playwright/test';
 import { sample } from '../src/sample';
@@ -56,7 +57,7 @@ async function fixture(
     }),
   );
   await page.route('**/api/demos/controls-fixture/playback', (route) =>
-    route.fulfill({ json: data }),
+    fulfillReplayFixture(route, data),
   );
   await installMapFixture(page, data.map, 'controls-fixture');
   await page.goto('/watch/controls-fixture');

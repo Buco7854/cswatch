@@ -1,3 +1,4 @@
+import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { installDemoMapDescriptor } from './fixtures/map-assets';
 import { test, expect } from '@playwright/test';
 import { sample } from '../src/sample';
@@ -40,7 +41,7 @@ test('a late private note response cannot reopen review after leaving and revisi
       return route.fulfill({ json: { id: `note-${number}`, ...body } });
     }
     if (path.endsWith('/playback'))
-      return route.fulfill({ json: { ...sample, sample: false, map: path.split('/')[3] } });
+      return fulfillReplayFixture(route, { ...sample, sample: false, map: path.split('/')[3] });
     const id = path.split('/').at(-1)!;
     return route.fulfill({
       json: {

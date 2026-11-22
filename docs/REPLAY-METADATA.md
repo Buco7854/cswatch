@@ -1,10 +1,33 @@
 # Recorded match and throw metadata
 
-The optional `matchState`, `eventAvailability` and `throwInputs` fields extend the existing playback domain and version 2 manifest. They stay global while frame, grenade, voice and gameplay-sound slices are evicted or changed. Older prepared replays remain readable; they do not gain metadata without being processed again. Missing values remain unknown.
+The version 3 manifest carries recorded metadata and coverage. Frames and their media slices have their own version 3 chunk envelope. Missing evidence remains unknown.
+
+## Replay v3 fields
+
+| Field                                             | v3 contract                                                                                                         |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Map identity                                      | Optional. The recording can omit the required header evidence.                                                      |
+| Round live tick, end tick and winner              | Optional. Parsed round events may not establish them.                                                               |
+| Smoke tracks                                      | Optional. Native journal evidence can be absent, unsupported or over budget.                                        |
+| Infernos                                          | Optional. Native burning-point data can be absent, unsupported or over budget.                                      |
+| Agent deaths                                      | Optional. A death needs a nearby living pose, and the anchor bank has size limits.                                  |
+| Gait history                                      | Optional. Valid movement data may be unavailable or exceed step or manifest bounds. Its inner record revision is 2. |
+| Chunk descriptor stride                           | Optional. The manifest budget can omit the distance anchors.                                                        |
+| Chunk aim                                         | Optional. Living angle evidence can be missing, and extraction and publication use bounded budgets.                 |
+| Dead time, warnings and chat                      | Always arrays. With no corresponding observations or warnings they are empty.                                       |
+| Communication and gameplay sound coverage         | Always present. Current producers report availability even when the timed arrays are empty.                         |
+| Objectives, match state and crosshairs            | Always present. The producers supply samples and completeness, including for unsupported or interrupted reads.      |
+| Item state and category coverage                  | Always present. Each item's transform and coverage category remain evidence-driven.                                 |
+| Event availability, throw inputs and capabilities | Always present. Negative capability flags and empty arrays represent unavailable or absent evidence.                |
+| World bounds                                      | Always present. The writer computes them from the validated frame domain.                                           |
+| Chunk voice, sounds and item samples              | Always arrays. Lack of evidence or optional sound budget exhaustion produces an empty array.                        |
+| Inline captions                                   | Practice sample only. Uploaded replay captions use the separate, authorized caption artifact.                       |
+
+The per-chunk stride anchor is still used by first-person weapon motion through `indexRecordedTravel` and `RenderEquipment`. Its horizontal centimeter totals cover accepted travel including slow movement. Gait history supplies directional agent clip phase, filters near-idle intervals and may be omitted under its independent limits. The two fields serve different consumers.
 
 ## Recorded aim
 
-Version 2 chunks may carry a separate `aim` field with wire version 1 and sorted player-ID/base64 pairs. Each stream stores the gap from the previous recorded tick and a continuity bit, followed by zigzag-coded yaw and pitch as canonical unsigned LEB128. A break starts from absolute angles. Angular deltas take the shortest path around a turn. The 1/128° step bounds per-axis quantization error to 1/256° (0.00391°). The wire indexes source demo ticks directly, independently of the playback clock's rate.
+Version 3 chunks may carry a separate `aim` field with wire version 1 and sorted player-ID/base64 pairs. Each stream stores the gap from the previous recorded tick and a continuity bit, followed by zigzag-coded yaw and pitch as canonical unsigned LEB128. A break starts from absolute angles. Angular deltas take the shortest path around a turn. The 1/128° step bounds per-axis quantization error to 1/256° (0.00391°). The wire indexes source demo ticks directly, independently of the playback clock's rate.
 
 The confined parser queries only yaw, pitch, liveness, position and pawn handle, alongside the native identity columns. It reads up to 16,384 requested ticks and 262,144 requested player-tick pairs per batch, then retains at most 32 MiB of projected samples. Dead or missing rows and ambiguous duplicate IDs leave holes. Missing position evidence, unknown or changed pawn handles, gaps, round starts and jumps over 128 Source inches break interpolation. The writer caps binary aim at 256 KiB and 128 players per chunk. It accounts for base64 and JSON bytes in the existing output limits. Optional aim can be dropped across the replay if extraction or output budgets prevent publication.
 
@@ -12,7 +35,7 @@ The browser checks version, actor identity, tick range, canonical encoding and b
 
 ## Locomotion and C4 presentation
 
-The optional per-chunk `stride` field is a list of immutable actor IDs and cumulative horizontal centimeters at the first primary frame. The confined writer skips round changes, dead/changed pawns, discontinuities and gaps above 250 ms. The same displacement and centimeter rounding run in the browser. The byte-adaptive writer computes anchors at the exact retained boundaries. Publication checks at most 128 unique known actor IDs per chunk and bounded monotonic totals. If the optional field would exceed the manifest allowance, the writer omits it. Existing readers and old artifacts retain the same version and bounds.
+The optional per-chunk `stride` field is a list of immutable actor IDs and cumulative horizontal centimeters at the first primary frame. The confined writer skips round changes, dead/changed pawns, discontinuities and gaps above 250 ms. The same displacement and centimeter rounding run in the browser. The byte-adaptive writer computes anchors at the exact retained boundaries. Publication checks at most 128 unique known actor IDs per chunk and bounded monotonic totals. If the optional field would exceed the manifest allowance, the writer omits it. The same manifest byte bounds apply with or without anchors.
 
 The C4 wave uses the recorded `bomb_exploded` tick and a complete event origin or the unique planted entity still present immediately before that tick. Existing item overlap covers the 0.85-second presentation window across chunk boundaries. Ambiguous or absent origins leave no wave. The radius and opacity are analytical rendering parameters. The Utilities setting and reduced-motion preference control the draw. Objective state, audio and damage derive from their existing recorded evidence.
 
@@ -22,9 +45,9 @@ The C4 wave uses the recorded `bomb_exploded` tick and a complete event origin o
 
 The 3D viewer uses one smoke volume pass. It samples an analytic cloud when recorded density is unavailable, using the event location and estimated duration or the observed track interval when present. If the volume targets fail, the viewer reports that smoke rendering is unavailable. A restored WebGL context revalidates the targets.
 
-An optional `Position.scopeFov` comes from the exact player camera-service field and appears only on recorded living scoped samples. The first-person scene consumes the discrete selected sample for supported sniper rifles and returns to the configured FOV on unscope. Older artifacts use their current camera, with missing scope FOV left unknown.
+An optional `Position.scopeFov` comes from the exact player camera-service field and appears only on recorded living scoped samples. The first-person scene consumes the discrete selected sample for supported sniper rifles and returns to the configured FOV on unscope. Without recorded scope FOV, the viewer uses the configured camera.
 
-An optional `Position.eyeOffset` records `CCSPlayerPawn.m_vecViewOffset` on the existing sampled tick. The streaming solver requires a living pawn with the same Steam controller ID and a world position within one Source inch of the primary parser sample. Offsets quantize to 1/128 Source inch. The wire tuple stores `[height]` when both horizontal components are zero and `[x, y, height]` otherwise. Position and offset share the ordinary identity, round and teleport discontinuity checks. Older artifacts retain the existing duck-based camera estimate.
+An optional `Position.eyeOffset` records `CCSPlayerPawn.m_vecViewOffset` on the existing sampled tick. The streaming solver requires a living pawn with the same Steam controller ID and a world position within one Source inch of the primary parser sample. Offsets quantize to 1/128 Source inch. The wire tuple stores `[height]` when both horizontal components are zero and `[x, y, height]` otherwise. Position and offset share the ordinary identity, round and teleport discontinuity checks. Missing eye offsets use the duck-based camera estimate.
 
 ## Recorded inferno footprint
 
@@ -84,7 +107,7 @@ Entity identities include the recorded index, 17-bit serial and creation tick. I
 
 The collector bounds 128 tracked entities and 250,000 changed samples, reserving space for final removals. Per-tick coalescing removes states that were born and deleted within the same tick. Each streamed chunk carries the last live state into its start and includes subsequent changes/removals under the existing 4 MiB decoded limit. Seeking never resurrects a removed serial or interpolates through a tombstone. There is no inference of a dropped weapon from a death, inventory change or nickname.
 
-The renderer uses authoritative projectile bodies only when projectile coverage is complete. Otherwise it preserves legacy recorded trajectories and bodies without attempting a positional identity match. This avoids duplicates while retaining low-quality and older-replay visibility. Recorded world transforms are distinct from the explicitly approximate static hold/POV model presets. Native hand poses, recoil and first-person animation are not implied.
+The renderer uses authoritative projectile bodies only when projectile coverage is complete. Otherwise it preserves recorded trajectories and fallback bodies without attempting a positional identity match. This avoids duplicates while retaining visibility when native body evidence is missing. Recorded world transforms are distinct from the explicitly approximate static hold/POV model presets. Native hand poses, recoil and first-person animation are not implied.
 
 ## Gameplay sound evidence
 

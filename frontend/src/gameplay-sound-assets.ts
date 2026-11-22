@@ -81,8 +81,7 @@ export function validateGameplaySoundCues(
   first = 0,
   last = 691200,
   matchLast = 691200,
-): GameplaySoundCue[] | undefined {
-  if (value === undefined) return;
+): GameplaySoundCue[] {
   if (!Array.isArray(value) || value.length > 4096) throw new Error('Invalid recorded game sounds');
   const seen = new Set<string>();
   return value.map((raw) => {
@@ -138,8 +137,7 @@ export function validateGameplaySoundCues(
     return item as unknown as GameplaySoundCue;
   });
 }
-export function validateGameplaySoundInfo(value: unknown): GameplaySoundInfo | undefined {
-  if (value === undefined) return;
+export function validateGameplaySoundInfo(value: unknown): GameplaySoundInfo {
   const input = record(value),
     coverage = record(input.coverage);
   if (

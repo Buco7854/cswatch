@@ -1,3 +1,4 @@
+import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { installDemoMapDescriptor } from './fixtures/map-assets';
 import { test, expect } from '@playwright/test';
 import { sample } from '../src/sample';
@@ -99,7 +100,7 @@ test('demo deletion uses an accessible reusable modal with safe cancellation and
     });
   });
   await page.route('**/api/demos/confirm-fixture/playback', (route) =>
-    route.fulfill({ json: { ...sample, sample: false } }),
+    fulfillReplayFixture(route, { ...sample, sample: false }),
   );
   await page.route('**/api/demos?*', (route) => route.fulfill({ json: { demos: [], total: 0 } }));
   page.on('dialog', () => {
@@ -189,7 +190,8 @@ test('a late rename cannot overwrite a different demo after its manager closes',
       await pending;
       return route.fulfill({ json: { ok: true } });
     }
-    if (path.endsWith('/playback')) return route.fulfill({ json: { ...sample, sample: false } });
+    if (path.endsWith('/playback'))
+      return fulfillReplayFixture(route, { ...sample, sample: false });
     const id = path.split('/').at(-1)!;
     return route.fulfill({
       json: {

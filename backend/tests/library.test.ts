@@ -122,6 +122,7 @@ test('every replay slice enforces demo access, readiness, strict indices and pri
     const folder = join(dir, 'demos', 'demo');
     mkdirSync(folder);
     await writeReplay(folder, sample);
+    db.run('UPDATE demos SET metadata=? WHERE id=?', JSON.stringify({ replayVersion: 3 }), 'demo');
     const get = (suffix: string, authenticated = true) =>
       app.inject({
         method: 'GET',
@@ -130,7 +131,7 @@ test('every replay slice enforces demo access, readiness, strict indices and pri
       });
     assert.equal((await get('/chunks/0', false)).statusCode, 404);
     const manifest = await get('');
-    assert.equal(JSON.parse(gunzipSync(manifest.rawPayload).toString()).version, 2);
+    assert.equal(JSON.parse(gunzipSync(manifest.rawPayload).toString()).version, 3);
     assert.equal((await get('/chunks/0')).statusCode, 200);
     for (const invalid of ['00', '-1', '512', 'NaN', '0.json.gz', '%2e%2e'])
       assert.equal((await get('/chunks/' + invalid)).statusCode, 404);

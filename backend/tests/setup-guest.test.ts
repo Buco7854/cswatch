@@ -275,7 +275,11 @@ test('guest uploads use expiring private ownership with CSRF, isolation, bounded
     mkdirSync(join(folder, 'chunks'));
     writeFileSync(join(folder, 'manifest.json.gz'), gzipSync('{}'));
     writeFileSync(join(folder, 'chunks', '0.json.gz'), gzipSync('{}'));
-    f.db.run("UPDATE demos SET status='ready' WHERE id=?", id);
+    f.db.run(
+      "UPDATE demos SET status='ready',metadata=? WHERE id=?",
+      JSON.stringify({ replayVersion: 3 }),
+      id,
+    );
     for (const path of [
       `/api/demos/${id}/playback`,
       `/api/demos/${id}/playback/chunks/0`,

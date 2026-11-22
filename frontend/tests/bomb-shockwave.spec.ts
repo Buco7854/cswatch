@@ -1,3 +1,4 @@
+import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { expect, test } from '@playwright/test';
 import { indexBombShockwaves } from '../src/bomb-shockwave';
 import { indexItems, type PresentItem } from '../src/item-state';
@@ -77,7 +78,7 @@ test('the normal WebGL viewer draws the C4 wave during the recorded window and r
       json: { id, name: 'Original C4 effect QA', status: 'ready', public: true, map: replay.map },
     }),
   );
-  await page.route(`**/api/demos/${id}/playback`, (route) => route.fulfill({ json: replay }));
+  await page.route(`**/api/demos/${id}/playback`, (route) => fulfillReplayFixture(route, replay));
   await installDemoMapDescriptor(page, id, { model, mobile: null, overview: null });
   await page.route(`**${model}`, (route) =>
     route.fulfill({

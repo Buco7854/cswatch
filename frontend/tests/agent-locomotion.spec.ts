@@ -1,3 +1,4 @@
+import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { test, expect } from '@playwright/test';
 import { originalAnimatedAgentGLB } from './fixtures/original-agent';
 import {
@@ -147,7 +148,7 @@ test('directional clips deform skinned actors from recorded speed and duck on de
     }),
   );
   await page.route('**/api/demos/native-locomotion-fixture/playback', (route) =>
-    route.fulfill({ json: replay }),
+    fulfillReplayFixture(route, replay),
   );
   await installDemoMapDescriptor(page, 'native-locomotion-fixture', {
     model: `/map-assets/${qaMap}/desktop/scene.glb`,

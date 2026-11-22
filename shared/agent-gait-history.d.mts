@@ -1,7 +1,7 @@
 import type { AgentWeaponClass } from './agent-animation.js';
 import type { Playback } from './playback.js';
 
-export type GaitHistory = { version: 1 | 2; players: [id: string, encoded: string][] };
+export type GaitHistory = { version: 2; players: [id: string, encoded: string][] };
 export type AgentStrideAt = (
   weapon: AgentWeaponClass,
   speed: number,
