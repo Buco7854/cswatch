@@ -14,7 +14,7 @@ import {
 } from './map-asset-files.js';
 import { mapEnvironmentAssets } from './map-environment.js';
 import { openMapModel } from './map-model-files.js';
-import { legacyMapLocation, type MapAssetLocation } from './map-asset-location.js';
+import { manualMapLocation, type MapAssetLocation } from './map-asset-location.js';
 
 export const overviewLimits = {
   bytes: 8 * 1024 ** 2,
@@ -55,7 +55,7 @@ async function hasGlb(location: MapAssetLocation, parts: string[], filename: str
 export async function mapAssetRoutes(
   app: FastifyInstance,
   dataRoot: string,
-  defaultLocation = legacyMapLocation(dataRoot),
+  defaultLocation = manualMapLocation(dataRoot),
 ) {
   const loadEnvironment = mapEnvironmentAssets(app, dataRoot, defaultLocation);
   const cache = new Map<

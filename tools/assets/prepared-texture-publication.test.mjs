@@ -109,16 +109,14 @@ test('missing, mismatched, oversized and internally overflowing texture plans ca
   await writeFile(manifestPath, manifest);
   assert.ok((await validatePreparedMap(s.root, s.map, s.version)).length > 0);
 });
-test('legacy no-plan packs remain accepted and an unbound sidecar is rejected', async (t) => {
+test('publication requires texture-plan and model bindings in both tiers', async (t) => {
   const s = await fixture(t);
-  for (const tier of ['desktop', 'mobile']) {
-    const path = join(s.root, s.map, tier, 'manifest.json'),
-      data = JSON.parse(await readFile(path));
-    delete data.textureBudget;
-    await writeFile(path, JSON.stringify(data));
-  }
-  await assert.rejects(validatePreparedMap(s.root, s.map, s.version), /no manifest binding/);
-  for (const tier of ['desktop', 'mobile'])
-    await unlink(join(s.root, s.map, tier, 'texture-plan.json'));
-  assert.ok((await validatePreparedMap(s.root, s.map, s.version)).length > 0);
+  const path = join(s.root, s.map, 'desktop', 'manifest.json');
+  const { textureBudget, outputSha256, ...rest } = JSON.parse(await readFile(path));
+  await writeFile(path, JSON.stringify({ ...rest, textureBudget }));
+  await assert.rejects(validatePreparedMap(s.root, s.map, s.version), /model differs/);
+  await writeFile(path, JSON.stringify({ ...rest, outputSha256 }));
+  await assert.rejects(validatePreparedMap(s.root, s.map, s.version), /binding/);
+  await unlink(join(s.root, s.map, 'desktop', 'texture-plan.json'));
+  await assert.rejects(validatePreparedMap(s.root, s.map, s.version));
 });

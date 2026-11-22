@@ -1,5 +1,6 @@
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { installDemoMapDescriptor } from './fixtures/map-assets';
+import { originalMapReplay } from './fixtures/original-map';
 import { test, expect } from '@playwright/test';
 
 test('timeline markers use recorded time positions, clustered events seek exactly and round zoom retains review filters', async ({
@@ -60,15 +61,14 @@ test('event stems and native scrubber share endpoint and midpoint coordinates', 
   page,
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE));
+  const { players, frames } = originalMapReplay();
   const replay = {
     map: 'de_timeline_fixture',
     sample: false,
     tickRate: 64,
-    players: [],
-    frames: [
-      { tick: 0, players: [] },
-      { tick: 1000, players: [] },
-    ],
+    players,
+    frames: frames.map((frame, index) => ({ ...frame, tick: index * 1000 })),
+    grenades: [],
     rounds: [{ number: 1, tick: 0 }],
     events: [
       { type: 'bomb_planted', tick: 0 },

@@ -355,7 +355,7 @@ async function budgets(options) {
     });
   await checkFreeReserve(options.cache, options.assets);
 }
-export function mapFailureCode(error, signal) {
+function mapFailureCode(error, signal) {
   if (signal?.aborted) return 'worker_interrupted';
   if (error?.code === 'STEAM_RATE_LIMIT') return 'preparation_failed';
   if (error?.code === 'SOURCE_MAP_MISMATCH') return 'source_mismatch';
@@ -913,13 +913,13 @@ export async function runMapWorker(options, adapters = {}) {
 
 /** Production acquisition admission stays inside the real remote stage. Pure
  * scheduling adapters replace that entire stage, never any converter boundary. */
-export async function refreshWorkerInventory(options) {
+async function refreshWorkerInventory(options) {
   await budgets(options);
   return refreshOfficialMapInventory(options);
 }
 
 /** Fixed native agents/icons/models share official metadata and cooldown, never recordings. */
-export async function prepareIdlePresentation(options, manifest, kind, adapters = {}) {
+async function prepareIdlePresentation(options, manifest, kind, adapters = {}) {
   selectedSteamManifest(manifest);
   const cache = join(options.cache, 'sources', `steam-${manifest}`);
   return (adapters.install || installPresentationAssets)(

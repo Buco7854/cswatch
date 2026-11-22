@@ -223,7 +223,7 @@ test('retiering creates a new verified tier with geometry/tag/alpha intact and r
       tier: 'mobile',
       bytes: before.length,
       outputSha256: sourceHash,
-      assetVersion: 'fixture-v1',
+      assetVersion: 'texture-fixture',
       s2v: 'original-fixture',
     }),
   );
@@ -236,7 +236,7 @@ test('retiering creates a new verified tier with geometry/tag/alpha intact and r
   });
   assert.equal(result.manifest.sourceSha256, sourceHash);
   assert.equal(result.manifest.sourceBytes, before.length);
-  assert.equal(result.manifest.assetVersion, 'fixture-v1');
+  assert.equal(result.manifest.assetVersion, 'texture-fixture');
   assert.ok(result.manifest.textureBudget.decodedRGBABytes <= 64);
   assert.equal(
     result.manifest.outputSha256,
@@ -282,6 +282,14 @@ test('retiering creates a new verified tier with geometry/tag/alpha intact and r
     retierPreparedMap({ input, output: join(root, 'wrong'), map: 'de_other', tier: 'mobile' }),
     /does not match/,
   );
+  const manifest = join(inputDir, 'manifest.json');
+  const unbound = JSON.parse(await readFile(manifest, 'utf8'));
+  delete unbound.outputSha256;
+  await writeFile(manifest, JSON.stringify(unbound));
+  await assert.rejects(
+    retierPreparedMap({ input, output: join(root, 'unbound'), map: 'de_qa', tier: 'mobile' }),
+    /does not match/,
+  );
   assert.deepEqual(await readFile(input), before);
 });
 
@@ -302,7 +310,7 @@ test('ordinary map packing applies both default decoded budgets and binds comple
       '--map',
       'de_qa',
       '--asset-version',
-      'fixture-v1',
+      'texture-fixture',
     ],
     { timeout: 30000, maxBuffer: 128 * 1024 },
   );

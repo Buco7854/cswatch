@@ -46,6 +46,7 @@ import {
   runMapWorker,
   mapWorkerLimits,
 } from './map-worker.mjs';
+import { applyTextureBudget } from './texture-budget.mjs';
 import { validatePreparedMap } from './prepared-map-publication.mjs';
 import { buildNetworkDeny } from './build-network-deny.mjs';
 import { refreshOfficialMapInventory } from './official-map-inventory.mjs';
@@ -501,7 +502,9 @@ async function originalPack(output, entry) {
   for (const tier of ['desktop', 'mobile']) {
     const directory = join(output, map, tier);
     await mkdir(directory, { recursive: true });
+    const budget = await applyTextureBudget(await new NodeIO().readBinary(model), { tier });
     await writeFile(join(directory, 'scene.glb'), model);
+    await writeFile(join(directory, 'texture-plan.json'), budget.planBytes);
     await writeFile(
       join(directory, 'manifest.json'),
       JSON.stringify({
@@ -511,6 +514,7 @@ async function originalPack(output, entry) {
         assetVersion,
         bytes: model.length,
         outputSha256: hash(model),
+        textureBudget: budget.manifest,
       }),
     );
   }

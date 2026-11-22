@@ -1,6 +1,6 @@
 import { crc32 } from 'node:zlib';
 
-export type OpusFrame = {
+type OpusFrame = {
   data: Uint8Array;
   sampleRate: 8000 | 12000 | 16000 | 24000 | 48000;
   durationMs: number;

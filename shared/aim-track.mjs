@@ -1,4 +1,4 @@
-/** Aim v1. Each player has a base64 stream of (tick gap and continuity flag,
+/** Recorded aim. Each player has a base64 stream of (tick gap and continuity flag,
  * zigzag yaw, zigzag pitch) canonical unsigned LEB128 triples. Discontinuities
  * encode absolute angles. All angles are in 1/128 degree units modulo one turn. */
 const units = 128;

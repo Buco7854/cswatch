@@ -37,7 +37,7 @@ const cache = new ModelCache<GLTF>({
 });
 
 /** Private map loader class gives useLoader a cache namespace separate from agent assets. */
-export class MapGLTFLoader extends Loader<GLTF> {
+class MapGLTFLoader extends Loader<GLTF> {
   constructor() {
     super(new LoadingManager());
   }

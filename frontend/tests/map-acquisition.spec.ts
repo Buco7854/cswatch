@@ -116,9 +116,9 @@ async function install(page: Page) {
       fulfillReplayFixture(route, originalMapReplay()),
     );
   }
-  let legacy = 0;
+  let directDiscoveryRequests = 0;
   await page.route('**/api/maps/*', (route) => {
-    legacy++;
+    directDiscoveryRequests++;
     return route.abort();
   });
   await page.route(`**/api/map-packs/${pack}/models/${qaMap}/*/scene.glb`, (route) =>
@@ -137,7 +137,7 @@ async function install(page: Page) {
       ),
     }),
   );
-  return () => legacy;
+  return () => directDiscoveryRequests;
 }
 async function navigate(page: Page, id: string) {
   await page.evaluate((path) => {
@@ -149,7 +149,7 @@ async function navigate(page: Page, id: string) {
 test('guest-owned demo acquires only its approved immutable pack once and observes queued processing ready status', async ({
   page,
 }) => {
-  const legacy = await install(page);
+  const directDiscoveryRequests = await install(page);
   let posts = 0,
     gets = 0,
     accepted = false,
@@ -191,7 +191,7 @@ test('guest-owned demo acquires only its approved immutable pack once and observ
   await expect(page.locator('.viewer-map-status')).toHaveText('3D map');
   await expect(page.locator('.position-radar')).toBeVisible();
   expect(posts).toBe(1);
-  expect(legacy()).toBe(0);
+  expect(directDiscoveryRequests()).toBe(0);
   await page.getByRole('button', { name: 'Options', exact: true }).click();
   await page.getByRole('tab', { name: 'Performance', exact: true }).click();
   await expect(page.locator('[data-map-verification="operator-approved"]')).toContainText(
@@ -202,7 +202,7 @@ test('guest-owned demo acquires only its approved immutable pack once and observ
 test('unknown ambiguous disabled and unavailable-worker states never enqueue or substitute a familiar map', async ({
   page,
 }) => {
-  const legacy = await install(page);
+  const directDiscoveryRequests = await install(page);
   let posts = 0;
   let state: unknown;
   await page.route('**/api/demos/acquisition-a/map-assets', (route) => {
@@ -231,13 +231,13 @@ test('unknown ambiguous disabled and unavailable-worker states never enqueue or 
     await expect(page.locator('.scene canvas,.tactical-plot,.position-radar')).toHaveCount(0);
   }
   expect(posts).toBe(0);
-  expect(legacy()).toBe(0);
+  expect(directDiscoveryRequests()).toBe(0);
 });
 
 test('leaving a same-map demo discards its delayed approval and cannot enqueue for the next demo', async ({
   page,
 }) => {
-  const legacy = await install(page);
+  const directDiscoveryRequests = await install(page);
   let release = () => {},
     posts = 0;
   const gate = new Promise<void>((resolve) => (release = resolve));
@@ -263,7 +263,7 @@ test('leaving a same-map demo discards its delayed approval and cannot enqueue f
   release();
   await expect(page.locator('.map-unavailable p')).toContainText('No operator-approved');
   expect(posts).toBe(0);
-  expect(legacy()).toBe(0);
+  expect(directDiscoveryRequests()).toBe(0);
 });
 
 test('lost enqueue response is observed without duplicate POST and terminal preparation failure stops polling', async ({
@@ -397,7 +397,7 @@ test('failed-job cooldown is checked sparsely and becoming eligible never enqueu
 test('an unavailable exact source can select one distinct latest job without replaying its lost enqueue response', async ({
   page,
 }) => {
-  const legacy = await install(page);
+  const directDiscoveryRequests = await install(page);
   let posts = 0,
     gets = 0;
   await page.route('**/api/demos/acquisition-a/map-assets', (route) => {
@@ -426,14 +426,14 @@ test('an unavailable exact source can select one distinct latest job without rep
   await page.clock.fastForward(600000);
   expect(posts).toBe(2);
   expect(gets).toBe(3);
-  expect(legacy()).toBe(0);
+  expect(directDiscoveryRequests()).toBe(0);
   await expect(page).toHaveURL(/\/watch\/acquisition-a$/);
 });
 
 test('latest ready maps disclose layout uncertainty and raw recorded identity in progressive responsive details', async ({
   page,
 }) => {
-  const legacy = await install(page);
+  const directDiscoveryRequests = await install(page);
   const recorded = {
     map: qaMap,
     buildNum: 17000,
@@ -485,13 +485,13 @@ test('latest ready maps disclose layout uncertainty and raw recorded identity in
     }
   }
   expect(posts).toBe(0);
-  expect(legacy()).toBe(0);
+  expect(directDiscoveryRequests()).toBe(0);
 });
 
 test('a different eligible source returned by enqueue is observed before one new request and its lost response never replays', async ({
   page,
 }) => {
-  const legacy = await install(page);
+  const directDiscoveryRequests = await install(page);
   let posts = 0,
     gets = 0;
   await page.route('**/api/demos/acquisition-a/map-assets', (route) => {
@@ -517,13 +517,13 @@ test('a different eligible source returned by enqueue is observed before one new
   await page.clock.fastForward(600000);
   expect(posts).toBe(2);
   expect(gets).toBe(3);
-  expect(legacy()).toBe(0);
+  expect(directDiscoveryRequests()).toBe(0);
 });
 
 test('worker bootstrap recovers from missing and stale official inventory then requests the disclosed latest source once', async ({
   page,
 }) => {
-  const legacy = await install(page);
+  const directDiscoveryRequests = await install(page);
   await page.clock.install();
   let stage: 'worker_unavailable' | 'inventory_unavailable' | 'inventory_stale' | 'fresh' =
       'worker_unavailable',
@@ -580,5 +580,5 @@ test('worker bootstrap recovers from missing and stale official inventory then r
     /layout may differ/,
   );
   expect(posts).toBe(1);
-  expect(legacy()).toBe(0);
+  expect(directDiscoveryRequests()).toBe(0);
 });

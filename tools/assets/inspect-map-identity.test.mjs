@@ -90,11 +90,11 @@ test('stdin inspection explains missing recorded identity and optional catalog w
   assert.equal(complete.candidates.length, 0);
   await assert.rejects(
     inspectMapIdentity({ input: input({ ...manifest, version: 1 }) }),
-    /version 2/,
+    /validated replay manifest/,
   );
   await assert.rejects(
     inspectMapIdentity({ input: input({ ...manifest, map: '../../private' }) }),
-    /version 2/,
+    /validated replay manifest/,
   );
 });
 

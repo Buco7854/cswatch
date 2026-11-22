@@ -12,8 +12,8 @@ export function captionArtifactName(value: unknown) {
     throw new Error('Invalid caption artifact name');
   return value;
 }
-export type CaptionEnvelope = { status: 'ready' | 'partial' | 'unavailable'; cues: CaptionCue[] };
-export const captionEnvelopeSchema = z
+type CaptionEnvelope = { status: 'ready' | 'partial' | 'unavailable'; cues: CaptionCue[] };
+const captionEnvelopeSchema = z
   .object({
     status: z.enum(['ready', 'partial', 'unavailable']),
     cues: z

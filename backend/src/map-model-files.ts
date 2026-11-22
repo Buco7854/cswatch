@@ -10,7 +10,7 @@ import {
   withDirectory,
 } from './map-asset-files.js';
 import { HttpError } from './security.js';
-import { legacyMapLocation, type MapAssetLocation } from './map-asset-location.js';
+import { manualMapLocation, type MapAssetLocation } from './map-asset-location.js';
 import type { FastifyRequest } from 'fastify';
 
 export const mapModelBytes = 2 * 1024 ** 3;
@@ -114,7 +114,7 @@ export async function mapModelFileRoutes(
   {
     digest: proveContent = fileDigest,
     url = '/map-assets/*',
-    resolveLocation = async () => legacyMapLocation(root),
+    resolveLocation = async () => manualMapLocation(root),
   }: {
     digest?: typeof fileDigest;
     url?: string;

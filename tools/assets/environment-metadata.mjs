@@ -256,7 +256,7 @@ export function inspectSkyCamera(input) {
 
 /** Direction matrix for sampling an already-rotated visible cube as a different
  * authored sky. Three's loaded-CubeTexture X flip is intentionally not included. */
-export function cubemapFogRotation(preparedAngles, fogAngles, referenceAngles = [0, 0, 0]) {
+function cubemapFogRotation(preparedAngles, fogAngles, referenceAngles = [0, 0, 0]) {
   return [
     [1, 0, 0],
     [0, 1, 0],

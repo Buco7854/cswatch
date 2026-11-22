@@ -53,7 +53,7 @@ export function agentXray(root: Object3D) {
         '#include <map_fragment>\ndiffuseColor.rgb = diffuse;',
       );
     };
-    result.customProgramCacheKey = () => 'cswatch-agent-xray-v1';
+    result.customProgramCacheKey = () => 'cswatch-agent-xray';
     result.visible = source.visible;
     materials.set(source, result);
     return result;

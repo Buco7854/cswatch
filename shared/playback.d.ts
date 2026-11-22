@@ -102,7 +102,7 @@ export type GameEvent = {
   [key: string]: unknown;
 };
 export type DeadTime = { start: number; end: number; kind: 'freeze' | 'timeout' | 'technical' };
-export type GrenadePoint = { tick: number; x: number; y: number; z: number };
+type GrenadePoint = { tick: number; x: number; y: number; z: number };
 export type Grenade = { id: string; kind: string; points: GrenadePoint[] };
 export type Playback = {
   map: string;

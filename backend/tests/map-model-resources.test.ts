@@ -50,7 +50,7 @@ test('retained model estimate counts aliased bitmap and geometry buffers once, p
   assert.equal(materials, 2);
 });
 
-test('retained legacy actor animation buffers are bounded and aliased track arrays count only once', () => {
+test('actor animation buffers are bounded and aliased track arrays count only once', () => {
   const scene = new Group(),
     track = new NumberKeyframeTrack('.position[x]', [0, 1], [0, 2]),
     alias = new NumberKeyframeTrack('.position[y]', [0, 1], [0, 2]);

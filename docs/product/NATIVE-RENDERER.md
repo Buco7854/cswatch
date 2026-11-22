@@ -20,13 +20,13 @@ The pinned map-level S2V export retains the authored normalized secondary UV cha
 2. Define a separately versioned native presentation contract only after the source spike proves those fields. Share validators between preparation and browser consumption. Bound encoded and decoded geometry, texture dimensions, shader features, entries, cells, LODs and per-resource allocations before expansion. Use fixed local names and hash-bound descriptors. Never accept arbitrary material programs or URLs from a demo.
 3. Implement the smallest evidenced material family with baked diffuse, normal/roughness, directional shadowing and appropriate colour-space/tone mapping. Add layered ground and foliage only with their real inputs. Preserve exact Source transforms once. Local probes and interior visibility must come from source evidence, not a global artistic tint or guessed occlusion. Missing native presentation can retain the existing genuine PBR/2D path with honest status.
 4. Prepare spatial chunks, authored LODs and device-compatible compressed textures in isolated CPU children. Inspect compression support in the browser. Do not require desktop BC textures on phones or silently exceed decoded-memory budgets. Pin local codecs/tools and preserve CSP restrictions. A converter may not spawn a tool to evade its sandbox. Each required tool runs under its own supervisor-owned stage boundary.
-5. Integrate acquisition, generation-aware publication, discovery, serving, removal and retirement as one change. Extend exact descriptor/file allowlists and worker ownership journals for the new contract. Web remains read-only. Retain old active immutable URLs, in-flight descriptors, operator packs and removed-map suppression. The existing three-attempt/cooldown and explicit-retry rules remain.
+5. Integrate acquisition, generation-aware publication, discovery, serving, removal and retirement as one change. Extend exact descriptor/file allowlists and worker ownership journals for the new contract. Web remains read-only. Preserve immutable content URLs, in-flight descriptors, operator packs and removed-map suppression. The existing three-attempt/cooldown and explicit-retry rules remain.
 
 Do not vendor the competitor's renderer or hosted packs. Independently prepare official Steam resources and follow applicable S2V/code licences. Proprietary artwork remains outside Git and images. Existing cache/source proofs are preserved.
 
 ## First-person rendering
 
-The local runtime supports optional source-pinned AK, M4A4, AWP and Glock rigs with their authored hands and gloves. Each rig uses the first-person depth pass and portrait framing. Its fire and reload clips sample demo time. Recorded shots drive firing and an analytical flash on the exact native muzzle joint. A contiguous false-to-true observation on the same active-weapon handle drives reload, with a ceiling of 256 replay ticks. Missing reload evidence leaves the idle pose. Older replays can still drive firing from their recorded events. [Operator asset installation](../MAP-ASSETS.md)
+The local runtime supports optional source-pinned AK, M4A4, AWP and Glock rigs with their authored hands and gloves. Each rig uses the first-person depth pass and portrait framing. Its fire and reload clips sample demo time. Recorded shots drive firing and an analytical flash on the exact native muzzle joint. A contiguous false-to-true observation on the same active-weapon handle drives reload, with a ceiling of 256 replay ticks. Missing reload evidence leaves the idle pose. Firing uses the recorded shot events independently of reload evidence. [Operator asset installation](../MAP-ASSETS.md)
 
 Other weapons retain their current first-person representation. The AWP, SSG 08, G3SG1 and SCAR-20 can use recorded camera-service FOV in scoped POV. The lens masks the viewport and suppresses the held model during a recorded scope. Native movement sway, per-player skins, recoil, lens transitions and other game-engine effects remain open.
 
@@ -57,7 +57,7 @@ The optional replay journal supplies recorded seed/rejection changes, color and 
 
 ## Additional presentation review
 
-The local viewer uses the posed `head_0` bone for player name and health labels when the prepared actor supplies that exact joint. A bounded offset clears the head and retains the former height for generic or unavailable models. The browser checks follow the prepared crouch pose and reproduce the original label placement after a backward seek.
+The local viewer uses the posed `head_0` bone for player name and health labels when the prepared actor supplies that exact joint. A bounded offset clears the head and uses a bounded fallback height when the joint is unavailable. The browser checks follow the prepared crouch pose and reproduce the original label placement after a backward seek.
 
 ## Maintenance limits
 

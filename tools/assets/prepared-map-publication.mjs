@@ -136,10 +136,7 @@ export async function validatePreparedMap(prepared, map, assetVersion) {
       data.assetVersion !== assetVersion
     )
       throw new Error('Prepared map provenance does not match this installation.');
-    if (
-      (data.bytes !== undefined && data.bytes !== model.bytes) ||
-      (data.outputSha256 !== undefined && data.outputSha256 !== model.sha256)
-    )
+    if (data.bytes !== model.bytes || data.outputSha256 !== model.sha256)
       throw new Error('Prepared model differs from its output manifest binding.');
     files.push({
       path: `${map}/${tier}/manifest.json`,
@@ -147,22 +144,13 @@ export async function validatePreparedMap(prepared, map, assetVersion) {
       sha256: await fileHash(manifest, 'sha256', 16384),
     });
     const texturePlan = join(prepared, map, tier, 'texture-plan.json');
-    if (data.textureBudget !== undefined) {
-      const info = await regular(texturePlan, 4 * 1024 ** 2);
-      const bytes = await readFile(texturePlan);
-      validateTexturePlan(data, bytes, tier);
-      files.push({
-        path: `${map}/${tier}/texture-plan.json`,
-        bytes: info.size,
-        sha256: data.textureBudget.planSha256,
-      });
-    } else if (
-      await lstat(texturePlan).catch((error) => {
-        if (error.code === 'ENOENT') return null;
-        throw error;
-      })
-    )
-      throw new Error('Prepared texture plan has no manifest binding.');
+    const info = await regular(texturePlan, 4 * 1024 ** 2);
+    validateTexturePlan(data, await readFile(texturePlan), tier);
+    files.push({
+      path: `${map}/${tier}/texture-plan.json`,
+      bytes: info.size,
+      sha256: data.textureBudget.planSha256,
+    });
   }
   const compact = join(prepared, map, 'compact');
   const compactDirectory = await lstat(compact).catch((error) => {

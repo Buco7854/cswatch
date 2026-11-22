@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, readFile, rm, mkdir } from 'node:fs/promises';
+import { mkdtemp, writeFile, readFile, rm, mkdir, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -10,6 +10,7 @@ import { compressGlbGeometry, MeshoptDecoder } from './meshopt-glb.mjs';
 import { verifyPreparedGlb } from './prepared-glb.mjs';
 import { meshoptMapFixture } from './fixtures/meshopt-map.mjs';
 import { compressPreparedGeometry } from './compress-prepared-map.mjs';
+import { applyTextureBudget } from './texture-budget.mjs';
 const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const raw = (accessor) => {
   const a = accessor.getArray();
@@ -130,9 +131,16 @@ test('geometry-only output preserves original encoded image bytes and refuses ov
     source = join(root, 'source'),
     target = join(root, 'compressed');
   await mkdir(source);
-  const bytes = await meshoptMapFixture(),
-    input = join(source, 'scene.glb');
+  const io = new NodeIO()
+    .registerExtensions(ALL_EXTENSIONS)
+    .registerDependencies({ 'meshopt.decoder': MeshoptDecoder });
+  const document = await io.readBinary(await meshoptMapFixture());
+  const budget = await applyTextureBudget(document, { tier: 'desktop' });
+  const bytes = await io.writeBinary(document);
+  const input = join(source, 'scene.glb');
+  const plan = join(source, 'texture-plan.json');
   await writeFile(input, bytes);
+  await writeFile(plan, budget.planBytes);
   await writeFile(
     join(source, 'manifest.json'),
     JSON.stringify({
@@ -142,6 +150,7 @@ test('geometry-only output preserves original encoded image bytes and refuses ov
       bytes: bytes.length,
       assetVersion: 'fixture',
       outputSha256: hash(bytes),
+      textureBudget: budget.manifest,
     }),
   );
   const result = await compressPreparedGeometry({
@@ -151,18 +160,26 @@ test('geometry-only output preserves original encoded image bytes and refuses ov
     tier: 'desktop',
   });
   assert.ok(result.manifest.bytes < bytes.length * 0.75);
-  const io = new NodeIO()
-      .registerExtensions(ALL_EXTENSIONS)
-      .registerDependencies({ 'meshopt.decoder': MeshoptDecoder }),
-    a = await io.read(input),
+  const a = await io.read(input),
     b = await io.read(result.path);
   assert.deepEqual(
     a.getRoot().listTextures()[0].getImage(),
     b.getRoot().listTextures()[0].getImage(),
   );
   assert.deepEqual(await readFile(input), Buffer.from(bytes));
+  assert.deepEqual(await readFile(join(target, 'texture-plan.json')), await readFile(plan));
   await assert.rejects(
     compressPreparedGeometry({ input, output: source, map: 'de_qa', tier: 'desktop' }),
     /new tier/,
+  );
+  await unlink(plan);
+  await assert.rejects(
+    compressPreparedGeometry({
+      input,
+      output: join(root, 'missing'),
+      map: 'de_qa',
+      tier: 'desktop',
+    }),
+    { code: 'ENOENT' },
   );
 });

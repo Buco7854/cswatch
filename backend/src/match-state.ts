@@ -7,7 +7,7 @@ import type {
 } from '../../shared/match-state.js';
 import { objectiveDeadline } from './objectives.js';
 
-export const matchStateSampleLimit = 10000;
+const matchStateSampleLimit = 10000;
 const maxTick = 64 * 60 * 180;
 const validTick = (value: unknown): value is number =>
   typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= maxTick;

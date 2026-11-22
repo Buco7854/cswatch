@@ -51,10 +51,7 @@ export async function retierPreparedMap({
   )
     throw new Error('Retiering requires a self-contained prepared GLB.');
   const source = await verifyPreparedGlb(input);
-  if (
-    previous.bytes !== source.bytes ||
-    (previous.outputSha256 !== undefined && previous.outputSha256 !== source.sha256)
-  )
+  if (previous.bytes !== source.bytes || previous.outputSha256 !== source.sha256)
     throw new Error('Prepared input GLB does not match its source manifest.');
   await MeshoptDecoder.ready;
   const io = new NodeIO()

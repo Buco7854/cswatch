@@ -40,16 +40,10 @@ export async function compressPreparedGeometry({ input, output, map, tier, batch
   if (previous.schemaVersion !== 1 || previous.map !== map || previous.tier !== tier)
     throw new Error('Source tier manifest identity mismatch.');
   const source = await verifyPreparedGlb(input);
-  if (
-    previous.bytes !== source.bytes ||
-    (previous.outputSha256 !== undefined && previous.outputSha256 !== source.sha256)
-  )
+  if (previous.bytes !== source.bytes || previous.outputSha256 !== source.sha256)
     throw new Error('Source prepared model differs from its manifest.');
-  const plan =
-    previous.textureBudget === undefined
-      ? null
-      : await bounded(join(dirname(input), 'texture-plan.json'), 4 * 1024 ** 2);
-  if (plan) validateTexturePlan(previous, plan, tier);
+  const plan = await bounded(join(dirname(input), 'texture-plan.json'), 4 * 1024 ** 2);
+  validateTexturePlan(previous, plan, tier);
   await localDirectory(dirname(output), true);
   await mkdir(output, { mode: 0o755 });
   try {
@@ -95,7 +89,7 @@ export async function compressPreparedGeometry({ input, output, map, tier, batch
     };
     const serialized = Buffer.from(JSON.stringify(manifest, null, 2));
     if (serialized.length > 16384) throw new Error('Compressed tier manifest exceeds 16 KiB.');
-    if (plan) await writeTierMetadata(join(output, 'texture-plan.json'), plan);
+    await writeTierMetadata(join(output, 'texture-plan.json'), plan);
     await writeTierMetadata(join(output, 'manifest.json'), serialized);
     await verifyPreparedGlb(join(output, 'scene.glb'));
     return { path: join(output, 'scene.glb'), manifest };

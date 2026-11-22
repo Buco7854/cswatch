@@ -349,14 +349,14 @@ test('native height direction, explicit disabling and proven opacity default rem
       .replace('cubemapfogheightend 5000', 'cubemapfogheightend -500'),
   ).fog.height;
   near([reversed.start, reversed.end], [127, -12.7]);
-  const legacy = authoredFog(
+  const withoutHeight = authoredFog(
     fogMainText
       .replace('cubemapfogheightend 5000', 'cubemapfogheightwidth 5500')
       .replace('cubemapheightfog true\n', '')
       .replace('cubemapfogmaxopacity 1\n', ''),
   ).fog;
-  assert.equal(legacy.maxOpacity, 1);
-  near([legacy.height.start, legacy.height.end], [-12.7, 127]);
+  assert.equal(withoutHeight.maxOpacity, 1);
+  near([withoutHeight.height.start, withoutHeight.height.end], [-12.7, 127]);
 });
 
 test('missing, ambiguous, differently sourced or out-of-contract fog stays unavailable without guessed values', () => {

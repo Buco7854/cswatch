@@ -16,8 +16,8 @@ import {
 } from './map-jobs.js';
 import { withDirectory, regularFile, bytesFrom, fileVersion } from './map-asset-files.js';
 
-export const mapRemovalLimits = { retained: 512, pending: 32, scanned: 1024, bytes: 2048 } as const;
-export const mapRemovalRequestSchema = z
+const mapRemovalLimits = { retained: 512, pending: 32, scanned: 1024, bytes: 2048 } as const;
+const mapRemovalRequestSchema = z
   .object({
     schemaVersion: z.literal(1),
     packId: packIdSchema,
@@ -34,8 +34,8 @@ export const mapRemovalRequestSchema = z
     requestedAt: z.number().int().min(0).max(8640000000000),
   })
   .strict();
-export type MapRemovalRequest = z.infer<typeof mapRemovalRequestSchema>;
-export const mapRemovalResultSchema = z
+type MapRemovalRequest = z.infer<typeof mapRemovalRequestSchema>;
+const mapRemovalResultSchema = z
   .object({
     schemaVersion: z.literal(1),
     packId: packIdSchema,
@@ -46,7 +46,7 @@ export const mapRemovalResultSchema = z
   })
   .strict()
   .refine((value) => (value.status === 'failed') === (value.code !== undefined));
-export type MapRemovalResult = z.infer<typeof mapRemovalResultSchema>;
+type MapRemovalResult = z.infer<typeof mapRemovalResultSchema>;
 
 export async function mapQueueIds(jobs: string, folder: 'requests' | 'removals') {
   const result = await withDirectory(jobs, [folder], async (directory) => {
@@ -104,7 +104,7 @@ export const readMapRemoval = (jobs: string, packId: string) =>
   readRecord(jobs, 'removals', packId, mapRemovalRequestSchema);
 export const readMapRemovalResult = (jobs: string, packId: string) =>
   readRecord(jobs, 'removal-results', packId, mapRemovalResultSchema);
-export async function pendingMapRemoval(jobs: string, packId: string) {
+async function pendingMapRemoval(jobs: string, packId: string) {
   const removal = await readMapRemoval(jobs, packId);
   if (!removal) return false;
   const result = await readMapRemovalResult(jobs, packId);
