@@ -1,3 +1,6 @@
+import type { WeaponAnchor } from '../agent-attachment';
+import { playerShadows } from '../player-shadows';
+import { PlayerContactShadow, PlayerSunPass } from './PlayerShadow';
 import { t } from '../i18n';
 import {
   Component,
@@ -260,9 +263,11 @@ function Model({
   fogResources,
   scope,
   registerFollowModel,
+  playerLighting,
 }: {
   url: string;
   fogResources: SourceFogReference;
+  playerLighting: ReturnType<typeof playerShadows> | null;
   scope: ModelScope;
   registerFollowModel: (model: THREE.Group) => () => void;
   loaded: (
@@ -297,6 +302,9 @@ function Model({
     return { ...result, sun, landscape, compatibility };
   }, [gltf, fogResources]);
   useEffect(() => () => prepared.compatibility.dispose(), [prepared]);
+  useLayoutEffect(() => {
+    if (prepared.sun) return playerLighting?.receivers(prepared.main);
+  }, [prepared, playerLighting]);
   useLayoutEffect(() => {
     if (!gltf.animations.length && scope.isCurrent()) return registerFollowModel(prepared.main);
   }, [gltf, prepared, registerFollowModel, scope]);
@@ -411,7 +419,10 @@ function Agent({
   labels,
   labelSmoke,
   hideNearCamera,
-  showMarkers,
+  overheadMarker,
+  contactTrace,
+  shadowPose,
+  sample,
   model,
   tick,
   timing,
@@ -428,7 +439,10 @@ function Agent({
   labels: boolean;
   labelSmoke: RefObject<SmokeSample[]>;
   hideNearCamera: boolean;
-  showMarkers: boolean;
+  overheadMarker: boolean;
+  contactTrace: ReturnType<ReturnType<typeof followObstruction>['fork']> | null;
+  shadowPose: boolean;
+  sample: boolean;
   model: string | null;
   tick: number;
   timing: PoseTiming;
@@ -438,8 +452,8 @@ function Agent({
 }) {
   const pose = playerPose(position, next, alpha, timing);
   const motion = recordedMotion(position, next, alpha, timing, previous);
-  const weaponAnchor = useRef<THREE.Object3D | null>(null);
-  const registerWeaponAnchor = useCallback((bone: THREE.Object3D) => {
+  const weaponAnchor = useRef<WeaponAnchor | null>(null);
+  const registerWeaponAnchor = useCallback((bone: WeaponAnchor) => {
     weaponAnchor.current = bone;
     return () => {
       if (weaponAnchor.current === bone) {
@@ -512,6 +526,7 @@ function Agent({
           rate={timing.tickRate}
           speed={motion.speed}
           gaitHistory={gaitHistory}
+          shadowPose={shadowPose}
           directional={{
             yaw: pose.yaw,
             pitch: pose.pitch,
@@ -519,18 +534,27 @@ function Agent({
             velocityX: motion.velocityX,
             velocityY: motion.velocityY,
             action,
+            defusing: pose.defusing,
           }}
           duck={pose.duck ?? 0}
           xrayColor={xray ? color : undefined}
           registerWeaponAnchor={registerWeaponAnchor}
-          registerHeadAnchor={labels && showMarkers && name ? registerHeadAnchor : undefined}
-          fallback={<GenericAgentBody team={position.team} id={position.id} xray={xray} />}
+          registerHeadAnchor={labels && name ? registerHeadAnchor : undefined}
+          fallback={
+            <GenericAgentBody
+              team={position.team}
+              id={position.id}
+              xray={xray}
+              castStatic={sample}
+            />
+          }
         />
       ) : (
-        <GenericAgentBody team={position.team} id={position.id} xray={xray} />
+        <GenericAgentBody team={position.team} id={position.id} xray={xray} castStatic={sample} />
       )}
-      <HeldEquipment position={pose} anchor={weaponAnchor} />
-      {showMarkers && labels && name && !nearCamera && (
+      <HeldEquipment position={pose} anchor={weaponAnchor} released={action?.released} />
+      {contactTrace && <PlayerContactShadow body={ref} trace={contactTrace} />}
+      {labels && name && !nearCamera && (
         <group ref={labelAnchor} position={[0, fallbackLabelHeight, 0]}>
           <Html
             key={xray ? 'through-walls' : 'visible-only'}
@@ -560,13 +584,13 @@ function Agent({
           </Html>
         </group>
       )}
-      {showMarkers && !labels && (
+      {overheadMarker && !labels && (
         <mesh position={[0, 2, 0]}>
           <sphereGeometry args={[selected ? 0.15 : 0.09, 8, 8]} />
           <meshBasicMaterial color={selected ? '#ffffff' : color} />
         </mesh>
       )}
-      {showMarkers && selected && (
+      {overheadMarker && selected && (
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.04, 0]}>
           <ringGeometry args={[0.5, 0.58, 32]} />
           <meshBasicMaterial color="#ffffff" />
@@ -648,12 +672,20 @@ function World({
     return () => gl.domElement.removeEventListener('webglcontextrestored', restored);
   }, [gl, invalidate]);
   useMapShadowCache(!data.sample && shadows);
+  const actors = useRef<THREE.Group>(null);
+  const playerLighting = useMemo(playerShadows, [contextRevision]);
+  useLayoutEffect(() => () => playerLighting.dispose(), [playerLighting]);
   const [followModel, setFollowModel] = useState<THREE.Group | null>(null);
   const registerFollowModel = useCallback((map: THREE.Group) => {
     setFollowModel(map);
     return () => setFollowModel((current) => (current === map ? null : current));
   }, []);
-  const traceMap = mode === 'follow' || mode === 'pov' || tracers;
+  const traceMap =
+    !shadows ||
+    mode === 'follow' ||
+    mode === 'pov' ||
+    tracers ||
+    items.some(({ kind }) => kind !== 'projectile');
   const followTrace = useMemo(
     () => (traceMap && followModel ? followObstruction(followModel) : null),
     [traceMap, followModel],
@@ -663,6 +695,14 @@ function World({
     [followTrace, tracers],
   );
   const smokeSunTrace = useMemo(() => followTrace?.fork(), [followTrace]);
+  // Separate per-actor floor queries keep their paused-ray caches independent.
+  const floorTraces = useMemo(
+    () =>
+      new Map(
+        !shadows && followTrace ? data.players.map(({ id }) => [id, followTrace.fork(0)]) : [],
+      ),
+    [data.players, followTrace, shadows],
+  );
   const fogResources = useRef<SourceFogResources>({ fog: null, cube: null });
   const movement = useRef(new Set<string>());
   const fastMovement = useRef(false);
@@ -796,7 +836,7 @@ function World({
   );
   const agentEvents = useMemo(
     () => indexAgentEvents(data),
-    [data.events, data.players, data.sample, data.agentDeaths],
+    [data.events, data.players, data.sample, data.agentDeaths, data.throwInputs],
   );
   const draws = useMemo(() => indexAgentDraws(data), [data.frames, data.rounds, data.tickRate]);
   const reduceAgentMotion = useReducedMotion();
@@ -941,8 +981,22 @@ function World({
     if (mode === 'follow') {
       const follow = thirdPersonFollow(p, n, alpha, poseTiming);
       if (!follow) return;
-      const position = followTrace?.(follow) ?? follow.position;
+      let position = followTrace?.(follow) ?? follow.position;
       const [x, y, z] = follow.target;
+      if (followTrace && Math.hypot(position[0] - x, position[2] - z) < 1.05) {
+        const yaw = THREE.MathUtils.degToRad(playerPose(p, n, alpha, poseTiming).yaw);
+        const across: [number, number, number] = [
+          follow.position[0] - Math.sin(yaw) * 3.2,
+          follow.position[1],
+          follow.position[2] - Math.cos(yaw) * 3.2,
+        ];
+        const alternate = followTrace({ position: across, target: follow.target });
+        if (
+          Math.hypot(alternate[0] - x, alternate[2] - z) >
+          Math.hypot(position[0] - x, position[2] - z)
+        )
+          position = alternate;
+      }
       // At a fully retracted boom the camera would look through the selected model.
       if (Math.hypot(position[0] - x, position[1] - y, position[2] - z) >= 0.65) {
         camera.position.fromArray(position);
@@ -1009,64 +1063,81 @@ function World({
                   loaded={reportModel}
                   fogResources={fogResources}
                   registerFollowModel={registerFollowModel}
+                  playerLighting={low ? null : playerLighting}
                 />
               </Suspense>
             </MapModelBoundary>
           )}
         </>
       )}
+      <PlayerSunPass
+        root={actors}
+        pipeline={playerLighting}
+        sun={shadows && !preview ? sun : null}
+      />
       <group visible={Boolean(data.sample) || modelReady}>
-        {frame.players
-          .filter(
-            (p) =>
-              p.alive &&
-              !(mode === 'pov' && p.id === viewedPlayer?.id) &&
-              !bodies.some((body) => body.position.id === p.id),
-          )
-          .map((p) => (
-            <Agent
-              key={p.id}
-              position={p}
-              next={nextPlayers.get(p.id)}
-              alpha={alpha}
-              selected={p.id === selected && !preview}
-              xray={settings.xray && !preview}
-              name={data.players.find((player) => player.id === p.id)?.name}
-              labels={settings.playerLabels && !preview && (Boolean(data.sample) || modelReady)}
-              labelSmoke={labelSmoke}
-              hideNearCamera={
-                !preview &&
-                !data.sample &&
-                (mode === 'orbit' || (mode === 'follow' && p.id === selected))
-              }
-              showMarkers={!(mode === 'follow' && p.id === selected)}
-              model={!preview ? (p.team === 3 ? agents.ct : agents.t) : null}
+        <group ref={actors} visible={Boolean(data.sample) || modelReady}>
+          {frame.players
+            .filter(
+              (p) =>
+                p.alive &&
+                !(mode === 'pov' && p.id === viewedPlayer?.id) &&
+                !bodies.some((body) => body.position.id === p.id),
+            )
+            .map((p) => (
+              <Agent
+                key={p.id}
+                position={p}
+                next={nextPlayers.get(p.id)}
+                alpha={alpha}
+                selected={p.id === selected && !preview}
+                xray={settings.xray && !preview}
+                name={data.players.find((player) => player.id === p.id)?.name}
+                labels={
+                  settings.playerLabels &&
+                  !preview &&
+                  (Boolean(data.sample) || modelReady) &&
+                  !(mode === 'follow' && p.id === selected)
+                }
+                labelSmoke={labelSmoke}
+                hideNearCamera={
+                  !preview &&
+                  !data.sample &&
+                  (mode === 'orbit' || (mode === 'follow' && p.id === selected))
+                }
+                overheadMarker={mode === 'tactical'}
+                contactTrace={floorTraces.get(p.id) ?? null}
+                shadowPose={shadows && Boolean(sun)}
+                sample={Boolean(data.sample)}
+                model={!preview ? (p.team === 3 ? agents.ct : agents.t) : null}
+                tick={tick}
+                timing={poseTiming}
+                previous={previousPlayers?.get(p.id)}
+                gaitHistory={gaitHistory}
+                action={agentActionAt(
+                  agentEvents,
+                  draws,
+                  p,
+                  tick,
+                  data.tickRate,
+                  round?.tick ?? 0,
+                  !preview && !reduceAgentMotion,
+                  settings.shotEffects,
+                )}
+              />
+            ))}
+          {bodies.map((body) => (
+            <RecordedAgentBody
+              key={body.position.id}
+              body={body}
+              url={body.position.team === 3 ? agents.ct : agents.t}
               tick={tick}
-              timing={poseTiming}
-              previous={previousPlayers?.get(p.id)}
-              gaitHistory={gaitHistory}
-              action={agentActionAt(
-                agentEvents,
-                draws,
-                p,
-                tick,
-                data.tickRate,
-                round?.tick ?? 0,
-                !preview && !reduceAgentMotion,
-                settings.shotEffects,
-              )}
+              rate={data.tickRate}
+              reducedMotion={reduceAgentMotion}
+              shadowPose={shadows && Boolean(sun)}
             />
           ))}
-        {bodies.map((body) => (
-          <RecordedAgentBody
-            key={body.position.id}
-            body={body}
-            url={body.position.team === 3 ? agents.ct : agents.t}
-            tick={tick}
-            rate={data.tickRate}
-            reducedMotion={reduceAgentMotion}
-          />
-        ))}
+        </group>
         {showPovEquipment && (
           <PovEquipmentPass
             hasSky={Boolean(sky)}
@@ -1096,7 +1167,7 @@ function World({
             trace={tracerTrace}
           />
         )}
-        {!preview && <RecordedEquipment items={items} />}
+        {!preview && <RecordedEquipment items={items} floor={followTrace} />}
         {!preview && settings.utilities && (
           <Smoke
             data={data}
@@ -1222,6 +1293,7 @@ function UtilityLayer({
               <EquipmentModelInstance
                 equipment={projectileEquipment(grenade.kind) || ''}
                 instance={'trajectory-projectile:' + grenade.id}
+                projectile
                 fallback={<ProjectileFallback />}
               />
             </group>

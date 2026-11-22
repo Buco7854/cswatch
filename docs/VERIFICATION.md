@@ -14,6 +14,34 @@ The production browser selected Compact 3D under Chromium SwiftShader. Sixteen d
 
 The focused suites passed 45 backend tests and 100 asset tests. Focused Playwright passed 42 cases on the rebuilt production app. With the pinned offline CPU speech model, the Node 24 backend suite passed 426 tests. The full asset suite passed 296 tests. The full public Playwright run passed 247 cases with two policy skips. The named verifier passed the image-layout, runtime and asset smoke checks. The format and English/French message checks passed.
 
+## Local third-person equipment, 2026-11-22
+
+The baseline uses Valve resources from Steam depot `2347770`, manifest `8225060435969537482`, and the checksum-pinned Mirage recording. The cached directory supplies CRC-validated sources for all 67 equipment IDs and 101 animation roles. The old M4A4 has a weapon-root translation of 0.463 m forward and 0.315 m up in the viewer basis. The old bounds miss the weapon origin by 0.108 m. The packing regression rejects those bounds with a 0.060 m tolerance.
+
+Inspected all 19 supplied 1600 × 900 baseline third-person captures. The old M4A4 floats above the grip, the M4A1-S sits ahead of the player, and several smaller props are obscured or missing. The baseline Glock moment has a wall between the camera and the actor. The captured material metadata retains normal, roughness, metalness and occlusion textures. The runtime adds a cloth sheen approximation on surfaces with the authored cloth flag. [Pinned S2V character material reference](https://github.com/ValveResourceFormat/ValveResourceFormat/blob/942df5b37ebbde6153f6c488880b91d4bed003e6/Renderer/Shaders/csgo/csgo_character.frag.slang)
+
+The confined worker rebuilt all 67 equipment packs and both 101-clip agent packs. The real-pack test decoded every GLB, recomputed the posed bounds, and checked the authored weapon frame. The rebuild split the source selection to stay within the existing closure bound. Native overlay exports that include a second weapon skin retain only the character tracks.
+
+Reviewed all 26 before-and-after weapon pairs at 1600 × 900 and the static M4A4 POV comparison. The detailed comparison uses 50% internal resolution. The rebuilt M4A4 sits at the hands and clears the reticle in static POV. The P2000 and R8 exterior views show player shadows, and the shaded lane views retain baked shade. Default Follow and Overhead were inspected in both themes at 1600 × 900, 768 × 1024 and 390 × 844 in Chromium with ANGLE SwiftShader. The selected M4A4 is visible in each Follow frame. The automatic setup selected Compact 3D on all three profiles. The selected shot loaded all ten equipment instances on desktop and six of ten on tablet and phone, where four reached the existing resident resource limit.
+
+The recorded check sampled nine complete Mirage rounds at 64 Hz. Grip distance is the authored model anchor’s distance to the point between the sampled thumb and middle knuckle. The “before” columns apply the old packed origin to the same character pose. The consecutive-tick movement column includes weapon switches and excludes actor-origin jumps larger than 36 cm.
+
+| Class   | Samples | Before grip max / p99 (cm) | After grip max / p99 (cm) | Max grip step (cm) | Worst tick |
+| ------- | ------: | -------------------------: | ------------------------: | -----------------: | ---------: |
+| C4      |   4,272 |              78.12 / 75.68 |           <0.001 / <0.001 |              65.62 |     31,788 |
+| Grenade |  36,909 |              72.82 / 38.32 |           <0.001 / <0.001 |              70.86 |     28,492 |
+| Knife   | 118,439 |              64.01 / 28.46 |           <0.001 / <0.001 |              86.82 |     29,384 |
+| Pistol  | 104,478 |              69.28 / 37.58 |           <0.001 / <0.001 |              89.30 |         67 |
+| Rifle   | 142,520 |              88.27 / 56.36 |           <0.001 / <0.001 |              81.33 |     29,188 |
+
+The planted-foot proxy follows the lower toe on four-tick intervals with average toe height within 9 cm of the recorded origin. P95 displacement was 32.41 cm walking, 60.27 cm running, 45.83 cm strafing and 31.41 cm crouched. The probe cannot certify the previous slip bound or terrain penetration from toe position alone. The nine rounds include 13,080 sampled frames, 56 distinct reload starts, 3,147 flashed pawn samples, 113 defusing pawn samples and 56 recorded death anchors. These counts describe available inputs. The grip probe evaluates living weapon holders and has no held Dual Berettas sample.
+
+The Node 24 build, 427 backend tests with offline speech and parser fixtures, formatting and locales passed. The normal asset suite passed 302 checks with one optional genuine-pack skip. The separate rebuilt-pack run passed all seven tests with zero skips. The tip script passed build, backend, asset, image-layout, runtime and confined asset smoke checks. Its backend run skipped three speech tests, its asset run skipped the optional genuine-pack check, and the image-layout run used the local runtime because Docker was unavailable.
+
+The first corrected public Playwright run passed 245 tests with two policy skips and one paused-render failure. A fixed probe then showed that refreshing identical agent and equipment catalogs added two WebGL clears to the idle scene. The asset hooks now retain the previous state on unchanged catalogs, and maps with no authored sun skip the player-sun receiver. The paused-render, static and moving shadow, and free-camera keyboard checks each passed three consecutive runs after the fix. The final public Playwright run passed 246 tests with two policy skips. The final build, formatting and EN/FR locale checks also passed.
+
+Synthetic equipment browser checks exercised recorded drops, planted C4 and all six grenade projectiles. The pinned recording reports partial dropped-item coverage. The replay still lacks a complete native animation graph, terrain-aware ragdolls, and direct state evidence for all jump, fall, land and ladder transitions. Local captures and raw measurements are indexed in `.design/proof/PROOF.md`.
+
 ## Final compatibility sweep, 2026-11-22
 
 Verified the uncommitted sweep on `c61b469` with Node 22.23.5. Both builds and the backend unused-local check passed. All 423 backend tests passed with the pinned Mirage recording and offline speech fixtures. All 301 asset tests passed, including publication with required model and texture-plan bindings, compression with the bound texture plan, and retiering with the verified source model hash.

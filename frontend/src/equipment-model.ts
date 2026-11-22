@@ -8,6 +8,7 @@ export function prepareEquipmentModel(scene: Object3D) {
     if (object instanceof Light) object.visible = false;
     if (object instanceof Mesh) {
       object.castShadow = false;
+      object.userData.playerShadowCaster = true;
       object.receiveShadow = true;
     }
   });

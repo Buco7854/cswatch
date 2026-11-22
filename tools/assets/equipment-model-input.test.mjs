@@ -17,7 +17,7 @@ function fixture() {
     asset: { version: '2.0' },
     scene: 0,
     scenes: [{ nodes: [0] }],
-    nodes: [{ mesh: 0 }],
+    nodes: [{ name: 'weapon', mesh: 0 }],
     meshes: [{ primitives: [{ attributes: { POSITION: 0 }, mode: 4 }] }],
     buffers: [{ uri: 'sparse.bin', byteLength: 28 }],
     bufferViews: [

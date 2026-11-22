@@ -17,6 +17,7 @@ export const directionalRoles = Object.freeze([
       .filter((action) => weapon !== 'knife' || action === 'draw')
       .map((action) => `${weapon}-${action}`),
   ]),
+  ...contract.overlays,
   ...contract.deaths,
 ]);
 export function validDirectionalRoles(roles) {

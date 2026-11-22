@@ -6,15 +6,6 @@ export type EquipmentModelTransform = {
   rotation: EquipmentModelVector;
   scale: number;
 };
-/** Canonical model axes are +X forward, +Y up, +Z right, in meters.
- * Hold translation is relative to player feet after yaw, followed by pitch at
- * that attachment point. POV translation is relative to the recorded eye in
- * the full yaw/pitch aim frame. Both are approximate static presets. */
-type EquipmentModelAttachments = {
-  approximate: true;
-  hold: EquipmentModelTransform;
-  pov: EquipmentModelTransform;
-};
 type EquipmentModelBounds = {
   min: EquipmentModelVector;
   max: EquipmentModelVector;
@@ -30,10 +21,9 @@ export type EquipmentModel = {
   /** Losslessly decoded vertex/index buffer bytes. */
   geometryBytes: number;
   bounds: EquipmentModelBounds;
-  attachments: EquipmentModelAttachments;
 };
 export type EquipmentModelCatalog = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   complete?: boolean;
   items: Record<string, EquipmentModel>;
 };

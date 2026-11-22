@@ -34,6 +34,12 @@ POV uses the sampled native pawn eye offset when available. A bounded shoulder-a
 
 POV weapon and arm placement now samples a bounded stride from contiguous recorded locomotion. The same motion applies to installed authored rigs and static equipment. Reduced motion suppresses that layer. Authored fire and reload actions still use their recorded event or active-weapon evidence.
 
+## Third-person rendering
+
+Static equipment is packed in the authored weapon skeleton frame. The viewer samples the character’s weapon and finger joints for the mount. Grenades, Dual Berettas and defusing use their dedicated upper-body overlays in the directional bank. Grenade throws align the observed release to the corresponding clip’s hand-IK marker. The compact renderer uses a floor-traced contact shadow. Live sun shadows add a player-only depth pass and modulate the map’s existing direct sun term, including its baked sun mask.
+
+The renderer still uses class locomotion for the lower body and class poses for many individual firearms. Replay evidence and continuous authored terrain contacts remain incomplete for airborne states, ladders, planting and corpse placement on uneven surfaces.
+
 ## Recorded smoke
 
 The optional replay journal supplies recorded seed/rejection changes, color and origin. The browser simulates a bounded density grid off-thread and depth-tests individual instanced cells against world geometry. Event-only recordings render a bounded soft cloud around the detonation, with replay-time growth and fade. The simulated density and shading are approximations. Native noise, bullet cuts and explosive dispersal remain outside supported evidence. [Verification](../VERIFICATION.md#local-viewer-usability-and-presentation-follow-up-2026-11-21)

@@ -1,15 +1,19 @@
 export type AgentWeaponClass = 'rifle' | 'pistol' | 'knife';
 export type AgentDirection = 'n' | 'nw' | 'w' | 'sw' | 's' | 'se' | 'e' | 'ne';
 export type AgentGait = 'walk' | 'run' | 'crouch';
-export type AgentAction = 'fire' | 'reload' | 'draw';
+export type AgentAction = 'fire' | 'reload' | 'draw' | 'throw' | 'throw-underhand';
 export type AgentDeath = 'death-a' | 'death-b';
 export type DirectionalAgentRole =
   | `${AgentWeaponClass}-${'idle' | 'crouch-idle' | AgentAction}`
   | `${AgentWeaponClass}-${AgentGait}-${AgentDirection}`
+  | `dual-${'idle' | 'crouch-idle' | 'fire' | 'draw' | 'reload'}`
+  | `grenade-${'idle' | 'crouch-idle' | 'draw' | 'throw' | 'throw-underhand'}`
+  | `${AgentWeaponClass}-defuse`
+  | 'c4-carry'
   | AgentDeath;
 export interface DirectionalAgentMetadata {
   kind: 'native-agent';
-  schemaVersion: 2;
+  schemaVersion: 3;
   role: DirectionalAgentRole;
   rootMotion: 'recorded-position';
   /** Upper-body tracks are masked against the native rig at playback. */

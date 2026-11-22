@@ -48,7 +48,7 @@ export function followObstruction(root: Group) {
     const toWorld = mesh.matrixWorld.clone();
     surfaces.push({ geometry, bounds, toWorld, toLocal: toWorld.clone().invert(), triangles });
   });
-  const createTrace = () => {
+  const createTrace = (clearance = CLEARANCE) => {
     const ray = new Ray(),
       localRay = new Ray(),
       destination = new Vector3(),
@@ -78,12 +78,12 @@ export function followObstruction(root: Group) {
         const distance = surface.bounds.containsPoint(ray.origin)
           ? 0
           : ray.intersectBox(surface.bounds, hit)?.distanceTo(ray.origin);
-        if (distance !== undefined && distance < length + CLEARANCE)
+        if (distance !== undefined && distance < length + clearance)
           candidates.push({ surface, distance });
       }
       candidates.sort((x, y) => x.distance - y.distance);
       let checked = 0,
-        nearest = length + CLEARANCE;
+        nearest = length + clearance;
       for (const { surface, distance } of candidates) {
         if (distance > nearest) break;
         if (checked + surface.triangles > MAX_TEST_TRIANGLES) continue;
@@ -100,8 +100,8 @@ export function followObstruction(root: Group) {
         }
       }
       lastPosition =
-        nearest < length + CLEARANCE
-          ? ray.at(Math.max(Math.min(0.03, nearest / 2), nearest - CLEARANCE), hit).toArray()
+        nearest < length + clearance
+          ? ray.at(Math.max(Math.min(0.03, nearest / 2), nearest - clearance), hit).toArray()
           : undefined;
       return lastPosition ?? position;
     };

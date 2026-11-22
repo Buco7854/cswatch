@@ -16,7 +16,6 @@ import {
   AlwaysStencilFunc,
   NotEqualStencilFunc,
   ReplaceStencilOp,
-  type Object3D,
 } from 'three';
 import { useEquipmentGLTF, useEquipmentScope } from '../equipment-loader';
 import type { ModelScope } from '../model-cache';
@@ -33,6 +32,7 @@ import { agentCenteredMotionAt, agentPhaseAt } from '../agent-phase';
 import { disposeEquipmentInstance } from '../equipment-model';
 import { assertMapBaseColorTextures } from '../map-model';
 import type { AgentDeathSample } from '../agent-replay';
+import { weaponAnchor, type WeaponAnchor } from '../agent-attachment';
 import { agentXray } from '../agent-xray';
 
 export type AgentInstanceStatus = 'pending' | 'ready' | 'error';
@@ -40,7 +40,17 @@ export const AgentModels = createContext<{
   identity: object;
   report: (id: string, status: AgentInstanceStatus | null) => void;
 } | null>(null);
-export function GenericAgentBody({ team, id, xray }: { team: number; id: string; xray?: boolean }) {
+export function GenericAgentBody({
+  team,
+  id,
+  xray,
+  castStatic = false,
+}: {
+  team: number;
+  id: string;
+  xray?: boolean;
+  castStatic?: boolean;
+}) {
   const mask = {
     stencilWrite: Boolean(xray),
     stencilRef: 1,
@@ -67,16 +77,32 @@ export function GenericAgentBody({ team, id, xray }: { team: number; id: string;
           />
         </mesh>
       )}
-      <mesh position={[0, 0.91, 0]} castShadow renderOrder={renderOrder}>
+      <mesh
+        position={[0, 0.91, 0]}
+        castShadow={castStatic}
+        userData={{ playerShadowCaster: true }}
+        renderOrder={renderOrder}
+      >
         <capsuleGeometry args={[0.23, 0.65, 4, 8]} />
         <meshStandardMaterial color={team === 3 ? '#43535a' : '#81705c'} {...mask} />
       </mesh>
-      <mesh position={[0, 1.6, 0]} castShadow renderOrder={renderOrder}>
+      <mesh
+        position={[0, 1.6, 0]}
+        castShadow={castStatic}
+        userData={{ playerShadowCaster: true }}
+        renderOrder={renderOrder}
+      >
         <sphereGeometry args={[0.18, 12, 12]} />
         <meshStandardMaterial color="#b1a28a" {...mask} />
       </mesh>
       {[-0.14, 0.14].map((x) => (
-        <mesh key={x} position={[x, 0.32, 0]} castShadow renderOrder={renderOrder}>
+        <mesh
+          key={x}
+          position={[x, 0.32, 0]}
+          castShadow={castStatic}
+          userData={{ playerShadowCaster: true }}
+          renderOrder={renderOrder}
+        >
           <capsuleGeometry args={[0.095, 0.45, 4, 8]} />
           <meshStandardMaterial color="#434645" {...mask} />
         </mesh>
@@ -110,7 +136,8 @@ type AgentProps = {
   directional: DirectionalSample;
   duck: number;
   xrayColor?: string;
-  registerWeaponAnchor?: (bone: Object3D) => () => void;
+  shadowPose?: boolean;
+  registerWeaponAnchor?: (anchor: WeaponAnchor) => () => void;
   registerHeadAnchor?: (bone: Bone) => () => void;
 };
 function LoadedAgent({
@@ -127,6 +154,7 @@ function LoadedAgent({
   registerWeaponAnchor,
   registerHeadAnchor,
   xrayColor,
+  shadowPose,
 }: AgentProps & { scope: ModelScope; ready: () => void }) {
   const gltf = useEquipmentGLTF(url),
     { invalidate } = useThree();
@@ -136,12 +164,13 @@ function LoadedAgent({
     if (!clips) throw Error('Agent model requires the complete directional animation set.');
     const prepared = prepareAgentModel(gltf.scene);
     try {
-      assertMapBaseColorTextures({ scene: prepared.instance, parser: gltf.parser });
+      assertMapBaseColorTextures({ scene: gltf.scene, parser: gltf.parser });
       const pose = createDirectionalAgent(prepared.instance, clips);
       if (!pose) throw Error('Agent model has unsupported directional tracks.');
       return { prepared, pose, strideProfile: agentStrideProfile(clips) };
     } catch (error) {
       disposeEquipmentInstance(prepared.root);
+      prepared.disposeMaterials();
       throw error;
     }
   }, [gltf]);
@@ -163,7 +192,13 @@ function LoadedAgent({
   useLayoutEffect(() => {
     invalidate();
   }, [pose, directional, phaseAt, motionAt, tick, rate, speed, duck, invalidate, xrayColor]);
-  useEffect(() => () => disposeEquipmentInstance(prepared.root), [prepared]);
+  useEffect(
+    () => () => {
+      disposeEquipmentInstance(prepared.root);
+      prepared.disposeMaterials();
+    },
+    [prepared],
+  );
   useLayoutEffect(() => {
     if (scope.isCurrent()) {
       ready();
@@ -171,8 +206,8 @@ function LoadedAgent({
     }
   }, [scope, ready, invalidate]);
   useLayoutEffect(() => {
-    const bone = prepared.instance.getObjectByName('wpn');
-    if (bone instanceof Bone) return registerWeaponAnchor?.(bone);
+    const anchor = weaponAnchor(prepared.instance);
+    if (anchor) return registerWeaponAnchor?.(anchor);
   }, [prepared, registerWeaponAnchor]);
   useLayoutEffect(() => {
     if (!registerHeadAnchor) return;
@@ -180,7 +215,7 @@ function LoadedAgent({
     if (bone instanceof Bone) return registerHeadAnchor(bone);
   }, [prepared, registerHeadAnchor]);
   useFrame(({ camera }) => {
-    if (!poseVisible(camera, prepared.root, xrayEnabled)) return;
+    if (!poseVisible(camera, prepared.root, xrayEnabled || Boolean(shadowPose))) return;
     const motion = directional.death ? undefined : motionAt?.(tick);
     pose.sample(
       tick / rate,
@@ -235,12 +270,14 @@ export function RecordedAgentBody({
   tick,
   rate,
   reducedMotion,
+  shadowPose,
 }: {
   body: AgentDeathSample;
   url: string | null;
   tick: number;
   rate: number;
   reducedMotion: boolean;
+  shadowPose: boolean;
 }) {
   if (!url) return null;
   const inchesToMeters = 0.0254;
@@ -261,6 +298,7 @@ export function RecordedAgentBody({
         speed={0}
         duck={0}
         fallback={null}
+        shadowPose={shadowPose}
         directional={{
           yaw: position.yaw,
           pitch: 0,

@@ -132,7 +132,7 @@ Prepare native equipment separately from maps and HUD icons. Use the same explic
 
 ```sh
 npm --prefix tools/assets run install-equipment-models -- \
-  --items all --agents ct,t --manifest PINNED_UINT64 \
+  --items ak47,knife,smokegrenade,c4,plantedc4 --manifest PINNED_UINT64 \
   --output /srv/cswatch/maps --cache /srv/cswatch-asset-cache
 ```
 
@@ -140,17 +140,17 @@ Replace `PINNED_UINT64` with a source manifest you have approved and can access.
 
 Models are capped at 16 MiB encoded, 16 MiB decoded texture RGBA and 8 MiB decoded vertex/index data each. Inputs are checked before allocation, textures compress serially, and lossless Meshopt transport is decoded and compared before publication. Runtime model descriptors use fixed same-origin URLs and hash-bound self-contained GLBs. The browser loads visible items lazily under a shared device memory budget. Missing/failed models are reported in Options → Performance; they never remove the map. Recorded grenade bodies retain a small visible fallback when a model is unavailable.
 
-Equipment geometry receives one offline +90° Y rotation into viewer meters/Y-up/+X-forward coordinates, with no second Source scale. Static hold/POV presets use measured bounds and keep the model ahead of the camera near plane. They are spectator approximations, without native arms, recoil or first-person animation. Dropped items, grenade rotations and planted C4 use recorded entity transforms when present. C4 and planted C4 share the actual native C4 model, with separate fixed IDs. Native digits and planting animation are not reconstructed.
+Equipment geometry is normalized into its authored weapon root in Y-up metres. S2V already converts inches to metres. The viewer mounts the held model using its native grip and the agent’s sampled weapon axes. The static POV fallback is positioned from the normalized bounds. Recorded world items use recorded entity transforms when present, with nearby floor support for dropped and planted models. C4 and planted C4 share the native C4 model under separate fixed IDs. Planting animation and the native digits remain outside this pack.
 
 New firearm preparation also inspects bounded native mesh metadata for an exact supported single-bone `muzzle_flash` attachment. Matching variants retain a named GLB marker and private source evidence, with one bone-local inches-to-metres conversion. Missing or unsupported attachment evidence is unavailable rather than guessed as native. The browser can use this marker for its recorded-event analytical flash. Existing operator packs are preserved and use a bounds-based analytical fallback. A small optional shot kick and separate first-person depth pass do not establish native arms or native recoil/reload animation.
 
-The automatic assets worker prepares the directional CT/T bank. To prepare it manually, pass `--agents ct,t` with the explicit available manifest and a fresh output directory. The fixed registry selects all 87 full-pose resources for rifle, pistol, knife and shared deaths. The installer keeps one manifest through exact selection, VPK CRC checks and conversion. Each clip exports independently. The packer retains agent tracks from action exports and discards tracks for their separate weapon skins.
+The automatic assets worker prepares the full equipment registry in bounded selections and the directional CT/T bank separately. To prepare the CT/T bank manually, pass `--agents ct,t` with the explicit available manifest and a fresh output directory. The fixed registry selects all 101 full-pose resources for class locomotion, attacks, carry poses, defusing and shared deaths. The installer keeps one manifest through exact selection, VPK CRC checks and conversion. Each clip exports independently. The packer retains agent tracks from action exports and discards tracks for their separate weapon skins.
 
 Retargeting uses exact joint names. It verifies each moving clip's direction from root travel or, for in-place clips, the planted foot trajectories. The pack records stride in metres and the normalized foot-cycle offset. Retargeting is capped at 8,192 samples, 1,000,000 sampled joints and 64,000,000 posed vertices per agent. Decoded geometry and animation data remain below 8 MiB, encoded GLB and decoded texture RGBA below 16 MiB each. Rotation and translation keys use quantized values in glTF float accessors with Meshopt transport. Agent packs retain S2V axes so the viewer applies the +90° Y correction once.
 
 ## Prepare existing native agent exports
 
-Agent outputs are `agents/ct.glb` and `t.glb` with bounded manifests and provenance. Use a fresh output directory. For local full-pose exports, run `node tools/assets/prepare-agent-model.mjs --help` and supply all 87 roles as flags, for example `--rifle-walk-w WALK_LEFT.gltf`. The shared contract defines the exact roles. The pack records the source files and versions in private provenance. [Shared agent contract](../../shared/agent-animation-contract.mjs)
+Agent outputs are `agents/ct.glb` and `t.glb` with bounded manifests and provenance. Use a fresh output directory. For local full-pose exports, run `node tools/assets/prepare-agent-model.mjs --help` and supply all roles as flags, for example `--rifle-walk-w WALK_LEFT.gltf`. The shared contract defines the exact roles. The pack records the source files and versions in private provenance. [Shared agent contract](../../shared/agent-animation-contract.mjs)
 
 ## Native gameplay sounds
 

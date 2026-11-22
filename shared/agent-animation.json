@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "weaponClasses": ["rifle", "pistol", "knife"],
   "gaits": ["walk", "run", "crouch"],
   "directions": ["n", "nw", "w", "sw", "s", "se", "e", "ne"],
@@ -10,5 +10,21 @@
     "maxChannels": 1024,
     "maxStrideMeters": 12,
     "maxSpeedMetersPerSecond": 20
-  }
+  },
+  "overlays": [
+    "dual-idle",
+    "dual-crouch-idle",
+    "dual-fire",
+    "dual-draw",
+    "dual-reload",
+    "grenade-idle",
+    "grenade-crouch-idle",
+    "grenade-draw",
+    "grenade-throw",
+    "grenade-throw-underhand",
+    "rifle-defuse",
+    "pistol-defuse",
+    "knife-defuse",
+    "c4-carry"
+  ]
 }

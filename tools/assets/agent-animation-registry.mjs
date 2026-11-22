@@ -31,6 +31,28 @@ const special = {
   'knife-idle': 'animation/anims/world/knife/_default_knife/idle_knife.vnmclip_c',
   'knife-crouch-idle': 'animation/anims/world/knife/_default_knife/idle_crouch_knife.vnmclip_c',
   'knife-draw': 'animation/anims/world/knife/_default_knife/draw_knife.vnmclip_c',
+  'dual-idle':
+    'animation/anims/world/pistol/pistol_elite/idle_elite.vnmclip+non_additive.vnmclip_c',
+  'dual-crouch-idle':
+    'animation/anims/world/pistol/pistol_elite/idle_crouch_elite.vnmclip+non_additive.vnmclip_c',
+  'dual-fire':
+    'animation/anims/world/pistol/pistol_elite/shoot_right1_elite.vnmclip+non_additive.vnmclip_c',
+  'dual-draw': 'animation/anims/world/pistol/pistol_elite/draw_elite.vnmclip_c',
+  'dual-reload': 'animation/anims/world/pistol/pistol_elite/reload_elite.vnmclip_c',
+  'grenade-idle':
+    'animation/anims/world/grenade/_default_grenade/idle_grenade.vnmclip+non_additive.vnmclip_c',
+  'grenade-crouch-idle':
+    'animation/anims/world/grenade/_default_grenade/idle_crouch_grenade.vnmclip+non_additive.vnmclip_c',
+  'grenade-draw': 'animation/anims/world/grenade/_default_grenade/draw_grenade.vnmclip_c',
+  'grenade-throw':
+    'animation/anims/world/grenade/_default_grenade/throw_overhand_grenade.vnmclip_c',
+  'grenade-throw-underhand':
+    'animation/anims/world/grenade/_default_grenade/throw_underhand_grenade.vnmclip_c',
+  'rifle-defuse': 'animation/anims/world/shared/defuse/defuse_loop_rifle.vnmclip_c',
+  'pistol-defuse': 'animation/anims/world/shared/defuse/defuse_loop_pistol.vnmclip_c',
+  'knife-defuse': 'animation/anims/world/shared/defuse/defuse_loop_knife.vnmclip_c',
+  'c4-carry':
+    'animation/anims/world/equipment/c4/turn_right_loop_90_c4.vnmclip+non_additive.vnmclip_c',
   'death-a': 'animation/anims/world/shared/death_chest_a.vnmclip_c',
   'death-b': 'animation/anims/world/shared/death_chest_b.vnmclip_c',
 };

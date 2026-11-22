@@ -6,7 +6,7 @@ import type { AssetStatus } from './map-assets';
 import { observeAssets, readAssetJSON } from './asset-discovery';
 
 const empty: EquipmentModelCatalog = Object.freeze({
-  schemaVersion: 1 as const,
+  schemaVersion: 2 as const,
   items: Object.freeze({}),
 });
 export type EquipmentRenderState = {
@@ -83,7 +83,7 @@ export function validateEquipmentAssets(value: unknown): EquipmentModelCatalog {
     throw new Error('Invalid equipment models');
   const input = value as Record<string, unknown>;
   if (
-    input.schemaVersion !== 1 ||
+    input.schemaVersion !== 2 ||
     (input.complete !== undefined && typeof input.complete !== 'boolean') ||
     !input.items ||
     typeof input.items !== 'object' ||
@@ -117,22 +117,9 @@ export function validateEquipmentAssets(value: unknown): EquipmentModelCatalog {
       !tuple(item.bounds.max, 8) ||
       item.bounds.min.some(
         (part, index) => part > item.bounds.max[index] || item.bounds.max[index] - part > 8,
-      ) ||
-      !item.attachments ||
-      item.attachments.approximate !== true
+      )
     )
       throw new Error('Invalid equipment model');
-    for (const preset of [item.attachments.hold, item.attachments.pov])
-      if (
-        !preset ||
-        !tuple(preset.position, 4) ||
-        !tuple(preset.rotation, Math.PI * 2) ||
-        typeof preset.scale !== 'number' ||
-        !Number.isFinite(preset.scale) ||
-        preset.scale < 0.1 ||
-        preset.scale > 4
-      )
-        throw new Error('Invalid equipment attachment');
     items[id] = {
       model: item.model,
       assetVersion: item.assetVersion,
@@ -141,23 +128,10 @@ export function validateEquipmentAssets(value: unknown): EquipmentModelCatalog {
       decodedTextureBytes: item.decodedTextureBytes,
       geometryBytes: item.geometryBytes,
       bounds: { min: [...item.bounds.min], max: [...item.bounds.max] },
-      attachments: {
-        approximate: true,
-        hold: {
-          ...item.attachments.hold,
-          position: [...item.attachments.hold.position],
-          rotation: [...item.attachments.hold.rotation],
-        },
-        pov: {
-          ...item.attachments.pov,
-          position: [...item.attachments.pov.position],
-          rotation: [...item.attachments.pov.rotation],
-        },
-      },
     };
   }
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     items,
     ...(input.complete === undefined ? {} : { complete: input.complete as boolean }),
   };
@@ -181,13 +155,26 @@ export function useEquipmentAssets(identity: string, enabled: boolean) {
         catalog.complete === true ||
         Object.keys(equipment.items).every((id) => Boolean(catalog.items[id])),
       changed: (catalog) =>
-        setState({
-          identity,
-          value: { status: Object.keys(catalog.items).length ? 'ready' : 'missing', catalog },
+        setState((previous) => {
+          const entries = Object.entries(catalog.items);
+          const status = entries.length ? 'ready' : 'missing';
+          const installed = previous.value.catalog;
+          if (
+            previous.identity === identity &&
+            previous.value.status === status &&
+            installed.complete === catalog.complete &&
+            Object.keys(installed.items).length === entries.length &&
+            entries.every(
+              ([id, model]) => JSON.stringify(installed.items[id]) === JSON.stringify(model),
+            )
+          )
+            return previous;
+          return { identity, value: { status, catalog } };
         }),
       failed: () =>
         setState((previous) =>
-          previous.identity === identity && Object.keys(previous.value.catalog.items).length
+          previous.identity === identity &&
+          (previous.value.status === 'error' || Object.keys(previous.value.catalog.items).length)
             ? previous
             : { identity, value: { status: 'error', catalog: empty } },
         ),

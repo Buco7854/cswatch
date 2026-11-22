@@ -16,8 +16,8 @@ import { verifyPreparedGlb } from './prepared-glb.mjs';
 import {
   equipmentModelRegistry,
   equipmentModelLimits as limits,
-  equipmentAttachmentPreset,
 } from './equipment-model-registry.mjs';
+import { inverseRigid, multiply } from './agent-retarget.mjs';
 const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
 import { inspectEquipmentGltf } from './equipment-model-input.mjs';
 export {
@@ -26,6 +26,38 @@ export {
 } from './equipment-model-input.mjs';
 import { staticModelBounds } from './static-model-bounds.mjs';
 import { addNativeMuzzle } from './native-weapon-muzzle.mjs';
+// Source local (X forward, Z up) to viewer local (X forward, Y up).
+const sourceToViewer = [1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1];
+
+function reframeEquipment(document, id) {
+  const nodes = document.getRoot().listNodes();
+  // The standalone dropped kit is static scenery with an authored model origin.
+  const rigidKit = id === 'defuser';
+  const joints = nodes.filter((node) => node.getName() === 'weapon');
+  if (!rigidKit && joints.length !== 1)
+    throw Error('Equipment export requires one authored weapon root.');
+  if (id === 'elite')
+    for (const node of nodes)
+      if (node.getMesh()?.getName() === 'weapon_pist_elite.eholster') node.dispose();
+  const frame = rigidKit
+    ? undefined
+    : multiply(sourceToViewer, inverseRigid(joints[0].getWorldMatrix()));
+  for (const scene of document.getRoot().listScenes()) {
+    const root = document.createNode('cswatch_equipment_weapon_frame');
+    if (rigidKit) root.setRotation([0, Math.SQRT1_2, 0, Math.SQRT1_2]);
+    else root.setMatrix(frame);
+    for (const child of scene.listChildren()) root.addChild(child);
+    scene.addChild(root);
+  }
+}
+
+/** Every packed item should surround its authored attachment at human scale. */
+export function assertEquipmentWeaponBounds({ min, max }) {
+  const originGap = Math.hypot(...min.map((lower, axis) => Math.max(lower, -max[axis], 0)));
+  if (originGap > 0.06 || max.some((upper, axis) => upper - min[axis] > 1.5))
+    throw Error('Native equipment bounds are outside the authored weapon frame.');
+}
+
 const sourceCommit = '942df5b37ebbde6153f6c488880b91d4bed003e6';
 
 function geometryBytes(document) {
@@ -71,18 +103,13 @@ export async function prepareEquipmentModel({
   const document = await io.read(input);
   for (const accessor of document.getRoot().listAccessors()) accessor.setSparse(false);
   for (const animation of document.getRoot().listAnimations()) animation.dispose();
-  for (const scene of document.getRoot().listScenes()) {
-    const root = document
-      .createNode('cswatch_equipment_source_axes')
-      .setRotation([0, Math.SQRT1_2, 0, Math.SQRT1_2]);
-    for (const child of scene.listChildren()) root.addChild(child);
-    scene.addChild(root);
-  }
-  await document.transform(dedup(), prune());
+  reframeEquipment(document, id);
+  await document.transform(dedup(), prune({ keepLeaves: true }));
   // Empty authored anchors are inserted after prune so they survive packing.
   const muzzle = addNativeMuzzle(document, nativeMuzzle);
   const decodedGeometry = geometryBytes(document),
     bounds = staticModelBounds(document);
+  assertEquipmentWeaponBounds(bounds);
   const textureBudget = await applyTextureBudget(document, {
     tier: 'mobile',
     budgetBytes: limits.decodedTextureBytes,
@@ -97,19 +124,18 @@ export async function prepareEquipmentModel({
   if (compressed.bytes.length > limits.modelBytes)
     throw Error('Encoded equipment model exceeds 16 MiB.');
   const manifest = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id,
-    coordinateSystem: 'viewer-meters-y-up-x-forward',
+    coordinateSystem: 'weapon-meters-y-up-x-forward',
     assetVersion,
     sha256: hash(compressed.bytes),
     bytes: compressed.bytes.length,
     decodedTextureBytes: textureBudget.manifest.residentBaseRGBABytes,
     geometryBytes: decodedGeometry,
     bounds,
-    attachments: equipmentAttachmentPreset(id, bounds),
   };
   const provenance = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id,
     assetVersion,
     sourceResource: equipmentModelRegistry[id].resource,
@@ -120,12 +146,11 @@ export async function prepareEquipmentModel({
     sourceBytes: inspection.bytes,
     s2vSourceCommit: sourceCommit,
     conversion:
-      'S2V has baked Source inches into glTF meters/Y-up; one +90 degree Y root correction produces viewer (X,Z,-Y). No additional scale.',
+      'S2V supplies meters. The inverse authored weapon root removes the studio pose, then local Source (X,Y,Z) becomes (X,Z,-Y). The standalone defuser keeps its authored origin.',
     geometryCompression: compressed.report,
     textureBudget: textureBudget.plan,
     limitations: [
       'Static native bind-pose model only',
-      'Approximate equipment attachment presets; no native hand/arm, recoil or fire pose',
       'No native weapon animation graph, skins or body-group switching',
     ],
     preparedAt: new Date().toISOString(),

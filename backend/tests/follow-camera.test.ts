@@ -3,16 +3,16 @@ import test from 'node:test';
 import { thirdPersonFollow } from '../../frontend/src/follow-camera.js';
 const player = { id: '100', x: 100, y: 200, z: 300, yaw: 0, alive: true };
 const near = (a: number, b: number) => assert.ok(Math.abs(a - b) < 1e-9, `${a} differs from ${b}`);
-test('follow camera preserves Source axes, stays2–3m behind shoulder and aims at the recorded actor chest', () => {
+test('follow camera preserves Source axes, stays 2–3 m behind shoulder and aims at the recorded actor chest', () => {
   for (const yaw of [0, 90, 180, 270]) {
     const pose = thirdPersonFollow({ ...player, yaw }, undefined, 0)!;
     const feet = [2.54, 7.62, -5.08],
       angle = (yaw * Math.PI) / 180;
-    near(Math.hypot(pose.position[0] - feet[0], pose.position[2] - feet[2]), Math.hypot(2.6, 0.65));
+    near(Math.hypot(pose.position[0] - feet[0], pose.position[2] - feet[2]), Math.hypot(2.15, 1.6));
     near(
       (pose.position[0] - feet[0]) * Math.cos(angle) -
         (pose.position[2] - feet[2]) * Math.sin(angle),
-      -2.6,
+      -2.15,
     );
     near(pose.position[1], feet[1] + 1.6);
     near(pose.target[1], feet[1] + 1.25);
@@ -24,7 +24,7 @@ test('follow interpolation uses immutable identity, shortest recorded yaw arc an
   const next = { ...player, x: 200, yaw: 10 };
   const pose = thirdPersonFollow({ ...player, yaw: 350 }, next, 0.5)!;
   near(pose.target[0], 150 * 0.0254);
-  near(pose.position[0], 150 * 0.0254 - 2.6);
+  near(pose.position[0], 150 * 0.0254 - 2.15);
   assert.deepEqual(
     thirdPersonFollow(player, { ...next, id: '200' }, 1),
     thirdPersonFollow(player, undefined, 0),

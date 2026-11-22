@@ -104,7 +104,7 @@ test('native cycles preserve named world deformation across different hierarchie
   const target = fixture({ extra: true }),
     result = retargetAgentAnimations(target.document, fixtureClips(), { minimumMappedBones: 3 });
   assert.equal(result.pose, 'directional-native-agent');
-  assert.equal(result.totalSamples, 174);
+  assert.equal(result.totalSamples, directionalRoles.length * 2);
   assert.deepEqual(
     result.clips.map((clip) => clip.name),
     directionalRoles.map((role) => `cswatch:${role}`),
@@ -237,7 +237,7 @@ test('directional packs preserve the positive duration of entirely static poses'
   const result = retargetAgentAnimations(target, fixtureClips({ staticPoses: true }), {
     minimumMappedBones: 3,
   });
-  assert.equal(result.schemaVersion, 2);
+  assert.equal(result.schemaVersion, 3);
   const idle = target
     .getRoot()
     .listAnimations()

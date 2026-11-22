@@ -45,7 +45,7 @@ export async function prepareAgentModel({
     !validDirectionalRoles(Object.keys(animations ?? {})) ||
     directionalRoles.some((role) => typeof animations[role] !== 'string' || !animations[role])
   )
-    throw Error('Provide a local export path for each of the 87 animation roles.');
+    throw Error('Provide a local export path for every animation role.');
   output = resolve(output);
   await readableDirectory(output);
   await localDirectory(output);
@@ -176,7 +176,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   });
   if (values.help || !values.input || !values.output || !values.team || !values['asset-version']) {
     console.log(
-      'Usage: node prepare-agent-model.mjs --input NATIVE_AGENT.gltf --team ct|t --output DATA_DIR/maps/agents --asset-version BUILD [all 87 role flags, e.g. --rifle-walk-w WALK_LEFT.gltf]',
+      'Usage: node prepare-agent-model.mjs --input NATIVE_AGENT.gltf --team ct|t --output DATA_DIR/maps/agents --asset-version BUILD [all role flags, e.g. --rifle-walk-w WALK_LEFT.gltf]',
     );
     process.exit(values.help ? 0 : 1);
   }

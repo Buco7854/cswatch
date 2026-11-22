@@ -28,7 +28,7 @@ const registry = JSON.parse(
 );
 export const equipmentModelKeys = Object.freeze(Object.keys(registry.items) as string[]);
 if (
-  registry.schemaVersion !== 1 ||
+  registry.schemaVersion !== 2 ||
   equipmentModelKeys.length < 1 ||
   equipmentModelKeys.length > 96 ||
   equipmentModelKeys.some((id) => !/^[a-z0-9]{1,40}$/.test(id))
@@ -48,31 +48,11 @@ const vector = (bound: number) =>
     z.number().finite().min(-bound).max(bound),
     z.number().finite().min(-bound).max(bound),
   ]);
-const rotation = z.tuple([
-  z
-    .number()
-    .finite()
-    .min(-Math.PI * 2)
-    .max(Math.PI * 2),
-  z
-    .number()
-    .finite()
-    .min(-Math.PI * 2)
-    .max(Math.PI * 2),
-  z
-    .number()
-    .finite()
-    .min(-Math.PI * 2)
-    .max(Math.PI * 2),
-]);
-const transform = z
-  .object({ position: vector(4), rotation, scale: z.number().finite().min(0.1).max(4) })
-  .strict();
 export const equipmentModelManifestSchema = z
   .object({
-    schemaVersion: z.literal(1),
+    schemaVersion: z.literal(2),
     id: z.enum(equipmentModelKeys as [string, ...string[]]),
-    coordinateSystem: z.literal('viewer-meters-y-up-x-forward'),
+    coordinateSystem: z.literal('weapon-meters-y-up-x-forward'),
     assetVersion: z.string().trim().min(1).max(100),
     sha256: z.string().regex(/^[a-f0-9]{64}$/),
     bytes: z.number().int().min(24).max(equipmentModelLimits.bytes),
@@ -84,9 +64,6 @@ export const equipmentModelManifestSchema = z
       .refine((value) =>
         value.min.every((minimum, i) => minimum <= value.max[i] && value.max[i] - minimum <= 8),
       ),
-    attachments: z
-      .object({ approximate: z.literal(true), hold: transform, pov: transform })
-      .strict(),
   })
   .strict();
 
@@ -264,7 +241,7 @@ export async function equipmentModelAssetRoutes(
         'equipment-models',
         Object.keys(items).length,
       );
-      return { schemaVersion: 1, items, ...(complete === undefined ? {} : { complete }) };
+      return { schemaVersion: 2, items, ...(complete === undefined ? {} : { complete }) };
     },
   );
   app.get<{ Params: { id: string } }>(

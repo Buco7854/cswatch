@@ -113,7 +113,7 @@ async function validateBank(root, kind, manifest, write = false) {
     if (
       (kind === 'agents'
         ? metadata.schemaVersion !== contract.schemaVersion || metadata.team !== id
-        : metadata.schemaVersion !== 1 || metadata.id !== id) ||
+        : metadata.schemaVersion !== 2 || metadata.id !== id) ||
       metadata.assetVersion !== `steam-2347770-${manifest}` ||
       metadata.sha256 !== verified.sha256 ||
       metadata.bytes !== verified.bytes

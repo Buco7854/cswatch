@@ -85,7 +85,7 @@ async function triangle(agent) {
     .createScene()
     .addChild(
       document
-        .createNode()
+        .createNode('weapon')
         .setMesh(
           document
             .createMesh()
@@ -119,7 +119,7 @@ async function triangle(agent) {
         .setExtras({
           cswatch: {
             kind: 'native-agent',
-            schemaVersion: 2,
+            schemaVersion: 3,
             role,
             rootMotion: 'recorded-position',
             ...(directionalMovementRoles.has(role) ? { strideMeters: 1, phaseOffset: 0 } : {}),
@@ -136,8 +136,8 @@ async function preparedModel(output, id, agent = false) {
   const bytes = await triangle(agent);
   const metadata = {
     ...(agent
-      ? { schemaVersion: 2, team: id, animationRoles: directionalRoles }
-      : { schemaVersion: 1, id }),
+      ? { schemaVersion: 3, team: id, animationRoles: directionalRoles }
+      : { schemaVersion: 2, id }),
     assetVersion: 'steam-2347770-1',
     sha256: digest(bytes),
     bytes: bytes.length,

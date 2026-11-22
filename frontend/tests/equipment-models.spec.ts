@@ -120,9 +120,9 @@ test('model catalog completeness is strictly validated, retains partial models o
   await page.route('**/api/assets/equipment-models', async (route) => {
     reads++;
     if (reads === 1)
-      return route.fulfill({ json: { schemaVersion: 1, items: {}, complete: 'true' } });
+      return route.fulfill({ json: { schemaVersion: 2, items: {}, complete: 'true' } });
     if (reads === 2)
-      return route.fulfill({ json: { schemaVersion: 1, items: {}, complete: false } });
+      return route.fulfill({ json: { schemaVersion: 2, items: {}, complete: false } });
     if (reads === 4) return route.fulfill({ status: 503, json: {} });
     return route.fulfill({ json: { ...originalEquipmentCatalog(), complete: reads >= 5 } });
   });

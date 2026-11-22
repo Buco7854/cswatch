@@ -140,7 +140,7 @@ export function originalAnimatedAgentGLB(anchor?: 'wpn' | 'head_0') {
       extras: {
         cswatch: {
           kind: 'native-agent',
-          schemaVersion: 2,
+          schemaVersion: 3,
           role,
           rootMotion: 'recorded-position',
           // Match eight recorded intervals after gait history quantizes metres to millimetres.

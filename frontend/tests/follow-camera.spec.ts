@@ -101,9 +101,14 @@ test('third-person follow renders the selected actor, follows real recorded tran
       value,
       ...rest
     ) {
-      if (location && locations.get(location) === 'projectionMatrix')
-        state.projection = Array.from(value);
       const program = activePrograms.get(this);
+      if (
+        location &&
+        program &&
+        floorPrograms.has(program) &&
+        locations.get(location) === 'projectionMatrix'
+      )
+        state.projection = Array.from(value);
       if (
         location &&
         locations.get(location) === 'modelViewMatrix' &&
@@ -204,9 +209,9 @@ test('third-person follow renders the selected actor, follows real recorded tran
     new RegExp('held:' + qaActor + ':ak47'),
   );
   expect(await scene.getAttribute('data-equipment-ready-instances')).not.toContain('pov:');
-  await checkPosition([-9.1024, 1.6, 0.65]);
+  await checkPosition([-8.6524, 1.6, 1.6]);
   await page.locator('.timeline-slider').fill('64');
-  await checkPosition([0.65, 0.9, -0.6512]);
+  await checkPosition([1.6, 0.9, -1.1012]);
   await page
     .locator(
       `.review-economy-frame .broadcast-player[data-player-id="${other}"] .broadcast-player-select`,
@@ -217,12 +222,12 @@ test('third-person follow renders the selected actor, follows real recorded tran
   );
   await checkPosition([6.5024, 1.65, 3.2512]);
   await mode(page, 'Third-person follow');
-  await checkPosition([5.8524, 1.6, 0.6512]);
+  await checkPosition([4.9024, 1.6, 1.1012]);
   await page.locator('.timeline-slider').fill('128');
   await expect(scene).toHaveAttribute('data-agent-ready-count', '1');
-  await checkPosition([5.8524, 1.6, 0.6512]);
+  await checkPosition([4.9024, 1.6, 1.1012]);
   await page.locator('.timeline-slider').fill('0');
-  await checkPosition([9.1024, 1.6, -0.65]);
+  await checkPosition([8.6524, 1.6, -1.6]);
   await expect(
     page.locator(
       `.review-economy-frame .broadcast-player[data-player-id="${other}"] .broadcast-player-select`,
@@ -239,7 +244,7 @@ test('third-person follow renders the selected actor, follows real recorded tran
     .toBeCloseTo(1 / Math.tan((75 * Math.PI) / 360), 5);
   await page.locator('.viewer-stage').focus();
   await page.keyboard.press('w');
-  await checkPosition([9.1024, 1.6, -0.65]);
+  await checkPosition([8.6524, 1.6, -1.6]);
   await page.keyboard.press('h');
   await expect(page.locator('.viewer-frame')).toHaveAttribute('data-chrome-visible', 'false');
   await expect

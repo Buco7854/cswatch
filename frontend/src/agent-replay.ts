@@ -1,3 +1,4 @@
+import equipment from '../../shared/equipment-models.json' with { type: 'json' };
 import { deathAnchor } from '../../shared/agent-deaths.mjs';
 import type { AgentAction } from '../../shared/agent-animation';
 import { strideDisplacement } from '../../shared/stride-distance.mjs';
@@ -20,17 +21,46 @@ function latestAt<T extends { tick: number }>(values: readonly T[] | undefined, 
   return values[lo - 1];
 }
 
+const grenadeKeys = new Set(
+  Object.entries(equipment.items)
+    .filter(([, item]) => item.kind === 'grenade')
+    .map(([key]) => key),
+);
+type ThrowPose = { tick: number; weapon: string; underhand: boolean };
+
 export function indexAgentEvents(data: Playback) {
   const { deaths } = indexSpectatorEvents(data);
   const shots = indexWeaponFire(data);
   const anchors = new Map(
     data.agentDeaths?.map((anchor) => [anchor.id + ':' + anchor.tick, anchor]),
   );
-  return { deaths, shots, anchors };
+  const throws = new Map<string, ThrowPose[]>();
+  const inputs = new Map(data.throwInputs?.map((snapshot) => [snapshot.eventIndex, snapshot]));
+  for (const [index, event] of data.events.entries()) {
+    if (event.type !== 'weapon_fire' || !event.weapon || !event.user_steamid) continue;
+    const weapon = canonicalEquipmentKey(event.weapon);
+    if (!grenadeKeys.has(weapon)) continue;
+    const snapshot = inputs.get(index);
+    const input =
+      snapshot?.actorId === event.user_steamid &&
+      snapshot.tick === event.tick &&
+      snapshot.sampleTick === event.tick
+        ? snapshot.input
+        : undefined;
+    const list = throws.get(event.user_steamid) ?? [];
+    list.push({
+      tick: event.tick,
+      weapon,
+      underhand: input?.attack2 === true && input.attack === false,
+    });
+    throws.set(event.user_steamid, list);
+  }
+  for (const list of throws.values()) list.sort((a, b) => a.tick - b.tick);
+  return { deaths, shots, anchors, throws };
 }
 
 export function indexAgentDraws(data: Playback) {
-  const draws = new Map<string, { tick: number; weapon: string }[]>();
+  const draws = new Map<string, { tick: number; weapon: string; prior: string }[]>();
   for (let index = 1; index < data.frames.length; index++) {
     const from = data.frames[index - 1],
       to = data.frames[index];
@@ -44,7 +74,7 @@ export function indexAgentDraws(data: Playback) {
       const prior = canonicalEquipmentKey(before.weapon);
       if (!weapon || !prior || prior === weapon) continue;
       const changes = draws.get(position.id) ?? [];
-      changes.push({ tick: to.tick, weapon });
+      changes.push({ tick: to.tick, weapon, prior });
       draws.set(position.id, changes);
     }
   }
@@ -60,10 +90,26 @@ export function agentActionAt(
   roundStart: number,
   enabled: boolean,
   fireEnabled: boolean,
-) {
+): { kind: AgentAction; age: number; released?: boolean; previousWeapon?: string } | undefined {
   if (!enabled || !position.alive) return;
+  const key = canonicalEquipmentKey(position.weapon);
+  if (grenadeKeys.has(key)) {
+    // Align the observed throw to the start of the native clip's hand-IK
+    // disable marker (15/30 s overhand, 13/30 s underhand).
+    const shot = latestAt(evidence.throws.get(position.id), tick + rate * 0.5);
+    if (shot && shot.weapon === key && shot.tick >= roundStart) {
+      const elapsed = (tick - shot.tick) / rate;
+      const lead = shot.underhand ? 13 / 30 : 0.5;
+      if (elapsed >= -lead && elapsed < 0.2)
+        return {
+          kind: shot.underhand ? 'throw-underhand' : 'throw',
+          age: elapsed + lead,
+          released: elapsed >= 0,
+        };
+    }
+  }
   const change = latestAt(draws.get(position.id), tick);
-  const draw = change?.weapon === canonicalEquipmentKey(position.weapon) ? change?.tick : undefined;
+  const draw = change?.weapon === key ? change?.tick : undefined;
   const fire = fireEnabled
     ? recentWeaponShot(evidence.shots, position, tick, rate, 30)?.tick
     : undefined;
@@ -82,7 +128,12 @@ export function agentActionAt(
     )
       winner = { kind, tick: start };
   }
-  if (winner) return { kind: winner.kind, age: (tick - winner.tick) / rate };
+  if (winner)
+    return {
+      kind: winner.kind,
+      age: (tick - winner.tick) / rate,
+      ...(winner.kind === 'draw' && change ? { previousWeapon: change.prior } : {}),
+    };
 }
 
 export function deadAgentsAt(

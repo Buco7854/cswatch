@@ -10,6 +10,8 @@ import {
   type AnimationClip,
   type Object3D,
 } from 'three';
+import equipment from '../../shared/equipment-models.json' with { type: 'json' };
+import { canonicalEquipmentKey } from './equipment-key';
 import contract from '../../shared/agent-animation.json' with { type: 'json' };
 import { agentWeaponClass } from '../../shared/agent-gait-history.mjs';
 import { shortestAngle } from './player-pose';
@@ -35,7 +37,8 @@ export type DirectionalSample = {
   velocityY: number;
   coherence?: number;
   weapon: string;
-  action?: { kind: AgentAction; age: number };
+  action?: { kind: AgentAction; age: number; released?: boolean; previousWeapon?: string };
+  defusing?: boolean;
   death?: { variant: number; age: number };
 };
 type NativeClip = { clip: AnimationClip; metadata: DirectionalAgentMetadata };
@@ -306,6 +309,45 @@ export function createDirectionalAgent(root: Object3D, clips: ClipSet) {
       mix(channel.value, data, weight / channel.weight);
     }
   }
+  function overlay(role: DirectionalAgentRole, time: number, weight: number) {
+    for (const { track, channel } of curves.get(role)!)
+      if (channel.masked) mix(channel.target, track.interpolant.evaluate(time), weight);
+  }
+
+  function carryClass(weapon: string) {
+    const key = canonicalEquipmentKey(weapon);
+    if (key === 'elite') return 'dual';
+    if (
+      Object.hasOwn(equipment.items, key) &&
+      equipment.items[key as keyof typeof equipment.items].kind === 'grenade'
+    )
+      return 'grenade';
+  }
+
+  function carryPose(weapon: string, duck: number, weight: number) {
+    if (!weight) return;
+    if (canonicalEquipmentKey(weapon) === 'c4') overlay('c4-carry', 0, weight);
+    const variant = carryClass(weapon);
+    if (!variant) return;
+    overlay(`${variant}-idle`, 0, weight);
+    overlay(`${variant}-crouch-idle`, 0, weight * clamp(duck));
+  }
+
+  function accumulateGait(
+    gait: ReturnType<typeof directionalGait>,
+    seconds: number,
+    blend: number,
+  ) {
+    if (!blend) return;
+    for (const { role, weight } of gait.samples) {
+      const { clip, metadata } = clips.get(role)!;
+      const phase =
+        metadata.phaseOffset === undefined
+          ? cycle(seconds / clip.duration)
+          : cycle(gait.phase + metadata.phaseOffset);
+      accumulate(role, phase * clip.duration, weight * blend);
+    }
+  }
   let lastDeath: { role: AgentDeath; time: number } | undefined;
   return {
     sample(
@@ -324,33 +366,47 @@ export function createDirectionalAgent(root: Object3D, clips: ClipSet) {
         deathRole && deathTime !== undefined ? { role: deathRole, time: deathTime } : undefined;
       for (const channel of channels.values()) channel.weight = 0;
       const base = deathRole ? undefined : directionalGait(clips, input, speed, duck, phase);
+      const previousWeapon =
+        input.action?.kind === 'draw' ? input.action.previousWeapon : undefined;
+      const blend = previousWeapon ? smooth(input.action!.age / 0.12) : 1;
       if (deathRole && deathTime !== undefined) {
         accumulate(deathRole, deathTime, 1);
       } else if (base) {
-        for (const { role, weight } of base.samples) {
-          const { clip, metadata } = clips.get(role)!;
-          const phase =
-            metadata.phaseOffset === undefined
-              ? cycle(seconds / clip.duration)
-              : cycle(base.phase + metadata.phaseOffset);
-          accumulate(role, phase * clip.duration, weight);
+        if (previousWeapon && blend < 1) {
+          const prior = directionalGait(
+            clips,
+            { ...input, weapon: previousWeapon },
+            speed,
+            duck,
+            phase,
+          );
+          accumulateGait(prior, seconds, 1 - blend);
         }
+        accumulateGait(base, seconds, blend);
       }
       for (const { target, rest, value, weight } of channels.values()) {
         if (target instanceof Quaternion)
           target.copy(rest as Quaternion).slerp(value as Quaternion, Math.min(weight, 1));
         else target.copy(rest as Vector3).lerp(value as Vector3, Math.min(weight, 1));
       }
-      if (base && input.action) {
-        const { kind, age } = input.action;
-        const role = `${base.weapon}-${kind}` as const;
-        const duration = clips.get(role)?.clip.duration || 0;
-        if (age >= 0 && age < duration) {
-          const envelope =
-            smooth(age / Math.min(0.06, duration / 4)) *
-            smooth((duration - age) / Math.min(0.12, duration / 4));
-          for (const { track, channel } of curves.get(role)!)
-            if (channel.masked) mix(channel.target, track.interpolant.evaluate(age), envelope);
+      if (base) {
+        const variant = carryClass(input.weapon);
+        if (previousWeapon) carryPose(previousWeapon, duck, 1 - blend);
+        carryPose(input.weapon, duck, blend);
+        if (input.defusing) {
+          const role = `${base.weapon}-defuse` as const;
+          const duration = clips.get(role)!.clip.duration;
+          overlay(role, cycle(seconds / duration) * duration, 1);
+        } else if (input.action) {
+          const { kind, age } = input.action;
+          const role = `${variant ?? base.weapon}-${kind}` as DirectionalAgentRole;
+          const duration = clips.get(role)?.clip.duration || 0;
+          if (age >= 0 && age < duration) {
+            const envelope =
+              smooth(age / Math.min(0.06, duration / 4)) *
+              smooth((duration - age) / Math.min(0.12, duration / 4));
+            overlay(role, age, envelope);
+          }
         }
       }
       if (!death) aim?.(input.pitch);
