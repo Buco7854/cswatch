@@ -10,6 +10,7 @@ import { observeCrosshairs } from './crosshairs.js';
 import { observeItemState } from './item-state.js';
 import { observeMapIdentity } from './map-identity.js';
 import { observeSmokeTracks } from './smoke-state.js';
+import { observeInfernos } from './inferno-state.js';
 import { observeRecordedEye } from './recorded-eye.js';
 
 export async function readCommunications(
@@ -30,6 +31,7 @@ export async function readCommunications(
   const finishCrosshairs = observeCrosshairs(reader, lastTick, actors);
   const finishItems = observeItemState(reader, lastTick);
   const finishSmokes = observeSmokeTracks(reader, lastTick, tickRate);
+  const finishInfernos = observeInfernos(reader, lastTick);
   observeRecordedEye(reader, frames);
   let unsupported = 0,
     encrypted = 0,
@@ -145,6 +147,7 @@ export async function readCommunications(
     itemSamples: items.samples,
     itemState: { complete: items.complete, coverage: items.coverage },
     smokeTracks: finishSmokes(!failed),
+    infernos: finishInfernos(!failed),
     warnings,
   };
 }

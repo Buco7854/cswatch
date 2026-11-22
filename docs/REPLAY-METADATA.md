@@ -24,6 +24,12 @@ An optional `Position.scopeFov` comes from the exact player camera-service field
 
 An optional `Position.eyeOffset` records `CCSPlayerPawn.m_vecViewOffset` on the existing sampled tick. The streaming solver requires a living pawn with the same Steam controller ID and a world position within one Source inch of the primary parser sample. Offsets quantize to 1/128 Source inch. The wire tuple stores `[height]` when both horizontal components are zero and `[x, y, height]` otherwise. Position and offset share the ordinary identity, round and teleport discontinuity checks. Older artifacts retain the existing duck-based camera estimate.
 
+## Recorded inferno footprint
+
+The confined media pass reads `CInferno.m_firePositions`, `m_bFireIsBurning` and `m_fireCount`. Both native arrays have 64 slots. The version 1 `infernos` bank in the replay manifest identifies track lifecycles by entity index, serial and first update tick. Full snapshot repeats of a live entity preserve its state. An update encodes only a newly burning or moved point, in world-space units of 1/32 Source inch, or a slot removal when the burning flag clears. The exclusive end closes any remaining slots. Manifest storage carries state through chunk seeks without copying track history into each chunk.
+
+Producer, publication and browser checks bound the bank to 256 tracks, 32 concurrent lifecycles, 8,192 updates and 768 KiB of accounted JSON. Each lifecycle has a 256-update and 12 KiB limit. The browser converts Source inches/Z-up to metres/Y-up and samples ignition and fade on the absolute replay clock. Optional data that is missing or rejected in the browser leaves the procedural fire patch at the recorded event. [Fixture evidence](VERIFICATION.md#local-utility-effects-2026-11-22)
+
 ## Match state
 
 `shared/match-state.d.ts` defines complete snapshots, not patches. Each snapshot replaces the previous state at its recorded demo tick. The collector reuses the existing streaming `cs2parser` entity world and retains only changed state, up to 10,000 snapshots. `complete: false` identifies parser failure or a metadata bound; consumers must not extrapolate that state past its final recorded snapshot.

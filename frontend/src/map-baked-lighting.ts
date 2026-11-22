@@ -23,6 +23,12 @@ const lightLoop = ShaderChunk.lights_fragment_begin.replace(
       bakedSun * step(1e-6, dot(nonPerturbedNormal, directLight.direction));`,
 );
 
+// The atlas describes sun occlusion. Local lights must still contribute in shade.
+const bakedDirectLighting = ShaderChunk.lights_fragment_begin.replace(
+  'getDirectionalLightInfo( directionalLight, directLight );',
+  'getDirectionalLightInfo( directionalLight, directLight );\n\tdirectLight.color *= bakedSun;',
+);
+
 function configureMaterial(
   material: MeshStandardMaterial,
   atlas: Texture,
@@ -107,14 +113,14 @@ ${grazingFix}          float incomingZ = sqrt(max(0.0, 1.0 - dot(directionXY, di
         );
       return;
     }
-    shader.fragmentShader = shader.fragmentShader.replace(
-      '#include <lights_fragment_end>',
-      `#include <lights_fragment_end>${sample}
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <lights_fragment_begin>', `${sample}\n${bakedDirectLighting}`)
+      .replace(
+        '#include <lights_fragment_end>',
+        `#include <lights_fragment_end>
           reflectedLight.indirectDiffuse = material.diffuseColor * bakedIrradiance;
-          reflectedLight.directDiffuse *= bakedSun;
-          reflectedLight.directSpecular *= bakedSun;
         `,
-    );
+      );
   };
   const programKey = [
     format.extension,

@@ -26,11 +26,16 @@ const effects = {
 } as const;
 
 /** Analytical effects at recorded event positions; durations are approximations. */
-export function buildUtilityZones(events: GameEvent[], rate: number): UtilityZone[] {
+export function buildUtilityZones(
+  events: GameEvent[],
+  rate: number,
+  kind?: UtilityZone['kind'],
+): UtilityZone[] {
   return events.flatMap((event, index) => {
     const effect = effects[event.type as keyof typeof effects];
     if (
       !effect ||
+      (kind !== undefined && effect.kind !== kind) ||
       ![event.tick, event.x, event.y, event.z].every(
         (value) =>
           typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 10_000_000,
@@ -55,8 +60,14 @@ export function buildUtilityZones(events: GameEvent[], rate: number): UtilityZon
   });
 }
 
-export function buildUtilityZoneIndex(events: GameEvent[], rate: number) {
+export const burstSeconds = { he: 1.55, flash: 0.52, decoy: 0.5 } as const;
+export function buildUtilityZoneIndex(events: GameEvent[], rate: number, extendedBursts = false) {
   const zones = buildUtilityZones(events, rate).sort((a, b) => a.start - b.start);
+  if (extendedBursts)
+    for (const zone of zones)
+      if (zone.kind in burstSeconds)
+        zone.end =
+          zone.start + Math.max(1, rate * burstSeconds[zone.kind as keyof typeof burstSeconds]);
 
   // Every effect expires inside this lookback window, even if no later event arrived.
   const longest = Math.max(1, rate * effects.smokegrenade_detonate.seconds);

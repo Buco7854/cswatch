@@ -7,6 +7,7 @@ import { validateGameplaySoundInfo, validateGameplaySoundCues } from './gameplay
 import type { Demo, Playback } from './types';
 import type { PlaybackChunk, PlaybackManifest } from '../../shared/playback';
 import { validSmokeTracks } from '../../shared/smoke-state.mjs';
+import { validInfernoBank } from '../../shared/inferno-state.mjs';
 
 export function useReplay(
   id: string | undefined,
@@ -90,6 +91,8 @@ export function useReplay(
           validateItemState(replay.itemState);
           if (!validSmokeTracks(replay.smokeTracks, replay.frames.at(-1)!.tick))
             delete replay.smokeTracks;
+          if (!validInfernoBank(replay.infernos, replay.frames.at(-1)!.tick))
+            delete replay.infernos;
           replay.gameplaySounds = validateGameplaySoundInfo(replay.gameplaySounds);
           replay.sounds = validateGameplaySoundCues(
             replay.sounds,
