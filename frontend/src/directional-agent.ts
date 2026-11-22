@@ -1,0 +1,387 @@
+import {
+  Bone,
+  InterpolateLinear,
+  LinearInterpolant,
+  MathUtils,
+  Matrix4,
+  Quaternion,
+  QuaternionLinearInterpolant,
+  Vector3,
+  type AnimationClip,
+  type Object3D,
+} from 'three';
+import contract from '../../shared/agent-animation.json' with { type: 'json' };
+import { agentWeaponClass } from '../../shared/agent-gait-history.mjs';
+import { shortestAngle } from './player-pose';
+export { agentWeaponClass } from '../../shared/agent-gait-history.mjs';
+import type {
+  AgentAction,
+  AgentDeath,
+  AgentDirection,
+  AgentGait,
+  AgentWeaponClass,
+  DirectionalAgentMetadata,
+  DirectionalAgentRole,
+} from '../../shared/agent-animation';
+import {
+  directionalMovementRoles,
+  directionalRoles,
+  validDirectionalRoles,
+} from '../../shared/agent-animation-contract.mjs';
+
+export type DirectionalSample = {
+  yaw: number;
+  pitch: number;
+  velocityX: number;
+  velocityY: number;
+  coherence?: number;
+  weapon: string;
+  action?: { kind: AgentAction; age: number };
+  death?: { variant: number; age: number };
+};
+type NativeClip = { clip: AnimationClip; metadata: DirectionalAgentMetadata };
+type ClipSet = ReadonlyMap<DirectionalAgentRole, NativeClip>;
+type GaitSample = { role: DirectionalAgentRole; weight: number };
+const known = new Set<string>(directionalRoles.map((role) => 'cswatch:' + role));
+const directions = contract.directions as AgentDirection[];
+const clamp = (value: number) => Math.max(0, Math.min(value, 1));
+const cycle = (value: number) => value - Math.floor(value);
+const smooth = (value: number) => {
+  const t = clamp(value);
+  return t * t * (3 - 2 * t);
+};
+
+export function reservedDirectionalClip(name: string) {
+  return known.has(name);
+}
+
+export function directionalClips(
+  clips: readonly AnimationClip[],
+  declarations: unknown,
+): ClipSet | undefined {
+  if (
+    !Array.isArray(declarations) ||
+    declarations.length > directionalRoles.length ||
+    clips.length > directionalRoles.length
+  )
+    return;
+  const result = new Map<DirectionalAgentRole, NativeClip>();
+  for (const clip of clips) {
+    if (!known.has(clip.name)) continue;
+    const source = declarations.filter((item) => item?.name === clip.name);
+    const metadata: DirectionalAgentMetadata | undefined = source[0]?.extras?.cswatch;
+    if (
+      source.length !== 1 ||
+      !metadata ||
+      metadata.schemaVersion !== 2 ||
+      metadata.kind !== 'native-agent' ||
+      metadata.rootMotion !== 'recorded-position' ||
+      clip.name !== 'cswatch:' + metadata.role ||
+      result.has(metadata.role) ||
+      !(clip.duration > 0 && clip.duration <= contract.limits.seconds) ||
+      !clip.tracks.length ||
+      clip.tracks.length > 1024
+    )
+      return;
+    if (directionalMovementRoles.has(metadata.role)) {
+      const { strideMeters, phaseOffset } = metadata;
+      if (
+        typeof strideMeters !== 'number' ||
+        !(strideMeters >= 0.1 && strideMeters <= contract.limits.maxStrideMeters) ||
+        strideMeters / clip.duration > contract.limits.maxSpeedMetersPerSecond ||
+        typeof phaseOffset !== 'number' ||
+        !(phaseOffset >= 0 && phaseOffset < 1)
+      )
+        return;
+    }
+    result.set(metadata.role, { clip, metadata });
+  }
+  return validDirectionalRoles([...result.keys()]) ? result : undefined;
+}
+
+type Step = { stride: number; speed: number };
+type StrideProfile = Map<AgentWeaponClass, Record<AgentGait, Step[]>>;
+
+function gaitProfile(clips: ClipSet): StrideProfile {
+  const profiles: StrideProfile = new Map();
+  for (const weapon of contract.weaponClasses as AgentWeaponClass[]) {
+    if (!clips.has(`${weapon}-idle`)) continue;
+    const steps = (gait: AgentGait) =>
+      directions.map((direction) => {
+        const { metadata, clip } = clips.get(`${weapon}-${gait}-${direction}`)!;
+        const stride = metadata.strideMeters!;
+        return { stride, speed: stride / clip.duration };
+      });
+    profiles.set(weapon, { walk: steps('walk'), run: steps('run'), crouch: steps('crouch') });
+  }
+  return profiles;
+}
+function gaitChoice(
+  profile: StrideProfile,
+  weapon: AgentWeaponClass,
+  speed: number,
+  duck: number,
+  bearing: number,
+) {
+  const gait = profile.get(weapon) ?? profile.get('rifle')!;
+  if (!profile.has(weapon)) weapon = 'rifle';
+  const direction = Number.isFinite(bearing) ? cycle(bearing / 360) * 8 : 0;
+  const sector = Math.floor(direction);
+  const towardNext = direction - sector;
+  const next = (sector + 1) % 8;
+  const walkSpeed = MathUtils.lerp(gait.walk[sector].speed, gait.walk[next].speed, towardNext);
+  const runSpeed = MathUtils.lerp(gait.run[sector].speed, gait.run[next].speed, towardNext);
+  const run = clamp((speed - walkSpeed) / Math.max(0.25, runSpeed - walkSpeed));
+  const crouch = clamp(duck);
+  const walkStride = MathUtils.lerp(gait.walk[sector].stride, gait.walk[next].stride, towardNext);
+  const runStride = MathUtils.lerp(gait.run[sector].stride, gait.run[next].stride, towardNext);
+  const crouchStride = MathUtils.lerp(
+    gait.crouch[sector].stride,
+    gait.crouch[next].stride,
+    towardNext,
+  );
+  const stride = MathUtils.lerp(MathUtils.lerp(walkStride, runStride, run), crouchStride, crouch);
+  return { weapon, stride, sector, next, towardNext, run, crouch };
+}
+
+const profiles = new WeakMap<ClipSet, StrideProfile>();
+function profileFor(clips: ClipSet) {
+  let profile = profiles.get(clips);
+  if (!profile) {
+    profile = gaitProfile(clips);
+    profiles.set(clips, profile);
+  }
+  return profile;
+}
+
+export function directionalGait(
+  clips: ClipSet,
+  input: DirectionalSample,
+  speed: number,
+  duck: number,
+  integratedPhase?: number,
+) {
+  // Positive Source-relative bearing points to the actor's left.
+  const bearing = MathUtils.radToDeg(Math.atan2(input.velocityY, input.velocityX)) - input.yaw;
+  const { weapon, stride, sector, next, towardNext, run, crouch } = gaitChoice(
+    profileFor(clips),
+    agentWeaponClass(input.weapon),
+    speed,
+    duck,
+    bearing,
+  );
+  // Opposing velocities cancel before they can exchange directional weights.
+  // A small diagonal residual during the crossover should stay mostly idle.
+  const moving = clamp((speed - 0.05) / 0.45) * smooth((input.coherence ?? 1) / 0.65);
+  const samples: GaitSample[] = [];
+  const add = (role: DirectionalAgentRole, weight: number) => {
+    if (weight > 0) samples.push({ role, weight });
+  };
+  add(`${weapon}-idle`, (1 - crouch) * (1 - moving));
+  add(`${weapon}-crouch-idle`, crouch * (1 - moving));
+  for (const [gait, weight] of [
+    ['walk', (1 - crouch) * moving * (1 - run)],
+    ['run', (1 - crouch) * moving * run],
+    ['crouch', crouch * moving],
+  ] as const) {
+    add(`${weapon}-${gait}-${directions[sector]}`, weight * (1 - towardNext));
+    add(`${weapon}-${gait}-${directions[next]}`, weight * towardNext);
+  }
+  return { weapon, stride, phase: cycle(integratedPhase ?? 0), samples };
+}
+
+export function agentStrideProfile(clips: ClipSet) {
+  const profile = profileFor(clips);
+  return {
+    key: JSON.stringify([...profile]),
+    strideAt: (weapon: AgentWeaponClass, speed: number, duck: number, bearing: number) =>
+      gaitChoice(profile, weapon, speed, duck, bearing).stride,
+  };
+}
+
+type Track = {
+  bone: Bone;
+  target: 'position' | 'quaternion';
+  interpolant: LinearInterpolant | QuaternionLinearInterpolant;
+};
+type Channel = {
+  target: Vector3 | Quaternion;
+  rest: Vector3 | Quaternion;
+  value: Vector3 | Quaternion;
+  weight: number;
+  masked: boolean;
+};
+
+function poseTracks(bones: Map<string, Bone>, clip: AnimationClip): Track[] | undefined {
+  const tracks: Track[] = [];
+  const names = new Set<string>();
+  for (const track of clip.tracks) {
+    const match = /^([^\.]+)\.(position|quaternion)$/.exec(track.name);
+    const bone = match && bones.get(match[1]);
+    if (
+      !bone ||
+      !match ||
+      names.has(track.name) ||
+      track.getInterpolation() !== InterpolateLinear ||
+      track.getValueSize() !== (match[2] === 'position' ? 3 : 4) ||
+      track.times.length > 2048 ||
+      !track.validate()
+    )
+      return;
+    names.add(track.name);
+    tracks.push({
+      bone,
+      target: match[2] === 'position' ? 'position' : 'quaternion',
+      interpolant:
+        match[2] === 'position'
+          ? new LinearInterpolant(track.times, track.values, 3)
+          : new QuaternionLinearInterpolant(track.times, track.values, 4),
+    });
+  }
+  return tracks;
+}
+
+function rigAim(root: Object3D, bones: Map<string, Bone>) {
+  const spine = ['spine_0', 'spine_1', 'spine_2', 'spine_3'].map((name) => bones.get(name));
+  const chest = spine[3],
+    carried = bones.get('wpnPivot');
+  if (!chest || !carried?.parent || spine.some((joint) => !joint)) return;
+  const before = new Matrix4(),
+    weapon = new Matrix4(),
+    delta = new Matrix4();
+  const axis = new Vector3(),
+    localAxis = new Vector3(),
+    carriedScale = new Vector3(),
+    worldRotation = new Quaternion();
+  const weights = [0.12, 0.18, 0.28, 0.42];
+  return (pitch: number) => {
+    const angle = MathUtils.degToRad(MathUtils.clamp(shortestAngle(0, pitch), -70, 70));
+    if (!angle) return;
+    chest.updateWorldMatrix(true, false);
+    before.copy(chest.matrixWorld).invert();
+    carried.updateWorldMatrix(true, false);
+    weapon.copy(carried.matrixWorld);
+    // The four spine bends share the rig's lateral axis. Everything descended
+    // from the upper spine keeps its rigid transform, including both hands.
+    root.getWorldQuaternion(worldRotation);
+    axis.set(1, 0, 0).applyQuaternion(worldRotation);
+    for (const [index, joint] of spine.entries()) {
+      joint!.getWorldQuaternion(worldRotation).invert();
+      localAxis.copy(axis).applyQuaternion(worldRotation);
+      joint!.rotateOnAxis(localAxis, angle * weights[index]);
+    }
+    chest.updateWorldMatrix(true, false);
+    delta.multiplyMatrices(chest.matrixWorld, before);
+    // Valve's weapon pivot hangs off root_motion, beside the torso hierarchy.
+    carried.matrix.copy(carried.parent!.matrixWorld).invert().multiply(delta).multiply(weapon);
+    carried.matrix.decompose(carried.position, carried.quaternion, carriedScale);
+  };
+}
+
+export function createDirectionalAgent(root: Object3D, clips: ClipSet) {
+  const bones = new Map<string, Bone>();
+  root.traverse((node) => {
+    if (node instanceof Bone) bones.set(node.name, node);
+  });
+  const aim = rigAim(root, bones);
+  const upper = new Set<Object3D>();
+  for (const name of ['spine_0', 'wpnPivot']) bones.get(name)?.traverse((node) => upper.add(node));
+  const channels = new Map<string, Channel>();
+  function channelFor(bone: Bone, property: Track['target']) {
+    const name = bone.name + '.' + property;
+    const existing = channels.get(name);
+    if (existing) return existing;
+    const target = bone[property];
+    const channel = {
+      target,
+      rest: target.clone(),
+      value: target.clone(),
+      weight: 0,
+      masked: upper.has(bone),
+    };
+    channels.set(name, channel);
+    return channel;
+  }
+  const curves = new Map<DirectionalAgentRole, { track: Track; channel: Channel }[]>();
+  for (const [role, record] of clips) {
+    const tracks = poseTracks(bones, record.clip);
+    if (!tracks) return;
+    curves.set(
+      role,
+      tracks.map((track) => ({ track, channel: channelFor(track.bone, track.target) })),
+    );
+  }
+  // A sparse rig can omit an authored key for an aimed joint. Its rest
+  // rotation must still be restored before another absolute pose sample.
+  if (aim) {
+    for (const name of ['spine_0', 'spine_1', 'spine_2', 'spine_3', 'wpnPivot'])
+      channelFor(bones.get(name)!, 'quaternion');
+    channelFor(bones.get('wpnPivot')!, 'position');
+  }
+  const vector = new Vector3(),
+    rotation = new Quaternion();
+  const deathRoles = (contract.deaths as AgentDeath[]).filter((role) => clips.has(role));
+  function mix(target: Vector3 | Quaternion, data: ArrayLike<number>, amount: number) {
+    if (target instanceof Quaternion) target.slerp(rotation.fromArray(data).normalize(), amount);
+    else target.lerp(vector.fromArray(data), amount);
+  }
+  function accumulate(role: DirectionalAgentRole, time: number, weight: number) {
+    for (const { track, channel } of curves.get(role)!) {
+      const data = track.interpolant.evaluate(time);
+      channel.weight += weight;
+      mix(channel.value, data, weight / channel.weight);
+    }
+  }
+  let lastDeath: { role: AgentDeath; time: number } | undefined;
+  return {
+    sample(
+      seconds: number,
+      speed: number,
+      duck: number,
+      phase: number | undefined,
+      input: DirectionalSample,
+    ) {
+      const death = input.death;
+      const deathRole = death && deathRoles[death.variant % deathRoles.length];
+      if (death && !deathRole) return false;
+      const deathTime =
+        death && deathRole ? Math.min(death.age, clips.get(deathRole)!.clip.duration) : undefined;
+      if (deathRole && lastDeath?.role === deathRole && lastDeath.time === deathTime) return true;
+      lastDeath =
+        deathRole && deathTime !== undefined ? { role: deathRole, time: deathTime } : undefined;
+      for (const channel of channels.values()) channel.weight = 0;
+      const base = deathRole ? undefined : directionalGait(clips, input, speed, duck, phase);
+      if (deathRole && deathTime !== undefined) {
+        accumulate(deathRole, deathTime, 1);
+      } else if (base) {
+        for (const { role, weight } of base.samples) {
+          const { clip, metadata } = clips.get(role)!;
+          const phase =
+            metadata.phaseOffset === undefined
+              ? cycle(seconds / clip.duration)
+              : cycle(base.phase + metadata.phaseOffset);
+          accumulate(role, phase * clip.duration, weight);
+        }
+      }
+      for (const { target, rest, value, weight } of channels.values()) {
+        if (target instanceof Quaternion)
+          target.copy(rest as Quaternion).slerp(value as Quaternion, Math.min(weight, 1));
+        else target.copy(rest as Vector3).lerp(value as Vector3, Math.min(weight, 1));
+      }
+      if (base && input.action && base.weapon === agentWeaponClass(input.weapon)) {
+        const { kind, age } = input.action;
+        const role = `${base.weapon}-${kind}` as const;
+        const duration = clips.get(role)?.clip.duration || 0;
+        if (age >= 0 && age < duration) {
+          const envelope =
+            smooth(age / Math.min(0.06, duration / 4)) *
+            smooth((duration - age) / Math.min(0.12, duration / 4));
+          for (const { track, channel } of curves.get(role)!)
+            if (channel.masked) mix(channel.target, track.interpolant.evaluate(age), envelope);
+        }
+      }
+      if (!death) aim?.(input.pitch);
+      return true;
+    },
+  };
+}

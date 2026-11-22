@@ -72,10 +72,21 @@ import { projectileEquipment } from '../projectile-equipment';
 import { useAgentAssets } from '../agent-assets';
 import { useModelLeases } from '../equipment-loader';
 import { playerPose, type PoseTiming } from '../player-pose';
+import {
+  agentActionAt,
+  agentRoundAt,
+  deadAgentsAt,
+  indexAgentDraws,
+  indexAgentEvents,
+} from '../agent-replay';
+import { encodeGaitHistory, type GaitHistory } from '../../../shared/agent-gait-history.mjs';
+import { streamedReplayViews } from '../replay-cache';
+import type { DirectionalSample } from '../directional-agent';
 import { indexRecordedTravel, recordedMotion, type PreviousPose } from '../recorded-motion';
 import './spectator-hud.css';
 import RenderAgent, {
   GenericAgentBody,
+  RecordedAgentBody,
   AgentModels,
   type AgentInstanceStatus,
 } from './RenderAgent';
@@ -401,6 +412,8 @@ function Agent({
   timing,
   previous,
   travelMeters,
+  gaitHistory,
+  action,
 }: {
   position: Position;
   next?: Position;
@@ -416,14 +429,21 @@ function Agent({
   timing: PoseTiming;
   previous?: PreviousPose;
   travelMeters?: number;
+  gaitHistory?: GaitHistory;
+  action?: DirectionalSample['action'];
 }) {
   const pose = playerPose(position, next, alpha, timing);
   const motion = recordedMotion(position, next, alpha, timing, previous);
   const weaponAnchor = useRef<THREE.Object3D | null>(null);
-  const registerWeaponAnchor = useCallback((bone: THREE.Object3D) => {
+  const posedByAgent = useRef(false);
+  const registerWeaponAnchor = useCallback((bone: THREE.Object3D, directional: boolean) => {
+    posedByAgent.current = directional;
     weaponAnchor.current = bone;
     return () => {
-      if (weaponAnchor.current === bone) weaponAnchor.current = null;
+      if (weaponAnchor.current === bone) {
+        weaponAnchor.current = null;
+        posedByAgent.current = false;
+      }
     };
   }, []);
   const ref = useRef<THREE.Group>(null);
@@ -477,6 +497,15 @@ function Agent({
           rate={timing.tickRate}
           speed={motion.speed}
           travelMeters={travelMeters}
+          gaitHistory={gaitHistory}
+          directional={{
+            yaw: pose.yaw,
+            pitch: pose.pitch,
+            weapon: pose.weapon,
+            velocityX: motion.velocityX,
+            velocityY: motion.velocityY,
+            action,
+          }}
           duck={pose.duck ?? 0}
           xrayColor={xray ? color : undefined}
           registerWeaponAnchor={registerWeaponAnchor}
@@ -486,7 +515,7 @@ function Agent({
       ) : (
         <GenericAgentBody team={position.team} id={position.id} xray={xray} />
       )}
-      <HeldEquipment position={pose} anchor={weaponAnchor} />
+      <HeldEquipment position={pose} anchor={weaponAnchor} posedByAgent={posedByAgent} />
       {showMarkers && labels && name && !nearCamera && (
         <group ref={labelAnchor} position={[0, fallbackLabelHeight, 0]}>
           <Html
@@ -731,6 +760,18 @@ function World({
       ]),
     );
   }, [previous, frame.tick, data.rounds]);
+  const gaitHistory = useMemo(
+    () => data.gaitHistory ?? (streamedReplayViews.has(data) ? undefined : encodeGaitHistory(data)),
+    [data],
+  );
+  const agentEvents = useMemo(
+    () => indexAgentEvents(data),
+    [data.events, data.players, data.sample, data.agentDeaths],
+  );
+  const draws = useMemo(() => indexAgentDraws(data), [data.frames, data.rounds, data.tickRate]);
+  const reduceAgentMotion = useReducedMotion();
+  const round = agentRoundAt(data.rounds, tick);
+  const bodies = preview ? [] : deadAgentsAt(data, agentEvents, tick, round, frame);
   const viewedPlayer = frame.players.find((player) => player.id === selected);
   const scopeFov = mode === 'pov' ? scopedVerticalFov(viewedPlayer) : undefined;
   const fov = scopeFov ?? settings.cameraFov;
@@ -947,7 +988,12 @@ function World({
       )}
       <group visible={Boolean(data.sample) || modelReady}>
         {frame.players
-          .filter((p) => !(mode === 'pov' && p.id === viewedPlayer?.id))
+          .filter(
+            (p) =>
+              p.alive &&
+              !(mode === 'pov' && p.id === viewedPlayer?.id) &&
+              !bodies.some((body) => body.position.id === p.id),
+          )
           .map((p) => (
             <Agent
               key={p.id}
@@ -969,8 +1015,29 @@ function World({
               timing={poseTiming}
               previous={previousPlayers?.get(p.id)}
               travelMeters={recordedTravel?.(frame, next, p.id, alpha)}
+              gaitHistory={gaitHistory}
+              action={agentActionAt(
+                agentEvents,
+                draws,
+                p,
+                tick,
+                data.tickRate,
+                round?.tick ?? 0,
+                !preview && !reduceAgentMotion,
+                settings.shotEffects,
+              )}
             />
           ))}
+        {bodies.map((body) => (
+          <RecordedAgentBody
+            key={body.position.id}
+            body={body}
+            url={body.position.team === 3 ? agents.ct : agents.t}
+            tick={tick}
+            rate={data.tickRate}
+            reducedMotion={reduceAgentMotion}
+          />
+        ))}
         {showPovEquipment && (
           <PovEquipmentPass
             hasSky={Boolean(sky)}
@@ -1266,9 +1333,11 @@ export default function Scene({
     () => ({ identity: equipmentIdentity, report: reportAgent }),
     [equipmentIdentity, reportAgent],
   );
-  const agentCounts = Object.values(
+  const agentCounts = Object.entries(
     agentStatuses.identity === equipmentIdentity ? agentStatuses.items : {},
-  );
+  )
+    .filter(([id]) => !id.startsWith('death:'))
+    .map(([, status]) => status);
   const currentPlayers = frameAt(data, tick).frame.players;
   const viewedAgentId =
     currentPlayers.find((player) => player.id === selected)?.id || currentPlayers[0]?.id;

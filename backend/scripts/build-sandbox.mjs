@@ -23,6 +23,8 @@ for (const name of [
   'smoke-state',
   'stride-distance',
   'aim-track',
+  'agent-deaths',
+  'agent-gait-history',
 ])
   copyFileSync(resolve(root, `../shared/${name}.mjs`), resolve(root, `dist/${name}.mjs`));
 if (process.platform !== 'linux') {

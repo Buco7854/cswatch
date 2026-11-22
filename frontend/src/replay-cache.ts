@@ -1,8 +1,12 @@
+import { validGaitHistory } from '../../shared/agent-gait-history.mjs';
 import type { Playback, PlaybackManifest, PlaybackChunk } from '../../shared/playback';
 import { attachAim } from './player-pose';
 import { validateItemSamples, validateItemState } from './item-state';
 import { validateGameplaySoundInfo, validateGameplaySoundCues } from './gameplay-sound-assets';
+import { validAgentDeaths } from '../../shared/agent-deaths.mjs';
 import { validSmokeTracks } from '../../shared/smoke-state.mjs';
+
+export const streamedReplayViews = new WeakSet<Playback>();
 
 export function validateManifest(value: PlaybackManifest): PlaybackManifest {
   value.gameplaySounds = validateGameplaySoundInfo(value.gameplaySounds);
@@ -20,6 +24,18 @@ export function validateManifest(value: PlaybackManifest): PlaybackManifest {
   )
     throw new Error('Replay metadata is invalid.');
   validateItemState(value.itemState);
+  if (!validAgentDeaths(value.agentDeaths)) delete value.agentDeaths;
+  if (
+    value.gaitHistory !== undefined &&
+    !validGaitHistory(
+      value.gaitHistory,
+      new Set(value.players.map(({ id }) => id)),
+      value.firstTick,
+      value.lastTick,
+      value.tickRate,
+    )
+  )
+    delete value.gaitHistory;
   if (!validSmokeTracks(value.smokeTracks, value.lastTick)) delete value.smokeTracks;
   for (const [i, part] of value.chunks.entries()) {
     if (
@@ -136,6 +152,7 @@ export class ReplayCache {
         ? { tick: descriptor.startTick, players: descriptor.stride }
         : undefined,
     };
+    streamedReplayViews.add(value);
     if (this.cache.get(index) === part) this.views.set(index, value);
     return value;
   }

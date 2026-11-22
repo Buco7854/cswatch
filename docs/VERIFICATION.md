@@ -101,6 +101,58 @@ The uncommitted grading change was applied to detached integration tip `095c227`
 
 The follow-up on integration tip `17ef7b1` restores the static prop’s lateral fit on narrow canvases. The original QA prop fits inside the lower-right quadrant at 390 × 900, and the GPU pose test verifies the separate projection and placement at a sub-sample seek. The composition test exercises the real sky, world and equipment pass ordering, one depth clear between world and equipment, and state restoration after a render failure. The production build, format and locale checks passed on Node 22.23.5. The complete backend suite passed 403 tests including the pinned Mirage and offline speech fixtures. The asset suite passed 299. Public Playwright finished with 237 passed and two policy skips. In the synthetic tablet resize capture, a T7 tracer revisited at the same tick appeared offset from the flash. Its per-shot cache can retain the previous lens mapping.
 
+## Local directional agents, 2026-11-22
+
+Prepared SAS and Phoenix from Steam depot `2347770`, manifest `8225060435969537482`. Anonymous selective acquisition fetched eight chunks for 57 missing clip entries. The downloaded directory SHA-1 matched the manifest. All 87 chosen clips and both agent model dependencies passed VPK CRC validation. The original source cache was opened read-only. Both outputs have 2,314 sampled pose times per rig. CT is 3,134,260 encoded bytes with 1,865,216 decoded geometry and animation bytes. T is 3,155,020 encoded bytes with 2,176,426 decoded geometry and animation bytes. Outputs and private provenance are under `var/anim-work/pack/agents`.
+
+The in-place cycles have no root translation. Stance-foot velocities establish directional sign and estimate stride. In the S2V frame, the actor faces +Z and +X is to their left. The rifle west walk's planted foot travels toward −X. Its mirrored east walk's planted foot travels toward +X. Their measured strides are 2.667 m and 2.673 m per cycle. Recorded Source yaw and velocity choose west for left and east for right.
+
+Chromium used ANGLE/Vulkan SwiftShader for the real model contact sheets under `var/anim-work/visual`. Inspected dark/light desktop (1280 × 1030), tablet (768 × 1024) and touch mobile (390 × 844) captures for forward, back, both strafes, crouch strafe and three aim angles. Left velocity selected `rifle-walk-w` and right velocity selected `rifle-walk-e` on both teams. At the two 60° aim extremes, the rifle forward axis had vertical components +0.861 and −0.871. Left-hand-to-weapon-pivot distance was 0.184455 m at all three aim angles to six decimals. The extra sheet shows class poses, rifle actions and both settled deaths.
+
+Production builds and formatting passed. The focused run passed 21 backend and 31 asset tests with zero skips. Chromium passed the existing five-clip skinned-agent test on desktop and phone, including backward seeking and the weapon anchor. The contact sheet uses fixed replay inputs with Valve models. Local verification uses Node 22.23.5 and does not establish hardware performance or terrain foot locking.
+
+The built app loaded both directional agents and the pinned AK in six viewport/theme profiles in Overhead and Third-person follow on the original QA map and synthetic replay. WebGL bone uploads were observed after seeking, and seeking past the recorded death and back restored the expected living-agent counts. This fixture isolates the renderer from map acquisition and confidential recordings.
+
+Rebased onto `095c227` with the existing POV and 64 Hz aim paths. Cadence integrates each recorded movement interval against the installed pack’s authored stride. The optional versioned gait bank records millimetre distance, quantized facing-relative direction and duck, and weapon class independently of installed assets. It is capped at 240,000 moving intervals. Playback rebuilds a per-actor prefix table from the manifest, so seeks and chunk boundaries use the same accumulator and standing intervals hold phase. Older streamed archives retain a fixed-distance cadence where stride anchors exist. The renderer takes pitch and yaw through `playerPose`, including the 64 Hz evidence when present. Rifle and pistol actions use M4A4 and Glock clips with existing equipment meshes and approximate grips.
+
+The review benchmark reproduced the original result of 57.5% of 13,127 coarse steps above 0.1 cycle of error. At 64 Hz the revised evaluator measured 0.00135 cycle p99 and 0.01281 maximum over 52,912 moving steps against the unquantized reference with recorded fine aim. Near six actual chunk seams the measured step-error maximum was 0.00149 cycle. All 300 comparisons between independently decoded cold and warm views at those seams matched exactly. Foot displacement uses the lowest toe bone when its average endpoint height is at most 9 cm. This is a planted-foot proxy over 62.5 ms frame intervals.
+
+| Movement | Original median / p95 slip (cm) | Integrated median / p95 slip (cm) |
+| -------- | ------------------------------: | --------------------------------: |
+| Walk     |                   17.47 / 86.88 |                      2.35 / 20.47 |
+| Run      |                  36.31 / 110.86 |                      6.41 / 55.14 |
+| Strafe   |                   26.54 / 96.73 |                      8.98 / 46.19 |
+| Crouch   |                    4.00 / 54.51 |                      1.23 / 17.42 |
+
+Inspected two 24-frame Chromium/SwiftShader strips at 32 Hz under `var/anim-work/visual`. CT ticks 25,198–25,244 and T ticks 21,104–21,150 reverse direction and stop. The death test covers round retirement and live respawn exclusion. The stair and ledge sheet shows the corpse keeps its recorded facing, with visible step intersections and unsupported limbs on the ledge. The authored clips use recorded origins and do not solve against uneven floor geometry. Archived replays without death anchors need a nearby living sample in the loaded slice to place a body.
+
+Node 22.23.5 on a three-vCPU QEMU Virtual CPU 2.5+ evaluated ten genuine 87-clip rigs at 0.267 ms p50 and 0.316 ms p95 over 900 moving samples after warmup. Ten settled-pose calls took 0.0032/0.0044 ms and ten offscreen frustum gates took 0.0080/0.0162 ms. Offscreen entities skip pose work with x-ray disabled. Settled poses can return without writing any bones. These are CPU timings for the evaluator and gate.
+
+The pinned `var/fixture/input.dem` uploaded through the private app and parsed with the required kernel sandbox into 31 Mirage chunks. The resulting 62,148-step gait bank was 828,923 JSON bytes (347,036 bytes gzipped in isolation), with 56 death anchors and an aim track in the first chunk. The production browser loaded the copied prepared map and both native agent packs. Follow-view seeks at ticks 12,696, 11,520, 18,077 and back to 12,696 showed 5, 10, 10 and 5 ready agents with zero reported asset or page errors.
+
+The rebased build and formatting pass. The final backend run passes 390 cases with three offline speech-model skips and two POV failures. All 299 asset tests pass. The focused Chromium run passes 33 cases with one POV playback-pacing failure. Both backend failures and the browser assertion reproduce on pristine `095c227`.
+
+### Final T2 motion review
+
+Rebased onto `17ef7b1` with authored grading and combat feedback. The optional version 2 gait bank adds a quantized world bearing and retains continuous idle intervals, coalescing adjacent zero-distance records within the wire duration bound. The directional renderer estimates velocity from the recorded displacement over ±100 ms around the requested demo time. The window ends at a round, life or position discontinuity. The estimate uses signed displacement before computing speed, and low directional coherence fades weights toward idle during a reversal. Phase still uses the independent recorded distance integral. Older banks keep their original phase and blend paths.
+
+The pinned Mirage comparison evaluates the previous production blend and the centred blend at consecutive 64 Hz ticks with the same phase and recorded aim. The per-role and per-gait CSV is under `var/anim-work/final-round/blend-deltas.csv`. Pooled active clip weights and local hip, knee and ankle angle changes are below. Weight changes use a 0–1 scale. Joint changes use degrees.
+
+| Signal             | Normal p99, before → after | Normal max, before → after | Counter-strafe p99, before → after | Counter-strafe max, before → after |
+| ------------------ | -------------------------: | -------------------------: | ---------------------------------: | ---------------------------------: |
+| Active clip weight |              0.396 → 0.288 |          0.99996 → 0.99982 |                      0.995 → 0.703 |                  0.99987 → 0.99971 |
+| Hip                |              13.32 → 11.63 |              63.73 → 56.01 |                      50.09 → 24.56 |                      62.63 → 58.84 |
+| Knee               |              12.58 → 12.26 |              45.27 → 33.82 |                      28.02 → 22.28 |                      46.42 → 31.37 |
+| Ankle              |              15.12 → 14.40 |              46.02 → 36.72 |                      32.17 → 23.68 |                      44.96 → 35.48 |
+
+The detector found 122 counter-strafes. In the 93 with a sustained recorded outgoing direction, the centred velocity recovered within 30° of that direction at 70% or more of its speed in 31.25 ms median and 62.5 ms worst. Inspected both 24-frame Chromium/SwiftShader comparisons. CT ticks 25,198–25,244 and T ticks 21,104–21,150 show both reversals and the stops after them. The new T strip reaches near-idle at tick 21,116. Occasional near-full clip-weight changes remain visible in the maximum statistic.
+
+Corpse orientation and placement stay tied to the last observed living pose. The existing obstruction trace yields a retracted camera point, which cannot identify a supporting plane under a sprawled body. A lift based on isolated downward rays could select a different level or leave limbs hanging over the edge. Stair intersections and ledge overhangs remain visible in the terrain proof.
+
+The rebased application reparsed the pinned Mirage fixture with the required sandbox and loaded the version 2 bank and both genuine agent packs. The bank has 74,003 intervals and occupies 1,184,323 JSON bytes, or 464,146 bytes gzipped in isolation. The four real follow-view seeks completed without reported page or asset errors. All 2,100 independent comparisons across its 30 actual chunk seams had identical phase and centred movement samples.
+
+Node 22.23.5 build and formatting checks passed. The backend run passed 400 tests with three offline speech-model skips and two POV failures. All 302 asset tests passed. The focused Chromium run passed 33 tests with one POV failure. Pristine `17ef7b1` reproduces the missing `fitPovAttachment` export in `equipment-rendering`, the stale render-call signature in `pov-render`, and the sub-sample projection assertion in `playback-pacing`.
+
 ## Replay motion, texture detail and C4 wave, 2026-11-22
 
 Runtime `b4cbe2209eba91fbce8e3732717a5d1820e1e9bf` passed [workflow 44975440124](https://github.com/Buco7854/cswatch/actions/runs/44975440124), run 50. CI passed 389 backend, 296 asset and 230 public browser cases, both private registration policies, first-admin setup, cold bootstrap and both hardened images. Anonymous registry checks matched the revision and digests for both latest and immutable tags. The application index is `sha256:1466ed03c6736088480ab78d7426d829d9326c111f5468a207c94ea6fb01662c` and the assets index is `sha256:22a54e5c4649d3aa859c3c4f1013e6579c24224ddee7079ecc2fc8c09ef95cb5`.

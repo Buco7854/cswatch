@@ -42,7 +42,7 @@ export function sample(channel, time) {
     ? slerp(a, b, amount)
     : a.map((component, index) => component + (b[index] - component) * amount);
 }
-export function nativeChannels(document, sourceNodes, limits) {
+export function nativeChannels(document, sourceNodes, limits, ignoredNodes = new Set()) {
   const animations = document.getRoot().listAnimations();
   if (animations.length !== 1) throw Error('Each native role requires exactly one authored clip.');
   const animation = animations[0],
@@ -52,7 +52,11 @@ export function nativeChannels(document, sourceNodes, limits) {
   const channels = [],
     keys = new Set(),
     times = new Set();
-  for (const channel of animation.listChannels()) {
+  const authoredChannels = animation.listChannels();
+  if (authoredChannels.length > limits.channels)
+    throw Error('Native animation channel count exceeds its bound.');
+  for (const channel of authoredChannels) {
+    if (ignoredNodes.has(channel.getTargetNode())) continue;
     const node = channel.getTargetNode(),
       path = channel.getTargetPath(),
       sampler = channel.getSampler(),
