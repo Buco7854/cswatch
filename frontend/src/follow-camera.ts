@@ -34,9 +34,9 @@ export function thirdPersonFollow(
   return {
     actor: from.id,
     position: [
-      x - Math.cos(yaw) * 2.6 + Math.sin(yaw) * 0.65,
+      x - Math.cos(yaw) * 2.15 + Math.sin(yaw) * 1.6,
       y + 1.6 - crouch,
-      z + Math.sin(yaw) * 2.6 + Math.cos(yaw) * 0.65,
+      z + Math.sin(yaw) * 2.15 + Math.cos(yaw) * 1.6,
     ],
     target: [x, y + 1.25 - crouch, z],
   };

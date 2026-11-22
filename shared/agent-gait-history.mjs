@@ -1,4 +1,5 @@
 import equipment from './equipment-models.json' with { type: 'json' };
+import { canonicalEquipmentKey } from './equipment-key.mjs';
 import { strideDisplacement } from './stride-distance.mjs';
 
 const classes = ['rifle', 'pistol', 'knife'];
@@ -6,30 +7,13 @@ const classes = ['rifle', 'pistol', 'knife'];
 const bytesPerStep = 12;
 const maxSteps = 240000;
 const maxTick = 64 * 60 * 180;
-const normalize = (weapon) =>
-  weapon
-    .replace(/^weapon_/i, '')
-    .replace(/[^a-z0-9]/gi, '')
-    .toLowerCase();
-const pistolAliases = new Set([
-  'glock18',
-  'p2000',
-  'usps',
-  'cz75auto',
-  'deserteagle',
-  'dualberettas',
-  'r8revolver',
-]);
-
 export function agentWeaponClass(weapon) {
-  const key = normalize(weapon);
+  const key = canonicalEquipmentKey(weapon);
   const item = Object.hasOwn(equipment.items, key) ? equipment.items[key] : undefined;
-  if (item?.resource.includes('/weapon_pist_') || pistolAliases.has(key)) return 'pistol';
-  if (item?.kind === 'weapon' && key !== 'taser') return 'rifle';
+  if (item?.resource.includes('/weapon_pist_')) return 'pistol';
+  if (item?.kind === 'weapon') return 'rifle';
   return item ||
     key.startsWith('knife') ||
-    key === 'zeusx27' ||
-    key === 'zeus' ||
     /^(?:incendiary|incendiarygrenade|decoygrenade|\w+knife)$/.test(key)
     ? 'knife'
     : 'rifle';

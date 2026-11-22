@@ -25,6 +25,7 @@ for (const name of [
   'aim-track',
   'agent-deaths',
   'agent-gait-history',
+  'equipment-key',
   'map-grade',
 ])
   copyFileSync(resolve(root, `../shared/${name}.mjs`), resolve(root, `dist/${name}.mjs`));

@@ -24,7 +24,7 @@ const modelRegistry = JSON.parse(
 );
 const equipmentNames = Object.keys(modelRegistry.items || {});
 if (
-  modelRegistry.schemaVersion !== 1 ||
+  modelRegistry.schemaVersion !== 2 ||
   !equipmentNames.length ||
   equipmentNames.length > 96 ||
   equipmentNames.some((name) => !/^[a-z0-9]{1,40}$/.test(name))

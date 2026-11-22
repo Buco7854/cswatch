@@ -232,6 +232,9 @@ document
           .addPrimitive(document.createPrimitive().setAttribute('POSITION', positions)),
       ),
   );
+// The equipment smoke uses the same authored attachment contract as the
+// operator exporter. The original triangle stays the muzzle's parent.
+document.getRoot().listScenes()[0].addChild(document.createNode('weapon'));
 const model = Buffer.from(await new NodeIO().writeBinary(document)),
   png = await sharp({ create: { width: 8, height: 8, channels: 4, background: '#8090a0' } })
     .png()

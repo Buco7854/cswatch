@@ -1305,6 +1305,16 @@ test('paused viewer stops native rendering and camera, held keys, POV seeks and 
   await open(page);
   await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
   await idle();
+  const initial = await frames();
+  await Promise.all(
+    ['/api/assets/agents', '/api/assets/equipment-models'].map((path) =>
+      page.waitForResponse((response) => new URL(response.url()).pathname === path),
+    ),
+  );
+  await page.waitForTimeout(250);
+  expect(await frames(), 'Unchanged asset discovery must leave the paused scene idle').toBe(
+    initial,
+  );
   const unfocused = await frames();
   await page.getByRole('button', { name: 'Options', exact: true }).focus();
   await page.keyboard.press('x');

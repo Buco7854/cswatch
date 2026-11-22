@@ -35,7 +35,7 @@ test('native uint64 default groups and first actual LOD select only authored mes
   duplicate.control = duplicate.control.replace('m_nMeshIndex = 1', 'm_nMeshIndex = 0');
   assert.throws(() => inspectEquipmentSourceModel(duplicate), /inconsistent/);
 });
-test('locomotion closure accepts only the 87 fixed clips and their skeleton, never other clips or animation graphs', async () => {
+test('locomotion closure accepts only the fixed clips and their skeleton, never other clips or animation graphs', async () => {
   const seeds = Object.values(directionalAgentRegistry),
     skeleton = 'animation/skeletons/characters/worldmodel.vnmskel_c',
     graph = 'animation/graphs/unselected.vnmgraph_c';

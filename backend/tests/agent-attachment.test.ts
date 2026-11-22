@@ -6,7 +6,7 @@ import {
   Matrix4,
   Vector3,
 } from '../../frontend/node_modules/three/build/three.module.js';
-import { nativeWeaponFrame } from '../../frontend/src/agent-attachment.js';
+import { fitWeaponGrip, nativeWeaponFrame } from '../../frontend/src/agent-attachment.js';
 test('native Source weapon bone maps canonical equipment axes once and follows deformation without duplicate actor travel', () => {
   const actor = new Group(),
     body = new Group(),
@@ -39,7 +39,7 @@ test('native Source weapon bone maps canonical equipment axes once and follows d
     new Vector3().setFromMatrixPosition(frame).distanceTo(new Vector3(0.4, 0.65, 0)) < 1e-10,
   );
 });
-test('stale other-actor, detached, non-bone and singular native anchors fail back to operator preset without reparenting', () => {
+test('stale other-actor, detached, non-bone and singular native anchors keep the held model hidden without reparenting', () => {
   const actor = new Group(),
     other = new Group(),
     bone = new Bone(),
@@ -55,4 +55,38 @@ test('stale other-actor, detached, non-bone and singular native anchors fail bac
   actor.add(bone);
   actor.scale.x = 0;
   assert.equal(nativeWeaponFrame(matrix, actor, bone), false);
+});
+
+test('the authored model grip stays between the moving thumb and middle knuckle', () => {
+  const actor = new Group(),
+    rig = new Group(),
+    model = new Group(),
+    grip = new Group();
+  const weapon = new Bone(),
+    thumb = new Bone(),
+    middle = new Bone();
+  actor.add(rig, model);
+  rig.add(weapon, thumb, middle);
+  model.add(grip);
+  actor.rotation.y = 0.73;
+  actor.position.set(-7, 2, 3);
+  weapon.quaternion.set(-Math.SQRT1_2, 0, 0, Math.SQRT1_2);
+  weapon.position.set(0.35, 1.3, 0.2);
+  grip.position.set(-0.087, -0.115, -0.005);
+  model.matrixAutoUpdate = false;
+  const mount = new Matrix4();
+  const scratch = [new Vector3(), new Vector3(), new Vector3(), new Matrix4()] as const;
+  for (const height of [1.42, 0.88, 1.27]) {
+    thumb.position.set(-0.1, height, 0.3);
+    middle.position.set(-0.12, height - 0.03, 0.31);
+    assert.ok(nativeWeaponFrame(mount, actor, weapon));
+    const forward = new Vector3(1, 0, 0).transformDirection(mount);
+    fitWeaponGrip(mount, grip, model, actor, [thumb, middle], [...scratch]);
+    model.matrix.copy(mount);
+    assert.ok(new Vector3(1, 0, 0).transformDirection(mount).distanceTo(forward) < 1e-10);
+    const left = thumb
+      .getWorldPosition(new Vector3())
+      .lerp(middle.getWorldPosition(new Vector3()), 0.5);
+    assert.ok(grip.getWorldPosition(new Vector3()).distanceTo(left) < 1e-10);
+  }
 });

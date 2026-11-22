@@ -72,6 +72,12 @@ Artwork preparation has a five-minute deadline, bounded attempts and the shared 
 
 The November 19 local native conversion proof used the retained CRC-verified screenshot from manifest `807392217824910805`: confined S2V and Sharp produced the exact existing 1280×720 PNG without changing installed artwork. That is cached-source conversion evidence, not a new current-manifest download. A new current-source artwork acquisition was not run on the disk-constrained host. See [verification](VERIFICATION.md) for the active revision's release gates.
 
+## Third-person equipment and agent packs
+
+The asset worker prepares the weapon-frame equipment and the 101-clip agent banks. Equipment metadata uses schema 2 and agent animation declarations use schema 3. The equipment packer removes the S2V studio transform using each model’s named weapon joint. The standalone defuser retains its separate authored origin. Held equipment uses the animated weapon axes and the model’s authored grip. Analyst replays preserve recorded rotations for dropped, planted and thrown items, with nearby floor support for resting items.
+
+The two native banks are validated against fixed identities and pinned Valve resources.
+
 ## Automatic first-person rigs
 
 The asset worker prepares default authored hands, the exact held item, its idle pose and draw clip, and recorded firing and reload clips where applicable. It alternates the static and first-person items in fixed priority order after agents and HUD icons. The administrator can see the current item, counts, unsupported IDs and retry state. A missing official resource produces `missing_official_resource`. The worker pins an official depot manifest for the category and never substitutes another item's mesh.

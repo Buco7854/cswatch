@@ -33,20 +33,15 @@ const glb = (extra = {}) => {
   return Buffer.concat([header, json]);
 };
 const manifest = (bytes: Buffer) => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: 'ak47',
-  coordinateSystem: 'viewer-meters-y-up-x-forward',
+  coordinateSystem: 'weapon-meters-y-up-x-forward',
   assetVersion: 'Synthetic fixture v1',
   sha256: createHash('sha256').update(bytes).digest('hex'),
   bytes: bytes.length,
   decodedTextureBytes: 0,
   geometryBytes: 0,
   bounds: { min: [0, 0, 0], max: [1, 0.2, 0.1] },
-  attachments: {
-    approximate: true,
-    hold: { position: [0, 1.2, 0], rotation: [0, 0, 0], scale: 1 },
-    pov: { position: [0.2, -0.1, 0], rotation: [0, 0, 0], scale: 1 },
-  },
 });
 async function fixture() {
   const directory = mkdtempSync(join(tmpdir(), 'cswatch-model-assets-')),
@@ -131,7 +126,7 @@ test('first-person discovery admits only bounded current assets and shares the i
   }
 });
 
-test('equipment manifest and self-contained GLB bounds reject unsafe transforms, unknown IDs and external resources', () => {
+test('equipment manifest and self-contained GLB bounds reject stale frames, unknown IDs and external resources', () => {
   assert.equal(validEquipmentGlb(glb()), true);
   for (const extra of [
     { buffers: [{ uri: 'https://example.com/asset.bin' }] },
@@ -150,12 +145,7 @@ test('equipment manifest and self-contained GLB bounds reject unsafe transforms,
     { bounds: { min: [-8, 0, 0], max: [8, 1, 1] } },
     { bounds: { min: [2, 0, 0], max: [1, 1, 1] } },
     { model: 'https://example.com/' },
-    {
-      attachments: {
-        ...manifest(glb()).attachments,
-        pov: { position: [5, 0, 0], rotation: [0, 0, 0], scale: 1 },
-      },
-    },
+    { schemaVersion: 1 },
   ])
     assert.equal(
       equipmentModelManifestSchema.safeParse({ ...manifest(glb()), ...change }).success,

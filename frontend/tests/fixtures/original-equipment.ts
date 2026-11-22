@@ -143,7 +143,7 @@ export function originalEquipmentCatalog(
 ): EquipmentModelCatalog {
   const bytes = originalEquipmentGLB();
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     items: Object.fromEntries(
       ids.map((id) => [
         id,
@@ -155,11 +155,6 @@ export function originalEquipmentCatalog(
           decodedTextureBytes: 0,
           geometryBytes: 864,
           bounds: { min: [-0.3, -0.04, -0.04], max: [0.3, 0.04, 0.04] },
-          attachments: {
-            approximate: true,
-            hold: { position: [0.25, 1.15, 0.15], rotation: [0, 0, 0], scale: 1 },
-            pov: { position: [0.65, -0.23, 0.2], rotation: [0, 0, 0], scale: 1 },
-          },
         },
       ]),
     ),

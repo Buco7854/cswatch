@@ -72,7 +72,7 @@ async function fixture(path, { clip = false, direction } = {}) {
   }
   await new NodeIO().write(path, doc);
 }
-test('native animation preparation retains 87 bounded clips through lossless packing and records separate source versions', async () => {
+test('native animation preparation retains every bounded clip through lossless packing and records separate source versions', async () => {
   const root = await mkdtemp(join(tmpdir(), 'cswatch-agent-curves-'));
   try {
     const input = join(root, 'agent.glb'),
@@ -104,7 +104,7 @@ test('native animation preparation retains 87 bounded clips through lossless pac
     assert.equal(result.manifest.pose, 'directional-native-agent');
     assert.equal(result.provenance.sourceAssetVersion, 'model-v1');
     assert.equal(result.provenance.animationAssetVersion, 'clips-v2');
-    assert.equal(result.manifest.animationRoles.length, 87);
+    assert.equal(result.manifest.animationRoles.length, directionalRoles.length);
     assert.equal(
       JSON.parse(await readFile(join(output, 't.manifest.json'), 'utf8')).sha256,
       result.manifest.sha256,

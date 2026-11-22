@@ -31,13 +31,21 @@ export function useAgentAssets(identity: string, enabled: boolean): State {
         validateAgentAssets(await readAssetJSON('/api/assets/agents', 1024, signal)),
       complete: (assets) => Boolean(assets.ct && assets.t),
       changed: (assets) =>
-        setState({
-          identity,
-          value: { status: assets.ct || assets.t ? 'ready' : 'missing', assets },
+        setState((previous) => {
+          const status = assets.ct || assets.t ? 'ready' : 'missing';
+          if (
+            previous.identity === identity &&
+            previous.value.status === status &&
+            previous.value.assets.ct === assets.ct &&
+            previous.value.assets.t === assets.t
+          )
+            return previous;
+          return { identity, value: { status, assets } };
         }),
       failed: () =>
         setState((previous) =>
-          previous.identity === identity && (previous.value.assets.ct || previous.value.assets.t)
+          previous.identity === identity &&
+          (previous.value.status === 'error' || previous.value.assets.ct || previous.value.assets.t)
             ? previous
             : { identity, value: { status: 'error', assets: empty } },
         ),

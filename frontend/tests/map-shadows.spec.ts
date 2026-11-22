@@ -10,7 +10,7 @@ test('actual WebGL static shadow reuse preserves pixels and updates moving caste
   const bundle = await build({
     stdin: {
       contents:
-        "export { MapShadowCache } from './frontend/src/map-shadow-cache'; export { StaticMapGroup } from './frontend/src/static-map-group';",
+        "export { MapShadowCache } from './frontend/src/map-shadow-cache'; export { StaticMapGroup } from './frontend/src/static-map-group'; export { playerShadows } from './frontend/src/player-shadows';",
       resolveDir: root,
     },
     bundle: true,
@@ -38,7 +38,7 @@ test('actual WebGL static shadow reuse preserves pixels and updates moving caste
     const threeURL = location.origin + '/__qa_shadows__/three.module.js',
       cacheURL = location.origin + '/__qa_shadows__/cache.js';
     const T = await import(/* @vite-ignore */ threeURL),
-      { MapShadowCache, StaticMapGroup } = await import(/* @vite-ignore */ cacheURL);
+      { MapShadowCache, StaticMapGroup, playerShadows } = await import(/* @vite-ignore */ cacheURL);
     const renderer = new T.WebGLRenderer({ antialias: false, preserveDrawingBuffer: true });
     renderer.setSize(320, 240);
     renderer.shadowMap.enabled = true;
@@ -168,14 +168,56 @@ test('actual WebGL static shadow reuse preserves pixels and updates moving caste
       relocated,
       removed,
     };
+    dynamic.castShadow = false;
+    dynamic.userData.playerShadowCaster = true;
+    dynamic.position.set(-1, 1, 2);
+    const actors = new T.Group();
+    actors.add(dynamic);
+    scene.add(actors);
+    draw();
+    const liveShadows = playerShadows();
+    const release = liveShadows.receivers(map);
+    const sun = {
+      position: light.position.toArray(),
+      target: [0, 0, 0],
+      up: [0, 1, 0],
+      shadow: { left: -8, right: 8, bottom: -8, top: 8, near: 0.1, far: 30 },
+      color: [1, 1, 1],
+    };
+    const renderPlayerDepth = () => {
+      renderer.info.reset();
+      liveShadows.render(renderer, actors, sun);
+      return renderer.info.render.calls;
+    };
+    const baseline = draw();
+    const playerDrawCalls = renderPlayerDepth();
+    const outside = draw();
+    dynamic.position.x = 2;
+    renderPlayerDepth();
+    const playerMoved = draw();
+    liveShadows.disable();
+    const movedUnshadowed = draw();
+    const live = {
+      playerDrawCalls,
+      playerShadowPixels: changed(baseline.pixels, outside.pixels),
+      movedShadowPixels: changed(playerMoved.pixels, movedUnshadowed.pixels),
+      staticPassStayedCached:
+        outside.calls === baseline.calls && playerMoved.calls === movedUnshadowed.calls,
+    };
+    release();
+    liveShadows.dispose();
     renderer.dispose();
     renderer.forceContextLoss();
-    return result;
+    return { ...result, ...live };
   });
   await info.attach('original-shadow-cache-evidence', {
     body: JSON.stringify(report, null, 2),
     contentType: 'application/json',
   });
+  expect(report.playerDrawCalls).toBe(1);
+  expect(report.playerShadowPixels).toBeGreaterThan(100);
+  expect(report.movedShadowPixels).toBeGreaterThan(100);
+  expect(report.staticPassStayedCached).toBe(true);
   expect(report.normalCalls).toBeGreaterThan(report.cachedCalls);
   expect(report.baselineStablePixels).toBe(0);
   expect(report.staticDifferentPixels).toBe(0);

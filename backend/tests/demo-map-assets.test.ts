@@ -595,20 +595,18 @@ test('manual mode explicitly labels version-unverified assets from MAP_ASSETS_DI
     const equipment = join(f.maps, 'equipment-models', 'ak47');
     mkdirSync(equipment, { recursive: true });
     writeFileSync(join(equipment, 'model.glb'), model);
-    const attachment = { position: [0, 0, 0], rotation: [0, 0, 0], scale: 1 };
     writeFileSync(
       join(equipment, 'manifest.json'),
       JSON.stringify({
-        schemaVersion: 1,
+        schemaVersion: 2,
         id: 'ak47',
-        coordinateSystem: 'viewer-meters-y-up-x-forward',
+        coordinateSystem: 'weapon-meters-y-up-x-forward',
         assetVersion: 'Synthetic fixture',
         sha256: sha(model),
         bytes: model.length,
         decodedTextureBytes: 0,
         geometryBytes: 0,
         bounds: { min: [0, 0, 0], max: [1, 1, 1] },
-        attachments: { approximate: true, hold: attachment, pov: attachment },
       }),
     );
     assert.equal(

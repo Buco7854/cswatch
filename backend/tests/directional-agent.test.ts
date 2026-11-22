@@ -67,7 +67,7 @@ function fixture(roles: readonly DirectionalAgentRole[] = directionalRoles) {
       extras: {
         cswatch: {
           kind: 'native-agent',
-          schemaVersion: 2,
+          schemaVersion: 3,
           role,
           rootMotion: 'recorded-position',
           ...(directionalMovementRoles.has(role) ? { strideMeters, phaseOffset: 0 } : {}),
@@ -220,7 +220,7 @@ test('draw, reload and fire use newest evidence, while a death anchor survives a
   const action = (p: Position, tick: number) =>
     agentActionAt(events, draws, p, tick, 64, 0, true, true);
   assert.equal(action(player, 7), undefined);
-  assert.deepEqual(action(player, 12), { kind: 'draw', age: 4 / 64 });
+  assert.deepEqual(action(player, 12), { kind: 'draw', age: 4 / 64, previousWeapon: 'glock' });
   assert.deepEqual(action({ ...player, reloadStarted: 16 }, 19), { kind: 'reload', age: 3 / 64 });
   assert.deepEqual(action({ ...player, reloadStarted: 16 }, 20), { kind: 'fire', age: 0 });
   assert.equal(deadAgentsAt(playback, events, 20, rounds[0]).length, 0);

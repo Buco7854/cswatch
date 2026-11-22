@@ -11,8 +11,13 @@ import {
   equipmentModelRegistry,
   equipmentModelIds,
 } from './equipment-model-registry.mjs';
-import { inspectEquipmentGltf, prepareEquipmentModel } from './prepare-equipment-model.mjs';
+import {
+  assertEquipmentWeaponBounds,
+  inspectEquipmentGltf,
+  prepareEquipmentModel,
+} from './prepare-equipment-model.mjs';
 import { MeshoptDecoder } from './meshopt-glb.mjs';
+import { staticModelBounds } from './static-model-bounds.mjs';
 async function fixture(root) {
   const document = new Document(),
     buffer = document.createBuffer(),
@@ -44,8 +49,16 @@ async function fixture(root) {
     .setAttribute('POSITION', positions)
     .setAttribute('TEXCOORD_0', uv)
     .setMaterial(material);
+  // A studio preview translation separate from the local geometry, as in the M4A4.
+  const studio = [-0.004903525, 0.3150511, 0.46316564];
   scene.addChild(
-    document.createNode('original_weapon').setMesh(document.createMesh().addPrimitive(primitive)),
+    document
+      .createNode('body')
+      .setTranslation(studio)
+      .setMesh(document.createMesh().addPrimitive(primitive)),
+  );
+  scene.addChild(
+    document.createNode('weapon').setTranslation(studio).setRotation([-0.5, -0.5, -0.5, 0.5]),
   );
   const input = join(root, 'input.glb');
   await new NodeIO().write(input, document);
@@ -67,7 +80,7 @@ test('equipment publication retains an authored muzzle node and its independent 
   try {
     const input = await fixture(root),
       nativeMuzzle = {
-        bone: 'original_weapon',
+        bone: 'weapon',
         position: [20, 2, 4],
         rotation: [0, 0, 0, 1],
       },
@@ -87,17 +100,17 @@ test('equipment publication retains an authored muzzle node and its independent 
       json = JSON.parse(glb.toString('utf8', 20, 20 + glb.readUInt32LE(12))),
       markerIndex = json.nodes.findIndex((node) => node.name === 'cswatch_native_muzzle'),
       marker = json.nodes[markerIndex],
-      bone = json.nodes.find((node) => node.name === 'original_weapon');
+      bone = json.nodes.find((node) => node.name === 'weapon');
     assert.ok(markerIndex >= 0);
     assert.ok(bone.children.includes(markerIndex));
     assert.deepEqual(marker.translation, [0.508, 0.0508, 0.1016]);
     assert.equal(marker.extras.cswatchNativeAttachment, 'muzzle_flash');
-    assert.equal(result.manifest.attachments.approximate, true);
+    assert.equal(result.manifest.schemaVersion, 2);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
-test('equipment packing applies only exact axis correction, bounds textures, retains native dimensions and refuses overwrite', async () => {
+test('equipment packing removes the authored studio translation, bounds textures, retains native dimensions and refuses overwrite', async () => {
   const root = await mkdtemp(join(tmpdir(), 'cswatch-equipment-model-'));
   try {
     const input = await fixture(root),
@@ -108,9 +121,9 @@ test('equipment packing applies only exact axis correction, bounds textures, ret
       id: 'ak47',
       assetVersion: 'original-test',
     });
-    assert.equal(result.manifest.coordinateSystem, 'viewer-meters-y-up-x-forward');
-    assert.equal(result.manifest.attachments.approximate, true);
-    assert.equal(result.manifest.attachments.hold.scale, 1);
+    assert.equal(result.manifest.coordinateSystem, 'weapon-meters-y-up-x-forward');
+    assert.equal(result.manifest.schemaVersion, 2);
+
     assert.ok(
       result.manifest.decodedTextureBytes > 0 &&
         result.manifest.decodedTextureBytes <= 16 * 1024 ** 2,
@@ -219,3 +232,46 @@ test('raw metadata rejects excessive accessor, sparse and Meshopt allocations be
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('the pre-normalization M4A4 bounds fail the weapon frame check', () => {
+  assert.throws(
+    () =>
+      assertEquipmentWeaponBounds({
+        min: [0.03530949, 0.10220745, -0.04741227],
+        max: [0.93167426, 0.39421043, 0.04388749],
+      }),
+    /outside the authored weapon frame/,
+  );
+});
+
+const realPack = process.env.CSWATCH_EQUIPMENT_TEST_PACK;
+test(
+  'every model in the genuine fixed registry is packed in its own weapon frame',
+  { skip: !realPack },
+  async () => {
+    await MeshoptDecoder.ready;
+    const io = new NodeIO()
+      .registerExtensions(ALL_EXTENSIONS)
+      .registerDependencies({ 'meshopt.decoder': MeshoptDecoder });
+    for (const id of equipmentModelIds) {
+      const manifest = JSON.parse(await readFile(join(realPack, id, 'manifest.json'), 'utf8'));
+      const document = await io.read(join(realPack, id, 'model.glb'));
+      const bounds = staticModelBounds(document);
+      assert.equal(manifest.schemaVersion, 2, id);
+      assertEquipmentWeaponBounds(bounds);
+      for (const axis of [0, 1, 2])
+        for (const edge of ['min', 'max'])
+          assert.ok(Math.abs(bounds[edge][axis] - manifest.bounds[edge][axis]) < 1e-5, id);
+      if (id === 'defuser') continue;
+      const joint = document
+        .getRoot()
+        .listNodes()
+        .find((node) => node.getName() === 'weapon');
+      assert.ok(joint, id);
+      assert.ok(Math.hypot(...joint.getWorldTranslation()) < 1e-6, id);
+      // The Source bone still has its native local axes inside the Y-up pack.
+      const world = joint.getWorldMatrix();
+      assert.ok(Math.abs(world[0] - 1) < 1e-6 && Math.abs(world[9] - 1) < 1e-6, id);
+    }
+  },
+);

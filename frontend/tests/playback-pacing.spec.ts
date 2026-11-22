@@ -2,7 +2,7 @@ import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { test, expect, type Page } from '@playwright/test';
 import { Matrix4, PerspectiveCamera, Vector3 } from 'three';
 import { createHash } from 'node:crypto';
-import { povFar, povNear, povOffset, povProjection } from '../src/pov-camera';
+import { povFar, povNear, povOffset, povProjection, staticPovAttachment } from '../src/pov-camera';
 import { originalMapReplay, qaActor } from './fixtures/original-map';
 import { installMapFixture } from './fixtures/map-assets';
 import { originalEquipmentCatalog, originalEquipmentGLB } from './fixtures/original-equipment';
@@ -244,8 +244,9 @@ test('POV camera and equipment share interpolated recorded angles, eye height an
     camera = new Matrix4().fromArray(matrices.view!).invert();
   const direction = new Vector3(0, 0, -1).transformDirection(camera);
   expect(direction.distanceTo(new Vector3(1, 0, 0))).toBeLessThan(1e-5);
-  const [forward, up, right] = originalEquipmentCatalog(['ak47']).items.ak47.attachments.pov
-    .position;
+  const [forward, up, right] = staticPovAttachment(
+    originalEquipmentCatalog(['ak47']).items.ak47.bounds,
+  ).position;
   // At recorded yaw/pitch zero the player faces world +X, with +Z to their right.
   const expectedProp = expectedEye
     .clone()

@@ -20,6 +20,7 @@ import {
 } from '../../frontend/src/equipment-model.js';
 import {
   fitPovAttachment,
+  staticPovAttachment,
   povFar,
   povNear,
   povOffset,
@@ -103,10 +104,7 @@ test('equipment discovery rejects arbitrary URLs, malformed budgets and attachme
     (value: typeof input) => (value.items.ak47.geometryBytes = 8 * 1024 ** 2 + 1),
     (value: typeof input) => (value.items.ak47.decodedTextureBytes = 16 * 1024 ** 2 + 1),
     (value: typeof input) => (value.items.ak47.bounds.min[0] = 1),
-    (value: typeof input) => (value.items.ak47.attachments.pov.position[0] = Infinity),
-    (value: typeof input) => (value.items.ak47.attachments.pov.position[0] = 4.01),
-    (value: typeof input) => (value.items.ak47.attachments.pov.rotation[0] = Math.PI * 2 + 0.01),
-    (value: typeof input) => (value.items.ak47.attachments.pov.scale = 0.09),
+    (value: typeof input) => (value.items.ak47.bounds.max[1] = Infinity),
   ]) {
     const candidate = structuredClone(valid);
     change(candidate);
@@ -119,7 +117,7 @@ test('equipment discovery rejects arbitrary URLs, malformed budgets and attachme
 
 test('original static POV preset leaves positive eye clearance in every recorded aim orientation', () => {
   const asset = originalEquipmentCatalog(['ak47']).items.ak47,
-    preset = asset.attachments.pov;
+    preset = staticPovAttachment(asset.bounds);
   const box = new Box3(new Vector3(...asset.bounds.min), new Vector3(...asset.bounds.max));
   // This fixture uses a native-scale, origin-centered prop with explicit static attachment.
   box.min.multiplyScalar(preset.scale).add(new Vector3(...preset.position));
@@ -181,7 +179,7 @@ test('cloned skinned equipment releases only instance bone textures while retain
 
 test('portrait static POV attachment retains native scale/depth while moving lateral offset inside the narrower field of view', () => {
   const asset = originalEquipmentCatalog(['ak47']).items.ak47,
-    preset = asset.attachments.pov;
+    preset = staticPovAttachment(asset.bounds);
   const before = structuredClone(preset),
     portrait = fitPovAttachment(preset, 390 / 900),
     desktop = fitPovAttachment(preset, 1440 / 900);

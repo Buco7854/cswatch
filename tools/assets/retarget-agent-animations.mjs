@@ -48,13 +48,14 @@ export function retargetAgentAnimations(target, clips, { minimumMappedBones = 20
         sourceBind = snapshot([...sourceNodes]),
         // Some authored actions export a second, separate weapon skin. Only
         // its agent-side wpnPivot is carried by this model.
-        ignored = /-(fire|reload|draw)$/.test(role)
-          ? clip
-              .getRoot()
-              .listSkins()
-              .flatMap((skin) => skin.listJoints())
-              .filter((node) => !sourceNodes.has(node))
-          : [],
+        ignored =
+          /-(fire|reload|draw)$/.test(role) || contract.overlays.includes(role)
+            ? clip
+                .getRoot()
+                .listSkins()
+                .flatMap((skin) => skin.listJoints())
+                .filter((node) => !sourceNodes.has(node))
+            : [],
         { animation, channels, timeline } = nativeChannels(
           clip,
           sourceNodes,
