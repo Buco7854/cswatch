@@ -21,7 +21,9 @@ export default function AuthPage({
   const location = useLocation(),
     navigate = useNavigate();
   const register = location.pathname === '/register';
-  const returnTo = authReturnPath(new URLSearchParams(location.search).get('returnTo'));
+  const query = new URLSearchParams(location.search);
+  const returnTo = authReturnPath(query.get('returnTo'));
+  const cancelled = query.get('steam') === 'cancelled';
   const backTo = authReturnPath(location.state?.authFrom, returnTo === '/library' ? '/' : returnTo);
   const scope = useRef({ active: true });
   const pending = useRef<object | null>(null);
@@ -102,6 +104,9 @@ export default function AuthPage({
                   : t('Sign in to your review room.')}
             </p>
           </header>
+          {cancelled && !error && (
+            <p role="status">{t('Steam sign-in was cancelled. Start again.')}</p>
+          )}
           {config.steam_enabled && (
             <SteamSignInLink
               className="auth-steam"

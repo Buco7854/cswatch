@@ -72,6 +72,7 @@ export default function Library() {
     if (params.has('upload')) {
       const next = new URLSearchParams(params);
       next.delete('upload');
+      next.delete('steamMatch');
       setParams(next, { replace: true });
     }
     returnFocus(trigger, focusReturn);
@@ -79,6 +80,9 @@ export default function Library() {
   useEffect(() => {
     if (user && params.get('upload') === '1') setUploadOpen(true);
   }, [user?.id, params]);
+  const match = params.get('steamMatch') ?? '';
+  const steamMatch =
+    params.get('upload') === '1' && /^[1-9]\d{0,19}$/.test(match) ? match : undefined;
   return (
     <>
       <header className="page-heading">
@@ -270,7 +274,7 @@ export default function Library() {
           </span>
         </div>
       </section>
-      {uploadOpen && <UploadDialog close={closeUpload} />}
+      {uploadOpen && <UploadDialog key={steamMatch} close={closeUpload} steamMatch={steamMatch} />}
     </>
   );
 }

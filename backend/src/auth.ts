@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { Store } from './db.js';
 import { now } from './db.js';
@@ -19,6 +19,9 @@ import {
   sessionCookieName,
   steamStateCookie,
 } from './security.js';
+const steamNamespace = 'http://specs.openid.net/auth/2.0';
+const steamEndpoint = 'https://steamcommunity.com/openid/login';
+const steamStateLifetime = 600;
 const credentials = z.object({
   username: z.string().regex(/^[A-Za-z0-9_-]{3,32}$/),
   password: z.string().min(12).max(128),
@@ -119,21 +122,21 @@ export async function authRoutes(app: FastifyInstance, db: Store, c: Config) {
     db.audit(u.id, 'password.changed');
     return { csrf };
   });
-  app.get('/api/auth/steam', async (r, reply) => {
+  function startSteam(r: FastifyRequest, reply: FastifyReply, returnTo: unknown) {
     if (!db.flag(c, 'steam_enabled')) throw new HttpError(403, 'Steam sign-in is disabled.');
     rateLimit(db, r, 'steam', 20);
-    const state = token(),
-      query = r.query as { returnTo?: string };
+    const state = token();
     db.run('DELETE FROM auth_states WHERE expires_at<?', now());
     db.run(
-      'INSERT INTO auth_states(token_hash,user_id,expires_at,return_to) VALUES(?,?,?,?)',
+      'INSERT INTO auth_states(token_hash,user_id,session_hash,expires_at,return_to) VALUES(?,?,?,?,?)',
       digest(state),
       r.user?.id ?? null,
-      now() + 600,
-      safeReturnPath(query.returnTo, r.user ? '/account/connections' : '/library'),
+      r.user ? digest(r.cookies[sessionCookieName(c)]!) : null,
+      now() + steamStateLifetime,
+      safeReturnPath(returnTo, '/library'),
     );
     const params = new URLSearchParams({
-      'openid.ns': 'http://specs.openid.net/auth/2.0',
+      'openid.ns': steamNamespace,
       'openid.mode': 'checkid_setup',
       'openid.return_to': `${c.appUrl}/api/auth/steam/callback?state=${state}`,
       'openid.realm': c.appUrl,
@@ -146,9 +149,17 @@ export async function authRoutes(app: FastifyInstance, db: Store, c: Config) {
       secure: c.cookieSecure,
       sameSite: 'lax',
       path: stateCookie.path,
-      maxAge: 600,
+      maxAge: steamStateLifetime,
     });
-    return reply.redirect('https://steamcommunity.com/openid/login?' + params, 303);
+    return steamEndpoint + '?' + params;
+  }
+  app.get('/api/auth/steam', async (r, reply) => {
+    if (r.user) throw new HttpError(409, 'Link Steam from Connected accounts.');
+    return reply.redirect(startSteam(r, reply, (r.query as { returnTo?: string }).returnTo), 303);
+  });
+  app.post('/api/auth/steam/link', async (r, reply) => {
+    requireUser(r);
+    return { location: startSteam(r, reply, '/account/connections') };
   });
   app.get('/api/auth/steam/callback', async (r, reply) => {
     if (!db.flag(c, 'steam_enabled')) throw new HttpError(403, 'Steam sign-in is disabled.');
@@ -166,18 +177,48 @@ export async function authRoutes(app: FastifyInstance, db: Store, c: Config) {
       return s;
     });
     if (!stored) throw new HttpError(400, 'Sign-in expired. Start again.');
-    if (stored.user_id && r.user?.id !== stored.user_id)
-      throw new HttpError(400, 'The linking session changed. Start again.');
-    const claimed = q['openid.claimed_id'] || '',
-      signed = new Set((q['openid.signed'] || '').split(','));
-    const nonce = Date.parse((q['openid.response_nonce'] || '').slice(0, 20));
+    const stateCookie = steamStateCookie(c);
+    reply.clearCookie(stateCookie.name, {
+      path: stateCookie.path,
+      secure: c.cookieSecure,
+      httpOnly: true,
+      sameSite: 'lax',
+    });
+    const checkSession = () => {
+      const user = currentUser(db, r, c);
+      if (
+        (user?.id ?? null) !== stored.user_id ||
+        (user && digest(r.cookies[sessionCookieName(c)]!) !== stored.session_hash)
+      )
+        throw new HttpError(400, 'The linking session changed. Start again.');
+    };
+    checkSession();
+    if (q['openid.mode'] === 'cancel') {
+      const destination = stored.user_id
+        ? '/account/connections?steam=cancelled'
+        : '/login?' +
+          new URLSearchParams({
+            steam: 'cancelled',
+            returnTo: safeReturnPath(stored.return_to),
+          });
+      return reply.redirect(destination, 303);
+    }
+    const claimed = q['openid.claimed_id'] || '';
+    const subject = /^https?:\/\/steamcommunity\.com\/openid\/id\/(\d{17})$/.exec(claimed)?.[1];
+    const signed = new Set((q['openid.signed'] || '').split(','));
+    const responseNonce = q['openid.response_nonce'] || '';
+    const timestamp = responseNonce.slice(0, 20);
+    const nonce = Date.parse(timestamp);
+    const nonceHash = digest(responseNonce);
     if (
       q['openid.mode'] !== 'id_res' ||
-      q['openid.ns'] !== 'http://specs.openid.net/auth/2.0' ||
-      q['openid.op_endpoint'] !== 'https://steamcommunity.com/openid/login' ||
+      q['openid.ns'] !== steamNamespace ||
+      q['openid.op_endpoint'] !== steamEndpoint ||
       q['openid.return_to'] !== `${c.appUrl}/api/auth/steam/callback?state=${state}` ||
       q['openid.identity'] !== claimed ||
-      !/^https:\/\/steamcommunity.com\/openid\/id\/\d{17}$/.test(claimed) ||
+      !subject ||
+      !q['openid.assoc_handle'] ||
+      !q['openid.sig'] ||
       ![
         'op_endpoint',
         'return_to',
@@ -186,8 +227,11 @@ export async function authRoutes(app: FastifyInstance, db: Store, c: Config) {
         'claimed_id',
         'identity',
       ].every((k) => signed.has(k)) ||
+      !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ[!-~]{0,235}$/.test(responseNonce) ||
       !Number.isFinite(nonce) ||
-      Math.abs(Date.now() - nonce) > 600000
+      new Date(nonce).toISOString().replace('.000Z', 'Z') !== timestamp ||
+      Math.abs(Date.now() - nonce) >= steamStateLifetime * 1000 ||
+      db.one('SELECT 1 FROM steam_nonces WHERE nonce_hash=? AND expires_at>?', nonceHash, now())
     )
       throw new HttpError(400, 'Steam returned an invalid identity.');
     const verification = new URLSearchParams(
@@ -195,22 +239,43 @@ export async function authRoutes(app: FastifyInstance, db: Store, c: Config) {
     );
     verification.set('openid.mode', 'check_authentication');
     try {
-      const result = await fetch('https://steamcommunity.com/openid/login', {
+      const result = await fetch(steamEndpoint, {
         method: 'POST',
         body: verification,
         signal: AbortSignal.timeout(15000),
         redirect: 'error',
       });
-      if (
-        !result.ok ||
-        !(await readUpstreamText(result, 16384)).split(/\r?\n/).includes('is_valid:true')
-      )
+      if (!result.ok) {
+        await result.body?.cancel();
+        throw new Error();
+      }
+      const fields = new Map<string, string>();
+      for (const line of (await readUpstreamText(result, 16384)).split(/\r?\n/)) {
+        if (!line) continue;
+        const colon = line.indexOf(':');
+        const key = line.slice(0, colon);
+        if (colon < 1 || fields.has(key)) throw new Error();
+        fields.set(key, line.slice(colon + 1));
+      }
+      if (fields.get('ns') !== steamNamespace || fields.get('is_valid') !== 'true')
         throw new Error();
     } catch {
       throw new HttpError(400, 'Steam could not verify this sign-in. Try again.');
     }
-    const subject = claimed.split('/').at(-1)!;
     const uid = db.transaction(() => {
+      checkSession();
+      if (!db.flag(c, 'steam_enabled')) throw new HttpError(403, 'Steam sign-in is disabled.');
+      if (stored.expires_at <= now() || Math.abs(Date.now() - nonce) >= steamStateLifetime * 1000)
+        throw new HttpError(400, 'Sign-in expired. Start again.');
+      db.run('DELETE FROM steam_nonces WHERE expires_at<=?', now());
+      if (
+        !db.run(
+          'INSERT OR IGNORE INTO steam_nonces VALUES(?,?)',
+          nonceHash,
+          nonce / 1000 + steamStateLifetime,
+        ).changes
+      )
+        throw new HttpError(400, 'Steam returned an invalid identity.');
       const identity = db.one(
         "SELECT user_id FROM identities WHERE provider='steam' AND subject=?",
         subject,
@@ -238,13 +303,6 @@ export async function authRoutes(app: FastifyInstance, db: Store, c: Config) {
       return id as string;
     });
     newSession(db, c, r, reply, uid);
-    const stateCookie = steamStateCookie(c);
-    reply.clearCookie(stateCookie.name, {
-      path: stateCookie.path,
-      secure: c.cookieSecure,
-      httpOnly: true,
-      sameSite: 'lax',
-    });
     db.audit(uid, 'steam.authenticated');
     return reply.redirect(safeReturnPath(stored.return_to), 303);
   });

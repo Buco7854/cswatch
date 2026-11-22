@@ -36,6 +36,10 @@ services:
     command: [node, dist/worker.js]
     environment:
       WORKER_ROLE: parse
+      STEAM_API_KEY: ''
+      STEAM_SYNC_KEY_FILE: ''
+      FACEIT_API_KEY: ''
+      FACEIT_DOWNLOAD_TOKEN: ''
     network_mode: none
     mem_limit: 5g
     cpus: 2
@@ -48,6 +52,10 @@ services:
     command: [node, dist/worker.js]
     environment:
       WORKER_ROLE: transcription
+      STEAM_API_KEY: ''
+      STEAM_SYNC_KEY_FILE: ''
+      FACEIT_API_KEY: ''
+      FACEIT_DOWNLOAD_TOKEN: ''
     network_mode: none
     mem_limit: 4g
     cpus: 2

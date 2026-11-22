@@ -1,62 +1,106 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { isIP } from 'node:net';
 import { join } from 'node:path';
 import type { Store } from './db.js';
 import type { Config } from './config.js';
-import { currentUser, HttpError, requireUser, rateLimit, type SessionUser } from './security.js';
+import {
+  currentUser,
+  digest,
+  HttpError,
+  requireUser,
+  rateLimit,
+  type SessionUser,
+} from './security.js';
 import { abandon, reserve, validateMagic } from './ingestion.js';
 import { downloadRemoteDemo, validateRemoteUrl } from './remote-download.js';
-import { readUpstreamJson } from './upstream.js';
-async function faceit(c: Config, path: string, params: Record<string, string> = {}) {
-  if (!c.faceitApiKey)
-    throw new HttpError(503, 'The administrator must configure a FACEIT Data API key.');
-  try {
-    const response = await fetch(
-      'https://open.faceit.com/data/v4/' + path + '?' + new URLSearchParams(params),
-      {
-        headers: { Authorization: 'Bearer ' + c.faceitApiKey },
-        signal: AbortSignal.timeout(20000),
-        redirect: 'error',
-      },
-    );
-    if (!response.ok) throw new Error();
-    return await readUpstreamJson(response);
-  } catch {
-    throw new HttpError(
-      502,
-      'FACEIT could not complete this request. Check the profile, match ID, and API access.',
-    );
-  }
-}
-
+import { readUpstreamJson, requestJson } from './upstream.js';
+const faceitId = z.string().regex(/^[A-Za-z0-9_-]{1,128}$/);
 const faceitProfile = z.object({
-  player_id: z.string().uuid(),
-  nickname: z.string().min(1).max(256),
+  player_id: faceitId,
   games: z.object({ cs2: z.object({ game_player_id: z.string().regex(/^\d{17}$/) }) }),
 });
-// URLs are accepted exclusively from FACEIT's authenticated API, never from users.
-async function validateDownload(url: string) {
-  const u = new URL(url),
-    host = u.hostname;
-  if (
-    u.protocol !== 'https:' ||
-    (u.port && u.port !== '443') ||
-    u.username ||
-    u.password ||
-    isIP(host) ||
-    !(
-      host === 'demos.faceit.com' ||
-      host.endsWith('.amazonaws.com') ||
-      host.endsWith('.cloudfront.net')
+const faceitHistory = z.object({
+  items: z
+    .array(
+      z.object({
+        match_id: faceitId,
+        finished_at: z.number().int().min(0).max(8_640_000_000_000).nullish(),
+        competition_name: z.string().max(256).nullish(),
+        teams: z.record(z.string(), z.object({ nickname: z.string().max(256) })).nullish(),
+      }),
     )
-  )
-    throw new HttpError(502, 'FACEIT returned an unsupported download host.');
-  // This is only the provider host policy. downloadRemoteDemo checks and pins DNS
-  // on the actual TLS request so a second resolution cannot rebind to the LAN.
-  return validateRemoteUrl(u.href, [host]);
+    .max(20),
+});
+const faceitMatch = z.object({
+  match_id: faceitId,
+  game: z.string(),
+  demo_url: z.array(z.string().max(4096)).max(16).nullish(),
+  teams: z
+    .record(
+      z.string(),
+      z.object({
+        roster: z.array(z.object({ player_id: z.string() })).nullish(),
+        substitutes: z
+          .array(z.object({ player_id: z.string(), playing: z.boolean().optional() }))
+          .nullish(),
+      }),
+    )
+    .nullish(),
+});
+const signedDemo = z.object({ payload: z.object({ download_url: z.string().max(4096) }) });
+// Resource URLs are forwarded only to the fixed signer. Signed GETs have their own exact host list.
+const faceitResourceHosts = ['demos.faceit.com'];
+const faceitDownloadHosts = [
+  'demos.faceit.com',
+  'demos-europe-central-faceit-cdn.s3.eu-central-003.backblazeb2.com',
+];
+
+async function faceit(
+  c: Config,
+  path: string,
+  missing: string,
+  params: Record<string, string> = {},
+) {
+  if (!c.faceitApiKey)
+    throw new HttpError(503, 'The administrator must configure a FACEIT Data API key.');
+  return requestJson(
+    'https://open.faceit.com/data/v4/' + path + '?' + new URLSearchParams(params),
+    {
+      headers: { Authorization: 'Bearer ' + c.faceitApiKey },
+      signal: AbortSignal.timeout(20000),
+    },
+    'FACEIT returned an invalid response. Try again later.',
+    async (response) => {
+      switch (response.status) {
+        case 200:
+          return readUpstreamJson(response);
+        case 401:
+        case 403:
+          throw new HttpError(
+            502,
+            'FACEIT denied Data API access. Ask the administrator to check the key and permissions.',
+          );
+        case 404:
+          throw new HttpError(404, missing);
+        case 429:
+          throw new HttpError(429, 'FACEIT is rate limiting requests. Try again later.');
+        case 503:
+          throw new HttpError(503, 'FACEIT is temporarily unavailable. Try again later.');
+        default:
+          throw new HttpError(502, 'FACEIT could not complete the request. Try again later.');
+      }
+    },
+  );
 }
-export async function providerRoutes(app: FastifyInstance, db: Store, c: Config) {
+
+export async function providerRoutes(
+  app: FastifyInstance,
+  db: Store,
+  c: Config,
+  download = downloadRemoteDemo,
+) {
+  const resourceHosts = [...faceitResourceHosts, ...c.faceitResourceHosts];
+  const downloadHosts = [...faceitDownloadHosts, ...c.faceitSignedDownloadHosts];
   const enabled = () => {
     if (!db.flag(c, 'faceit_enabled')) throw new HttpError(403, 'FACEIT integration is disabled.');
   };
@@ -65,6 +109,14 @@ export async function providerRoutes(app: FastifyInstance, db: Store, c: Config)
     if (!live || live.id !== captured.id || live.csrf !== captured.csrf)
       throw new HttpError(401, 'Session expired. Refresh the page and try again.');
     enabled();
+  }
+  function linkedFaceit(userId: string) {
+    return db.one("SELECT subject FROM identities WHERE user_id=? AND provider='faceit'", userId);
+  }
+  function revalidateFaceit(request: FastifyRequest, user: SessionUser, subject: string) {
+    revalidate(request, user);
+    if (linkedFaceit(user.id)?.subject !== subject)
+      throw new HttpError(409, 'The FACEIT connection changed. Try again.');
   }
   app.post('/api/connections/faceit/link', async (r) => {
     const u = requireUser(r);
@@ -75,11 +127,19 @@ export async function providerRoutes(app: FastifyInstance, db: Store, c: Config)
       u.id,
     );
     if (!steam) throw new HttpError(400, 'Link Steam first to verify your FACEIT account.');
-    const result = await faceit(c, 'players', { game: 'cs2', game_player_id: steam.subject });
+    const result = await faceit(
+      c,
+      'players',
+      'No FACEIT CS2 profile was found for this Steam account.',
+      {
+        game: 'cs2',
+        game_player_id: steam.subject,
+      },
+    );
     const profile = faceitProfile.safeParse(result);
     if (!profile.success || profile.data.games.cs2.game_player_id !== steam.subject)
       throw new HttpError(400, 'FACEIT did not confirm a matching Steam account.');
-    const { player_id: subject, nickname } = profile.data;
+    const subject = profile.data.player_id;
     db.transaction(() => {
       revalidate(r, u);
       if (
@@ -100,121 +160,195 @@ export async function providerRoutes(app: FastifyInstance, db: Store, c: Config)
       );
     });
     db.audit(u.id, 'faceit.linked');
-    return { nickname, subject };
+    return { subject };
   });
   app.get('/api/connections/faceit/matches', async (r) => {
     const u = requireUser(r);
     enabled();
     rateLimit(db, r, 'faceit-history', 20, 900, u.id);
-    const identity = db.one(
-      "SELECT subject FROM identities WHERE user_id=? AND provider='faceit'",
-      u.id,
-    );
+    const identity = linkedFaceit(u.id);
     if (!identity) throw new HttpError(400, 'Link your FACEIT account first.');
-    return faceit(c, `players/${identity.subject}/history`, { game: 'cs2', limit: '20' });
+    const { offset, to } = z
+      .object({
+        offset: z.coerce.number().int().min(0).max(1000).default(0),
+        to: z.coerce
+          .number()
+          .int()
+          .min(1)
+          .max(Math.floor(Date.now() / 1000))
+          .optional(),
+      })
+      .parse(r.query);
+    const through = to ?? Math.floor(Date.now() / 1000);
+    const history = await faceit(
+      c,
+      `players/${identity.subject}/history`,
+      'FACEIT could not find the linked player.',
+      {
+        game: 'cs2',
+        limit: '20',
+        offset: String(offset),
+        from: String(Math.max(0, through - 30 * 86400)),
+        to: String(through),
+      },
+    );
+    const parsed = faceitHistory.safeParse(history);
+    if (!parsed.success)
+      throw new HttpError(502, 'FACEIT returned an invalid response. Try again later.');
+    revalidateFaceit(r, u, identity.subject);
+    return {
+      items: parsed.data.items,
+      next_offset: parsed.data.items.length === 20 && offset + 20 <= 1000 ? offset + 20 : null,
+      to: through,
+    };
+  });
+  async function matchDemos(r: FastifyRequest, u: SessionUser, matchId: string) {
+    const identity = linkedFaceit(u.id);
+    if (!identity) throw new HttpError(400, 'Link your FACEIT account first.');
+    const match = faceitMatch.safeParse(
+      await faceit(c, 'matches/' + matchId, 'FACEIT could not find this match.'),
+    );
+    if (!match.success || match.data.match_id !== matchId)
+      throw new HttpError(502, 'FACEIT returned an invalid response. Try again later.');
+    if (match.data.game !== 'cs2')
+      throw new HttpError(400, 'Only FACEIT CS2 matches can be imported.');
+    const participant = Object.values(match.data.teams ?? {}).some(
+      (team) =>
+        team.roster?.some((player) => player.player_id === identity.subject) ||
+        team.substitutes?.some((player) => player.playing && player.player_id === identity.subject),
+    );
+    if (!participant)
+      throw new HttpError(403, 'FACEIT could not confirm you played in this match.');
+    revalidateFaceit(r, u, identity.subject);
+    const resources = match.data.demo_url ?? [];
+    if (!resources.length)
+      throw new HttpError(404, 'FACEIT has no demo for this match. It may be pending or expired.');
+    const files = new Map<string, { id: string; file: number; resource: string; suffix: string }>();
+    for (const [index, resource] of resources.entries()) {
+      const url = validateRemoteUrl(resource, resourceHosts);
+      const extension = /\.dem(\.gz|\.zst)?$/i.exec(url.pathname);
+      if (!extension || url.search)
+        throw new HttpError(502, 'FACEIT returned an unsupported demo format.');
+      const id = digest(url.origin + url.pathname);
+      if (!files.has(id))
+        files.set(id, {
+          id,
+          file: index + 1,
+          resource,
+          suffix: extension[1]?.toLowerCase() || '.dem',
+        });
+    }
+    return { files, subject: identity.subject };
+  }
+  app.get('/api/connections/faceit/match-demos', async (r) => {
+    const u = requireUser(r);
+    enabled();
+    rateLimit(db, r, 'faceit-details', 30, 900, u.id);
+    const { match_id } = z.object({ match_id: faceitId }).parse(r.query);
+    const { files } = await matchDemos(r, u, match_id);
+    return {
+      files: [...files.values()].map(({ id, file }) => ({
+        id,
+        file,
+        demo_id:
+          db.one(
+            'SELECT id FROM demos WHERE owner_id=? AND source_ref=? AND status!=?',
+            u.id,
+            'faceit:' + id,
+            'uploading',
+          )?.id ?? null,
+      })),
+    };
   });
   app.post('/api/connections/faceit/import', async (r, reply) => {
     const u = requireUser(r);
     enabled();
-    rateLimit(db, r, 'faceit-import', 5, 3600, u.id);
-    const { match_id } = z
-      .object({ match_id: z.string().regex(/^1-[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i) })
+    rateLimit(db, r, 'faceit-import', 10, 3600, u.id);
+    const { match_id, resource_id } = z
+      .object({
+        match_id: faceitId,
+        resource_id: z
+          .string()
+          .regex(/^[a-f0-9]{64}$/)
+          .optional(),
+      })
+      .strict()
       .parse(r.body);
+    if (!linkedFaceit(u.id)) throw new HttpError(400, 'Link your FACEIT account first.');
     if (!c.faceitDownloadToken)
       throw new HttpError(
         503,
         'Automatic downloads require an approved FACEIT Downloads API token. Upload the demo manually instead.',
       );
-    const match = await faceit(c, 'matches/' + match_id);
-    const resource = z.string().url().safeParse(match?.demo_url?.[0]);
-    if (!resource.success) throw new HttpError(404, 'FACEIT has no demo for this match yet.');
-    validateRemoteUrl(resource.data, ['demos.faceit.com']);
-    revalidate(r, u);
-    const { id, folder } = reserve(db, c, u.id, 'FACEIT ' + match_id, 'faceit', match_id);
+    const { files, subject } = await matchDemos(r, u, match_id);
+    const selected = resource_id
+      ? files.get(resource_id)
+      : files.size === 1
+        ? files.values().next().value
+        : undefined;
+    if (!selected) throw new HttpError(409, 'Select a demo file from the current FACEIT match.');
+    const { resource, suffix } = selected;
+    const { id, folder } = reserve(
+      db,
+      c,
+      u.id,
+      'FACEIT ' + match_id + ' #' + selected.file,
+      'faceit',
+      match_id,
+      'faceit:' + selected.id,
+    );
     try {
       const signal = AbortSignal.timeout(180000);
-      const signed = await fetch('https://api.faceit.com/download/v2/demos/download', {
-        method: 'POST',
-        headers: {
-          Authorization: 'Bearer ' + c.faceitDownloadToken,
-          'Content-Type': 'application/json',
+      const url = await requestJson(
+        'https://api.faceit.com/download/v2/demos/download',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer ' + c.faceitDownloadToken,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ resource_url: resource }),
+          signal: AbortSignal.any([signal, AbortSignal.timeout(20000)]),
         },
-        body: JSON.stringify({ resource_url: resource.data }),
-        signal,
-        redirect: 'error',
-      });
-      if (!signed.ok) throw new Error();
-      const result = await readUpstreamJson(signed);
-      const url = await validateDownload(result.payload.download_url);
-      const suffix = new URL(resource.data).pathname.endsWith('.gz')
-        ? '.gz'
-        : new URL(resource.data).pathname.endsWith('.zst')
-          ? '.zst'
-          : '.dem';
-      const { bytes: size } = await downloadRemoteDemo(url.href, join(folder, 'input' + suffix), {
-        allowedHosts: [url.hostname],
+        'FACEIT could not sign the demo download. Try again or upload manually.',
+        async (response) => {
+          if (response.status === 401 || response.status === 403)
+            throw new HttpError(
+              502,
+              'FACEIT denied Downloads API access. Ask the administrator to check token approval.',
+            );
+          if (response.status === 429)
+            throw new HttpError(429, 'FACEIT is rate limiting requests. Try again later.');
+          if (!response.ok) throw new Error();
+          return signedDemo.parse(await readUpstreamJson(response)).payload.download_url;
+        },
+      );
+      revalidateFaceit(r, u, subject);
+      validateRemoteUrl(url, downloadHosts);
+      const { bytes: size } = await download(url, join(folder, 'input' + suffix), {
+        allowedHosts: downloadHosts,
         maxBytes: c.maxUploadMb * 1024 ** 2,
         signal,
       });
       validateMagic(join(folder, 'input' + suffix), suffix);
-      revalidate(r, u);
-      db.run("UPDATE demos SET status='queued',size=? WHERE id=?", size, id);
+      db.transaction(() => {
+        revalidateFaceit(r, u, subject);
+        if (
+          !db.run(
+            "UPDATE demos SET status='queued',size=? WHERE id=? AND owner_id=? AND status='uploading'",
+            size,
+            id,
+            u.id,
+          ).changes
+        )
+          throw new HttpError(409, 'The demo import could not be completed. Try again.');
+      });
       reply.code(202);
       return { id };
     } catch (e) {
       abandon(db, id);
       if (e instanceof HttpError) throw e;
-      throw new HttpError(
-        502,
-        'FACEIT download failed. Check Downloads API approval, or upload manually.',
-      );
-    }
-  });
-  app.post('/api/connections/steam/next-match', async (r) => {
-    const u = requireUser(r);
-    if (!db.flag(c, 'steam_enabled') || !c.steamApiKey)
-      throw new HttpError(
-        503,
-        'Steam match discovery requires an administrator-configured Steam Web API key.',
-      );
-    rateLimit(db, r, 'steam-history', 10, 900, u.id);
-    const b = z
-      .object({
-        auth_code: z.string().regex(/^[A-Za-z0-9-]{5,40}$/),
-        share_code: z.string().regex(/^CSGO(?:-[A-Za-z0-9]{5}){5}$/),
-      })
-      .parse(r.body);
-    const identity = db.one(
-      "SELECT subject FROM identities WHERE user_id=? AND provider='steam'",
-      u.id,
-    );
-    if (!identity) throw new HttpError(400, 'Link Steam first.');
-    try {
-      const response = await fetch(
-        'https://api.steampowered.com/ICSGOPlayers_730/GetNextMatchSharingCode/v1/?' +
-          new URLSearchParams({
-            key: c.steamApiKey,
-            steamid: identity.subject,
-            steamidkey: b.auth_code,
-            knowncode: b.share_code,
-          }),
-        { signal: AbortSignal.timeout(20000), redirect: 'error' },
-      );
-      if (!response.ok) throw new Error();
-      const result = await readUpstreamJson(response);
-      const code = result.result?.nextcode;
-      if (code && code !== 'n/a' && !/^CSGO(?:-[A-Za-z0-9]{5}){5}$/.test(code))
-        throw new Error('Invalid Steam share code');
-      return {
-        share_code: code && code !== 'n/a' ? code : null,
-        message:
-          'Open the match in CS2, download its demo, then upload the file. Steam sign-in does not grant demo download access.',
-      };
-    } catch {
-      throw new HttpError(
-        502,
-        'Steam discovery failed. Check your authentication and match sharing codes.',
-      );
+      throw new HttpError(502, 'FACEIT download failed. Try again or upload manually.');
     }
   });
 }

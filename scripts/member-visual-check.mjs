@@ -50,7 +50,7 @@ for (const [i, status] of ['ready', 'queued', 'processing', 'failed'].entries())
     900,
     10,
     status === 'failed'
-      ? 'Demo could not be parsed within the processing limits. It may be incomplete, unsupported, or too large.'
+      ? 'This file could not be read as a supported CS2 demo. Check that the download completed and try the original file.'
       : null,
   );
 const app = await createApp(config, db);

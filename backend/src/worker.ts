@@ -182,7 +182,7 @@ export function housekeeping(db: Store, c: Config) {
   } finally {
     handle.closeSync();
   }
-  for (const table of ['sessions', 'auth_states', 'rate_limits'])
+  for (const table of ['sessions', 'auth_states', 'steam_nonces', 'rate_limits'])
     db.run(`DELETE FROM ${table} WHERE expires_at<?`, now());
   db.run('DELETE FROM audit WHERE created_at<?', now() - 90 * 86400);
 }

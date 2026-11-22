@@ -10,7 +10,7 @@ cswatch is a public-capable, self-hostable review product with private-by-defaul
 
 - TypeScript throughout; React/Three in-browser rendering, native parser in isolated CPU workers. No server GPU requirement.
 - S2V offline asset preparation; no bundled proprietary game content or claim of exact Source 2 parity.
-- Upload `.dem` / `.dem.zst`; Steam login/linking; verified linked FACEIT source. Future identity providers must fit the account model.
+- Upload `.dem` / `.dem.zst`; Steam login/linking; Steam-verified FACEIT match history and imports.
 - Public by default, configurable private instance; independent registrations setting; environment locks override admin UI.
 - Desktop, mobile/touch, TV/keyboard/remote; low-power/2D fallback; English/French; dark/light.
 - Docker without a bundled reverse proxy, durable storage/queue, bounded untrusted parsing, weekly image rebuild and dependency maintenance.
@@ -40,7 +40,7 @@ The current user direction uses the Refrag references for compact utility naviga
 
 The viewer must occupy the **whole browser tab**. Render the match in a dedicated viewport with the playback/round dock inside it. Players, events, notes and advanced settings open over the scene. Browser fullscreen is additional, not the only way to get a full-sized viewer. No workspace sidebar or page footer should consume the viewing area. Test both portrait and landscape, as well as TV-sized viewports.
 
-Sign-in and registration use dedicated themed pages, with one teal submit action and safe return intent. Do not restore the rejected giant green authentication modal. Use small monochrome Steam/FACEIT icons beside normal localized labels, with shared component sizing and separate source/trademark notices. The full Steam OpenID sign-in banner and FACEIT raster logo tiles were explicitly rejected. FACEIT remains a data source, not a sign-in provider.
+Sign-in and registration use dedicated themed pages, with one teal submit action and safe return intent. Do not restore the rejected giant green authentication modal. Use small monochrome Steam/FACEIT icons beside normal localized labels, with shared component sizing and separate source/trademark notices. The full Steam OpenID sign-in banner and FACEIT raster logo tiles were explicitly rejected. FACEIT appears in Connected accounts for match history and imports.
 
 Account settings and connected services belong in the user dropdown and account tabs. Keep the sidebar for match work. Communications, inputs and economy start disabled; the viewer's primary controls remain usable without enabling advanced overlays. Round events stay discoverable on phones, while the expanded round strip starts collapsed on narrow/short screens.
 

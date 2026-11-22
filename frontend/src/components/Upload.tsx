@@ -6,7 +6,13 @@ import { api, uploadFile } from '../api';
 import { useApp } from '../context';
 import './upload.css';
 
-export default function Upload({ compact = false }: { compact?: boolean }) {
+export default function Upload({
+  compact = false,
+  steamMatch,
+}: {
+  compact?: boolean;
+  steamMatch?: string;
+}) {
   const { config, user, signIn, refresh } = useApp();
   const nav = useNavigate();
   const input = useRef<HTMLInputElement>(null);
@@ -72,6 +78,7 @@ export default function Upload({ compact = false }: { compact?: boolean }) {
         },
         controller.signal,
         session?.csrf,
+        steamMatch,
       );
       if (controller.signal.aborted || !mounted.current) return;
       // The guest cookie already exists. Update the app's CSRF with the current
@@ -98,6 +105,7 @@ export default function Upload({ compact = false }: { compact?: boolean }) {
       aria-label={compact ? t('Choose a CS2 demo') : undefined}
     >
       {!compact && <h2 id="upload-title">{t('Upload a demo')}</h2>}
+      {steamMatch && <p>{t('Steam match {{v0}}', { v0: steamMatch })}</p>}
       <div
         className={'demo-drop-target' + (drag ? ' is-dragging' : '')}
         onDragOver={(event) => {

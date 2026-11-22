@@ -3,7 +3,13 @@ import { X } from 'lucide-react';
 import { t } from '../i18n';
 import DemoConnectionsLink from './DemoConnectionsLink';
 import Upload from './Upload';
-export default function UploadDialog({ close }: { close: () => void }) {
+export default function UploadDialog({
+  close,
+  steamMatch,
+}: {
+  close: () => void;
+  steamMatch?: string;
+}) {
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     dialog.current?.showModal();
@@ -23,7 +29,7 @@ export default function UploadDialog({ close }: { close: () => void }) {
           <X size={20} />
         </button>
       </div>
-      <Upload />
+      <Upload steamMatch={steamMatch} />
       <DemoConnectionsLink />
     </dialog>
   );

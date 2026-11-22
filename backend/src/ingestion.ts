@@ -12,10 +12,17 @@ export function reserve(
   name: string,
   source: string,
   matchId: string | null = null,
+  sourceRef: string | null = null,
 ) {
   const id = token().slice(0, 32),
     size = c.maxUploadMb * 1024 ** 2;
   db.transaction(() => {
+    if (
+      sourceRef &&
+      db.one('SELECT id FROM demos WHERE owner_id=? AND source_ref=?', owner, sourceRef)
+    )
+      throw new HttpError(409, 'This FACEIT demo has already been added.');
+
     const u = db.one(
       'SELECT count(*) AS n,coalesce(sum(size),0) AS size FROM demos WHERE owner_id=?',
       owner,
@@ -29,7 +36,7 @@ export function reserve(
     if (total.size + size > c.globalStorageMb * 1024 ** 2)
       throw new HttpError(503, 'Demo storage is full. Contact the administrator.');
     db.run(
-      'INSERT INTO demos(id,owner_id,name,source,status,size,created_at,faceit_match_id) VALUES(?,?,?,?,?,?,?,?)',
+      'INSERT INTO demos(id,owner_id,name,source,status,size,created_at,faceit_match_id,source_ref) VALUES(?,?,?,?,?,?,?,?,?)',
       id,
       owner,
       name,
@@ -38,6 +45,7 @@ export function reserve(
       size,
       now(),
       matchId,
+      sourceRef,
     );
   });
   const folder = join(db.root, 'demos', id);

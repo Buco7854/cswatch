@@ -225,6 +225,9 @@ test('private entry gates feature and demo routes and respects registrations pol
   expect(notice.headers()['content-type']).toContain('text/plain');
   expect(await notice.text()).toContain('©2026 Valve Corporation.');
   expect((await request.get('/api/demos?scope=public')).status()).toBe(401);
+  expect((await request.get('/api/connections/steam/matches')).status()).toBe(401);
+  expect((await request.get('/api/connections/faceit/matches')).status()).toBe(401);
+  expect((await request.post('/api/auth/steam/link')).status()).toBe(401);
   expect((await request.get('/api/maps/de_mirage')).status()).toBe(401);
   expect((await request.get('/map-assets/de_mirage/desktop/scene.glb')).status()).toBe(401);
   for (const path of [

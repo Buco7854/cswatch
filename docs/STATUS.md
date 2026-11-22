@@ -2,8 +2,9 @@
 
 ## Access and replay
 
-- Public mode offers guest upload and a private temporary viewing capability. Members manage their own demo library, sharing and private notes. Private mode gates viewers and assets independently. Sign-in supports local accounts and configured Steam identity. Approved provider imports and optional French and English local speech transcription are available.
+- Public mode offers guest upload and a private temporary viewing capability. Members manage their own demo library, sharing and private notes. Private mode gates viewers and assets independently. Sign-in supports local accounts and configured Steam identity. Optional French and English local speech transcription is available.
 - The version 3 transport serves authorized manifests and bounded chunks. Timeline indexes are global, with a three-chunk browser cache and prefetch. Parser and speech work run in networkless Linux sandboxes. Unknown game fields stay unavailable.
+- Members can link Steam, sync match share codes with their own game authentication code, open each match in CS2 and pair its recording with a private upload. FACEIT lists the CS2 matches of the linked Steam ID and imports approved recordings per map. Each provider is off until its operator key is configured. Live provider flows still need credentialed verification. [Provider setup](ACCESS-SETUP.md#steam-and-faceit)
 - SQLite is initialized in an empty data directory. Startup checks the current schema and refuses incompatible data stores. Keep existing data and operator-managed assets under operator control.
 
 ## Viewer

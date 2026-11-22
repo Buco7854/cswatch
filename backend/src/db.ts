@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import type { Config, Flag } from './config.js';
 import { flagDefaults } from './config.js';
 export type Row = Record<string, any>;
-export const databaseVersion = 6;
+export const databaseVersion = 7;
 export class DatabaseVersionError extends Error {
   constructor() {
     super('Unsupported database schema. Start cswatch with an empty data directory.');
@@ -73,9 +73,14 @@ export class Store {
   CREATE TABLE guest_sessions(owner_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,token_hash TEXT UNIQUE NOT NULL,csrf TEXT NOT NULL,expires_at INTEGER NOT NULL);
   CREATE INDEX guest_sessions_expiry ON guest_sessions(expires_at);
   CREATE TABLE instance_setup(id INTEGER PRIMARY KEY CHECK(id=1),token_hash TEXT NOT NULL);
-  CREATE TABLE auth_states(token_hash TEXT PRIMARY KEY,user_id TEXT REFERENCES users(id) ON DELETE CASCADE,expires_at INTEGER NOT NULL,return_to TEXT NOT NULL DEFAULT '/library');
+  CREATE TABLE auth_states(token_hash TEXT PRIMARY KEY,user_id TEXT REFERENCES users(id) ON DELETE CASCADE,session_hash TEXT,expires_at INTEGER NOT NULL,return_to TEXT NOT NULL DEFAULT '/library');
+  CREATE TABLE steam_nonces(nonce_hash TEXT PRIMARY KEY,expires_at INTEGER NOT NULL);
+  CREATE TABLE steam_history(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,steam_id TEXT NOT NULL,encrypted_code BLOB NOT NULL,cursor TEXT NOT NULL,generation TEXT NOT NULL,needs_codes INTEGER NOT NULL DEFAULT 0);
+  CREATE TABLE steam_matches(seq INTEGER PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,match_id TEXT NOT NULL,code TEXT NOT NULL,UNIQUE(user_id,match_id),UNIQUE(user_id,code));
+  CREATE INDEX steam_matches_user_seq ON steam_matches(user_id,seq);
   CREATE TABLE demos(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,name TEXT NOT NULL,source TEXT NOT NULL,status TEXT NOT NULL,size INTEGER NOT NULL,created_at INTEGER NOT NULL,started_at INTEGER,public INTEGER NOT NULL DEFAULT 0,map TEXT,duration REAL,rounds INTEGER,error TEXT,metadata TEXT,faceit_match_id TEXT,source_ref TEXT,transcription_status TEXT NOT NULL DEFAULT 'disabled',transcription_started_at INTEGER,transcription_job_id TEXT,transcription_bytes INTEGER NOT NULL DEFAULT 0,transcription_artifact TEXT);
   CREATE INDEX demos_transcription_queue ON demos(transcription_status,created_at);
+  CREATE INDEX demos_owner_source ON demos(owner_id,source_ref);
   CREATE INDEX demos_queue ON demos(status,created_at);
   CREATE TABLE bookmarks(id TEXT PRIMARY KEY,demo_id TEXT NOT NULL REFERENCES demos(id) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,tick INTEGER NOT NULL,label TEXT NOT NULL);
   CREATE TABLE settings(key TEXT PRIMARY KEY,value INTEGER NOT NULL);

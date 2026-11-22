@@ -35,8 +35,19 @@ test('a FACEIT import resolving after leaving connections keeps the current page
       },
     }),
   );
+  await page.route('**/api/connections/faceit/match-demos?*', (route) =>
+    route.fulfill({
+      json: {
+        files: [
+          { id: 'a'.repeat(64), file: 1, demo_id: null },
+          { id: 'b'.repeat(64), file: 2, demo_id: null },
+        ],
+      },
+    }),
+  );
   const wait = Promise.withResolvers<void>();
   await page.route('**/api/connections/faceit/import', async (route) => {
+    expect(route.request().postDataJSON().resource_id).toBe('b'.repeat(64));
     await wait.promise;
     await route.fulfill({ status: 202, json: { id: 'late-faceit-import' } });
   });
@@ -48,8 +59,10 @@ test('a FACEIT import resolving after leaving connections keeps the current page
   await page
     .getByLabel('FACEIT match ID or match room URL')
     .fill('1-d999aa66-f0df-41ba-857f-50de9f9b7af8');
-  await page.getByRole('button', { name: 'Import match', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Working…', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'Find demo files', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Import demo file 1' })).toBeEnabled();
+  await page.getByRole('button', { name: 'Import demo file 2' }).click();
+  await expect(page.getByRole('button', { name: 'Working…', exact: true }).last()).toBeDisabled();
   await page.getByRole('link', { name: 'cswatch home', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Demo library', exact: true })).toBeVisible();
   const response = page.waitForResponse('**/api/connections/faceit/import');
@@ -143,11 +156,8 @@ for (const profile of profiles) {
       const heading = page.getByRole('heading', { name: provider, exact: true });
       await compactIcon(heading.locator('svg'), heading);
     }
-    const steamLink = page.locator('a.provider-steam-link');
-    await expect(steamLink).toHaveAttribute(
-      'href',
-      '/api/auth/steam?returnTo=%2Faccount%2Fconnections',
-    );
+    const steamLink = page.locator('button.provider-steam-link');
+    await expect(steamLink).toBeEnabled();
     await expect(steamLink).toHaveText(
       connected
         ? profile.language === 'fr'
@@ -169,6 +179,28 @@ for (const profile of profiles) {
     const notice = await (await page.request.get('/licenses/provider-brands.txt')).text();
     expect(notice).toContain('CC0-1.0');
     expect(notice).toContain('©2026 Valve Corporation.');
+    if (connected) {
+      await page.route('**/api/connections/steam/matches?*', (route) =>
+        route.fulfill({
+          json: { configured: false, retry_at: 0, next_offset: null, items: [] },
+        }),
+      );
+      await page
+        .locator('summary')
+        .filter({
+          hasText:
+            profile.language === 'fr' ? 'Synchronisation des matchs Steam' : 'Steam match sync',
+        })
+        .click();
+      await expect(
+        page.getByText(
+          profile.language === 'fr'
+            ? 'L’administration doit configurer la synchronisation des matchs Steam.'
+            : 'The administrator must configure Steam match sync.',
+          { exact: true },
+        ),
+      ).toBeVisible();
+    }
     await capture('connections');
     expect(images.every((url) => new URL(url).origin === new URL(page.url()).origin)).toBe(true);
     expect(images.some((url) => /steam-openid|faceit-on-(light|dark)/.test(url))).toBe(false);
@@ -176,3 +208,145 @@ for (const profile of profiles) {
     expect(errors).toEqual([]);
   });
 }
+
+test('sign-in and connections expose only configured actions and link Steam with a same-origin POST', async ({
+  page,
+}) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE) || Boolean(process.env.E2E_SETUP));
+  await installMemberWorkspace(page);
+  await page.route('**/api/config', (route) =>
+    route.fulfill({ json: { ...memberConfig, steam_enabled: false } }),
+  );
+  await page.route('**/api/auth/me', (route) => route.fulfill({ json: { user: null } }));
+  await page.goto('/login?steam=cancelled&returnTo=%2Faccount%2Fconnections');
+  await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
+  await expect(page.getByText('Steam sign-in was cancelled. Start again.')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Continue with Steam' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: /FACEIT/ })).toHaveCount(0);
+  await page.route('**/api/config', (route) => route.fulfill({ json: memberConfig }));
+  await page.route('**/api/auth/me', (route) =>
+    route.fulfill({ json: { user: { ...memberUser, identities: [] } } }),
+  );
+  await page.route('**/api/auth/steam/link', (route) => {
+    expect(route.request().method()).toBe('POST');
+    expect(route.request().headers()['x-csrf-token']).toBe(memberUser.csrf);
+    return route.fulfill({ status: 403, json: { detail: 'Steam sign-in is disabled.' } });
+  });
+  await page.goto('/account/connections');
+  await page.getByRole('button', { name: 'Connect Steam', exact: true }).focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('alert')).toHaveText('Steam sign-in is disabled.');
+  await expect(page.getByRole('button', { name: 'Verify FACEIT' })).toBeDisabled();
+});
+
+test('Steam sync displays discovered matches and opens a pre-identified upload', async ({
+  page,
+}) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE) || Boolean(process.env.E2E_SETUP));
+  await installMemberWorkspace(page);
+  await page.route('**/api/config', (route) =>
+    route.fulfill({ json: { ...memberConfig, steam_discovery: true } }),
+  );
+  const match = '3230642215713767580';
+  const code = 'CSGO-GADqf-jjyJ8-cSP2r-smZRo-TO2xK';
+  let saved = false;
+  await page.route('**/api/connections/steam/matches?*', (route) =>
+    route.fulfill({
+      json: {
+        configured: saved,
+        retry_at: 0,
+        next_offset: null,
+        items: saved
+          ? [
+              { match_id: match, share_code: code, demo_id: null },
+              { match_id: '1234', share_code: code, demo_id: 'member-design-0' },
+            ]
+          : [],
+      },
+    }),
+  );
+  await page.route('**/api/connections/steam/history', (route) => {
+    expect(route.request().method()).toBe('PUT');
+    expect(route.request().postDataJSON()).toEqual({
+      auth_code: 'ABCD-EFGHI-JKLM',
+      share_code: code,
+    });
+    saved = true;
+    return route.fulfill({ json: { up_to_date: true } });
+  });
+  await page.route('**/api/connections/steam/history/sync', (route) =>
+    route.fulfill({
+      status: 429,
+      json: { detail: 'Steam is rate limiting requests. Try again later.' },
+    }),
+  );
+  await page.goto('/account/connections');
+  await page.getByText('Steam match sync', { exact: true }).click();
+  await page.getByLabel('Game authentication code').fill('ABCD-EFGHI-JKLM');
+  await page
+    .getByLabel('Starting match sharing code')
+    .fill('steam://rungame/730/76561202255233023/+csgo_download_match%20' + code);
+  await page.getByRole('button', { name: 'Verify and save codes' }).click();
+  await expect(page.getByText('Steam match codes verified.')).toBeVisible();
+  await expect(page.getByLabel('Game authentication code')).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Download in CS2' }).first()).toHaveAttribute(
+    'href',
+    /steam:\/\/rungame\/730\/.*\+csgo_download_match/,
+  );
+  await expect(page.getByRole('link', { name: 'Open uploaded demo' })).toHaveAttribute(
+    'href',
+    '/watch/member-design-0',
+  );
+  await page.getByRole('button', { name: 'Sync Steam matches' }).click();
+  await expect(page.getByRole('alert')).toHaveText(
+    'Steam is rate limiting requests. Try again later.',
+  );
+  await page.getByRole('link', { name: 'Upload this demo' }).click();
+  await expect(page.getByRole('dialog').getByText('Steam match ' + match)).toBeVisible();
+});
+
+test('FACEIT history keeps a stable time window across pages', async ({ page }) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE) || Boolean(process.env.E2E_SETUP));
+  await installMemberWorkspace(page);
+  await page.route('**/api/config', (route) =>
+    route.fulfill({ json: { ...memberConfig, faceit_configured: true, faceit_downloads: true } }),
+  );
+  await page.route('**/api/auth/me', (route) =>
+    route.fulfill({
+      json: {
+        user: {
+          ...memberUser,
+          identities: [
+            ...memberUser.identities,
+            { provider: 'faceit', subject: 'd999aa66-f0df-41ba-857f-50de9f9b7af6' },
+          ],
+        },
+      },
+    }),
+  );
+  await page.route('**/api/connections/faceit/matches?*', (route) => {
+    const query = new URL(route.request().url()).searchParams;
+    const first = query.get('offset') === '0';
+    expect(query.get('to')).toBe(first && !query.has('to') ? null : '1700000000');
+    return route.fulfill({
+      json: {
+        items: [
+          {
+            match_id: first ? 'first-page' : 'second-page',
+            competition_name: first ? 'First result' : 'Second result',
+          },
+        ],
+        to: 1700000000,
+        next_offset: first ? 20 : null,
+      },
+    });
+  });
+  await page.goto('/account/connections');
+  await page.getByRole('button', { name: 'Recent matches', exact: true }).click();
+  await expect(page.getByText('First result')).toBeVisible();
+  await page.getByRole('button', { name: 'Next page' }).click();
+  await expect(page.getByText('Second result')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Next page' })).toBeDisabled();
+  await page.getByRole('button', { name: 'Previous page' }).click();
+  await expect(page.getByText('First result')).toBeVisible();
+});
