@@ -3,13 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { HalfFloatType, LinearFilter, Vector2, WebGLRenderTarget } from 'three';
 import { mapGradeFile } from '../../../shared/map-grade.mjs';
 import type { MapEnvironment } from '../../../shared/map-assets';
-import {
-  createGradeOutput,
-  loadGradeLut,
-  mapGradeLighting,
-  MapGradeContext,
-  type AuthoredGrade,
-} from '../map-grade';
+import { createGradeOutput, loadGradeLut, MapGradeContext, type AuthoredGrade } from '../map-grade';
 
 const attachmentBudget = 384 * 1024 ** 2;
 const attachmentBytesPerPixel = 12; // RGBA16F and DEPTH24_STENCIL8
@@ -80,6 +74,7 @@ function GradeFrames({
     output: ReturnType<typeof createGradeOutput>;
     size: Vector2;
     samples: number[];
+    discardAttachments: number[];
     maxEdge: number;
     tested: Vector2;
     usable: boolean;
@@ -91,18 +86,23 @@ function GradeFrames({
       minFilter: LinearFilter,
       magFilter: LinearFilter,
       stencilBuffer: true,
+      resolveDepthBuffer: false,
+      resolveStencilBuffer: false,
     });
     const context = gl.getContext() as WebGL2RenderingContext;
     const available = (format: number): number[] =>
       Array.from(context.getInternalformatParameter(context.RENDERBUFFER, format, context.SAMPLES));
-    const samples = [0];
-    if (!low && context.getContextAttributes()?.antialias) {
+    const samples: number[] = [];
+    if (low || context.getContextAttributes()?.antialias) {
       const depth = available(context.DEPTH24_STENCIL8);
-      const max = Math.min(4, context.getParameter(context.MAX_SAMPLES));
-      samples.unshift(
-        ...available(context.RGBA16F).filter((n) => n > 0 && n <= max && depth.includes(n)),
+      const max = Math.min(low ? Infinity : 4, context.getParameter(context.MAX_SAMPLES));
+      samples.push(
+        ...available(context.RGBA16F)
+          .filter((n) => n > 1 && n <= max && depth.includes(n))
+          .sort((a, b) => (low ? a - b : b - a)),
       );
     }
+    samples.push(0);
     const output = createGradeOutput();
     output.material.uniforms.sceneColor.value = target.texture;
     resources.current = {
@@ -110,6 +110,7 @@ function GradeFrames({
       output,
       size: new Vector2(),
       samples,
+      discardAttachments: [context.DEPTH_ATTACHMENT, context.STENCIL_ATTACHMENT],
       maxEdge: Math.min(
         gl.capabilities.maxTextureSize,
         context.getParameter(context.MAX_RENDERBUFFER_SIZE),
@@ -125,13 +126,9 @@ function GradeFrames({
     };
   }, [gl, low]);
   useLayoutEffect(() => {
-    const { target, output } = resources.current!;
+    const { output } = resources.current!;
     output.setGrade(authored);
-    if (authored?.grade.lighting) mapGradeLighting.set(target, authored.grade.lighting);
     invalidate();
-    return () => {
-      mapGradeLighting.delete(target);
-    };
   }, [authored, gl, invalidate, low]);
 
   useFrame(({ gl }) => {
@@ -178,6 +175,12 @@ function GradeFrames({
     const autoClear = gl.autoClear;
     try {
       if (manualWorld) gl.render(scene, camera);
+      // The world, sky and POV have finished. Keep the color resolve and let
+      // tiled GPUs discard the multisampled depth/stencil before unbinding.
+      if (frame.target.samples > 0) {
+        const context = gl.getContext() as WebGL2RenderingContext;
+        context.invalidateFramebuffer(context.DRAW_FRAMEBUFFER, frame.discardAttachments);
+      }
       gl.setRenderTarget(null);
       // The output triangle writes every pixel, including alpha.
       gl.autoClear = false;

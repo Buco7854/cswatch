@@ -36,7 +36,6 @@ import { compositeFragment, marchFragment, quadVertex } from './smoke-volume-sha
 
 import { cropSmokeCamera, SmokeDepthPass, type SmokeRect as Rect } from './smoke-depth';
 import { smokeNoise } from './smoke-noise';
-import { mapGradeLighting } from './map-grade';
 import type { FollowCamera } from './follow-camera';
 
 export type SmokeSunTrace = (
@@ -93,25 +92,6 @@ class Surface {
     this.mesh.name = 'smoke-volume';
     this.mesh.frustumCulled = false;
     this.mesh.raycast = () => {};
-    this.mesh.onBeforeRender = (renderer) => {
-      const target = renderer.getRenderTarget();
-      const lighting = target ? mapGradeLighting.get(target) : undefined;
-      const sun = lighting?.sun;
-      // Authored sun energy is in the map's scene-linear units. Use a bounded
-      // fraction of the added energy for neutral smoke's broad scattering.
-      const gain = sun
-        ? 1 +
-          0.35 *
-            Math.min(
-              2,
-              Math.max(0, sun[0] * 0.2126 + sun[1] * 0.7152 + sun[2] * 0.0722 - 1.8 / Math.PI),
-            )
-        : 1;
-      if (gain !== this.uniforms.sceneLightScale.value) {
-        this.uniforms.sceneLightScale.value = gain;
-        this.surfaceMaterial.uniformsNeedUpdate = true;
-      }
-    };
     this.mesh.visible = false;
     parent.add(this.mesh);
   }
@@ -272,6 +252,7 @@ export class SmokeVolumePass {
     sunColor: Color,
     low: boolean,
     xray: boolean,
+    sceneLightScale = 1,
   ) {
     this.hide();
     const keys = new Set(smoke.map(({ key }) => key));
@@ -351,7 +332,10 @@ export class SmokeVolumePass {
         if (!surface) return false;
         rendered.push(surface);
       }
-      for (const surface of rendered) surface.mesh.visible = true;
+      for (const surface of rendered) {
+        surface.uniforms.sceneLightScale.value = sceneLightScale;
+        surface.mesh.visible = true;
+      }
       return true;
     } finally {
       gl.setRenderTarget(oldTarget);

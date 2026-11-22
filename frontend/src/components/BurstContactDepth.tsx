@@ -17,7 +17,6 @@ import {
 
 export type ContactDepthUniforms = {
   contactDepth: { value: DepthTexture | null };
-  contactViewport: { value: Vector2 };
   contactDepthReady: { value: boolean };
 };
 
@@ -44,7 +43,7 @@ export default function BurstContactDepth({
       magFilter: NearestFilter,
       stencilBuffer: false,
     });
-    return { material, target, scene: new Scene() };
+    return { material, target, scene: new Scene(), size: new Vector2() };
   }, []);
   useLayoutEffect(() => {
     if (!warm) return;
@@ -104,8 +103,8 @@ export default function BurstContactDepth({
     const uniforms = material.uniforms as ContactDepthUniforms;
     uniforms.contactDepthReady.value = false;
     if (!mesh?.parent) return;
-    const { target, scene } = resources;
-    const size = gl.getDrawingBufferSize(uniforms.contactViewport.value);
+    const { target, scene, size } = resources;
+    gl.getDrawingBufferSize(size);
     const scale = Math.min(0.85, 1536 / Math.max(size.x, size.y));
     const width = Math.max(1, Math.round(size.x * scale));
     const height = Math.max(1, Math.round(size.y * scale));

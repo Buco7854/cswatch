@@ -12,7 +12,6 @@ import {
   ShaderMaterial,
   Vector4,
   type PointLight,
-  type WebGLRenderTarget,
 } from 'three';
 import { mapGradeBytes, mapGradeCurve } from '../../shared/map-grade.mjs';
 import type { MapGrade } from '../../shared/map-grade.mjs';
@@ -20,8 +19,6 @@ import type { MapGrade } from '../../shared/map-grade.mjs';
 export type AuthoredGrade = { grade: MapGrade; bytes: Uint8Array };
 export const MapGradeContext = createContext<MapGrade | undefined>(undefined);
 
-// Shared with the smoke volume, which reads the lighting of its current target.
-export const mapGradeLighting = new WeakMap<WebGLRenderTarget, NonNullable<MapGrade['lighting']>>();
 export const mapGradeBurstLights = new WeakMap<
   Scene,
   { light: PointLight; intensity: () => number }
