@@ -1,4 +1,4 @@
-import { expect, test, type Locator } from '@playwright/test';
+import { expect, test, type Locator, type Route } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { installMemberWorkspace, memberConfig, memberUser } from './fixtures/member-workspace';
@@ -195,8 +195,8 @@ for (const profile of profiles) {
       await expect(
         page.getByText(
           profile.language === 'fr'
-            ? 'L’administration doit configurer la synchronisation des matchs Steam.'
-            : 'The administrator must configure Steam match sync.',
+            ? 'La synchronisation des matchs n’est pas configurée sur ce serveur. Ajoutez une clé d’API Web Steam dans STEAM_API_KEY, puis redémarrez le service web.'
+            : 'Match sync is not set up on this server. Add a Steam Web API key as STEAM_API_KEY, then restart the web service.',
           { exact: true },
         ),
       ).toBeVisible();
@@ -370,4 +370,88 @@ test('FACEIT history keeps a stable time window across pages', async ({ page }) 
   await expect(page.getByRole('button', { name: 'Next page' })).toBeDisabled();
   await page.getByRole('button', { name: 'Previous page' }).click();
   await expect(page.getByText('First result')).toBeVisible();
+});
+
+test('connection setup names the exact server settings for administrators only', async ({
+  page,
+}) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE) || Boolean(process.env.E2E_SETUP));
+  await installMemberWorkspace(page);
+  let config = {
+    ...memberConfig,
+    steam_enabled: true,
+    steam_discovery: false,
+    faceit_enabled: false,
+  };
+  let admin = true;
+  await page.route('**/api/config', (route) => route.fulfill({ json: config }));
+  await page.route('**/api/auth/me', (route) =>
+    route.fulfill({ json: { user: { ...memberUser, is_admin: admin } } }),
+  );
+  await page.route('**/api/connections/steam/matches?*', (route) =>
+    route.fulfill({
+      json: { configured: false, needs_codes: false, next_offset: null, items: [] },
+    }),
+  );
+  const open = async () => {
+    await page.goto('/account/connections');
+    await page.locator('summary').filter({ hasText: 'Steam match sync' }).click();
+  };
+  await open();
+  await expect(page.getByText('STEAM_API_KEY')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Get a Steam Web API key' })).toBeVisible();
+  await expect(page.getByText('FACEIT_ENABLED=true')).toBeVisible();
+  await expect(page.getByText('game/csgo/replays')).toHaveCount(0);
+  await expect(page.getByText('Automatic demo downloads need')).toHaveCount(0);
+
+  admin = false;
+  await open();
+  await expect(
+    page.getByText('Ask its administrator to add a Steam Web API key.', { exact: false }),
+  ).toBeVisible();
+  await expect(page.getByText('STEAM_API_KEY')).toHaveCount(0);
+  await expect(page.getByText('FACEIT_ENABLED')).toHaveCount(0);
+
+  admin = true;
+  config = { ...config, steam_enabled: false, faceit_enabled: true, faceit_configured: false };
+  await page.goto('/account/connections');
+  await expect(page.getByText('STEAM_ENABLED=true')).toBeVisible();
+  await expect(page.getByText('FACEIT_API_KEY')).toBeVisible();
+});
+
+test('a FACEIT error appears beside its action and matches scroll into view', async ({ page }) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE) || Boolean(process.env.E2E_SETUP));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await installMemberWorkspace(page);
+  await page.route('**/api/config', (route) =>
+    route.fulfill({ json: { ...memberConfig, faceit_enabled: true, faceit_configured: true } }),
+  );
+  await page.route('**/api/auth/me', (route) =>
+    route.fulfill({
+      json: {
+        user: {
+          ...memberUser,
+          identities: [...memberUser.identities, { provider: 'faceit', subject: 'fixture' }],
+        },
+      },
+    }),
+  );
+  let reply: Parameters<Route['fulfill']>[0] = {
+    status: 502,
+    json: { detail: 'FACEIT returned an invalid response. Try again later.' },
+  };
+  await page.route('**/api/connections/faceit/matches?*', (route) => route.fulfill(reply));
+  await page.goto('/account/connections');
+  const recent = page.getByRole('button', { name: 'Recent matches', exact: true });
+  await recent.click();
+  const alert = page.getByRole('alert');
+  await expect(alert).toBeInViewport();
+  const panel = page.locator('.settings-panel').filter({ has: recent });
+  await expect(panel.getByRole('alert')).toHaveText(
+    'FACEIT returned an invalid response. Try again later.',
+  );
+  reply = { json: { items: [], next_offset: null, to: 1795300000 } };
+  await recent.click();
+  await expect(alert).toHaveCount(0);
+  await expect(page.getByText('FACEIT lists no CS2 matches for this account.')).toBeInViewport();
 });

@@ -913,6 +913,26 @@ export async function runMapWorker(options, adapters = {}) {
         pendingPresentation = [...presentationKinds];
         presentationScanAt = clock() + 60;
       }
+      if (!worked && inventoryIsFresh && previewManifest && !options.signal?.aborted) {
+        const selected = previewManifest;
+        previewManifest = undefined;
+        previewAttempts++;
+        busy = true;
+        try {
+          await preparePreview(workOptions, selected);
+          options.log?.({ event: 'preview.ready', manifest: selected });
+          previewAttempts = 3;
+        } catch (error) {
+          if (error?.code === 'STEAM_RATE_LIMIT') onSteamRateLimit();
+          if (error?.code === 'SOURCE_MAP_MISMATCH') previewAttempts = 3;
+          options.log?.({ event: 'preview.failed', code: mapFailureCode(error, options.signal) });
+        } finally {
+          busy = false;
+          await heartbeat();
+        }
+        // Recheck queued maps and the shared Steam cooldown before starting a large bank.
+        continue;
+      }
       if (
         !worked &&
         inventoryIsFresh &&
@@ -927,6 +947,9 @@ export async function runMapWorker(options, adapters = {}) {
             (kind) => clock() >= (nextPresentation.get(kind) || 0),
           );
           if (eligible < 0) break;
+          // The weapon queue takes much longer than the sounds, which come right after players and icons.
+          if (audioManifest && !['agents', 'equipment'].includes(pendingPresentation[eligible]))
+            break;
           const [kind] = pendingPresentation.splice(eligible, 1);
           busy = true;
           try {
@@ -959,26 +982,6 @@ export async function runMapWorker(options, adapters = {}) {
           if (published) break;
         }
         if (published || clock() < blockedUntil) continue;
-      }
-      if (!worked && inventoryIsFresh && previewManifest && !options.signal?.aborted) {
-        const selected = previewManifest;
-        previewManifest = undefined;
-        previewAttempts++;
-        busy = true;
-        try {
-          await preparePreview(workOptions, selected);
-          options.log?.({ event: 'preview.ready', manifest: selected });
-          previewAttempts = 3;
-        } catch (error) {
-          if (error?.code === 'STEAM_RATE_LIMIT') onSteamRateLimit();
-          if (error?.code === 'SOURCE_MAP_MISMATCH') previewAttempts = 3;
-          options.log?.({ event: 'preview.failed', code: mapFailureCode(error, options.signal) });
-        } finally {
-          busy = false;
-          await heartbeat();
-        }
-        // Recheck queued maps and the shared Steam cooldown before starting a large bank.
-        continue;
       }
       if (!worked && inventoryIsFresh && audioManifest && !options.signal?.aborted) {
         const selected = audioManifest;

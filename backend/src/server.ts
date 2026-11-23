@@ -251,7 +251,7 @@ export async function createApp(
           ? Math.min(c.maxUploadMb, c.guestStorageMb)
           : c.maxUploadMb,
       retention_days: c.retentionDays,
-      steam_discovery: Boolean(c.steamApiKey && c.steamSyncKeyFile),
+      steam_discovery: Boolean(c.steamApiKey),
       faceit_configured: Boolean(c.faceitApiKey),
       faceit_downloads: Boolean(c.faceitDownloadToken),
       transcription_configured: Boolean(c.transcriptionModelDir),

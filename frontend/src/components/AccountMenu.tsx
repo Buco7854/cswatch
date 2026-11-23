@@ -78,7 +78,7 @@ export default function AccountMenu({
           aria-label={label || user.username}
         >
           <span className="avatar" aria-hidden="true">
-            {user.username.slice(0, 1).toUpperCase()}
+            {Array.from(user.username)[0].toUpperCase()}
           </span>
           {!compact && <span className="account-name">{user.username}</span>}
           <ChevronDown size={14} aria-hidden="true" />
