@@ -12,18 +12,64 @@ x-isolated: &isolated
 x-app: &app
   <<: *isolated
   image: ${CSWATCH_IMAGE:-ghcr.io/buco7854/cswatch:latest}
-  env_file: .env
   volumes:
     - cswatch-data:/data
 services:
   web:
     <<: *app
     ports:
-      - '127.0.0.1:${HOST_PORT:-8000}:8000'
+      - '${HOST_BIND_IP:-0.0.0.0}:${HOST_PORT:-8000}:8000'
+    # Bare names forward configured values. Omitted policy flags stay configurable in Administration.
     environment:
-      MAP_ASSETS_DIR: /map-assets
-      MAP_JOBS_DIR: /map-jobs
-      MAP_CATALOG_FILE: /map-catalog/catalog.json
+      - APP_URL=${APP_URL:?Set APP_URL to your public origin in .env}
+      - COOKIE_SECURE
+      - TRUSTED_PROXY_IPS
+      - ADMIN_ALLOWED_IPS
+      - LOG_LEVEL
+      - PUBLIC_ACCESS
+      - GUEST_UPLOADS_ENABLED
+      - REGISTRATIONS_ENABLED
+      - STEAM_ENABLED
+      - FACEIT_ENABLED
+      - EMAIL_DELIVERY_ENABLED
+      - TRANSCRIPTION_ENABLED
+      - AUTO_OFFICIAL_MAPS_ENABLED
+      - ADMIN_USERNAME
+      - ADMIN_PASSWORD
+      - ADMIN_EMAIL
+      - MFA_REQUIRED_ROLES
+      - SESSION_DAYS
+      - ENCRYPTION_KEY
+      - SMTP_HOST
+      - SMTP_PORT
+      - SMTP_FROM
+      - SMTP_USERNAME
+      - SMTP_PASSWORD
+      - STEAM_API_KEY
+      - FACEIT_API_KEY
+      - FACEIT_DOWNLOAD_TOKEN
+      - FACEIT_RESOURCE_HOSTS
+      - FACEIT_SIGNED_DOWNLOAD_HOSTS
+      - MAX_UPLOAD_MB
+      - MAX_EXPANDED_MB
+      - USER_DEMO_LIMIT
+      - USER_STORAGE_MB
+      - GLOBAL_STORAGE_MB
+      - RETENTION_DAYS
+      - GUEST_RETENTION_HOURS
+      - GUEST_DEMO_LIMIT
+      - GUEST_STORAGE_MB
+      - PARSER_TIMEOUT_SECONDS
+      - PARSER_MEMORY_MB
+      - PARSER_SANDBOX
+      - PARSER_SANDBOX_BINARY
+      - TRANSCRIPTION_MODEL_DIR
+      - TRANSCRIPTION_LANGUAGE
+      - TRANSCRIPTION_TIMEOUT_SECONDS
+      - TRANSCRIPTION_MAX_AUDIO_SECONDS
+      - MAP_ASSETS_DIR=/map-assets
+      - MAP_JOBS_DIR=/map-jobs
+      - MAP_CATALOG_FILE=/map-catalog/catalog.json
     volumes:
       - cswatch-data:/data
       - cswatch-map-assets:/map-assets:ro
@@ -34,18 +80,25 @@ services:
   worker:
     <<: *app
     command: [node, dist/worker.js]
+    # Both offline roles run housekeeping and use the same quotas, deadlines and subtitle policy.
     environment:
-      WORKER_ROLE: parse
-      STEAM_API_KEY: ''
-      ENCRYPTION_KEY: ''
-      FACEIT_API_KEY: ''
-      FACEIT_DOWNLOAD_TOKEN: ''
-      EMAIL_DELIVERY_ENABLED: ''
-      SMTP_HOST: ''
-      SMTP_PORT: ''
-      SMTP_FROM: ''
-      SMTP_USERNAME: ''
-      SMTP_PASSWORD: ''
+      - WORKER_ROLE=parse
+      - APP_URL=${APP_URL:?Set APP_URL to your public origin in .env}
+      - COOKIE_SECURE
+      - LOG_LEVEL
+      - MAX_UPLOAD_MB
+      - MAX_EXPANDED_MB
+      - USER_STORAGE_MB
+      - GLOBAL_STORAGE_MB
+      - GUEST_STORAGE_MB
+      - RETENTION_DAYS
+      - PARSER_TIMEOUT_SECONDS
+      - PARSER_MEMORY_MB
+      - PARSER_SANDBOX
+      - PARSER_SANDBOX_BINARY
+      - TRANSCRIPTION_ENABLED
+      - TRANSCRIPTION_MODEL_DIR
+      - TRANSCRIPTION_TIMEOUT_SECONDS
     network_mode: none
     mem_limit: 5g
     cpus: 2
@@ -53,26 +106,14 @@ services:
       disable: true
     stop_grace_period: 330s
   transcription:
-    <<: *app
+    extends: worker
     profiles: [transcription]
-    command: [node, dist/worker.js]
     environment:
-      WORKER_ROLE: transcription
-      STEAM_API_KEY: ''
-      ENCRYPTION_KEY: ''
-      FACEIT_API_KEY: ''
-      FACEIT_DOWNLOAD_TOKEN: ''
-      EMAIL_DELIVERY_ENABLED: ''
-      SMTP_HOST: ''
-      SMTP_PORT: ''
-      SMTP_FROM: ''
-      SMTP_USERNAME: ''
-      SMTP_PASSWORD: ''
-    network_mode: none
+      - WORKER_ROLE=transcription
+      - TRANSCRIPTION_LANGUAGE
+      - TRANSCRIPTION_MAX_AUDIO_SECONDS
     mem_limit: 4g
     cpus: 2
-    healthcheck:
-      disable: true
     stop_grace_period: 20s
   assets:
     <<: *isolated
