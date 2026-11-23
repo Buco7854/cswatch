@@ -101,6 +101,17 @@ One optional Game Coordinator session serves the web instance. The account used 
 2. In the web service environment, set `STEAM_COORDINATOR_ENABLED=true`, `STEAM_COORDINATOR_USERNAME` and `STEAM_COORDINATOR_PASSWORD`. If the account uses a mobile authenticator, set `STEAM_COORDINATOR_GUARD_SECRET` to its base64 shared secret. Store these values privately. Interactive Steam Guard email and approval prompts need operator attention. After correcting rejected credentials or a Guard challenge, recreate the web service to start a new login attempt.
 3. Verify a member’s Steam sync codes and open **Library → Steam**. Import a match on demand or enable automatic imports for that account. Enabling automatic imports queues missing matches in the saved history, checks for new matches periodically, and feeds completed files into private demo processing. Opting out removes pending work. Removing the Steam connection also revokes the grant. The desktop CS2 handoff, replay folder import and paired upload are available when a replay has expired or the Coordinator cannot serve it.
 
+If the Steam row reports that sign-in was refused or blocked by Steam Guard, run `docker compose logs web | grep -F 'Steam Coordinator sign-in paused'`. The web process records one warning when it pauses further sign-in attempts.
+
+| Log reason     | What to check                                                                                                                                                                         |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `credentials`  | Check that the server account can sign in to Steam. Use its account name and current password in the web service environment.                                                         |
+| `guard_email`  | Steam requested email verification for the server account. The web service cannot enter an emailed code. Members can use the CS2 or file import while this challenge is required.     |
+| `guard_mobile` | Check that the configured mobile authenticator shared secret belongs to the server account and the Docker host clock is correct. A one-time code cannot be used as the shared secret. |
+| `guard`        | Steam reported a verification problem without a specific method. Check the server account’s Steam Guard settings and the Docker host clock.                                           |
+
+After correcting the account or its environment, run `docker compose up -d --force-recreate web` and try one import. A per-match expiry has a separate message and does not pause the server account.
+
 The web service logs in on demand, uses a single Coordinator request at a time and disconnects after five idle minutes. Source replies stay in memory briefly so multiple members in the same match can reuse a lookup. The replay host and path are constrained to the exact reservation and token. Valve sometimes returns an HTTP replay address. In that case the file travels in cleartext and has no transport authenticity. HTTPS responses use certificate validation. Both paths pin public DNS, reject redirects and enforce the upload limit. Parse and expansion run in the networkless sandbox.
 
 | Web setting                                                                              |       Default | Scope                                                                        |

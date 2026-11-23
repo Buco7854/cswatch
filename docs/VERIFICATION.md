@@ -1,5 +1,9 @@
 # Verification record
 
+## Steam import sign-in diagnostics
+
+On Node 24, the Steam Coordinator, private import and provider request suites passed 33 cases with synthetic Steam responses. They covered disabled imports, account refusal, email and mobile challenges, an unspecified Guard method, repeated attempts during a pause and replay expiry. Two production Chromium cases exercised the Steam import row in English and French, including the French server-account error and the paired upload link after a rejection. Live sign-in and the cause of the reported deployment failure remain unverified.
+
 ## Sustained 3D playback on Mirage
 
 The baseline was `9330734`. The High comparison overlaid the renderer files from `5082323` on that revision so both builds had the same HUD and replay controller. Low ran on intermediate builds with the same active drawing paths. The subsequent changes affect live shadows and smoke framebuffer allocation failure recovery. Production Chromium 159.0.8154.6 ran on Linux with ANGLE Vulkan SwiftShader, a 720 × 480 CSS viewport and drawing buffer, DPR 1 and 100% render resolution. Low loaded the 62,485,472-byte mobile GLB. High loaded the 89,389,736-byte desktop GLB (SHA-256 `90ce4dcd7882cf9c9990c5a6005315cf62953c76de5f77db04b7f178fa910413`) with live shadows. Both retained the authored sky, lighting, grade, textured models and multisample settings. The fixture was the private ten-round Mirage recording identified below.
