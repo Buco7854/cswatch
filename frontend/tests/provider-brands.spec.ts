@@ -195,8 +195,8 @@ for (const profile of profiles) {
       await expect(
         page.getByText(
           profile.language === 'fr'
-            ? 'La synchronisation des matchs n’est pas configurée sur ce serveur. Ajoutez une clé d’API Web Steam dans STEAM_API_KEY, puis redémarrez le service web.'
-            : 'Match sync is not set up on this server. Add a Steam Web API key as STEAM_API_KEY, then restart the web service.',
+            ? 'Cette instance n’a pas tout ce qu’il faut pour synchroniser automatiquement vos matchs Steam. Vous pouvez toujours ajouter vos démos.'
+            : 'This instance does not have everything needed for automatic Steam match sync. You can still upload your demos.',
           { exact: true },
         ),
       ).toBeVisible();
@@ -402,13 +402,13 @@ test('connection setup names the exact server settings for administrators only',
   await expect(page.getByRole('link', { name: 'Get a Steam Web API key' })).toBeVisible();
   await expect(page.getByText('FACEIT_ENABLED=true')).toBeVisible();
   await expect(page.getByText('game/csgo/replays')).toHaveCount(0);
-  await expect(page.getByText('Automatic demo downloads need')).toHaveCount(0);
+  await expect(page.getByText('download FACEIT demos')).toHaveCount(0);
 
   admin = false;
   await open();
-  await expect(
-    page.getByText('Ask its administrator to add a Steam Web API key.', { exact: false }),
-  ).toBeVisible();
+  await expect(page.getByText('everything needed for automatic Steam match sync')).toBeVisible();
+  await expect(page.getByText('everything needed for FACEIT matches')).toBeVisible();
+  await expect(page.getByText('administrator', { exact: false })).toHaveCount(0);
   await expect(page.getByText('STEAM_API_KEY')).toHaveCount(0);
   await expect(page.getByText('FACEIT_ENABLED')).toHaveCount(0);
 

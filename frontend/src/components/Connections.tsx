@@ -148,7 +148,7 @@ export default function Connections() {
                 ) : config.steam_enabled ? (
                   t('Available')
                 ) : (
-                  t('Disabled by administrator')
+                  t('Not enabled on this instance')
                 )}
               </span>
             </div>
@@ -165,10 +165,15 @@ export default function Connections() {
                       'Link your Steam account to use match discovery and verify your FACEIT account.',
                     )}
               </p>
-              {!config.steam_enabled && Boolean(user.is_admin) && (
-                <p role="status">
-                  {t('Turn on Steam sign-in in Administration, or set STEAM_ENABLED=true.')}
-                </p>
+              {!config.steam_enabled && (
+                <>
+                  <p role="status">{t('Steam is not enabled on this instance.')}</p>
+                  {Boolean(user.is_admin) && (
+                    <p className="muted">
+                      {t('Turn on Steam sign-in in Administration, or set STEAM_ENABLED=true.')}
+                    </p>
+                  )}
+                </>
               )}
               <div className="actions">
                 {config.steam_enabled && (
@@ -229,10 +234,10 @@ export default function Connections() {
                   config.faceit_configured ? (
                     t('Available')
                   ) : (
-                    t('Administrator setup required')
+                    t('Not set up on this instance')
                   )
                 ) : (
-                  t('Disabled by administrator')
+                  t('Not enabled on this instance')
                 )}
               </span>
             </div>
@@ -287,26 +292,41 @@ export default function Connections() {
                   )}
                 </div>
               )}
-              {!config.faceit_enabled && Boolean(user.is_admin) && (
-                <p role="status">
-                  {t('Turn on FACEIT integration in Administration, or set FACEIT_ENABLED=true.')}
-                </p>
+              {!(config.faceit_enabled && config.faceit_configured) && (
+                <>
+                  <p role="status">
+                    {t(
+                      'This instance does not have everything needed for FACEIT matches. You can still upload your demos.',
+                    )}
+                  </p>
+                  {Boolean(user.is_admin) && (
+                    <p className="muted">
+                      {config.faceit_enabled
+                        ? t('Set FACEIT_API_KEY on the server, then restart the web service.')
+                        : t(
+                            'Turn on FACEIT integration in Administration, or set FACEIT_ENABLED=true.',
+                          )}
+                    </p>
+                  )}
+                </>
               )}
-              {config.faceit_enabled && !config.faceit_configured && (
-                <p role="status">
-                  {user.is_admin
-                    ? t('Set FACEIT_API_KEY on the server, then restart the web service.')
-                    : t('The administrator must configure a FACEIT Data API key.')}
-                </p>
-              )}
-              {config.faceit_enabled && (
-                <p className="muted">
-                  {config.faceit_downloads
-                    ? t('Downloads API is configured. Demo availability still depends on FACEIT.')
-                    : t(
-                        'Automatic demo downloads need an approved FACEIT Downloads API token. Manual uploads always work.',
+              {config.faceit_enabled && config.faceit_configured && (
+                <>
+                  <p className="muted">
+                    {config.faceit_downloads
+                      ? t('FACEIT demos can be downloaded here while FACEIT still has them.')
+                      : t(
+                          'This instance does not have everything needed to download FACEIT demos. You can still upload them yourself.',
+                        )}
+                  </p>
+                  {!config.faceit_downloads && Boolean(user.is_admin) && (
+                    <p className="muted">
+                      {t(
+                        'Set an approved FACEIT Downloads API token as FACEIT_DOWNLOAD_TOKEN, then restart the web service.',
                       )}
-                </p>
+                    </p>
+                  )}
+                </>
               )}
               {config.faceit_enabled &&
                 config.faceit_configured &&

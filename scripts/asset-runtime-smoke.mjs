@@ -126,7 +126,7 @@ if (inContainer) {
     'ADMIN_USERNAME',
     'ADMIN_PASSWORD',
     'STEAM_API_KEY',
-    'STEAM_SYNC_KEY_FILE',
+    'ENCRYPTION_KEY',
     'FACEIT_API_KEY',
     'FACEIT_DOWNLOAD_TOKEN',
   ])

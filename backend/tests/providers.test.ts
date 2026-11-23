@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {
+  chmodSync,
   existsSync,
   mkdtempSync,
   readdirSync,
@@ -287,7 +288,7 @@ test('Steam match sync needs only the operator API key and creates one private k
       headers: { host: 'localhost:8000' },
     });
     assert.equal(configured.json().steam_discovery, true);
-    const path = join(root, 'steam-sync.key');
+    const path = join(root, 'encryption.key');
     assert.equal(existsSync(path), false, 'The key appears only when a member saves codes.');
     globalThis.fetch = async () => Response.json({ result: { nextcode: 'n/a' } }, { status: 202 });
     const save = () =>
@@ -304,7 +305,7 @@ test('Steam match sync needs only the operator API key and creates one private k
     assert.equal((await save()).statusCode, 200);
     assert.equal(readFileSync(path, 'utf8'), key, 'An existing key is never replaced.');
     assert.equal(
-      readdirSync(root).filter((file) => file.startsWith('steam-sync.key')).length,
+      readdirSync(root).filter((file) => file.startsWith('encryption.key')).length,
       1,
       'No staged key remains.',
     );
@@ -313,6 +314,13 @@ test('Steam match sync needs only the operator API key and creates one private k
     assert.deepEqual((await sync()).json(), { up_to_date: true });
     rmSync(path);
     assert.equal((await sync()).statusCode, 409, 'A lost key asks the member to save codes again.');
+    chmodSync(path, 0o644);
+    assert.equal((await sync()).statusCode, 503, 'A readable key file is refused.');
+    config.encryptionKey = 'ab'.repeat(32);
+    assert.equal((await save()).statusCode, 200, 'ENCRYPTION_KEY takes the place of the file.');
+    assert.throws(() =>
+      loadConfig({ APP_URL: origin, COOKIE_SECURE: 'false', ENCRYPTION_KEY: 'short' }),
+    );
   } finally {
     globalThis.fetch = fetchBefore;
     await app.close();
@@ -322,9 +330,6 @@ test('Steam match sync needs only the operator API key and creates one private k
 
 test('Steam match sync verifies before saving, resumes and protects user credentials and upload associations', async () => {
   const root = mkdtempSync(join(tmpdir(), 'cswatch-steam-sync-'));
-  const keyFile = join(root, 'test-key');
-  // Deterministic synthetic key for a temporary test database only.
-  writeFileSync(keyFile, '11'.repeat(32) + '\n', { mode: 0o600 });
   const origin = 'http://localhost:8000';
   const config = loadConfig({
     APP_URL: origin,
@@ -332,7 +337,8 @@ test('Steam match sync verifies before saving, resumes and protects user credent
     DATA_DIR: root,
     STEAM_ENABLED: 'true',
     STEAM_API_KEY: 'synthetic-operator-key',
-    STEAM_SYNC_KEY_FILE: keyFile,
+    // Deterministic synthetic key for a temporary test database only.
+    ENCRYPTION_KEY: '11'.repeat(32),
   });
   const db = new Store(root);
   initializeFixture(db);
@@ -472,7 +478,7 @@ test('Steam match sync verifies before saving, resumes and protects user credent
     assert.match((await sync()).body, /Replace your Steam sync codes/);
     db.run('UPDATE steam_history SET needs_codes=0');
     db.run('DELETE FROM rate_limits');
-    writeFileSync(keyFile, '22'.repeat(32) + '\n');
+    config.encryptionKey = '22'.repeat(32);
     assert.match((await sync()).body, /saved Steam code cannot be read/);
     assert.equal((await remove()).statusCode, 200);
     assert.equal(db.one('SELECT * FROM steam_history'), undefined);

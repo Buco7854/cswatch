@@ -87,31 +87,31 @@ export default function SteamMatchHistory({
           'Match sync lists your recent Premier and Competitive matches so you can add their demos here.',
         )}
       </p>
-      {!enabled &&
-        (admin ? (
-          <>
-            <p role="status">
-              {t(
-                'Match sync is not set up on this server. Add a Steam Web API key as STEAM_API_KEY, then restart the web service.',
-              )}
-            </p>
-            <a
-              className="button"
-              href="https://steamcommunity.com/dev/apikey"
-              target="_blank"
-              rel="noreferrer"
-            >
-              {t('Get a Steam Web API key')}
-              <ExternalLink size={15} aria-hidden="true" />
-            </a>
-          </>
-        ) : (
+      {!enabled && (
+        <>
           <p role="status">
             {t(
-              'Match sync is not set up on this server yet. Ask its administrator to add a Steam Web API key.',
+              'This instance does not have everything needed for automatic Steam match sync. You can still upload your demos.',
             )}
           </p>
-        ))}
+          {admin && (
+            <>
+              <p className="muted">
+                {t('Add a Steam Web API key as STEAM_API_KEY, then restart the web service.')}
+              </p>
+              <a
+                className="button"
+                href="https://steamcommunity.com/dev/apikey"
+                target="_blank"
+                rel="noreferrer"
+              >
+                {t('Get a Steam Web API key')}
+                <ExternalLink size={15} aria-hidden="true" />
+              </a>
+            </>
+          )}
+        </>
+      )}
       {!history && opened && !error && <p role="status">{t('Loading matches…')}</p>}
       {enabled && history && (!history.configured || edit) && (
         <form onSubmit={save} aria-busy={busy}>

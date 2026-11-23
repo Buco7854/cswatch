@@ -1,20 +1,9 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
-import {
-  closeSync,
-  constants,
-  existsSync,
-  fstatSync,
-  linkSync,
-  openSync,
-  readSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
-import { join } from 'node:path';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { Config } from './config.js';
 import { now, type Store } from './db.js';
+import { encryptionKey } from './encryption-key.js';
 import { currentUser, HttpError, rateLimit, requireUser, token } from './security.js';
 import { decodeSteamShareCode } from './steam-share-code.js';
 import { readUpstreamJson, requestJson } from './upstream.js';
@@ -32,45 +21,6 @@ const matchLimit = 500;
 const pageSize = 25;
 const syncSteps = 5;
 const backoffKey = 'steam_history_retry_at';
-
-/** Without an operator file, the key stays beside the database and still protects copied databases. */
-function keyPath(c: Config, db: Store) {
-  if (c.steamSyncKeyFile) return c.steamSyncKeyFile;
-  const path = join(db.root, 'steam-sync.key');
-  if (existsSync(path)) return path;
-  const staged = path + '.' + randomBytes(6).toString('hex');
-  try {
-    writeFileSync(staged, randomBytes(32).toString('hex') + '\n', { flag: 'wx', mode: 0o600 });
-    linkSync(staged, path);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw keyUnavailable();
-  } finally {
-    rmSync(staged, { force: true });
-  }
-  return path;
-}
-const keyUnavailable = () =>
-  new HttpError(503, 'Steam sync storage is unavailable. Contact the administrator.');
-function readKey(c: Config, db: Store) {
-  const path = keyPath(c, db);
-  try {
-    const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-    try {
-      const info = fstatSync(fd);
-      if (!info.isFile() || info.nlink !== 1 || (info.mode & 0o7777) !== 0o600 || info.size > 65)
-        throw new Error();
-      const bytes = Buffer.alloc(66);
-      const length = readSync(fd, bytes, 0, bytes.length, 0);
-      const contents = bytes.toString('utf8', 0, length);
-      if (!/^[a-fA-F0-9]{64}\n?$/.test(contents)) throw new Error();
-      return Buffer.from(contents.trim(), 'hex');
-    } finally {
-      closeSync(fd);
-    }
-  } catch {
-    throw keyUnavailable();
-  }
-}
 
 function seal(key: Buffer, binding: string, code: string) {
   const iv = randomBytes(12);
@@ -170,7 +120,7 @@ export function steamHistoryRoutes(app: FastifyInstance, db: Store, c: Config) {
     if (!c.steamApiKey)
       throw new HttpError(
         503,
-        'Match sync is not set up on this server yet. Ask its administrator to add a Steam Web API key.',
+        'This instance does not have everything needed for automatic Steam match sync. You can still upload your demos.',
       );
   };
   const subjectFor = (userId: string): string | undefined =>
@@ -250,7 +200,7 @@ export function steamHistoryRoutes(app: FastifyInstance, db: Store, c: Config) {
     const body = z.object({ auth_code: gameCode, share_code: knownCode }).strict().parse(r.body);
     const operation = begin(r);
     try {
-      const key = readKey(c, db);
+      const key = encryptionKey(c, db);
       const next = await nextCode(
         c,
         db,
@@ -292,7 +242,7 @@ export function steamHistoryRoutes(app: FastifyInstance, db: Store, c: Config) {
         throw new HttpError(400, 'Verify and save your Steam sync codes first.');
       if (row.needs_codes)
         throw new HttpError(409, 'Replace your Steam sync codes to resume sync.');
-      const authCode = unseal(readKey(c, db), operation.binding, row.encrypted_code);
+      const authCode = unseal(encryptionKey(c, db), operation.binding, row.encrypted_code);
       let cursor = row.cursor as string;
       const seen = new Set([cursor]);
       for (let step = 0; step < syncSteps; step++) {

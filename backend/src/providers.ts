@@ -62,7 +62,10 @@ async function faceit(
   params: Record<string, string> = {},
 ) {
   if (!c.faceitApiKey)
-    throw new HttpError(503, 'The administrator must configure a FACEIT Data API key.');
+    throw new HttpError(
+      503,
+      'This instance does not have everything needed for FACEIT matches. You can still upload your demos.',
+    );
   return requestJson(
     'https://open.faceit.com/data/v4/' + path + '?' + new URLSearchParams(params),
     {
@@ -279,7 +282,7 @@ export async function providerRoutes(
     if (!c.faceitDownloadToken)
       throw new HttpError(
         503,
-        'Automatic downloads require an approved FACEIT Downloads API token. Upload the demo manually instead.',
+        'This instance does not have everything needed to download FACEIT demos. You can still upload them yourself.',
       );
     const { files, subject } = await matchDemos(r, u, match_id);
     const selected = resource_id
