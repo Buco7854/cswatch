@@ -17,6 +17,8 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { get as httpGet } from 'node:http';
 import { Readable } from 'node:stream';
+import { gunzipSync } from 'node:zlib';
+import { randomBytes } from 'node:crypto';
 import type { FileHandle } from 'node:fs/promises';
 import Fastify from 'fastify';
 import { createApp } from '../src/server.js';
@@ -182,6 +184,93 @@ test('HEAD, byte ranges and fresh content ETags preserve model delivery without 
     await f.close();
   }
 });
+
+test('eligible map downloads negotiate gzip with a separate validator and decoded progress size', async () => {
+  const f = await fixture();
+  try {
+    const bytes = glb('a'.repeat(1024 ** 2));
+    writeFileSync(f.path, bytes);
+    const gzip = { 'accept-encoding': 'gzip, br' };
+    assert.equal((await f.get(undefined, gzip, 'GET', false)).statusCode, 401);
+    const result = await f.get(undefined, gzip);
+    const gzipTag = String(result.headers.etag);
+    assert.equal(result.statusCode, 200);
+    assert.equal(result.headers['content-encoding'], 'gzip');
+    assert.equal(result.headers['cache-control'], 'private, no-store');
+    assert.equal(result.headers.vary, 'Accept-Encoding');
+    assert.equal(Number(result.headers['x-file-size']), bytes.length);
+    assert.ok(result.rawPayload.length < bytes.length);
+    assert.deepEqual(gunzipSync(result.rawPayload), bytes);
+    const head = await f.get(undefined, gzip, 'HEAD');
+    assert.equal(head.body, '');
+    assert.equal(head.headers['content-length'], undefined);
+    assert.equal(head.headers['content-encoding'], 'gzip');
+    assert.equal(head.headers.etag, gzipTag);
+    assert.equal((await f.get(undefined, { ...gzip, 'if-none-match': gzipTag })).statusCode, 304);
+    const identity = await f.get(undefined, { 'accept-encoding': 'gzip;q=0, *;q=1' });
+    assert.notEqual(identity.headers.etag, gzipTag);
+    assert.deepEqual(identity.rawPayload, bytes);
+    const ranged = await f.get(undefined, {
+      ...gzip,
+      range: 'bytes=8-19',
+      'if-range': String(identity.headers.etag),
+    });
+    assert.equal(ranged.statusCode, 206);
+    assert.equal(ranged.headers['content-encoding'], undefined);
+    assert.deepEqual(ranged.rawPayload, bytes.subarray(8, 20));
+    const stale = await f.get(undefined, { ...gzip, range: 'bytes=8-19', 'if-range': gzipTag });
+    assert.equal(stale.statusCode, 200);
+    assert.deepEqual(stale.rawPayload, bytes);
+    assert.equal((await f.get(undefined, { 'accept-encoding': '*;q=0' })).statusCode, 406);
+  } finally {
+    await f.close();
+  }
+});
+
+test(
+  'manual and pack routes share a compressor slot and release it when a client disconnects',
+  { timeout: 5000 },
+  async () => {
+    const f = await fixture(),
+      app = Fastify({ logger: false });
+    const entered = Promise.withResolvers<void>(),
+      closed = Promise.withResolvers<void>();
+    try {
+      writeFileSync(f.path, glb(randomBytes(1024 ** 2).toString('base64')));
+      app.addHook('onSend', async (request, _reply, payload) => {
+        if (request.headers['x-hold-stream'] && payload instanceof Readable) {
+          payload.once('close', closed.resolve);
+          entered.resolve();
+          await closed.promise;
+        }
+        return payload;
+      });
+      await mapModelFileRoutes(app, f.root);
+      await mapModelFileRoutes(app, f.root, { url: '/pack/*' });
+      const origin = await app.listen({ host: '127.0.0.1', port: 0 });
+      const path = '/de_fixture/desktop/scene.glb',
+        headers = { 'accept-encoding': 'gzip' };
+      const held = httpGet(origin + '/map-assets' + path, {
+        headers: { ...headers, 'x-hold-stream': '1' },
+      });
+      held.on('error', () => {});
+      try {
+        await entered.promise;
+        const other = await app.inject({ url: '/pack' + path, headers });
+        assert.equal(other.statusCode, 200);
+        assert.equal(other.headers['content-encoding'], undefined);
+      } finally {
+        held.destroy();
+      }
+      await closed.promise;
+      const next = await app.inject({ url: '/pack' + path, headers });
+      assert.equal(next.headers['content-encoding'], 'gzip');
+    } finally {
+      await app.close();
+      await f.close();
+    }
+  },
+);
 
 test('direct model paths refuse private-file symlinks, hardlinks, special files and oversized or malformed GLBs', async () => {
   const f = await fixture();

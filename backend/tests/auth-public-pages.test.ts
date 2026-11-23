@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
+import { gzipSync } from 'node:zlib';
 import { tmpdir } from 'node:os';
 import { createApp } from '../src/server.js';
 import { loadConfig } from '../src/config.js';
@@ -18,6 +19,9 @@ test('private instances serve direct authentication pages and the exact provider
     '<!doctype html><title>Original authentication test shell</title>',
   );
   await writeFile(join(frontend, 'assets/fixture.js'), 'void 0;');
+  const appScript = 'console.log("static fixture");';
+  await writeFile(join(frontend, 'assets/index-a1b2c3d4.js'), appScript);
+  await writeFile(join(frontend, 'assets/index-a1b2c3d4.js.gz'), gzipSync(appScript));
   const notice = 'Original test provider attribution notice, not provider artwork.';
   await writeFile(join(frontend, 'licenses/provider-brands.txt'), notice);
   const db = new Store(join(root, 'data'));
@@ -94,6 +98,18 @@ test('private instances serve direct authentication pages and the exact provider
       assert.match(String(response.headers['content-type']), /^text\/plain/);
       assert.equal(response.body, notice);
       assert.equal((await get('/assets/fixture.js')).body, 'void 0;');
+      const script = await get('/assets/index-a1b2c3d4.js');
+      assert.equal(script.body, appScript);
+      assert.match(String(script.headers['cache-control']), /immutable/);
+      assert.match(String(script.headers.vary), /accept-encoding/i);
+      const compressed = await app.inject({
+        url: '/assets/index-a1b2c3d4.js',
+        headers: { ...headers, cookie, 'accept-encoding': 'gzip' },
+      });
+      assert.equal(compressed.headers['content-encoding'], 'gzip');
+      assert.match(String(compressed.headers['content-type']), /javascript/);
+      assert.deepEqual(compressed.rawPayload, gzipSync(appScript));
+      assert.equal((await get('/assets/missing.js')).headers['cache-control'], 'no-store');
       assert.equal((await get('/assets/missing.js')).statusCode, 404);
       for (const url of denied) assert.equal((await get(url)).statusCode, cookie ? 403 : 401, url);
       assert.equal(
