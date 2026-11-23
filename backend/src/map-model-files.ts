@@ -117,10 +117,12 @@ export async function mapModelFileRoutes(
     digest: proveContent = fileDigest,
     url = '/map-assets/*',
     resolveLocation = async () => manualMapLocation(root),
+    authorize,
   }: {
     digest?: typeof fileDigest;
     url?: string;
     resolveLocation?: (request: FastifyRequest) => Promise<MapAssetLocation>;
+    authorize?: (request: FastifyRequest) => void;
   } = {},
 ) {
   app.route<{ Params: { '*': string } }>({
@@ -171,6 +173,7 @@ export async function mapModelFileRoutes(
         connected();
         if (model.version !== (await fileVersion(model.file)))
           throw new HttpError(404, 'Map model not found.');
+        authorize?.(request);
         reply
           .header('Cache-Control', 'private, no-store')
           .header('ETag', etag)

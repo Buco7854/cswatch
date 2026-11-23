@@ -1,3 +1,4 @@
+import { fixtureCookie, insertFixtureSession } from './fixtures/member-session.js';
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
@@ -28,9 +29,9 @@ import {
 import { createApp } from '../src/server.js';
 import { loadConfig } from '../src/config.js';
 import { Store, now } from '../src/db.js';
-import { COOKIE, digest } from '../src/security.js';
 import { initializeFixture } from './fixtures/initialized.js';
-import { writePresentationStatus } from '../src/presentation-assets.js';
+import { enqueuePresentationRetry, writePresentationStatus } from '../src/presentation-assets.js';
+import { digest } from '../src/security.js';
 process.env.LOG_LEVEL = 'silent';
 
 function originalGlb() {
@@ -217,14 +218,15 @@ test('map administration requires current admin, exact Origin, CSRF and reviewed
     db = new Store(join(f.root, 'db'));
   initializeFixture(db);
   for (const id of ['admin', 'member']) {
-    db.run('INSERT INTO users VALUES(?,?,?,?,?)', id, id, null, id === 'admin' ? 1 : 0, now());
     db.run(
-      'INSERT INTO sessions VALUES(?,?,?,?)',
-      digest(id + '-session'),
+      'INSERT INTO users(id,username,password_hash,role,created_at) VALUES(?,?,?,?,?)',
       id,
-      id + '-csrf',
-      now() + 600,
+      id,
+      null,
+      id === 'admin' ? 'admin' : 'member',
+      now(),
     );
+    insertFixtureSession(db, id + '-session', id, id + '-csrf', now() + 600);
   }
   await writeMapWorkerStatus(f.jobs, { schemaVersion: 1, status: 'idle', updatedAt: now() });
   const catalog = join(f.root, 'catalog.json');
@@ -241,6 +243,7 @@ test('map administration requires current admin, exact Origin, CSRF and reviewed
       MAP_CATALOG_FILE: catalog,
       APP_URL: 'http://localhost:8000',
       COOKIE_SECURE: 'false',
+      MFA_REQUIRED_ROLES: 'none',
       PUBLIC_ACCESS: 'true',
       AUTO_OFFICIAL_MAPS_ENABLED: 'true',
     }),
@@ -251,7 +254,7 @@ test('map administration requires current admin, exact Origin, CSRF and reviewed
   });
   const headers = (id: string) => ({
     host: 'localhost:8000',
-    cookie: `${COOKIE}=${id}-session`,
+    cookie: fixtureCookie(`${id}-session`),
     origin: 'http://localhost:8000',
     'x-csrf-token': id + '-csrf',
   });
@@ -476,4 +479,188 @@ test('map administration requires current admin, exact Origin, CSRF and reviewed
   const adminStatus = (await app.inject({ url: '/api/admin', headers: headers('admin') })).json();
   assert.equal(adminStatus.presentationAssets.categories.agents.status, 'failed');
   assert.equal(JSON.stringify(adminStatus.presentationAssets).includes(f.root), false);
+});
+
+test('a revoked administrator cannot receive an outcome from a queued asset retry', async (t) => {
+  const f = await fixture(t);
+  const db = new Store(join(f.root, 'db'));
+  initializeFixture(db);
+  db.run(
+    'INSERT INTO users(id,username,password_hash,role,created_at) VALUES(?,?,?,?,?)',
+    'admin',
+    'admin',
+    null,
+    'admin',
+    now(),
+  );
+  insertFixtureSession(db, 'admin-session', 'admin', 'admin-csrf', now() + 600);
+  await writeMapWorkerStatus(f.jobs, { schemaVersion: 1, status: 'idle', updatedAt: now() });
+  await writePresentationStatus(f.jobs, {
+    schemaVersion: 2,
+    categories: {
+      agents: {
+        manifest: approval.source.manifest,
+        generation: 'a'.repeat(24),
+        status: 'failed',
+        attempts: 3,
+        updatedAt: now(),
+        code: 'preparation_failed',
+      },
+    },
+  });
+  const app = await createApp(
+    loadConfig({
+      DATA_DIR: db.root,
+      MAP_ASSETS_DIR: f.assets,
+      MAP_JOBS_DIR: f.jobs,
+      APP_URL: 'http://localhost:8000',
+      COOKIE_SECURE: 'false',
+      MFA_REQUIRED_ROLES: 'none',
+    }),
+    db,
+  );
+  t.after(() => app.close());
+
+  const ahead = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const admitted = Promise.withResolvers<void>();
+  const head = enqueuePresentationRetry(f.jobs, 'agents', undefined, {
+    beforeRevalidate: () => {
+      ahead.resolve();
+      return release.promise;
+    },
+  });
+  t.after(() => release.resolve());
+  await ahead.promise;
+
+  const mfaRequiredRoles = db.mfaRequiredRoles.bind(db);
+  t.mock.method(db, 'mfaRequiredRoles', (config) => {
+    const roles = mfaRequiredRoles(config);
+    // The next access check after the admission charge is after reading worker
+    // status. The handler then adds its operation to the occupied retry queue.
+    if (db.one('SELECT 1 FROM rate_limits WHERE key=?', digest('presentation-retry:admin')))
+      admitted.resolve();
+    return roles;
+  });
+  const response = app.inject({
+    method: 'POST',
+    url: '/api/admin/assets/presentation/equipment/retry',
+    headers: {
+      host: 'localhost:8000',
+      cookie: fixtureCookie('admin-session'),
+      origin: 'http://localhost:8000',
+      'x-csrf-token': 'admin-csrf',
+      'x-session-context': 'admin-csrf',
+    },
+    payload: {},
+  });
+  try {
+    await Promise.race([
+      admitted.promise,
+      response.then((early) =>
+        assert.fail('Retry returned before joining the queue: ' + early.body),
+      ),
+    ]);
+    db.run('DELETE FROM sessions WHERE user_id=?', 'admin');
+  } finally {
+    release.resolve();
+  }
+  assert.equal(await head, 'queued');
+  const revoked = await response;
+  assert.equal(revoked.statusCode, 409);
+  assert.equal(revoked.headers['x-session-changed'], '1');
+  await assert.rejects(readFile(join(f.jobs, 'presentation-retry-v2-equipment.json')), {
+    code: 'ENOENT',
+  });
+});
+
+test('an administrator revoked after a matching queue lookup cannot receive its outcome', async (t) => {
+  const f = await fixture(t);
+  const db = new Store(join(f.root, 'db'));
+  initializeFixture(db);
+  db.run("INSERT INTO users(id,username,role,created_at) VALUES('admin','admin','admin',?)", now());
+  await writeMapWorkerStatus(f.jobs, { schemaVersion: 1, status: 'idle', updatedAt: now() });
+  await writePresentationStatus(f.jobs, {
+    schemaVersion: 2,
+    categories: {
+      agents: {
+        manifest: approval.source.manifest,
+        generation: 'a'.repeat(24),
+        status: 'failed',
+        attempts: 3,
+        updatedAt: now(),
+        code: 'preparation_failed',
+      },
+    },
+  });
+  const app = await createApp(
+    loadConfig({
+      DATA_DIR: db.root,
+      MAP_ASSETS_DIR: f.assets,
+      MAP_JOBS_DIR: f.jobs,
+      APP_URL: 'http://localhost:8000',
+      COOKIE_SECURE: 'false',
+      MFA_REQUIRED_ROLES: 'none',
+    }),
+    db,
+  );
+  t.after(() => app.close());
+  const [map] = await listManagedMaps(f.assets, f.jobs);
+  for (const operation of [
+    {
+      action: 'assets.retry_requested',
+      method: 'POST',
+      url: '/api/admin/assets/presentation/agents/retry',
+      payload: {},
+      queueFile: join(f.jobs, 'presentation-retry-v2-agents.json'),
+    },
+    {
+      action: 'map.removal_requested',
+      method: 'DELETE',
+      url: `/api/admin/maps/${f.packId}`,
+      payload: { version: map.version },
+      queueFile: join(f.jobs, 'removals', `${f.packId}.json`),
+    },
+  ] as const) {
+    await t.test(operation.action, async () => {
+      const { queueFile, action, ...options } = operation;
+      const csrf = `${action}-csrf`;
+      insertFixtureSession(db, action, 'admin', csrf, now() + 600);
+      const submit = () =>
+        app.inject({
+          ...options,
+          headers: {
+            host: 'localhost:8000',
+            cookie: fixtureCookie(action),
+            origin: 'http://localhost:8000',
+            'x-csrf-token': csrf,
+            'x-session-context': csrf,
+          },
+        });
+      assert.equal((await submit()).statusCode, 202);
+      const queued = await readFile(queueFile);
+      // Revoke after the no-op callback records its linked outcome, before the
+      // queue promise resolves to the HTTP handler.
+      db.db.exec(`CREATE TEMP TRIGGER revoke_after_queue_outcome AFTER INSERT ON audit
+        WHEN NEW.outcome='success' AND NEW.intent_id IS NOT NULL
+        BEGIN DELETE FROM sessions WHERE user_id=NEW.actor; END;`);
+      try {
+        const revoked = await submit();
+        assert.equal(db.one('SELECT 1 FROM sessions WHERE csrf=?', csrf), undefined);
+        assert.equal(revoked.statusCode, 409);
+        assert.equal(revoked.headers['x-session-changed'], '1');
+        assert.deepEqual(await readFile(queueFile), queued);
+        assert.equal(
+          db.one(
+            `SELECT count(*) AS count FROM audit outcome JOIN audit intent ON intent.id=outcome.intent_id
+             WHERE outcome.action=? AND outcome.outcome='success' AND intent.outcome='authorized'`,
+            action,
+          )?.count,
+          2,
+        );
+      } finally {
+        db.db.exec('DROP TRIGGER revoke_after_queue_outcome');
+      }
+    });
+  }
 });

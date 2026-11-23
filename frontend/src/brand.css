@@ -128,8 +128,7 @@ h3 {
 [data-theme] .options-dialog {
   border-radius: 4px;
 }
-[data-theme] input:not([type='checkbox'], [type='range']),
-[data-theme] select {
+[data-theme] input:not([type='checkbox'], [type='range']) {
   border-radius: 2px;
 }
 

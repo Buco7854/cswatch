@@ -5,7 +5,6 @@ import {
   copyFileSync,
   lstatSync,
   mkdirSync,
-  mkdtempSync,
   opendirSync,
   renameSync,
   rmSync,
@@ -14,6 +13,7 @@ import { join } from 'node:path';
 import type { Config } from './config.js';
 import { type Store, type Row, now } from './db.js';
 import { HttpError } from './errors.js';
+import { createDemoScratch, globalDemoStorage } from './demo-deletion.js';
 import { captionArtifactName, captionLimits, validateCaptionArtifact } from './captions.js';
 import { runIsolatedJob } from './parser-job.js';
 import { replayLimits, validateReplayArtifacts } from './replay.js';
@@ -30,8 +30,10 @@ export function requeueTranscription(
   db: Store,
   c: Config,
   row: Row,
+  authorize?: () => void,
 ): { status: 'queued' | 'processing' | 'ready' } {
   return db.transaction(() => {
+    authorize?.();
     if (!db.flag(c, 'transcription_enabled'))
       throw new HttpError(403, 'Automatic subtitles are disabled.');
     if (!c.transcriptionModelDir)
@@ -49,8 +51,10 @@ export function requeueTranscription(
     }
     if (voice !== 'available' && voice !== 'partial')
       throw new HttpError(409, 'No supported recorded voice is available for transcription.');
+    // Keep the prior start time until a new worker claims the job. A cancelled
+    // process can still hold scratch or an open input while it shuts down.
     db.run(
-      "UPDATE demos SET transcription_status='queued',transcription_job_id=NULL,transcription_started_at=NULL WHERE id=?",
+      "UPDATE demos SET transcription_status='queued',transcription_job_id=NULL WHERE id=?",
       row.id,
     );
     return { status: 'queued' };
@@ -129,9 +133,7 @@ export async function processTranscriptionOne(db: Store, c: Config, signal?: Abo
   };
   try {
     const prepared = validateReplayArtifacts(folder);
-    const jobs = join(db.root, 'transcription-jobs');
-    mkdirSync(jobs, { recursive: true, mode: 0o700 });
-    job = mkdtempSync(join(jobs, `${row.id}-`));
+    job = createDemoScratch(db, row.id, 'transcription-jobs', stillOwned);
     mkdirSync(join(job, 'chunks'), { mode: 0o700 });
     for (const file of prepared.files) {
       copyFileSync(join(folder, file), join(job, file), constants.COPYFILE_EXCL);
@@ -156,13 +158,19 @@ export async function processTranscriptionOne(db: Store, c: Config, signal?: Abo
       },
     );
     const output = validateCaptionArtifact(job, prepared.manifest);
-    if (signal?.aborted || !enabled(db, c)) throw new Error('Transcription cancelled');
+    const checkPublication = () => {
+      if (signal?.aborted || !enabled(db, c)) throw new Error('Transcription cancelled');
+      if (!stillOwned()) throw new Error('Transcription lease was revoked');
+    };
     if (output.result.status === 'unavailable') {
-      db.run(
-        "UPDATE demos SET transcription_status='unavailable',transcription_job_id=NULL WHERE id=? AND status='ready' AND transcription_status='processing' AND transcription_job_id=?",
-        row.id,
-        lease,
-      );
+      db.transaction(() => {
+        checkPublication();
+        db.run(
+          "UPDATE demos SET transcription_status='unavailable',transcription_job_id=NULL WHERE id=? AND status='ready' AND transcription_status='processing' AND transcription_job_id=?",
+          row.id,
+          lease,
+        );
+      });
       complete = true;
       return true;
     }
@@ -171,7 +179,7 @@ export async function processTranscriptionOne(db: Store, c: Config, signal?: Abo
     chmodSync(pending, 0o600);
     let previous: string | null = null;
     db.transaction(() => {
-      if (!stillOwned()) throw new Error('Transcription lease was revoked');
+      checkPublication();
       const current = db.one(
         'SELECT transcription_bytes,transcription_artifact FROM demos WHERE id=?',
         row.id,
@@ -181,14 +189,13 @@ export async function processTranscriptionOne(db: Store, c: Config, signal?: Abo
         'SELECT coalesce(sum(size),0) AS bytes FROM demos WHERE owner_id=?',
         row.owner_id,
       )!;
-      const global = db.one('SELECT coalesce(sum(size),0) AS bytes FROM demos')!;
       const storageMb = db.one('SELECT owner_id FROM guest_sessions WHERE owner_id=?', row.owner_id)
         ? c.guestStorageMb
         : c.userStorageMb;
       if (
         delta > 0 &&
         (user.bytes + delta > storageMb * 1024 ** 2 ||
-          global.bytes + delta > c.globalStorageMb * 1024 ** 2)
+          globalDemoStorage(db) + delta > c.globalStorageMb * 1024 ** 2)
       )
         throw new Error('Caption storage quota');
       renameSync(pending, join(folder, artifact));

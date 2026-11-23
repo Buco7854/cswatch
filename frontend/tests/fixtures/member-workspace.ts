@@ -1,3 +1,4 @@
+import { accountStatus } from './account-status';
 import type { Page } from '@playwright/test';
 import type { Config, Demo } from '../../src/types';
 import type { MapPreparationDiagnostics } from '../../../shared/map-acquisition';
@@ -5,6 +6,7 @@ import type { MapPreparationDiagnostics } from '../../../shared/map-acquisition'
 export const memberConfig: Config = {
   build: { revision: 'a'.repeat(40), builtAt: '2026-11-19T12:00:00.000Z' },
   setup_required: false,
+  admin_access: true,
   public_access: true,
   registrations_enabled: true,
   guest_uploads_enabled: true,
@@ -56,6 +58,7 @@ export function memberAdminData() {
         transcription_enabled: false,
       }).map(([key, value]) => [key, { value, locked: key === 'public_access' }]),
     ),
+    mfa_required_roles: { value: ['admin'], locked: false },
     queue: [
       { status: 'ready', count: 12 },
       { status: 'processing', count: 1 },
@@ -63,11 +66,11 @@ export function memberAdminData() {
       { status: 'failed', count: 2 },
     ],
     users: [
-      { id: 'qa-operator', username: 'QA operator', is_admin: true, created_at: 1794930000 },
+      { id: 'qa-operator', username: 'QA operator', role: 'admin', created_at: 1794930000 },
       {
         id: 'qa-long-name',
         username: 'QA reviewer with a longer account name',
-        is_admin: false,
+        role: 'member',
         created_at: 1794930000,
       },
     ],
@@ -80,7 +83,7 @@ export function memberAdminData() {
 export const memberUser = {
   id: 'qa-operator',
   username: 'QA operator',
-  is_admin: true,
+  role: 'admin',
   csrf: 'synthetic-member-csrf',
   identities: [{ provider: 'steam', subject: '76561190000000000' }],
   match_sources: {
@@ -91,15 +94,32 @@ export const memberUser = {
   },
 };
 export async function installMemberWorkspace(page: Page) {
+  // This suite exercises fixture identities. Serve the same production shell on a
+  // document navigation; the real page and API guard have separate server tests.
+  await page.route(
+    (url) => /^\/admin\/?$/i.test(decodeURIComponent(url.pathname)),
+    async (route) => {
+      const shell = await route.fetch({ url: new URL('/', route.request().url()).href });
+      await route.fulfill({ response: shell });
+    },
+  );
+  await page.route('**/api/admin/users?**', (route) =>
+    route.fulfill({ json: { users: memberAdminData().users, total: 2 } }),
+  );
+  await page.route('**/api/admin/audit?**', (route) =>
+    route.fulfill({ json: { events: memberAdminData().audit, total: 2 } }),
+  );
+  await page.route('**/api/auth/security', (route) =>
+    route.fulfill({ json: { passkeys: [], totp: null, recovery_codes_remaining: 0 } }),
+  );
+  await page.route('**/api/auth/sessions', (route) => route.fulfill({ json: { sessions: [] } }));
   await page.route('**/api/admin/maps', (route) =>
     route.fulfill({ json: { maps: [], workerAvailable: false } }),
   );
   await page.route('**/api/config', (route) => route.fulfill({ json: memberConfig }));
   await page.route('**/api/auth/me', (route) =>
     route.fulfill({
-      json: {
-        user: memberUser,
-      },
+      json: accountStatus(memberUser),
     }),
   );
   await page.route('**/api/demos?**', (route) => {

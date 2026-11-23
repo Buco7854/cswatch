@@ -1,3 +1,4 @@
+import { fixtureCookie, insertFixtureSession } from './fixtures/member-session.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, symlinkSync } from 'node:fs';
@@ -9,7 +10,8 @@ import type { ApprovedMapEntry } from '../../shared/map-acquisition.js';
 import { createApp } from '../src/server.js';
 import { loadConfig } from '../src/config.js';
 import { Store, now } from '../src/db.js';
-import { COOKIE, digest } from '../src/security.js';
+import { guestCookieName } from '../src/guest.js';
+import { browserBootstrap } from './fixtures/browser-bootstrap.js';
 import { initializeFixture } from './fixtures/initialized.js';
 import {
   mapPackId,
@@ -136,14 +138,15 @@ async function fixture(enabled = true, privateInstance = false) {
   const db = new Store(root);
   initializeFixture(db);
   for (const id of ['member', 'other']) {
-    db.run('INSERT INTO users VALUES(?,?,?,?,?)', id, id, null, 0, now());
     db.run(
-      'INSERT INTO sessions VALUES(?,?,?,?)',
-      digest(id + '-session'),
+      'INSERT INTO users(id,username,password_hash,role,created_at) VALUES(?,?,?,?,?)',
       id,
-      id + '-csrf',
-      now() + 120,
+      id,
+      null,
+      'member',
+      now(),
     );
+    insertFixtureSession(db, id + '-session', id, id + '-csrf', now() + 120);
   }
   db.run(
     'INSERT INTO demos(id,owner_id,name,source,status,size,created_at,map,metadata) VALUES(?,?,?,?,?,?,?,?,?)',
@@ -157,19 +160,17 @@ async function fixture(enabled = true, privateInstance = false) {
     'de_mirage',
     JSON.stringify({ mapIdentity: approval.identity }),
   );
-  const app = await createApp(
-    loadConfig({
-      DATA_DIR: root,
-      MAP_ASSETS_DIR: maps,
-      MAP_CATALOG_FILE: catalog,
-      MAP_JOBS_DIR: jobs,
-      APP_URL: 'http://localhost:8000',
-      COOKIE_SECURE: 'false',
-      AUTO_OFFICIAL_MAPS_ENABLED: String(enabled),
-      PUBLIC_ACCESS: String(!privateInstance),
-    }),
-    db,
-  );
+  const config = loadConfig({
+    DATA_DIR: root,
+    MAP_ASSETS_DIR: maps,
+    MAP_CATALOG_FILE: catalog,
+    MAP_JOBS_DIR: jobs,
+    APP_URL: 'http://localhost:8000',
+    COOKIE_SECURE: 'false',
+    AUTO_OFFICIAL_MAPS_ENABLED: String(enabled),
+    PUBLIC_ACCESS: String(!privateInstance),
+  });
+  const app = await createApp(config, db);
   const request = (
     url = '/api/demos/private-demo/map-assets',
     user = 'member',
@@ -182,7 +183,7 @@ async function fixture(enabled = true, privateInstance = false) {
       url,
       headers: {
         host: 'localhost:8000',
-        ...(user ? { cookie: `${COOKIE}=${user}-session` } : {}),
+        ...(user ? { cookie: fixtureCookie(`${user}-session`) } : {}),
         ...(method === 'POST'
           ? { origin: 'http://localhost:8000', 'x-csrf-token': user + '-csrf' }
           : {}),
@@ -198,6 +199,7 @@ async function fixture(enabled = true, privateInstance = false) {
     jobs,
     db,
     app,
+    config,
     request,
     close: async () => {
       await app.close();
@@ -501,7 +503,29 @@ test('scoped map discovery preserves demo ACL and explicit sharing while only ow
     assert.equal((await f.request(undefined, '')).statusCode, 200);
     assert.equal((await f.request(undefined, '')).json().canAcquire, false);
     assert.equal((await f.request(undefined, 'other', 'POST', {})).statusCode, 404);
-    assert.equal((await f.request(undefined, '', 'POST', {})).statusCode, 404);
+    const anonymous = await f.request(undefined, '', 'POST', {});
+    assert.equal(anonymous.statusCode, 403, anonymous.body);
+    assert.equal(anonymous.json().detail, 'Session expired. Refresh the page and try again.');
+    const browser = await browserBootstrap(f.app, f.config);
+    const guest = await f.app.inject({
+      url: '/api/guest/session',
+      method: 'POST',
+      headers: browser,
+      payload: {},
+    });
+    assert.equal(guest.statusCode, 201, guest.body);
+    const capability = guest.cookies.find((cookie) => cookie.name === guestCookieName(f.config));
+    assert.ok(capability);
+    const guestHeaders = {
+      cookie: `${browser.cookie}; ${capability.name}=${capability.value}`,
+      'x-csrf-token': guest.json().csrf,
+    };
+    const denied = await f.request(undefined, '', 'POST', {}, guestHeaders);
+    const missing = await f.request('/api/demos/missing/map-assets', '', 'POST', {}, guestHeaders);
+    assert.equal(denied.statusCode, 404, denied.body);
+    assert.equal(missing.statusCode, 404, missing.body);
+    assert.deepEqual(denied.json(), missing.json());
+    assert.equal(existsSync(f.jobs), false);
     const own = await f.request();
     assert.equal(own.statusCode, 200);
     assert.equal(own.json().resolution.status, 'approved');

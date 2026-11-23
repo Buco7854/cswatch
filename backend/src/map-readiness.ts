@@ -3,11 +3,7 @@ import type { Config } from './config.js';
 import type { MapPreparationDiagnostics } from '../../shared/map-acquisition.js';
 import { officialMapInventoryLimits, readMapCatalog } from './map-catalog.js';
 import { readMapWorkerStatus, readOfficialMapInventory } from './map-jobs.js';
-export async function readMapPreparationState(
-  c: Config,
-  enabled: boolean,
-  at = Math.floor(Date.now() / 1000),
-) {
+export async function readMapPreparationState(c: Config, at = Math.floor(Date.now() / 1000)) {
   const [catalog, inventory, worker] = await Promise.all([
     readMapCatalog(c.mapCatalogFile),
     readOfficialMapInventory(c.mapJobsDir, at, { allowStale: true }),
@@ -16,8 +12,7 @@ export async function readMapPreparationState(
   const inventoryFresh = Boolean(
     inventory && inventory.updatedAt >= at - officialMapInventoryLimits.maxAgeSeconds,
   );
-  const diagnostics: MapPreparationDiagnostics = {
-    enabled,
+  const diagnostics: Omit<MapPreparationDiagnostics, 'enabled'> = {
     worker: {
       available: Boolean(worker && worker.updatedAt <= at + 5 && worker.updatedAt >= at - 90),
       ...(worker?.inventoryFailure ? { inventoryFailure: worker.inventoryFailure } : {}),

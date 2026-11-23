@@ -1,4 +1,10 @@
-import Fastify from 'fastify';
+import {
+  acceptsHtml,
+  connectionTimeoutMs,
+  firstPartyRequest,
+  requireMutationRequest,
+} from './request-security.js';
+import Fastify, { type FastifyRequest, type FastifyReply } from 'fastify';
 import cookie from '@fastify/cookie';
 import multipart from '@fastify/multipart';
 import helmet from '@fastify/helmet';
@@ -13,22 +19,55 @@ import { Store, openStoreForStartup } from './db.js';
 import { buildInfo } from './build-info.js';
 import {
   HttpError,
-  currentUser,
+  browserCookieName,
+  sessionCookieName,
+  chargeBudgets,
+  currentSession,
   equal,
+  signableAdminExists,
+  hasSteamOnlyAccounts,
+  currentUser,
   rateLimit,
-  requireAdmin,
+  requireSession,
   requireUser,
+  safeReturnPath,
+  sessionUser,
   token,
+  touchSession,
 } from './security.js';
-import { abandon, accessDemo, reserve, validateMagic } from './ingestion.js';
 import { faceitId } from './match-library.js';
+import { abandonUpload, accessDemo, reserve, validateMagic } from './ingestion.js';
+import {
+  adminAccess,
+  adminDenialRecorder,
+  adminApi,
+  adminPage,
+  adminPublicationAccountedFor,
+} from './admin-access.js';
+import { adminRoutes } from './admin-routes.js';
+import {
+  cleanupDeletedDemos,
+  demoWriteTimeoutMs,
+  enqueueUserDemoDeletion,
+} from './demo-deletion.js';
+import { adminClientAddress, adminNetworkAllowed, trustProxyAddress } from './admin-network.js';
+import { hasPermission } from './roles.js';
 import { authRoutes } from './auth.js';
+import {
+  accountEntry,
+  allowedAnonymous,
+  allowedBeforeSetup,
+  allowedPending,
+  authShellRoute,
+  isRead,
+} from './auth-routes.js';
+import { registerFactorRoutes } from './factors.js';
+import { recoveryRoutes } from './recovery.js';
 import { steamHistoryRoutes } from './steam-history.js';
 import { openEncryptionKey, openEncryptionKeyForStartup } from './encryption-key.js';
 import { providerRoutes } from './providers.js';
 import { captionArtifactName } from './captions.js';
 import { requeueTranscription } from './transcription-worker.js';
-import { readMapPreparationState } from './map-readiness.js';
 import { gameplaySoundAssetRoutes } from './gameplay-sound-assets.js';
 import { equipmentAssetRoutes } from './equipment-assets.js';
 import { equipmentModelAssetRoutes } from './equipment-model-assets.js';
@@ -37,12 +76,18 @@ import { mapAssetRoutes } from './map-assets.js';
 import { mapModelFileRoutes } from './map-model-files.js';
 import { mapPreviewRoutes } from './map-preview.js';
 import { mapManagementRoutes } from './map-management.js';
-import { readPresentationStatus } from './presentation-assets.js';
 import { demoMapAssetRoutes } from './demo-map-assets.js';
 import { cleanupMapRequestTemps } from './map-jobs.js';
 import { cleanupPresentationRetryTemps } from './presentation-assets.js';
-import { currentGuest, guestRoutes, guestUploadsEnabled } from './guest.js';
+import {
+  confirmGuestDelivery,
+  currentGuest,
+  currentReservedGuest,
+  guestRoutes,
+  guestUploadsEnabled,
+} from './guest.js';
 import { prepareSetup, provisionAdmin, setupRequired, setupRoutes } from './setup.js';
+import { requestLogger } from './request-logger.js';
 
 export async function createApp(
   c: Config,
@@ -54,30 +99,31 @@ export async function createApp(
   if (Boolean(c.adminUsername) !== Boolean(c.adminPassword))
     throw new Error('ADMIN_USERNAME and ADMIN_PASSWORD must be configured together.');
   await provisionAdmin(db, c);
+  const lockedSteamOnlyAccounts = db.transaction(() => {
+    if (!setupRequired(db) && !signableAdminExists(db, c))
+      throw new Error(
+        'No administrator can sign in with the configured providers. Run create-admin in the local account CLI.',
+      );
+    db.bindRelyingParty(c);
+    db.retireIneligibleSessions(c);
+    return c.flags.steam_enabled === false && hasSteamOnlyAccounts(db);
+  });
   prepareSetup(db);
   // One web process owns request publication. Reclaim only its recognized
   // orphan temporary files before any HTTP request can begin a live write.
   await cleanupMapRequestTemps(c.mapJobsDir);
   await cleanupPresentationRetryTemps(c.mapJobsDir);
   const app = Fastify({
-    logger: {
-      level: process.env.LOG_LEVEL || 'info',
-      redact: ['req.headers.cookie', 'req.headers.authorization', 'req.headers["x-csrf-token"]'],
-      serializers: {
-        req: (r) => ({
-          method: r.method,
-          url: r.url?.split('?')[0],
-          host: r.hostname,
-          remoteAddress: r.ip,
-        }),
-      },
-    },
+    logger: requestLogger(),
     bodyLimit: 65536,
-    requestTimeout: 600000,
-    connectionTimeout: 30000,
-    trustProxy: c.trustProxy,
+    requestTimeout: demoWriteTimeoutMs,
+    connectionTimeout: connectionTimeoutMs,
+    trustProxy: c.trustProxy ? (ip) => trustProxyAddress(c, ip) : false,
   });
+  const recordAdminDenial = adminDenialRecorder(db, c);
   app.decorateRequest('user', null);
+  app.decorateRequest('authSession', null);
+  app.decorateRequest('clientAddress', null);
   app.decorateRequest('guest', null);
   await app.register(cookie);
   await app.register(helmet, {
@@ -102,89 +148,230 @@ export async function createApp(
     hsts: c.cookieSecure ? { maxAge: 31536000 } : false,
     referrerPolicy: { policy: 'no-referrer' },
   });
+  if (lockedSteamOnlyAccounts)
+    app.log.warn(
+      'STEAM_ENABLED=false blocks sign-in for accounts that rely on Steam. Restore Steam until members add another sign-in method or use individual password recovery in Administration.',
+    );
   await app.register(multipart, {
     limits: { files: 1, fields: 0, parts: 1, fileSize: c.maxUploadMb * 1024 ** 2 },
     throwFileSizeLimit: true,
   });
+  function sessionChanged(reply: FastifyReply) {
+    reply.header('X-Session-Changed', '1');
+    return new HttpError(409, 'Session expired. Refresh the page and try again.');
+  }
+  function checkReadContext(r: FastifyRequest, reply: FastifyReply) {
+    revalidatePrincipal(r);
+    const context = r.headers['x-session-context'];
+    const guest = r.headers['x-guest-context'];
+    if (
+      context !== undefined &&
+      (typeof context !== 'string' || !equal(context, currentSession(db, r, c)?.csrf ?? ''))
+    )
+      throw sessionChanged(reply);
+    if (
+      guest !== undefined &&
+      (typeof guest !== 'string' || !equal(guest, currentGuest(db, r, c)?.csrf ?? ''))
+    )
+      throw sessionChanged(reply);
+  }
   app.addHook('onRequest', async (r, reply) => {
     reply
       .header('Cache-Control', 'no-store')
-      .header('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+      .header(
+        'Permissions-Policy',
+        'camera=(), microphone=(), geolocation=(), publickey-credentials-get=(self), publickey-credentials-create=(self)',
+      );
     if (r.headers.host !== c.host) throw new HttpError(400, 'Invalid host.');
-    r.user = currentUser(db, r, c);
-    r.guest = currentGuest(db, r, c);
+    r.clientAddress = adminClientAddress(r, c)?.ip ?? null;
+    const session = currentSession(db, r, c);
+    r.authSession = session;
+    r.user = session?.stage === 'full' ? sessionUser(session) : null;
     const path = r.url.split('?')[0];
+    const route = r.routeOptions.url ?? '';
+    const apiRoute = route.startsWith('/api/') || path.startsWith('/api/');
+    // A browser view may still hold another tab's old account context. Bind
+    // its opt-in reads to the session before any private response is selected.
+    const context = r.headers['x-session-context'];
     if (
-      setupRequired(db) &&
-      path.startsWith('/api/') &&
-      !['/api/health', '/api/config', '/api/auth/me', '/api/setup'].includes(path)
-    )
+      (isRead(r) || adminApi(route)) &&
+      apiRoute &&
+      context !== undefined &&
+      (typeof context !== 'string' || !session || !equal(context, session.csrf))
+    ) {
+      throw sessionChanged(reply);
+    }
+    if (isRead(r) && adminPage(r.url)) {
+      let destination: string | undefined;
+      if (setupRequired(db)) destination = '/setup';
+      else if (!r.user) destination = '/login?returnTo=%2Fadmin';
+      else if (!hasPermission(r.user.role, 'admin')) destination = '/library?admin=role';
+      else if (!adminNetworkAllowed(r, c)) destination = '/library?admin=network';
+      if (destination) {
+        recordAdminDenial(r);
+        return reply.redirect(destination);
+      }
+      adminAccess(db, c, r, false);
+    }
+    const pending =
+      session?.stage === 'challenge' || session?.stage === 'enroll' ? session.stage : null;
+    if (setupRequired(db) && apiRoute && !allowedBeforeSetup(r))
       throw new HttpError(503, 'Instance setup is required.');
-    if (!db.flag(c, 'public_access') && !r.user) {
-      const allowed =
-        [
-          '/',
-          '/api/config',
-          '/api/health',
-          '/api/auth/me',
-          '/api/setup',
-          '/setup',
-          '/api/auth/login',
-          '/api/auth/register',
-          '/api/auth/steam',
-          '/api/auth/steam/callback',
-        ].includes(path) ||
-        path.startsWith('/assets/') ||
-        (['GET', 'HEAD'].includes(r.method) &&
-          ([
-            '/library',
-            '/login',
-            '/register',
-            '/licenses/provider-brands.txt',
-            '/account/connections',
-            '/account',
-            '/admin',
-          ].includes(path) ||
-            /^\/watch\/[A-Za-z0-9_-]+$/.test(path)));
-      if (!allowed) throw new HttpError(401, 'This instance is private. Sign in to continue.');
+    if (pending && !allowedPending(r, pending) && !authShellRoute(r, path, true)) {
+      if (authShellRoute(r, path, false)) {
+        const entry = pending === 'enroll' ? '/account' : '/login';
+        return reply.redirect(
+          entry + '?' + new URLSearchParams({ returnTo: safeReturnPath(r.url) }),
+          303,
+        );
+      }
+      throw new HttpError(403, 'Complete sign-in to continue.');
     }
-    if (!['GET', 'HEAD', 'OPTIONS'].includes(r.method)) {
-      if (r.headers.origin !== c.appUrl) throw new HttpError(403, 'Request origin was rejected.');
+    if (
+      !db.flag(c, 'public_access') &&
+      !r.user &&
+      !pending &&
+      !allowedAnonymous(r) &&
+      !authShellRoute(r, path, false)
+    )
+      throw new HttpError(401, 'This instance is private. Sign in to continue.');
+    r.guest = pending || r.user ? null : currentGuest(db, r, c);
+    if (!isRead(r) && r.method !== 'OPTIONS') {
+      // A request that supplied a retired browser grant cannot silently switch
+      // to capability-only authority while a successor cookie is in transit.
       if (
-        r.user &&
-        !['/api/auth/login', '/api/auth/register', '/api/setup'].includes(path) &&
-        !equal(String(r.headers['x-csrf-token'] || ''), r.user.csrf)
-      )
-        throw new HttpError(403, 'Session expired. Refresh the page and try again.');
-      if (
-        !r.user &&
         r.guest &&
-        !['/api/guest/session', '/api/auth/login', '/api/auth/register', '/api/setup'].includes(
-          path,
-        ) &&
-        !equal(String(r.headers['x-csrf-token'] || ''), r.guest.csrf)
+        !session &&
+        (r.cookies[browserCookieName(c)] !== undefined ||
+          r.cookies[sessionCookieName(c)] !== undefined)
       )
-        throw new HttpError(403, 'Session expired. Refresh the page and try again.');
+        throw sessionChanged(reply);
+      const accountRoute = route.startsWith('/api/auth/') || route === '/api/setup';
+      const csrf = accountRoute ? session?.csrf : (r.user?.csrf ?? r.guest?.csrf ?? session?.csrf);
+      const hasBody =
+        r.method !== 'DELETE' ||
+        ['content-type', 'content-length', 'transfer-encoding'].some(
+          (name) => r.headers[name] !== undefined,
+        );
+      requireMutationRequest(
+        r,
+        c,
+        csrf,
+        (accountRoute || route === '/api/guest/session') && hasBody,
+      );
     }
-    if (path === '/api/demos' && r.method === 'POST') {
+    if (route === '/api/demos' && r.method === 'POST') {
       if (r.user) rateLimit(db, r, 'upload', 15, 3600, r.user.id);
       else {
         if (!r.guest || !guestUploadsEnabled(db, c))
           throw new HttpError(401, 'Sign in to continue.');
+        confirmGuestDelivery(db, r.guest);
         rateLimit(db, r, 'guest-upload-ip', 6, 3600);
-        rateLimit(db, r, 'guest-upload', c.guestDemoLimit, 86400, r.guest.id);
       }
     }
   });
+  app.addHook('onRequest', async (r) => {
+    if (adminApi(r.routeOptions.url)) adminAccess(db, c, r, !isRead(r));
+  });
+  function revalidatePrincipal(r: FastifyRequest) {
+    if (r.authSession && currentSession(db, r, c)?.token_hash !== r.authSession.token_hash)
+      throw new HttpError(401, 'Session expired. Refresh the page and try again.');
+    if (r.guest && !r.user && currentGuest(db, r, c)?.csrf !== r.guest.csrf)
+      throw new HttpError(401, 'Session expired. Refresh the page and try again.');
+  }
+  app.addHook('preHandler', async (r) => {
+    if (adminApi(r.routeOptions.url) || adminPage(r.url)) adminAccess(db, c, r, !isRead(r));
+    // Body parsing may yield after the request gate accepted a credential.
+    if (r.authSession && firstPartyRequest(r, c)) touchSession(db, r.authSession, c);
+    revalidatePrincipal(r);
+    if (r.guest && r.routeOptions.url === '/api/auth/me' && firstPartyRequest(r, c))
+      confirmGuestDelivery(db, r.guest);
+  });
+  app.addHook('onSend', async (r, reply, payload) => {
+    const route = r.routeOptions.url ?? '';
+    if (
+      reply.statusCode < 400 &&
+      isRead(r) &&
+      (route === '/map-assets/*' ||
+        /^\/api\/(?:assets|maps|map-preview|sound-assets)(?:\/|$)/.test(route))
+    ) {
+      try {
+        revalidatePrincipal(r);
+        if (!db.flag(c, 'public_access') && !currentUser(db, r, c))
+          throw new HttpError(401, 'This instance is private. Sign in to continue.');
+      } catch (error) {
+        if (
+          payload &&
+          typeof payload === 'object' &&
+          'destroy' in payload &&
+          typeof payload.destroy === 'function'
+        )
+          payload.destroy();
+        for (const name of [
+          'ETag',
+          'Content-Length',
+          'Content-Type',
+          'Content-Range',
+          'Accept-Ranges',
+          'Content-Encoding',
+          'Last-Modified',
+        ])
+          reply.removeHeader(name);
+        reply.header('Cache-Control', 'no-store');
+        throw error;
+      }
+    }
+    return payload;
+  });
+  app.addHook('onError', async (r) => {
+    if (adminPublicationAccountedFor(r) || (!adminApi(r.routeOptions.url) && !adminPage(r.url)))
+      return;
+    try {
+      recordAdminDenial(r);
+    } catch {
+      r.log.error('Administration denial could not be recorded');
+    }
+  });
   app.setErrorHandler((error, r, reply) => {
-    const e = error as Error & { statusCode?: number; code?: string };
+    let e = error as Error & { statusCode?: number; code?: string };
+    const { code } = e;
+    const context = r.headers['x-session-context'];
+    const guestContext = r.headers['x-guest-context'];
+    const adminRequest = adminApi(r.routeOptions.url);
+    if (
+      e instanceof HttpError &&
+      (e.statusCode === 401 || e.statusCode === 403) &&
+      (isRead(r) || adminRequest) &&
+      (context !== undefined || guestContext !== undefined)
+    ) {
+      const live = currentSession(db, r, c);
+      const changed =
+        (context !== undefined &&
+          (typeof context !== 'string' || !live || !equal(live.csrf, context))) ||
+        (guestContext !== undefined &&
+          (typeof guestContext !== 'string' ||
+            !equal(currentGuest(db, r, c)?.csrf ?? '', guestContext))) ||
+        (adminRequest && (!live || live.stage !== 'full' || !hasPermission(live.role, 'admin')));
+      if (changed) e = sessionChanged(reply);
+    }
+    if (
+      r.routeOptions.url === '/api/auth/steam/callback' &&
+      r.headers.host === c.host &&
+      (e instanceof HttpError || e instanceof ZodError) &&
+      acceptsHtml(r)
+    ) {
+      // A browser may return after its account or state expired. Only an
+      // already authenticated, bound callback may use its saved destination.
+      return reply.redirect('/login?steam=verification-failed', 303);
+    }
     if (e instanceof ZodError)
       return reply.code(400).send({ detail: 'Check the form fields and try again.' });
-    if (e.code === 'FST_REQ_FILE_TOO_LARGE' || e.code === 'FST_ERR_CTP_BODY_TOO_LARGE')
+    if (code === 'FST_REQ_FILE_TOO_LARGE' || code === 'FST_ERR_CTP_BODY_TOO_LARGE')
       return reply.code(413).send({ detail: 'Request exceeds the configured upload limit.' });
     const status = e.statusCode && e.statusCode >= 400 && e.statusCode < 600 ? e.statusCode : 500;
-    if (status >= 500) r.log.error({ err: { name: e.name, code: e.code } }, 'Request failed');
-    if (status === 429 && !reply.hasHeader('retry-after')) reply.header('Retry-After', '900');
+    if (status >= 500) r.log.error({ err: { code, statusCode: status } }, 'Request failed');
+    if (status === 429 && !reply.hasHeader('retry-after'))
+      reply.header('Retry-After', String(e instanceof HttpError ? (e.retryAfter ?? 60) : 60));
     return reply.code(status).send({
       ...(e instanceof HttpError && e.code ? { code: e.code } : {}),
       detail:
@@ -197,6 +384,8 @@ export async function createApp(
   });
   const providers = await providerRoutes(app, db, c, providerDownload);
   await authRoutes(app, db, c, providers.invalidate);
+  await registerFactorRoutes(app, db, c, key);
+  await recoveryRoutes(app, db, c);
   await setupRoutes(app, db, c);
   await guestRoutes(app, db, c);
   steamHistoryRoutes(app, db, c, key);
@@ -239,30 +428,32 @@ export async function createApp(
       db.one('SELECT expires_at FROM guest_sessions WHERE owner_id=?', row.owner_id)?.expires_at ??
       null,
   });
-  app.get('/api/health', async () => {
+  app.get('/api/health', accountEntry('setup'), async () => {
     db.one('SELECT 1');
     return { status: 'ok' };
   });
-  app.get('/api/config', async (r, reply) => {
+  app.get('/api/config', accountEntry('status'), async (r, reply) => {
     reply.header('Cache-Control', 'private, no-store');
-    return {
-      build: buildInfo,
-      ...Object.fromEntries(Object.keys(flagDefaults).map((k) => [k, db.flag(c, k as Flag)])),
-      guest_uploads_enabled: guestUploadsEnabled(db, c),
-      guest_retention_hours: c.guestRetentionHours,
-      setup_required: setupRequired(db),
-      max_upload_mb:
-        !r.user && guestUploadsEnabled(db, c)
-          ? Math.min(c.maxUploadMb, c.guestStorageMb)
-          : c.maxUploadMb,
-      retention_days: c.retentionDays,
-      ...(r.user?.is_admin
-        ? {
-            steam_discovery: Boolean(c.steamApiKey),
-          }
-        : {}),
-      transcription_configured: Boolean(c.transcriptionModelDir),
-    };
+    return db.transaction(() => {
+      checkReadContext(r, reply);
+      return {
+        build: buildInfo,
+        admin_access: !!r.user && hasPermission(r.user.role, 'admin') && adminNetworkAllowed(r, c),
+        ...Object.fromEntries(Object.keys(flagDefaults).map((k) => [k, db.flag(c, k as Flag)])),
+        guest_uploads_enabled: guestUploadsEnabled(db, c),
+        guest_retention_hours: c.guestRetentionHours,
+        setup_required: setupRequired(db),
+        max_upload_mb:
+          !r.user && guestUploadsEnabled(db, c)
+            ? Math.min(c.maxUploadMb, c.guestStorageMb)
+            : c.maxUploadMb,
+        retention_days: c.retentionDays,
+        ...(r.user && hasPermission(r.user.role, 'admin') && adminNetworkAllowed(r, c)
+          ? { steam_discovery: Boolean(c.steamApiKey) }
+          : {}),
+        transcription_configured: Boolean(c.transcriptionModelDir),
+      };
+    });
   });
   app.get('/api/demos', async (r) => {
     const q = z
@@ -307,22 +498,37 @@ export async function createApp(
       })
       .parse(r.query);
     if (steam_match && faceit_match) throw new HttpError(400, 'Choose one match for this upload.');
-    const faceitUpload = faceit_match ? providers.operationFor(requireUser(r).id) : undefined;
+    const operation = faceit_match ? providers.operationFor(requireUser(r).id) : undefined;
     try {
       const faceit = faceit_match
         ? await providers.verifyFaceitUpload(r, requireUser(r), faceit_match)
         : undefined;
-      function checkSteamUpload() {
-        if (!steam_match) return;
-        const live = currentUser(db, r, c);
-        if (!r.user || !live || live.id !== u.id || live.csrf !== r.user.csrf)
+      const anonymousUpload = !r.user && r.authSession?.stage === 'anonymous';
+      function checkUploadOwner(reservedDemo?: string) {
+        if (faceit) {
+          providers.revalidateFaceit(r, requireUser(r), faceit.subject);
+          if (operation?.signal.aborted)
+            throw new HttpError(409, 'The FACEIT connection changed. Try again.');
+        }
+        const live = r.user
+          ? currentUser(db, r, c)
+          : anonymousUpload && reservedDemo
+            ? currentReservedGuest(db, r, c, reservedDemo)
+            : currentGuest(db, r, c);
+        if (!live || live.id !== u.id || live.csrf !== u.csrf)
           throw new HttpError(401, 'Session expired. Refresh the page and try again.');
         if (
-          !db.one('SELECT 1 FROM steam_matches WHERE user_id=? AND match_id=?', u.id, steam_match)
+          steam_match &&
+          (!r.user ||
+            !db.one(
+              'SELECT 1 FROM steam_matches WHERE user_id=? AND match_id=?',
+              u.id,
+              steam_match,
+            ))
         )
           throw new HttpError(404, 'This Steam match is no longer in your history.');
       }
-      checkSteamUpload();
+      checkUploadOwner();
       const uploadMb = r.user ? c.maxUploadMb : Math.min(c.maxUploadMb, c.guestStorageMb),
         file = await r.file({ limits: { fileSize: uploadMb * 1024 ** 2 } });
       if (!file) throw new HttpError(400, 'Choose a .dem or .dem.zst file.');
@@ -346,45 +552,75 @@ export async function createApp(
             userDemoLimit: c.guestDemoLimit,
             userStorageMb: c.guestStorageMb,
           };
-      const { id, folder } = reserve(db, quota, u.id, name, r.user ? 'upload' : 'guest');
+      checkUploadOwner();
+      const { id, folder, writeExpiresAt } = reserve(
+        db,
+        quota,
+        u.id,
+        name,
+        r.user ? 'upload' : 'guest',
+        null,
+        null,
+        (deadline) => {
+          checkUploadOwner();
+          if (r.user) return;
+          const browser = anonymousUpload ? requireSession(db, r, c, ['anonymous']) : null;
+          if (browser && browser.expires_at * 1000 < deadline)
+            throw new HttpError(409, 'Could not start a private upload. Try again.');
+          chargeBudgets(db, r, [['guest-upload', c.guestDemoLimit, 86400, u.id]]);
+          return browser?.token_hash;
+        },
+      );
+      const deadline = AbortSignal.timeout(
+        Math.max(1, Math.min(demoWriteTimeoutMs, writeExpiresAt - Date.now())),
+      );
+      const signal = operation ? AbortSignal.any([operation.signal, deadline]) : deadline;
       let size = 0;
       file.file.on('data', (chunk) => {
         size += chunk.length;
       });
       try {
-        await pipeline(file.file, createWriteStream(join(folder, 'input' + ext), { mode: 0o600 }));
+        await pipeline(file.file, createWriteStream(join(folder, 'input' + ext), { mode: 0o600 }), {
+          signal,
+        });
         if (file.file.truncated) throw new HttpError(413, 'Demo exceeds the upload limit.');
         validateMagic(join(folder, 'input' + ext), ext);
         db.transaction(() => {
-          checkSteamUpload();
-          if (faceit) {
-            providers.revalidateFaceit(r, requireUser(r), faceit.subject);
-            if (faceitUpload?.signal.aborted)
-              throw new HttpError(409, 'The FACEIT connection changed. Try again.');
-          }
-          db.run(
-            "UPDATE demos SET status='queued',size=?,source_ref=?,source=?,faceit_match_id=?,metadata=? WHERE id=?",
+          if (Date.now() >= writeExpiresAt)
+            throw new HttpError(408, 'The upload timed out. Try again.');
+          checkUploadOwner(id);
+          const updated = db.run(
+            "UPDATE demos SET status='queued',size=?,source_ref=?,source=?,faceit_match_id=?,metadata=? WHERE id=? AND owner_id=? AND status='uploading'",
             size,
             steam_match ? 'steam:' + steam_match : null,
             faceit ? 'faceit' : r.user ? 'upload' : 'guest',
             faceit_match ?? null,
             faceit ? JSON.stringify({ faceitMatch: faceit.summary }) : null,
             id,
+            u.id,
           );
+          if (updated.changes !== 1) throw new HttpError(409, 'Upload is no longer active.');
+          if (anonymousUpload) db.run('DELETE FROM guest_upload_grants WHERE demo_id=?', id);
         });
       } catch (e) {
-        abandon(db, id);
+        abandonUpload(db, id);
+        if (operation?.signal.aborted)
+          throw new HttpError(409, 'The FACEIT connection changed. Try again.');
+        if (deadline.aborted) throw new HttpError(408, 'The upload timed out. Try again.');
         throw e;
       }
-      db.audit(u.id, 'demo.uploaded');
+      db.audit(r.user?.id ?? null, 'demo.uploaded');
       reply.code(202);
       return { id };
     } finally {
-      faceitUpload?.finish();
+      operation?.finish();
     }
   });
-  app.get<{ Params: { id: string } }>('/api/demos/:id', async (r) =>
-    visible(accessDemo(db, r.params.id, r.user, false, r.guest), r.user?.id, r.guest?.id),
+  app.get<{ Params: { id: string } }>('/api/demos/:id', (r, reply) =>
+    db.transaction(() => {
+      checkReadContext(r, reply);
+      return visible(accessDemo(db, r.params.id, r.user, false, r.guest), r.user?.id, r.guest?.id);
+    }),
   );
   const requireReplay = (demo: ReturnType<typeof accessDemo>) => {
     let version: unknown;
@@ -430,7 +666,7 @@ export async function createApp(
     z.object({})
       .strict()
       .parse(r.body ?? {});
-    const result = requeueTranscription(db, c, demo);
+    const result = requeueTranscription(db, c, demo, () => revalidatePrincipal(r));
     db.audit(user.id, 'captions.requeued');
     reply.code(result.status === 'queued' ? 202 : 200);
     return result;
@@ -448,32 +684,40 @@ export async function createApp(
       return reply.send(createReadStream(path));
     },
   );
-  app.patch<{ Params: { id: string } }>('/api/demos/:id', async (r) => {
-    const u = requireUser(r),
-      d = accessDemo(db, r.params.id, u, true),
-      b = z
-        .object({
-          name: z.string().trim().min(1).max(120).optional(),
-          public: z.boolean().optional(),
-        })
-        .strict()
-        .parse(r.body);
-    db.run(
-      'UPDATE demos SET name=?,public=? WHERE id=?',
-      b.name ?? d.name,
-      b.public === undefined ? d.public : Number(b.public),
-      d.id,
-    );
-    db.audit(u.id, b.public === undefined ? 'demo.renamed' : 'demo.visibility_changed');
-    return { ok: true };
-  });
+  app.patch<{ Params: { id: string } }>('/api/demos/:id', (r) =>
+    db.transaction(() => {
+      revalidatePrincipal(r);
+      const u = requireUser(r),
+        d = accessDemo(db, r.params.id, u, true),
+        b = z
+          .object({
+            name: z.string().trim().min(1).max(120).optional(),
+            public: z.boolean().optional(),
+          })
+          .strict()
+          .parse(r.body);
+      db.run(
+        'UPDATE demos SET name=?,public=? WHERE id=?',
+        b.name ?? d.name,
+        b.public === undefined ? d.public : Number(b.public),
+        d.id,
+      );
+      db.audit(u.id, b.public === undefined ? 'demo.renamed' : 'demo.visibility_changed');
+      return { ok: true };
+    }),
+  );
   app.delete<{ Params: { id: string } }>('/api/demos/:id', async (r) => {
-    const u = r.user || r.guest || requireUser(r),
-      d = accessDemo(db, r.params.id, r.user, true, r.guest);
-    if (['uploading', 'processing'].includes(d.status))
-      throw new HttpError(409, 'Wait for processing to finish before deleting.');
-    abandon(db, d.id);
-    db.audit(u.id, 'demo.deleted');
+    db.transaction(() => {
+      revalidatePrincipal(r);
+      const owner = r.user || r.guest || requireUser(r);
+      const d = accessDemo(db, r.params.id, r.user, true, r.guest);
+      if (['uploading', 'processing'].includes(d.status))
+        throw new HttpError(409, 'Wait for processing to finish before deleting.');
+      enqueueUserDemoDeletion(db, c, owner.id, d.id);
+      db.run('DELETE FROM demos WHERE id=?', d.id);
+      db.audit(r.user?.id ?? null, 'demo.deleted');
+    });
+    cleanupDeletedDemos(db, r.params.id);
     return { ok: true };
   });
   app.get<{ Params: { id: string } }>('/api/demos/:id/bookmarks', async (r) => {
@@ -485,69 +729,36 @@ export async function createApp(
       u.id,
     );
   });
-  app.post<{ Params: { id: string } }>('/api/demos/:id/bookmarks', async (r, reply) => {
-    const u = requireUser(r),
-      d = accessDemo(db, r.params.id, u),
-      b = z
-        .object({
-          tick: z.number().int().min(0).max(1e8),
-          label: z.string().trim().min(1).max(100),
-        })
-        .parse(r.body),
-      summary = JSON.parse(d.metadata || '{}');
-    if (d.status !== 'ready' || b.tick < summary.firstTick || b.tick > summary.lastTick)
-      throw new HttpError(400, 'Bookmark is outside this demo.');
-    rateLimit(db, r, 'bookmarks', 100, 3600, u.id);
-    const id = token().slice(0, 32);
-    db.run('INSERT INTO bookmarks VALUES(?,?,?,?,?)', id, d.id, u.id, b.tick, b.label);
-    reply.code(201);
-    return { id, ...b };
-  });
-  app.delete<{ Params: { id: string } }>('/api/bookmarks/:id', async (r) => {
-    const u = requireUser(r);
-    db.run('DELETE FROM bookmarks WHERE id=? AND user_id=?', r.params.id, u.id);
-    return { ok: true };
-  });
-  app.get('/api/admin', async (r) => {
-    requireAdmin(r);
-    const { diagnostics: mapReadiness } = await readMapPreparationState(
-      c,
-      db.flag(c, 'auto_official_maps_enabled'),
-    );
-    return {
-      mapReadiness,
-      presentationAssets: await readPresentationStatus(c.mapJobsDir),
-      flags: Object.fromEntries(
-        Object.keys(flagDefaults).map((k) => [
-          k,
-          { value: db.flag(c, k as Flag), locked: c.flags[k as Flag] !== undefined },
-        ]),
-      ),
-      users: db.all(
-        'SELECT id,username,is_admin,created_at FROM users u WHERE NOT EXISTS(SELECT 1 FROM guest_sessions g WHERE g.owner_id=u.id) ORDER BY created_at DESC LIMIT 100',
-      ),
-      queue: db.all('SELECT status,count(*) AS count FROM demos GROUP BY status'),
-      audit: db.all('SELECT action,created_at FROM audit ORDER BY id DESC LIMIT 20'),
-    };
-  });
-  app.patch('/api/admin', async (r) => {
-    const u = requireAdmin(r),
-      b = z
-        .partialRecord(z.enum(Object.keys(flagDefaults) as [Flag, ...Flag[]]), z.boolean())
-        .refine((values) => Object.keys(values).length > 0)
-        .parse(r.body);
+  app.post<{ Params: { id: string } }>('/api/demos/:id/bookmarks', (r, reply) =>
     db.transaction(() => {
-      for (const [k, v] of Object.entries(b))
-        if (c.flags[k as Flag] === undefined)
-          db.run(
-            'INSERT INTO settings VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',
-            k,
-            Number(v),
-          );
-    });
-    db.audit(u.id, 'settings.updated');
-    return { ok: true };
-  });
+      revalidatePrincipal(r);
+      const u = requireUser(r),
+        d = accessDemo(db, r.params.id, u),
+        b = z
+          .object({
+            tick: z.number().int().min(0).max(1e8),
+            label: z.string().trim().min(1).max(100),
+          })
+          .parse(r.body),
+        summary = JSON.parse(d.metadata || '{}');
+      if (d.status !== 'ready' || b.tick < summary.firstTick || b.tick > summary.lastTick)
+        throw new HttpError(400, 'Bookmark is outside this demo.');
+      chargeBudgets(db, r, [['bookmarks', 100, 3600, u.id]]);
+      const id = token().slice(0, 32);
+      db.run('INSERT INTO bookmarks VALUES(?,?,?,?,?)', id, d.id, u.id, b.tick, b.label);
+      reply.code(201);
+      return { id, ...b };
+    }),
+  );
+  app.delete<{ Params: { id: string } }>('/api/bookmarks/:id', (r) =>
+    db.transaction(() => {
+      revalidatePrincipal(r);
+      const u = requireUser(r);
+      db.run('DELETE FROM bookmarks WHERE id=? AND user_id=?', r.params.id, u.id);
+      return { ok: true };
+    }),
+  );
+  adminRoutes(app, db, c);
   if (existsSync(join(c.frontendDir, 'assets')))
     await app.register(staticFiles, {
       root: join(c.frontendDir, 'assets'),

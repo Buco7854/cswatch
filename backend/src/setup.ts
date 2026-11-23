@@ -1,3 +1,5 @@
+import { newCredentials } from './credentials.js';
+import { accountEntry } from './auth-routes.js';
 import {
   constants,
   closeSync,
@@ -17,22 +19,21 @@ import {
   equal,
   hashPassword,
   HttpError,
-  newSession,
+  firstFactorStage,
   rateLimit,
+  requireSession,
+  rotateSession,
+  sendSession,
   token,
 } from './security.js';
 
-const adminCredentials = z.object({
-  username: z.string().regex(/^[A-Za-z0-9_-]{3,32}$/),
-  password: z.string().min(12).max(128),
-});
 export const setupRequired = (db: Store) =>
-  !db.one('SELECT id FROM users WHERE is_admin=1 LIMIT 1');
+  !db.one("SELECT id FROM users WHERE role='admin' LIMIT 1");
 
 /** Operator provisioning is creation-only. Restarting must never reset credentials. */
 export async function provisionAdmin(db: Store, c: Config) {
   if (!c.adminUsername && !c.adminPassword) return;
-  const credentials = adminCredentials.parse({
+  const credentials = newCredentials.parse({
     username: c.adminUsername,
     password: c.adminPassword,
   });
@@ -43,8 +44,15 @@ export async function provisionAdmin(db: Store, c: Config) {
     if (db.one('SELECT id FROM users WHERE username=? COLLATE NOCASE', credentials.username))
       throw new Error('The configured administrator username is already in use.');
     const id = token().slice(0, 32);
-    db.run('INSERT INTO users VALUES(?,?,?,?,?)', id, credentials.username, hash, 1, now());
-    db.audit(id, 'instance.admin_provisioned');
+    db.run(
+      'INSERT INTO users(id,username,password_hash,role,created_at) VALUES(?,?,?,?,?)',
+      id,
+      credentials.username,
+      hash,
+      'admin',
+      now(),
+    );
+    db.audit(id, 'instance.admin_provisioned', { target: id, administrative: true });
   });
 }
 
@@ -86,10 +94,11 @@ export function prepareSetup(db: Store) {
 }
 
 export async function setupRoutes(app: FastifyInstance, db: Store, c: Config) {
-  app.post('/api/setup', async (request, reply) => {
+  app.post('/api/setup', accountEntry('setup'), async (request, reply) => {
+    requireSession(db, request, c, ['anonymous']);
     if (!setupRequired(db)) throw new HttpError(409, 'Instance setup is already complete.');
     rateLimit(db, request, 'instance-setup', 5, 900);
-    const body = adminCredentials
+    const body = newCredentials
       .extend({ setupToken: z.string().regex(/^[a-f0-9]{64}$/) })
       .strict()
       .parse(request.body);
@@ -98,16 +107,33 @@ export async function setupRoutes(app: FastifyInstance, db: Store, c: Config) {
       throw new HttpError(403, 'Setup code is invalid.');
     const hash = await hashPassword(body.password);
     const id = token().slice(0, 32);
-    db.transaction(() => {
+    const grant = db.transaction(() => {
+      requireSession(db, request, c, ['anonymous']);
       if (!setupRequired(db)) throw new HttpError(409, 'Instance setup is already complete.');
       const current = db.one('SELECT token_hash FROM instance_setup WHERE id=1');
       if (!current || !equal(current.token_hash, digest(body.setupToken)))
         throw new HttpError(403, 'Setup code is invalid.');
       if (db.one('SELECT id FROM users WHERE username=? COLLATE NOCASE', body.username))
         throw new HttpError(409, 'That username is unavailable.');
-      db.run('INSERT INTO users VALUES(?,?,?,?,?)', id, body.username, hash, 1, now());
+      db.run(
+        'INSERT INTO users(id,username,password_hash,role,created_at) VALUES(?,?,?,?,?)',
+        id,
+        body.username,
+        hash,
+        'admin',
+        now(),
+      );
       db.run('DELETE FROM instance_setup');
-      db.audit(id, 'instance.configured');
+      db.audit(id, 'instance.configured', {
+        target: id,
+        address: request.clientAddress,
+        administrative: true,
+      });
+      return rotateSession(db, c, request, {
+        userId: id,
+        stage: firstFactorStage(db, c, id),
+        proof: { kind: 'password' },
+      });
     });
     try {
       unlinkSync(join(db.root, 'setup-token'));
@@ -115,8 +141,7 @@ export async function setupRoutes(app: FastifyInstance, db: Store, c: Config) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
         request.log.warn('Completed setup token file could not be removed.');
     }
-    const csrf = newSession(db, c, request, reply, id);
     reply.code(201);
-    return { user: { id, username: body.username, is_admin: true, csrf } };
+    return sendSession(c, reply, grant);
   });
 }

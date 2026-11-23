@@ -19,6 +19,8 @@ for (const name of [
 for (const name of [
   'gameplay-sound-files',
   'auth-navigation',
+  'passkey-name',
+  'roles',
   'smoke-state',
   'inferno-state',
   'stride-distance',

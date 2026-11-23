@@ -1,3 +1,4 @@
+import { fixtureCookie, insertFixtureSession } from './fixtures/member-session.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -17,7 +18,6 @@ import { spawnSync } from 'node:child_process';
 import { createApp } from '../src/server.js';
 import { loadConfig } from '../src/config.js';
 import { Store, now } from '../src/db.js';
-import { COOKIE, digest } from '../src/security.js';
 import { initializeFixture } from './fixtures/initialized.js';
 import { mapPreviewLimits, validMapPreview } from '../src/map-preview.js';
 process.env.LOG_LEVEL = 'silent';
@@ -50,14 +50,15 @@ async function fixture(initialized = true) {
     root = join(directory, 'data'),
     db = new Store(root);
   if (initialized) initializeFixture(db);
-  db.run('INSERT INTO users VALUES(?,?,?,?,?)', 'member', 'member', null, 0, now());
   db.run(
-    'INSERT INTO sessions VALUES(?,?,?,?)',
-    digest('preview-session'),
+    'INSERT INTO users(id,username,password_hash,role,created_at) VALUES(?,?,?,?,?)',
     'member',
-    'csrf',
-    now() + 120,
+    'member',
+    null,
+    'member',
+    now(),
   );
+  insertFixtureSession(db, 'preview-session', 'member', 'csrf', now() + 120);
   const app = await createApp(
     loadConfig({ DATA_DIR: root, APP_URL: 'http://localhost:8000', COOKIE_SECURE: 'false' }),
     db,
@@ -81,7 +82,7 @@ async function fixture(initialized = true) {
       url,
       headers: {
         host: 'localhost:8000',
-        ...(member ? { cookie: `${COOKIE}=preview-session` } : {}),
+        ...(member ? { cookie: fixtureCookie('preview-session') } : {}),
       },
     });
   return {

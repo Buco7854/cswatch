@@ -1,3 +1,4 @@
+import { fixtureCookie, insertFixtureSession } from './fixtures/member-session.js';
 import { initializeFixture } from './fixtures/initialized.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -8,7 +9,6 @@ import { gunzipSync } from 'node:zlib';
 import { createApp } from '../src/server.js';
 import { Store, now } from '../src/db.js';
 import { loadConfig } from '../src/config.js';
-import { digest, COOKIE } from '../src/security.js';
 import { writeReplay } from '../src/replay.js';
 import { sample } from '../../frontend/src/sample.js';
 
@@ -20,17 +20,18 @@ test('library search spans pages, treats wildcards literally, and respects owner
     loadConfig({ APP_URL: 'http://localhost:8000', COOKIE_SECURE: 'false', DATA_DIR: dir }),
     db,
   );
-  const headers = { host: 'localhost:8000', cookie: `${COOKIE}=library-test-session` };
+  const headers = { host: 'localhost:8000', cookie: fixtureCookie('library-test-session') };
   try {
     for (const id of ['owner', 'other'])
-      db.run('INSERT INTO users VALUES(?,?,?,?,?)', id, id, null, 0, now());
-    db.run(
-      'INSERT INTO sessions VALUES(?,?,?,?)',
-      digest('library-test-session'),
-      'owner',
-      'csrf',
-      now() + 60,
-    );
+      db.run(
+        'INSERT INTO users(id,username,password_hash,role,created_at) VALUES(?,?,?,?,?)',
+        id,
+        id,
+        null,
+        'member',
+        now(),
+      );
+    insertFixtureSession(db, 'library-test-session', 'owner', 'csrf', now() + 60);
     for (let i = 0; i < 105; i++)
       db.run(
         'INSERT INTO demos(id,owner_id,name,source,status,size,created_at,public,map) VALUES(?,?,?,?,?,?,?,?,?)',
@@ -98,16 +99,17 @@ test('every replay slice enforces demo access, readiness, strict indices and pri
     DATA_DIR: dir,
   });
   const app = await createApp(config, db);
-  const headers = { host: 'localhost:8000', cookie: `${COOKIE}=slice-test-session` };
+  const headers = { host: 'localhost:8000', cookie: fixtureCookie('slice-test-session') };
   try {
-    db.run('INSERT INTO users VALUES(?,?,?,?,?)', 'owner', 'owner', null, 0, now());
     db.run(
-      'INSERT INTO sessions VALUES(?,?,?,?)',
-      digest('slice-test-session'),
+      'INSERT INTO users(id,username,password_hash,role,created_at) VALUES(?,?,?,?,?)',
       'owner',
-      'csrf',
-      now() + 60,
+      'owner',
+      null,
+      'member',
+      now(),
     );
+    insertFixtureSession(db, 'slice-test-session', 'owner', 'csrf', now() + 60);
     db.run(
       'INSERT INTO demos(id,owner_id,name,source,status,size,created_at,public) VALUES(?,?,?,?,?,?,?,?)',
       'demo',

@@ -7,8 +7,9 @@ import { join } from 'node:path';
 import { createApp } from '../src/server.js';
 import { loadConfig } from '../src/config.js';
 import { Store, now } from '../src/db.js';
-import { hashPassword, COOKIE } from '../src/security.js';
+import { digest, hashPassword, COOKIE, steamStateCookie } from '../src/security.js';
 import { reserve } from '../src/ingestion.js';
+import { browserBootstrap } from './fixtures/browser-bootstrap.js';
 const origin = 'http://localhost:8000';
 async function setup(overrides: Record<string, string> = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'cswatch-test-')),
@@ -27,7 +28,7 @@ async function setup(overrides: Record<string, string> = {}) {
     const r = await app.inject({
       method: 'POST',
       url: '/api/auth/register',
-      headers: { host: 'localhost:8000', origin },
+      headers: await browserBootstrap(app, config),
       payload: { username, password: 'a-long-test-password' },
     });
     assert.equal(r.statusCode, 201, r.body);
@@ -35,6 +36,7 @@ async function setup(overrides: Record<string, string> = {}) {
       cookie: `${COOKIE}=${r.cookies.find((c) => c.name === COOKIE)!.value}`,
       csrf: r.json().user.csrf,
       id: r.json().user.id,
+      username: r.json().user.username,
     };
   }
   return {
@@ -65,6 +67,7 @@ test('CSP permits local embedded model textures while restricting network and ex
         .filter((parts) => parts[0])
         .map(([key, ...values]) => [key, values]),
     );
+    assert.deepEqual(directives.get('frame-ancestors'), ["'none'"]);
     assert.deepEqual(directives.get('connect-src'), ["'self'", 'blob:']);
     assert.deepEqual(directives.get('script-src'), ["'self'", "'wasm-unsafe-eval'"]);
     assert.deepEqual(directives.get('object-src'), ["'none'"]);
@@ -104,11 +107,18 @@ test('registration hashes passwords, sessions rotate, logout requires CSRF', asy
       ).statusCode,
       403,
     );
+    const logout = await s.app.inject({
+      method: 'POST',
+      url: '/api/auth/logout',
+      headers: { host: 'localhost:8000', origin, cookie: u.cookie, 'x-csrf-token': u.csrf },
+      payload: {},
+    });
+    assert.equal(logout.statusCode, 200);
     const login = await s.app.inject({
       method: 'POST',
       url: '/api/auth/login',
-      headers: { host: 'localhost:8000', origin, cookie: u.cookie },
-      payload: { username: 'reviewer', password: 'a-long-test-password' },
+      headers: await browserBootstrap(s.app, s.config),
+      payload: { username: u.username, password: 'a-long-test-password' },
     });
     assert.equal(login.statusCode, 200);
     const newCookie = `${COOKIE}=${login.cookies.find((c) => c.name === COOKIE)!.value}`;
@@ -134,12 +144,20 @@ test('verified Steam subject creates independent ownership when a local username
   try {
     const subject = '76561198000000001';
     const preclaimed = await s.register(`steam_${subject}`);
+    s.db.run('UPDATE users SET username=? WHERE id=?', 'steam_' + subject, preclaimed.id);
+    assert.equal(
+      s.db.one('SELECT username FROM users WHERE id=?', preclaimed.id)!.username,
+      'steam_' + subject,
+    );
+    const browser = await browserBootstrap(s.app, s.config);
     const start = await s.app.inject({
-      url: '/api/auth/steam?returnTo=%2Faccount%2Fconnections',
-      headers: { host: 'localhost:8000' },
+      method: 'POST',
+      url: '/api/auth/steam',
+      headers: browser,
+      payload: { return_to: '/account/connections' },
     });
-    assert.equal(start.statusCode, 303);
-    const upstream = new URL(start.headers.location!);
+    assert.equal(start.statusCode, 200);
+    const upstream = new URL(start.json().location);
     const returnTo = upstream.searchParams.get('openid.return_to')!;
     const state = new URL(returnTo).searchParams.get('state')!;
     const query = new URLSearchParams({
@@ -170,7 +188,15 @@ test('verified Steam subject creates independent ownership when a local username
     const callback = () =>
       s.app.inject({
         url: '/api/auth/steam/callback?' + query,
-        headers: { host: 'localhost:8000', cookie: `steam_state=${state}` },
+        headers: {
+          host: 'localhost:8000',
+          cookie:
+            browser.cookie +
+            '; ' +
+            steamStateCookie({ cookieSecure: false }, state).name +
+            '=' +
+            state,
+        },
       });
     const result = await callback();
     assert.equal(result.statusCode, 303, result.body);
@@ -182,7 +208,7 @@ test('verified Steam subject creates independent ownership when a local username
     assert.notEqual(identity.user_id, preclaimed.id);
     assert.match(
       s.db.one('SELECT username FROM users WHERE id=?', identity.user_id)!.username,
-      /^steam_76561198000000001_[a-f0-9]{8}$/,
+      /^steam_76561198000000001-[a-f0-9]{16}$/,
     );
     assert.equal((await callback()).statusCode, 400);
     assert.equal(verifications, 1);
@@ -192,7 +218,7 @@ test('verified Steam subject creates independent ownership when a local username
   }
 });
 
-test('Steam-created accounts follow their Steam name until a password fixes it', async () => {
+test('Steam-created accounts retain a sign-in handle and update their display name until a password fixes it', async () => {
   const s = await setup({ STEAM_ENABLED: 'true' });
   const originalFetch = globalThis.fetch;
   let name = '';
@@ -210,14 +236,17 @@ test('Steam-created accounts follow their Steam name until a password fixes it',
   };
   const host = 'localhost:8000';
   async function signIn(subject: string, session?: { cookie: string; csrf: string }) {
-    const start = session
-      ? await s.app.inject({
-          method: 'POST',
-          url: '/api/auth/steam/link',
-          headers: { host, origin, cookie: session.cookie, 'x-csrf-token': session.csrf },
-        })
-      : await s.app.inject({ url: '/api/auth/steam', headers: { host } });
-    const upstream = new URL(session ? start.json().location : start.headers.location!);
+    const browser = session
+      ? { host, origin, cookie: session.cookie, 'x-csrf-token': session.csrf }
+      : await browserBootstrap(s.app, s.config);
+    const start = await s.app.inject({
+      method: 'POST',
+      url: session ? '/api/auth/steam/link' : '/api/auth/steam',
+      headers: browser,
+      payload: {},
+    });
+    assert.equal(start.statusCode, 200, start.body);
+    const upstream = new URL(start.json().location);
     const returnTo = upstream.searchParams.get('openid.return_to')!;
     const state = new URL(returnTo).searchParams.get('state')!;
     const id = `https://steamcommunity.com/openid/id/${subject}`;
@@ -238,48 +267,59 @@ test('Steam-created accounts follow their Steam name until a password fixes it',
       url: '/api/auth/steam/callback?' + query,
       headers: {
         host,
-        cookie: `steam_state=${state}` + (session ? '; ' + session.cookie : ''),
+        cookie:
+          browser.cookie +
+          '; ' +
+          steamStateCookie({ cookieSecure: false }, state).name +
+          '=' +
+          state,
       },
     });
     assert.equal(result.statusCode, 303, result.body);
     const cookie = `${COOKIE}=${result.cookies.find((c) => c.name === COOKIE)!.value}`;
     const me = await s.app.inject({ url: '/api/auth/me', headers: { host, cookie } });
-    return { cookie, ...me.json().user } as { cookie: string; csrf: string; username: string };
+    return { cookie, ...me.json().user } as {
+      cookie: string;
+      csrf: string;
+      username: string;
+      display_name: string;
+    };
   }
   try {
     name = "Подсосник blick'a";
     const first = await signIn('76561198000000011');
-    assert.equal(first.username, name);
+    assert.equal(first.display_name, name);
     const twin = await signIn('76561198000000012');
-    assert.equal(twin.username, `${name} (0012)`);
+    assert.equal(twin.display_name, name);
+    assert.notEqual(twin.username, first.username);
 
     name = 'New name';
-    assert.equal((await signIn('76561198000000011')).username, 'New name');
+    assert.equal((await signIn('76561198000000011')).display_name, 'New name');
     name = '';
     const kept = await signIn('76561198000000011');
-    assert.equal(kept.username, 'New name', 'A missing Steam name keeps the previous one.');
+    assert.equal(kept.display_name, 'New name', 'A missing Steam name keeps the previous one.');
 
     const password = 'a-long-test-password';
     const set = await s.app.inject({
       method: 'POST',
       url: '/api/auth/password',
       headers: { host, origin, cookie: kept.cookie, 'x-csrf-token': kept.csrf },
-      payload: { current_password: '', new_password: password },
+      payload: { new_password: password },
     });
     assert.equal(set.statusCode, 200, set.body);
     name = 'Renamed again';
-    assert.equal((await signIn('76561198000000011')).username, 'New name');
+    assert.equal((await signIn('76561198000000011')).display_name, 'New name');
     const login = await s.app.inject({
       method: 'POST',
       url: '/api/auth/login',
-      headers: { host, origin },
-      payload: { username: 'new NAME', password },
+      headers: await browserBootstrap(s.app, s.config),
+      payload: { username: kept.username.toUpperCase(), password },
     });
     assert.equal(login.statusCode, 200, login.body);
 
     const local = await s.register('local_owner');
     const linked = await signIn('76561198000000013', local);
-    assert.equal(linked.username, 'local_owner', 'Linking never renames a local account.');
+    assert.equal(linked.username, local.username, 'Linking never renames a local account.');
   } finally {
     globalThis.fetch = originalFetch;
     await s.close();
@@ -311,7 +351,7 @@ test('HTTPS sessions and Steam state use host-only cookie prefixes, including ro
     const registration = await app.inject({
       method: 'POST',
       url: '/api/auth/register',
-      headers,
+      headers: await browserBootstrap(app, config),
       payload: { username: 'secure_review', password: 'a-long-secure-test-password' },
     });
     assert.equal(registration.statusCode, 201);
@@ -329,11 +369,13 @@ test('HTTPS sessions and Steam state use host-only cookie prefixes, including ro
       method: 'POST',
       url: '/api/auth/steam/link',
       headers: { ...headers, cookie: sessionCookie, 'x-csrf-token': registration.json().user.csrf },
+      payload: {},
     });
     assert.equal(start.statusCode, 200);
-    assertCookie(String(start.headers['set-cookie']), '__Host-cswatch_steam_state');
-    const state = start.cookies.find(
-      (cookie) => cookie.name === '__Host-cswatch_steam_state',
+    assert.ok(start.cookies[0].name.startsWith('__Host-cswatch_steam_state_'));
+    assertCookie(String(start.headers['set-cookie']), start.cookies[0].name);
+    const state = start.cookies.find((cookie) =>
+      cookie.name.startsWith('__Host-cswatch_steam_state_'),
     )!.value;
     const returnTo = new URL(start.json().location).searchParams.get('openid.return_to')!;
     const claimed = 'https://steamcommunity.com/openid/id/76561198000000002';
@@ -362,14 +404,16 @@ test('HTTPS sessions and Steam state use host-only cookie prefixes, including ro
     };
     const linked = await app.inject({
       url,
-      headers: { ...headers, cookie: `${sessionCookie}; __Host-cswatch_steam_state=${state}` },
+      headers: {
+        ...headers,
+        cookie: `${sessionCookie}; ${steamStateCookie({ cookieSecure: true }, state).name}=${state}`,
+      },
     });
     assert.equal(linked.statusCode, 303, linked.body);
-    for (const header of linked.headers['set-cookie'] as string[])
-      assertCookie(header, header.split('=')[0]);
+    assertCookie(String(linked.headers['set-cookie']), '__Host-cswatch_session');
     assert.equal(
-      linked.cookies.find((cookie) => cookie.name === '__Host-cswatch_steam_state')!.value,
-      '',
+      linked.cookies.some((cookie) => cookie.name.startsWith('__Host-cswatch_steam_state_')),
+      false,
     );
     const next = linked.cookies.find((cookie) => cookie.name === '__Host-cswatch_session')!;
     assert.notEqual(next.value, session.value);
@@ -380,9 +424,11 @@ test('HTTPS sessions and Steam state use host-only cookie prefixes, including ro
       method: 'POST',
       url: '/api/auth/logout',
       headers: { ...headers, cookie, 'x-csrf-token': me.json().user.csrf },
+      payload: {},
     });
     assert.equal(logout.statusCode, 200);
-    assertCookie(String(logout.headers['set-cookie']), '__Host-cswatch_session');
+    assertCookie(String(logout.headers['set-cookie']), '__Host-cswatch_browser');
+    assert.ok(logout.cookies.every((row) => row.name !== '__Host-cswatch_session'));
     assert.equal(
       (await app.inject({ url: '/api/auth/me', headers: { ...headers, cookie } })).json().user,
       null,
@@ -453,6 +499,12 @@ test('demo ownership, explicit sharing, private notes, and deletion', async () =
   try {
     const a = await s.register('alice'),
       b = await s.register('bobby');
+    const memberHeaders = ({ cookie, csrf }: typeof a) => ({
+      host: 'localhost:8000',
+      origin,
+      cookie,
+      'x-csrf-token': csrf,
+    });
     const d = reserve(s.db, s.config, a.id, 'match.dem', 'upload');
     s.db.run(
       "UPDATE demos SET status='ready',metadata=? WHERE id=?",
@@ -472,7 +524,7 @@ test('demo ownership, explicit sharing, private notes, and deletion', async () =
         await s.app.inject({
           method: 'PATCH',
           url: '/api/demos/' + d.id,
-          headers: { host: 'localhost:8000', origin, cookie: b.cookie, 'x-csrf-token': b.csrf },
+          headers: memberHeaders(b),
           payload: { public: true },
         })
       ).statusCode,
@@ -483,29 +535,187 @@ test('demo ownership, explicit sharing, private notes, and deletion', async () =
         await s.app.inject({
           method: 'PATCH',
           url: '/api/demos/' + d.id,
-          headers: { host: 'localhost:8000', origin, cookie: a.cookie, 'x-csrf-token': a.csrf },
+          headers: memberHeaders(a),
           payload: { public: true },
         })
       ).statusCode,
       200,
     );
     assert.equal((await get()).statusCode, 200);
+    assert.equal((await get(b.cookie)).statusCode, 200);
+
+    const bookmarksUrl = `/api/demos/${d.id}/bookmarks`;
+    const bookmarks = (member: typeof a) =>
+      s.app.inject({ url: bookmarksUrl, headers: memberHeaders(member) });
     const note = await s.app.inject({
       method: 'POST',
-      url: `/api/demos/${d.id}/bookmarks`,
-      headers: { host: 'localhost:8000', origin, cookie: a.cookie, 'x-csrf-token': a.csrf },
+      url: bookmarksUrl,
+      headers: memberHeaders(a),
       payload: { tick: 20, label: 'Review this angle' },
     });
     assert.equal(note.statusCode, 201);
+    assert.deepEqual((await bookmarks(b)).json(), []);
     const other = await s.app.inject({
-      url: `/api/demos/${d.id}/bookmarks`,
-      headers: { host: 'localhost:8000', cookie: b.cookie },
+      method: 'POST',
+      url: bookmarksUrl,
+      headers: memberHeaders(b),
+      payload: { tick: 30, label: 'Check the rotation' },
     });
-    assert.deepEqual(other.json(), []);
+    assert.equal(other.statusCode, 201, other.body);
+    assert.deepEqual((await bookmarks(a)).json(), [note.json()]);
+    const bookmarkUrl = `/api/bookmarks/${other.json().id}`;
+    const deleteBookmark = (member: typeof a) =>
+      s.app.inject({ method: 'DELETE', url: bookmarkUrl, headers: memberHeaders(member) });
+    assert.equal((await deleteBookmark(a)).statusCode, 200);
+    assert.deepEqual((await bookmarks(b)).json(), [other.json()]);
+    assert.equal((await deleteBookmark(b)).statusCode, 200);
+    assert.deepEqual((await bookmarks(b)).json(), []);
+
+    const list = await s.app.inject({ url: '/api/auth/sessions', headers: memberHeaders(b) });
+    assert.equal(list.statusCode, 200, list.body);
+    const [session] = list.json<{ sessions: { id: string; current: boolean }[] }>().sessions;
+    assert.equal(session.current, true);
+    const revokeSession = (member: typeof a) =>
+      s.app.inject({
+        method: 'DELETE',
+        url: `/api/auth/sessions/${session.id}`,
+        headers: memberHeaders(member),
+      });
+    const denied = await revokeSession(a);
+    assert.equal(denied.statusCode, 404, denied.body);
+    const sessionUser = async () =>
+      (await s.app.inject({ url: '/api/auth/me', headers: memberHeaders(b) })).json().user;
+    assert.equal((await sessionUser())?.id, b.id);
+    const revoked = await revokeSession(b);
+    assert.equal(revoked.statusCode, 200, revoked.body);
+    assert.equal(await sessionUser(), null);
+
+    s.db.run(
+      "UPDATE demos SET transcription_status='processing',transcription_started_at=? WHERE id=?",
+      Math.floor(Date.now() / 1000),
+      d.id,
+    );
+    const removed = await s.app.inject({
+      method: 'DELETE',
+      url: '/api/demos/' + d.id,
+      headers: memberHeaders(a),
+    });
+    assert.equal(removed.statusCode, 200, removed.body);
+    assert.equal((await get(a.cookie)).statusCode, 404);
+    assert.ok(s.db.one('SELECT size FROM pending_demo_deletions WHERE id=?', d.id)!.size > 0);
   } finally {
     await s.close();
   }
 });
+test('external navigation does not extend the account idle deadline', async () => {
+  const s = await setup();
+  try {
+    const member = await s.register();
+    const previous = now() - 120;
+    s.db.run('UPDATE sessions SET last_used_at=? WHERE user_id=?', previous, member.id);
+    const get = (site: string) =>
+      s.app.inject({
+        url: '/api/auth/me',
+        headers: { host: 'localhost:8000', cookie: member.cookie, 'sec-fetch-site': site },
+      });
+    assert.equal((await get('cross-site')).statusCode, 200);
+    assert.equal(
+      s.db.one('SELECT last_used_at FROM sessions WHERE user_id=?', member.id)!.last_used_at,
+      previous,
+    );
+    assert.equal((await get('same-origin')).statusCode, 200);
+    assert.ok(
+      s.db.one('SELECT last_used_at FROM sessions WHERE user_id=?', member.id)!.last_used_at >
+        previous,
+    );
+  } finally {
+    await s.close();
+  }
+});
+
+test('Steam match reads and sync removal revalidate the account under their own lock', async () => {
+  const s = await setup();
+  try {
+    for (const method of ['GET', 'DELETE'] as const) {
+      const member = await s.register();
+      const transaction = s.db.transaction.bind(s.db);
+      s.db.transaction = (work) => {
+        s.db.transaction = transaction;
+        s.db.run('DELETE FROM sessions WHERE user_id=?', member.id);
+        return transaction(work);
+      };
+      const response = await s.app.inject({
+        method,
+        url: '/api/connections/steam/' + (method === 'GET' ? 'matches' : 'history'),
+        headers: {
+          host: 'localhost:8000',
+          origin,
+          cookie: member.cookie,
+          'x-csrf-token': member.csrf,
+        },
+      });
+      assert.equal(response.statusCode, 401, response.body);
+    }
+  } finally {
+    await s.close();
+  }
+});
+
+test('private reads cannot renew a session which expired before its activity write', async () => {
+  const s = await setup();
+  try {
+    const member = await s.register();
+    s.db.run('UPDATE sessions SET last_used_at=? WHERE user_id=?', now() - 61, member.id);
+    const transaction = s.db.transaction.bind(s.db);
+    s.db.transaction = (work) => {
+      s.db.transaction = transaction;
+      s.db.run('UPDATE sessions SET last_used_at=? WHERE user_id=?', now() - 86401, member.id);
+      return transaction(work);
+    };
+    const response = await s.app.inject({
+      url: '/api/demos?scope=mine',
+      headers: { host: 'localhost:8000', cookie: member.cookie, 'sec-fetch-site': 'same-origin' },
+    });
+    assert.equal(response.statusCode, 401, response.body);
+    assert.ok(
+      s.db.one('SELECT last_used_at FROM sessions WHERE user_id=?', member.id)!.last_used_at <=
+        now() - 86400,
+    );
+  } finally {
+    await s.close();
+  }
+});
+
+test('a member revoked before the demo deletion transaction retains no write authority', async () => {
+  const s = await setup();
+  try {
+    const member = await s.register();
+    const demo = reserve(s.db, s.config, member.id, 'session-lock-fixture.dem', 'upload');
+    s.db.run("UPDATE demos SET status='ready' WHERE id=?", demo.id);
+    const transaction = s.db.transaction.bind(s.db);
+    s.db.transaction = (work) => {
+      s.db.transaction = transaction;
+      s.db.run('DELETE FROM sessions WHERE user_id=?', member.id);
+      return transaction(work);
+    };
+    const response = await s.app.inject({
+      method: 'DELETE',
+      url: '/api/demos/' + demo.id,
+      headers: {
+        host: 'localhost:8000',
+        origin,
+        cookie: member.cookie,
+        'x-csrf-token': member.csrf,
+      },
+    });
+    assert.equal(response.statusCode, 401, response.body);
+    assert.ok(s.db.one('SELECT id FROM demos WHERE id=?', demo.id));
+    assert.equal(s.db.one('SELECT id FROM pending_demo_deletions WHERE id=?', demo.id), undefined);
+  } finally {
+    await s.close();
+  }
+});
+
 test('environment wins over admin settings, private access gates public demos', async () => {
   const s = await setup({
     PUBLIC_ACCESS: 'false',
@@ -525,15 +735,21 @@ test('environment wins over admin settings, private access gates public demos', 
         await s.app.inject({
           method: 'POST',
           url: '/api/auth/register',
-          headers: { host: 'localhost:8000', origin },
+          headers: await browserBootstrap(s.app, s.config),
           payload: { username: 'someone', password: 'a-long-test-password' },
         })
       ).statusCode,
       403,
     );
     assert.equal(
-      (await s.app.inject({ url: '/api/auth/steam', headers: { host: 'localhost:8000' } }))
-        .statusCode,
+      (
+        await s.app.inject({
+          method: 'POST',
+          url: '/api/auth/steam',
+          headers: await browserBootstrap(s.app, s.config),
+          payload: {},
+        })
+      ).statusCode,
       403,
     );
   } finally {
@@ -575,7 +791,108 @@ test('Steam callback fails before network without matching one-use state', async
       headers: { host: 'localhost:8000', cookie: 'steam_state=forged' },
     });
     assert.equal(r.statusCode, 400);
-    assert.equal(s.db.one('SELECT count(*) AS n FROM users WHERE is_admin=0')!.n, 0);
+    assert.equal(s.db.one("SELECT count(*) AS n FROM users WHERE role='member'")!.n, 0);
+  } finally {
+    await s.close();
+  }
+});
+
+test('Steam browser callbacks show action errors and retain the saved return intent', async (t) => {
+  const s = await setup({ STEAM_ENABLED: 'true' });
+  const linkedSubject = '76561198000000301';
+  const unlinkedSubject = '76561198000000302';
+  const returnTo = '/watch/private-review?t=128#round-3';
+  let nonce = 0;
+  let verified = true;
+  t.mock.method(globalThis, 'fetch', async (input: string) => {
+    if (input === `https://steamcommunity.com/profiles/${unlinkedSubject}/?xml=1`)
+      return new Response(null, { status: 503 });
+    assert.equal(input, 'https://steamcommunity.com/openid/login');
+    return new Response(`ns:http://specs.openid.net/auth/2.0\nis_valid:${verified}\n`);
+  });
+  try {
+    const owner = await s.register('steam_fixture_owner');
+    const member = await s.register('steam_fixture_member');
+    s.db.run("INSERT INTO identities VALUES('steam',?,?)", linkedSubject, owner.id);
+    s.db.run("INSERT INTO settings VALUES('registrations_enabled',0)");
+    const complete = async (subject: string, accept: string, link = false) => {
+      const browser = link
+        ? { host: s.config.host, origin, cookie: member.cookie, 'x-csrf-token': member.csrf }
+        : await browserBootstrap(s.app, s.config);
+      const started = await s.app.inject({
+        method: 'POST',
+        url: link ? '/api/auth/steam/link' : '/api/auth/steam',
+        headers: browser,
+        payload: link ? {} : { return_to: returnTo },
+      });
+      assert.equal(started.statusCode, 200, started.body);
+      const upstream = new URL(started.json().location);
+      const callback = new URL(upstream.searchParams.get('openid.return_to')!);
+      const claimed = `https://steamcommunity.com/openid/id/${subject}`;
+      for (const [key, value] of Object.entries({
+        'openid.mode': 'id_res',
+        'openid.ns': 'http://specs.openid.net/auth/2.0',
+        'openid.op_endpoint': 'https://steamcommunity.com/openid/login',
+        'openid.return_to': callback.href,
+        'openid.identity': claimed,
+        'openid.claimed_id': claimed,
+        'openid.response_nonce':
+          new Date().toISOString().replace(/\.\d{3}Z$/, 'Z') + 'browser-result-' + nonce++,
+        'openid.assoc_handle': 'fixture-handle',
+        'openid.signed': 'op_endpoint,return_to,response_nonce,assoc_handle,claimed_id,identity',
+        'openid.sig': 'fixture-signature',
+      }))
+        callback.searchParams.set(key, value);
+      return s.app.inject({
+        url: callback.pathname + callback.search,
+        headers: {
+          host: s.config.host,
+          accept,
+          cookie:
+            browser.cookie +
+            '; ' +
+            started.cookies.map(({ name, value }) => `${name}=${value}`).join('; '),
+        },
+      });
+    };
+
+    const closed = await complete(unlinkedSubject, 'text/html');
+    assert.equal(closed.statusCode, 303);
+    assert.equal(
+      closed.headers.location,
+      '/login?' + new URLSearchParams({ steam: 'registration-closed', returnTo }),
+    );
+    assert.equal(closed.headers['set-cookie'], undefined);
+    const closedApi = await complete(unlinkedSubject, 'application/json');
+    assert.equal(closedApi.statusCode, 403);
+    assert.deepEqual(closedApi.json(), { detail: 'New registrations are disabled.' });
+    const existing = await complete(linkedSubject, 'text/html');
+    assert.equal(existing.statusCode, 303);
+    assert.equal(existing.headers.location, returnTo);
+
+    const conflict = await complete(linkedSubject, 'text/html', true);
+    assert.equal(conflict.statusCode, 303);
+    assert.equal(conflict.headers.location, '/account/connections?steam=link-conflict');
+    assert.equal(conflict.headers['set-cookie'], undefined);
+    const conflictApi = await complete(linkedSubject, 'application/json', true);
+    assert.equal(conflictApi.statusCode, 409);
+    assert.deepEqual(conflictApi.json(), {
+      detail: 'This Steam account is already linked to another account.',
+    });
+
+    verified = false;
+    const unavailable = await complete(linkedSubject, 'text/html', true);
+    assert.equal(unavailable.statusCode, 303);
+    assert.equal(
+      unavailable.headers.location,
+      '/account/connections?steam=link-verification-failed',
+    );
+    assert.deepEqual(
+      s.db
+        .all("SELECT subject,user_id FROM identities WHERE provider='steam'")
+        .map(({ subject, user_id }) => [subject, user_id]),
+      [[linkedSubject, owner.id]],
+    );
   } finally {
     await s.close();
   }
@@ -600,13 +917,15 @@ test('Steam rejects malformed and stale assertions, cross-state nonce reuse, and
     const member = await s.register('steam_linking_member');
     const authenticated = { ...headers, cookie: member.cookie, 'x-csrf-token': member.csrf };
     const start = async (link = false) => {
-      const response = await s.app.inject(
-        link
-          ? { method: 'POST', url: '/api/auth/steam/link', headers: authenticated }
-          : { url: '/api/auth/steam?returnTo=%2F%2Fevil.test', headers },
-      );
-      assert.equal(response.statusCode, link ? 200 : 303, response.body);
-      const endpoint = new URL(link ? response.json().location : response.headers.location!);
+      const browser = link ? authenticated : await browserBootstrap(s.app, s.config);
+      const response = await s.app.inject({
+        method: 'POST',
+        url: link ? '/api/auth/steam/link' : '/api/auth/steam',
+        headers: browser,
+        payload: link ? {} : { return_to: '//evil.test' },
+      });
+      assert.equal(response.statusCode, 200, response.body);
+      const endpoint = new URL(response.json().location);
       const returnTo = endpoint.searchParams.get('openid.return_to')!;
       const state = new URL(returnTo).searchParams.get('state')!;
       const query = new URLSearchParams({
@@ -630,7 +949,12 @@ test('Steam rejects malformed and stale assertions, cross-state nonce reuse, and
             url: '/api/auth/steam/callback?' + query,
             headers: {
               ...headers,
-              cookie: (link ? member.cookie + '; ' : '') + 'steam_state=' + state,
+              cookie:
+                browser.cookie +
+                '; ' +
+                steamStateCookie({ cookieSecure: false }, state).name +
+                '=' +
+                state,
             },
           }),
       };
@@ -653,6 +977,7 @@ test('Steam rejects malformed and stale assertions, cross-state nonce reuse, and
     const refusal = await cancelled.callback();
     assert.equal(refusal.statusCode, 303);
     assert.equal(refusal.headers.location, '/login?steam=cancelled&returnTo=%2Flibrary');
+    assert.equal(refusal.headers['set-cookie'], undefined);
     const expired = await start();
     s.db.run('UPDATE auth_states SET expires_at=0');
     assert.match((await expired.callback()).body, /expired/);
@@ -695,7 +1020,7 @@ test('Steam rejects malformed and stale assertions, cross-state nonce reuse, and
       s.db.run('DELETE FROM sessions WHERE user_id=?', member.id);
       return new Response(validReply);
     };
-    assert.match((await link.callback()).body, /session changed/);
+    assert.match((await link.callback()).body, /Session expired/);
     assert.equal(
       s.db.one("SELECT subject FROM identities WHERE user_id=? AND provider='steam'", member.id),
       undefined,
@@ -709,6 +1034,133 @@ test('Steam rejects malformed and stale assertions, cross-state nonce reuse, and
     assert.equal((await (await start()).callback()).statusCode, 303);
   } finally {
     globalThis.fetch = originalFetch;
+    await s.close();
+  }
+});
+
+for (const purpose of ['login', 'step-up'] as const) {
+  test(`a superseded Steam ${purpose} callback loses its destination and preserves the newer attempt cookie`, async () => {
+    const s = await setup({ STEAM_ENABLED: 'true' });
+    const originalFetch = globalThis.fetch;
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<Response>();
+    try {
+      const user = purpose === 'step-up' ? await s.register('step_up_return') : null;
+      const subject = '76561198000000222';
+      if (user) s.db.run("INSERT INTO identities VALUES('steam',?,?)", subject, user.id);
+      const browser = user
+        ? { host: s.config.host, origin, cookie: user.cookie, 'x-csrf-token': user.csrf }
+        : await browserBootstrap(s.app, s.config);
+      async function start() {
+        const response = await s.app.inject({
+          method: 'POST',
+          url: user ? '/api/auth/step-up/steam' : '/api/auth/steam',
+          headers: browser,
+          payload: { return_to: '/account/sessions?proofFor=sessions' },
+        });
+        assert.equal(response.statusCode, 200, response.body);
+        const returnTo = new URL(response.json().location).searchParams.get('openid.return_to')!;
+        const state = response.cookies.find(({ name }) => name.startsWith('steam_state_'))!;
+        const callback = (query: URLSearchParams, accept?: string) =>
+          s.app.inject({
+            url: '/api/auth/steam/callback?' + query,
+            headers: {
+              ...browser,
+              cookie: browser.cookie + '; ' + state.name + '=' + state.value,
+              ...(accept ? { accept } : {}),
+            },
+          });
+        return { returnTo, state: state.value, callback };
+      }
+      const preceding = await start();
+      const claimed = 'https://steamcommunity.com/openid/id/' + subject;
+      globalThis.fetch = async (input) => {
+        assert.equal(input, 'https://steamcommunity.com/openid/login');
+        entered.resolve();
+        return release.promise;
+      };
+      const began = preceding.callback(
+        new URLSearchParams({
+          state: preceding.state,
+          'openid.mode': 'id_res',
+          'openid.ns': 'http://specs.openid.net/auth/2.0',
+          'openid.op_endpoint': 'https://steamcommunity.com/openid/login',
+          'openid.return_to': preceding.returnTo,
+          'openid.identity': claimed,
+          'openid.claimed_id': claimed,
+          'openid.response_nonce': new Date().toISOString().replace(/\.\d{3}Z$/, 'Z') + 'delayed',
+          'openid.assoc_handle': 'fixture',
+          'openid.signed': 'op_endpoint,return_to,response_nonce,assoc_handle,claimed_id,identity',
+          'openid.sig': 'fixture-signature',
+        }),
+        'text/html',
+      );
+      await entered.promise;
+      const replacement = await start();
+      assert.notEqual(
+        steamStateCookie(s.config, preceding.state).name,
+        steamStateCookie(s.config, replacement.state).name,
+      );
+      release.resolve(new Response('ns:http://specs.openid.net/auth/2.0\nis_valid:true\n'));
+      const superseded = await began;
+      assert.equal(superseded.statusCode, 303);
+      assert.equal(superseded.headers.location, '/login?steam=verification-failed');
+      assert.equal(superseded.headers['set-cookie'], undefined);
+      const cancel = new URLSearchParams({ state: replacement.state, 'openid.mode': 'cancel' });
+      assert.equal((await replacement.callback(cancel)).statusCode, 303);
+      assert.equal((await replacement.callback(cancel)).statusCode, 400);
+    } finally {
+      release.resolve(new Response(null, { status: 400 }));
+      globalThis.fetch = originalFetch;
+      await s.close();
+    }
+  });
+}
+
+test('Steam starts charge only the matching browser stage, and an expired browser step-up returns to local sign-in', async () => {
+  const s = await setup({ STEAM_ENABLED: 'true' });
+  try {
+    const browser = await browserBootstrap(s.app, s.config);
+    const count = () =>
+      s.db.one('SELECT count FROM rate_limits WHERE key=?', digest('steam-instance:instance'))
+        ?.count ?? 0;
+    const before = count();
+    const denied = await s.app.inject({
+      method: 'POST',
+      url: '/api/auth/step-up/steam',
+      headers: browser,
+      payload: {},
+    });
+    assert.ok([401, 403].includes(denied.statusCode));
+    assert.equal(count(), before);
+    const user = await s.register('steam_step_up_fixture');
+    s.db.run("INSERT INTO identities VALUES('steam',?,?)", '76561198000000228', user.id);
+    const start = await s.app.inject({
+      method: 'POST',
+      url: '/api/auth/step-up/steam',
+      headers: { host: s.config.host, origin, cookie: user.cookie, 'x-csrf-token': user.csrf },
+      payload: { return_to: '/account?proof=password' },
+    });
+    assert.equal(start.statusCode, 200, start.body);
+    assert.equal(count(), before + 1);
+    const callback = new URL(new URL(start.json().location).searchParams.get('openid.return_to')!);
+    const state = start.cookies.find((c) => c.name.startsWith('steam_state_'))!;
+    s.db.run('UPDATE sessions SET expires_at=0 WHERE user_id=?', user.id);
+    const returned = await s.app.inject({
+      url: callback.pathname + callback.search,
+      headers: {
+        host: s.config.host,
+        cookie: user.cookie + '; ' + state.name + '=' + state.value,
+        accept: 'text/html',
+      },
+    });
+    assert.equal(returned.statusCode, 303);
+    assert.equal(returned.headers.location, '/login?steam=verification-failed');
+    assert.equal(
+      returned.cookies.some((c) => c.name === COOKIE && c.value !== ''),
+      false,
+    );
+  } finally {
     await s.close();
   }
 });

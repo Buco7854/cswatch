@@ -1,9 +1,13 @@
+import { accountStatus, configForSyntheticAccount } from './fixtures/account-status';
 import { expectCameraControl, chooseCameraControl } from './fixtures/viewer-transport';
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { activateViewerAction } from './fixtures/viewer-actions';
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page, type Response } from '@playwright/test';
 import { selectOptionsCategory } from './fixtures/viewer-options';
 import { sample } from '../src/sample';
+if (!process.env.E2E_EXISTING_SERVER)
+  test.use({ extraHTTPHeaders: { 'x-forwarded-for': '192.0.2.21' } });
+
 const privateInstance = Boolean(process.env.E2E_PRIVATE);
 async function choose(page: Page, label: string, option: string) {
   if (label === 'Language' || label === 'Langue') {
@@ -131,9 +135,11 @@ test('account-required upload preserves route intent, registration and logout wo
   await expect(page.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible();
   await page.getByRole('link', { name: 'New here? Create an account' }).click();
   await expect(page.getByRole('heading', { name: 'Create account', exact: true })).toBeVisible();
-  await page.getByLabel('Username', { exact: true }).fill(username);
+  await page.getByLabel('Display name', { exact: true }).fill(username);
   await page.getByLabel('Password', { exact: true }).fill('Unique-test-password-392!');
   await page.getByRole('button', { name: 'Create account', exact: true }).click();
+  await expect(page.getByLabel('Username', { exact: true })).toHaveValue(/-[0-9a-f]{16}$/);
+  await page.getByRole('button', { name: 'Continue', exact: true }).click();
   await expect(page.getByRole('form', { name: 'Create account', exact: true })).toHaveCount(0);
   await expect(page).toHaveURL(/\/library\?upload=1/);
   await page.getByRole('button', { name: 'Close upload' }).click();
@@ -246,9 +252,13 @@ test('private entry gates feature and demo routes and respects registrations pol
     await page.goto('/');
     await page.getByRole('link', { name: 'New here? Create an account' }).click();
     await expect(page.getByRole('heading', { name: 'Create account', exact: true })).toBeVisible();
-    await page.getByLabel('Username', { exact: true }).fill('private_' + Date.now().toString(36));
+    await page
+      .getByLabel('Display name', { exact: true })
+      .fill('private_' + Date.now().toString(36));
     await page.getByLabel('Password', { exact: true }).fill('Unique-private-password-392!');
     await page.getByRole('button', { name: 'Create account', exact: true }).click();
+    await expect(page.getByLabel('Username', { exact: true })).toHaveValue(/-[0-9a-f]{16}$/);
+    await page.getByRole('button', { name: 'Continue', exact: true }).click();
     await expect(page).toHaveURL(/\/library$/);
     await expect(page.getByRole('heading', { name: 'Demo library', exact: true })).toBeVisible();
     await page.goto('/');
@@ -456,17 +466,16 @@ test('library searches the full collection and keeps loaded pages on refresh', a
     rounds: 24,
     error: null,
   }));
+  await configForSyntheticAccount(page);
   await page.route('**/api/auth/me', (route) =>
     route.fulfill({
-      json: {
-        user: {
-          id: 'library-fixture-user',
-          username: 'library_fixture',
-          is_admin: false,
-          csrf: 'library-fixture-csrf',
-          identities: [],
-        },
-      },
+      json: accountStatus({
+        id: 'library-fixture-user',
+        username: 'library_fixture',
+        role: 'member',
+        csrf: 'library-fixture-csrf',
+        identities: [],
+      }),
     }),
   );
   await page.route('**/api/demos?*', async (route) => {
@@ -494,6 +503,85 @@ test('library searches the full collection and keeps loaded pages on refresh', a
   await expect(page.getByRole('heading', { name: 'No matching demos.' })).toBeVisible();
   await page.getByRole('textbox', { name: 'Search demos' }).clear();
   await expect(page.locator('.demo-row:not(.table-head)')).toHaveCount(50);
+});
+
+test('two tabs share a guest capability when one has no Web Locks', async ({ context, page }) => {
+  test.skip(privateInstance);
+  const second = await context.newPage();
+  await second.addInitScript(() => {
+    Object.defineProperty(navigator, 'locks', { value: undefined });
+    const transaction = IDBDatabase.prototype.transaction;
+    IDBDatabase.prototype.transaction = function (...args) {
+      if (this.name === 'cswatch-browser-session' && args[1] === 'readwrite')
+        document.documentElement.dataset.sessionWriter = 'requested';
+      return transaction.apply(this, args);
+    };
+  });
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  let requests = 0;
+  await context.route('**/api/guest/session', async (route) => {
+    if (++requests === 1) {
+      entered.resolve();
+      await release.promise;
+    }
+    await route.continue();
+  });
+  const file = {
+    name: 'two-tab-guest-fixture.dem',
+    mimeType: 'application/octet-stream',
+    buffer: Buffer.from('PBDEMS2\0synthetic-two-tab-guest-fixture'),
+  };
+  try {
+    await Promise.all([page.goto('/'), second.goto('/')]);
+    await expect(second.getByRole('button', { name: 'Choose demo file' })).toBeVisible();
+    await second.evaluate(() => delete document.documentElement.dataset.sessionWriter);
+    const writesDemo = (response: Response) =>
+      new URL(response.url()).pathname === '/api/demos' && response.request().method() === 'POST';
+    const firstUpload = page.waitForResponse(writesDemo);
+    // Send the second write after the first reservation becomes stored data.
+    // A budget that reserves its full size on every upload will still be full.
+    await second.route('**/api/demos', async (route) => {
+      if (route.request().method() === 'POST') await firstUpload;
+      await route.continue();
+    });
+    const firstResponse = page.waitForResponse('**/api/guest/session');
+    await page.locator('input[type="file"]').setInputFiles(file);
+    await entered.promise;
+    const secondResponse = second.waitForResponse('**/api/guest/session');
+    const secondUpload = second.waitForResponse(writesDemo);
+    await second.locator('input[type="file"]').setInputFiles(file);
+    await expect(second.locator('html')).toHaveAttribute('data-session-writer', 'requested');
+    expect(requests).toBe(1);
+
+    release.resolve();
+    const [created, reused] = await Promise.all([firstResponse, secondResponse]);
+    expect(created.status()).toBe(201);
+    expect(reused.status()).toBe(200);
+    const capability = await created.json();
+    expect(await reused.json()).toEqual(capability);
+    const [firstWrite, secondWrite] = await Promise.all([firstUpload, secondUpload]);
+    expect(firstWrite.status()).toBe(202);
+    expect(secondWrite.request().headers()['x-csrf-token']).toBe(capability.csrf);
+    const { id } = await firstWrite.json();
+    await expect(page).toHaveURL(new RegExp('/watch/' + id + '$'));
+    if (secondWrite.status() === 413) {
+      expect((await secondWrite.json()).detail).toBe(
+        'Your storage limit has been reached. Delete a demo before uploading.',
+      );
+    } else {
+      expect(secondWrite.status()).toBe(202);
+      expect((await secondWrite.json()).id).not.toBe(id);
+    }
+    const demo = await second.evaluate(async (id) => {
+      const response = await fetch('/api/demos/' + id);
+      return { status: response.status, metadata: await response.json() };
+    }, id);
+    expect(demo.status).toBe(200);
+    expect(demo.metadata).toMatchObject({ id, guest_owned: true, public: 0 });
+  } finally {
+    release.resolve();
+  }
 });
 
 test('guest upload policy keeps the public entry simple and uses one accessible language menu', async ({
@@ -542,17 +630,16 @@ test('personal library search keeps the complete placeholder readable and keyboa
   page,
 }) => {
   test.skip(privateInstance);
+  await configForSyntheticAccount(page);
   await page.route('**/api/auth/me', (route) =>
     route.fulfill({
-      json: {
-        user: {
-          id: 'search-fixture-user',
-          username: 'search_fixture',
-          is_admin: false,
-          csrf: 'search-fixture-csrf',
-          identities: [],
-        },
-      },
+      json: accountStatus({
+        id: 'search-fixture-user',
+        username: 'search_fixture',
+        role: 'member',
+        csrf: 'search-fixture-csrf',
+        identities: [],
+      }),
     }),
   );
   await page.route('**/api/demos?*', (route) => route.fulfill({ json: { demos: [], total: 0 } }));

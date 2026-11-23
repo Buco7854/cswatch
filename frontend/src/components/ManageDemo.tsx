@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { X, Trash2 } from 'lucide-react';
 import type { Demo } from '../types';
 import { api } from '../api';
-import { useApp } from '../context';
+import { useApp, useWorkspaceDialog } from '../context';
 import { useDeleteDemo } from '../demo-deletion';
 export default function ManageDemo({
   demo,
@@ -24,17 +24,15 @@ export default function ManageDemo({
   const deleteDemo = useDeleteDemo();
   const headingId = useId();
   const operation = useRef({ active: true });
+  useWorkspaceDialog(dialog);
   useEffect(() => {
     const scope = { active: true };
     operation.current = scope;
     setName(demo.name);
     setBusy(false);
     setError('');
-    const element = dialog.current;
-    element?.showModal();
     return () => {
       scope.active = false;
-      element?.close();
     };
   }, [demo.id]);
   async function rename() {

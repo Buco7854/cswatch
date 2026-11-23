@@ -1,4 +1,3 @@
-import { safeAuthReturnPath } from '../../../shared/auth-navigation.mjs';
 import { t } from '../i18n';
 import './provider-brand.css';
 
@@ -23,26 +22,6 @@ export function ProviderLogo({ provider }: { provider: 'steam' | 'faceit' }) {
     >
       <path d={providerPaths[provider]} />
     </svg>
-  );
-}
-export function SteamSignInLink({
-  returnTo,
-  label,
-  className = '',
-}: {
-  returnTo: string;
-  label: string;
-  className?: string;
-}) {
-  return (
-    <a
-      className={'button provider-steam-link ' + className}
-      href={'/api/auth/steam?returnTo=' + encodeURIComponent(safeAuthReturnPath(returnTo))}
-      aria-label={label}
-    >
-      <ProviderLogo provider="steam" />
-      <span>{label}</span>
-    </a>
   );
 }
 export function ProviderBrandNotice() {

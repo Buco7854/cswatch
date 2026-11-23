@@ -1,3 +1,5 @@
+import { createHmac } from 'node:crypto';
+import { accountStatus } from './fixtures/account-status';
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -19,12 +21,32 @@ test('first administrator enrollment requires the private setup code and closes 
   await expect(page.getByRole('alert')).toHaveText('Setup code is invalid.');
   await page.getByLabel('Setup code', { exact: true }).fill(token);
   await page.getByRole('button', { name: 'Create administrator', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Secure your account' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Demo library' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Set up authenticator', exact: true }).click();
+  const base32 = await page.getByLabel('Setup key', { exact: true }).inputValue();
+  const bits = [...base32]
+    .map((c) => 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'.indexOf(c).toString(2).padStart(5, '0'))
+    .join('');
+  const bytes = Buffer.from(bits.match(/.{8}/g)!.map((x) => parseInt(x, 2)));
+  const step = Buffer.alloc(8);
+  step.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30000)));
+  const mac = createHmac('sha1', bytes).update(step).digest();
+  const code = String((mac.readUInt32BE(mac[mac.length - 1] & 15) & 0x7fffffff) % 1000000).padStart(
+    6,
+    '0',
+  );
+  await page.getByLabel('Authenticator code', { exact: true }).fill(code);
+  await page.getByRole('button', { name: 'Activate authenticator' }).click();
+  await expect(page.getByRole('heading', { name: 'Save your recovery codes' })).toBeVisible();
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
   await expect(page).toHaveURL(/\/library$/);
   await expect(page.getByRole('heading', { name: 'Demo library', exact: true })).toBeVisible();
   await page.goto('/setup');
   await expect(page).toHaveURL(/\/library$/);
+  const anonymous = await (await request.get('/api/auth/me')).json();
   const repeated = await request.post('/api/setup', {
-    headers: { origin: baseURL! },
+    headers: { origin: baseURL!, 'x-csrf-token': anonymous.session.csrf },
     data: {
       username: 'another_admin',
       password: 'Disposable-admin-password-2026',
@@ -64,17 +86,17 @@ test('setup retries configuration refresh without creating the administrator twi
   });
   await page.route('**/api/auth/me', (route) =>
     route.fulfill({
-      json: {
-        user: created
+      json: accountStatus(
+        created
           ? {
               id: 'setup-recovery-fixture',
               username: 'fixture_admin',
-              is_admin: true,
+              role: 'admin',
               csrf: 'synthetic-csrf',
               identities: [],
             }
           : null,
-      },
+      ),
     }),
   );
   await page.route('**/api/setup', (route) => {
@@ -82,7 +104,7 @@ test('setup retries configuration refresh without creating the administrator twi
     created = true;
     return route.fulfill({
       status: 201,
-      json: { user: { username: 'fixture_admin', is_admin: true } },
+      json: accountStatus({ username: 'fixture_admin', role: 'admin' }),
     });
   });
   await page.route('**/api/demos?*', (route) => route.fulfill({ json: { demos: [], total: 0 } }));
@@ -93,8 +115,10 @@ test('setup retries configuration refresh without creating the administrator twi
   await page.getByRole('button', { name: 'Create administrator', exact: true }).click();
   await expect(page.getByRole('alert')).toBeVisible();
   await expect(page.getByLabel('Password', { exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Continue', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Connection unavailable' })).toBeVisible();
+  await page.getByRole('button', { name: 'Retry', exact: true }).click();
   await expect(page).toHaveURL(/\/library$/);
+  await expect(page.getByRole('button', { name: 'fixture_admin', exact: true })).toBeVisible();
   expect(attempts).toBe(1);
 });
 
@@ -111,17 +135,17 @@ test('setup recovers a committed enrollment when its POST response is interrupte
   );
   await page.route('**/api/auth/me', (route) =>
     route.fulfill({
-      json: {
-        user: committed
+      json: accountStatus(
+        committed
           ? {
               id: 'setup-committed-fixture',
               username: 'fixture_admin',
-              is_admin: true,
+              role: 'admin',
               csrf: 'synthetic-committed-setup-csrf',
               identities: [],
             }
           : null,
-      },
+      ),
     }),
   );
   await page.route('**/api/setup', (route) => {
@@ -162,23 +186,23 @@ test('an uncertain uncommitted setup preserves edits and prevents duplicate subm
   });
   await page.route('**/api/auth/me', (route) =>
     route.fulfill({
-      json: {
-        user: committed
+      json: accountStatus(
+        committed
           ? {
               id: 'setup-edit-fixture',
               username: 'edited_admin',
-              is_admin: true,
+              role: 'admin',
               csrf: 'synthetic-edited-setup-csrf',
               identities: [],
             }
           : null,
-      },
+      ),
     }),
   );
   await page.route('**/api/setup', (route) => {
     if (++attempts === 1) return route.abort('failed');
     committed = true;
-    return route.fulfill({ status: 201, json: { user: { username: 'edited_admin' } } });
+    return route.fulfill({ status: 201, json: accountStatus({ username: 'edited_admin' }) });
   });
   await page.route('**/api/demos?*', (route) => route.fulfill({ json: { demos: [], total: 0 } }));
   try {

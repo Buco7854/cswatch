@@ -5,11 +5,13 @@ import { api } from '../api';
 import { useApp } from '../context';
 import { t } from '../i18n';
 import { useConfirm } from './Confirmation';
+import { SteamStepUpNotice, useStepUp } from './StepUp';
 import './admin-maps.css';
 
 export default function AdminMaps() {
-  const { user, notify } = useApp();
+  const { user, config, isAdminAvailable, notify } = useApp();
   const confirm = useConfirm();
+  const verify = useStepUp('maps');
   const [data, setData] = useState<ManagedMaps>();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -24,12 +26,15 @@ export default function AdminMaps() {
   const load = useCallback(async () => {
     const current = scope.current,
       identity = currentIdentity.current;
-    if (!current.active) return;
+    if (!current.active || !isAdminAvailable(identity)) return;
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
     const live = () =>
-      current.active && currentIdentity.current === identity && request.current === controller;
+      current.active &&
+      currentIdentity.current === identity &&
+      isAdminAvailable(identity) &&
+      request.current === controller;
     setLoading(true);
     try {
       const result = await api<ManagedMaps>('/api/admin/maps', { signal: controller.signal });
@@ -44,7 +49,7 @@ export default function AdminMaps() {
         setLoading(false);
       }
     }
-  }, []);
+  }, [isAdminAvailable]);
   useEffect(() => {
     const current = { active: true };
     scope.current = current;
@@ -53,13 +58,13 @@ export default function AdminMaps() {
     setData(undefined);
     setError('');
     setBusy(undefined);
-    if (user?.is_admin) void load();
+    if (config.admin_access) void load();
     return () => {
       current.active = false;
       request.current?.abort();
       mutation.current?.abort();
     };
-  }, [user?.id, user?.is_admin, load]);
+  }, [user?.id, config.admin_access, load]);
   useEffect(() => {
     if (!data?.maps.some((map) => map.removal === 'queued') || polls.current >= 12) return;
     const timer = setTimeout(() => {
@@ -69,13 +74,16 @@ export default function AdminMaps() {
     return () => clearTimeout(timer);
   }, [data, load]);
   async function remove(map: ManagedMap) {
-    if (action.current || !user?.is_admin) return;
+    if (action.current || !user || !isAdminAvailable(user.id)) return;
     const current = scope.current,
       identity = user.id,
       attempt = {};
     action.current = attempt;
-    const live = () =>
-      current.active && currentIdentity.current === identity && action.current === attempt;
+    const live = (csrf?: string) =>
+      current.active &&
+      currentIdentity.current === identity &&
+      isAdminAvailable(identity, csrf) &&
+      action.current === attempt;
     try {
       const accepted = await confirm({
         title: t('Delete {{map}}?', { map: map.map }),
@@ -88,14 +96,20 @@ export default function AdminMaps() {
       if (!accepted || !live()) return;
       setBusy(map.packId);
       setError('');
+      const csrf = await verify();
+      if (!csrf || !live(csrf)) return;
       const controller = new AbortController();
       mutation.current = controller;
-      await api(`/api/admin/maps/${map.packId}`, {
-        method: 'DELETE',
-        body: JSON.stringify({ version: map.version }),
-        signal: controller.signal,
-      });
-      if (!live()) return;
+      await api(
+        `/api/admin/maps/${map.packId}`,
+        {
+          method: 'DELETE',
+          body: JSON.stringify({ version: map.version }),
+          signal: controller.signal,
+        },
+        csrf,
+      );
+      if (!live(csrf)) return;
       polls.current = 0;
       notify(t('Map deletion queued.'));
       await load();
@@ -116,6 +130,7 @@ export default function AdminMaps() {
     >
       <div>
         <h2 id="installed-maps-title">{t('Installed maps')}</h2>
+        <SteamStepUpNotice action="maps" />
         <p>
           {t(
             'Manage map snapshots prepared by this instance. Deleting a map keeps your demo recordings.',

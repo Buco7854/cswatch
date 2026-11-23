@@ -3,7 +3,15 @@ import { z } from 'zod';
 import type { Config } from './config.js';
 import { now, type Store } from './db.js';
 import { seal, steamCodeBinding, unseal } from './encryption-key.js';
-import { currentUser, HttpError, rateLimit, requireUser, token } from './security.js';
+import {
+  chargeBudgets,
+  currentUser,
+  HttpError,
+  rateLimit,
+  requireSession,
+  requireUser,
+  token,
+} from './security.js';
 import {
   matchDemo,
   matchFilter,
@@ -155,29 +163,32 @@ export function steamHistoryRoutes(app: FastifyInstance, db: Store, c: Config, k
   function connection(userId: string) {
     const row = saved(userId);
     return {
+      available: Boolean(c.steamApiKey && db.flag(c, 'steam_enabled')),
       configured: Boolean(row),
       needs_codes: Boolean(row?.needs_codes),
       retry_at: retryAt(db),
     };
   }
   app.get('/api/connections/steam/history', async (r) => connection(requireUser(r).id));
-  app.get('/api/connections/steam/matches', async (r) => {
-    const user = requireUser(r);
-    configured();
-    if (!matchSources(db, c, user.id).steam)
-      throw new HttpError(403, 'Verify and save your Steam sync codes first.');
-    rateLimit(db, r, 'steam-history-read', 120, 900, user.id);
-    const { offset, filter } = z
-      .object({ offset: matchOffset, filter: matchFilter })
-      .parse(r.query);
-    const condition =
-      filter === 'missing'
-        ? 'WHERE id IS NULL'
-        : filter === 'all'
-          ? 'WHERE seq IS NOT NULL'
-          : 'WHERE id IS NOT NULL';
-    const rows = db.all(
-      `WITH paired AS (
+  app.get('/api/connections/steam/matches', (r) =>
+    db.transaction(() => {
+      const user = requireUser(r);
+      requireSession(db, r, c, ['full']);
+      configured();
+      if (!matchSources(db, c, user.id).steam)
+        throw new HttpError(403, 'Verify and save your Steam sync codes first.');
+      chargeBudgets(db, r, [['steam-history-read', 120, 900, user.id]]);
+      const { offset, filter } = z
+        .object({ offset: matchOffset, filter: matchFilter })
+        .parse(r.query);
+      const condition =
+        filter === 'missing'
+          ? 'WHERE id IS NULL'
+          : filter === 'all'
+            ? 'WHERE seq IS NOT NULL'
+            : 'WHERE id IS NOT NULL';
+      const rows = db.all(
+        `WITH paired AS (
          SELECT substr(source_ref,7) AS match_id,id,status,map,metadata,created_at,
            row_number() OVER (PARTITION BY source_ref ORDER BY status='ready' DESC,created_at DESC,id DESC) AS rank
          FROM demos WHERE owner_id=? AND source_ref LIKE 'steam:%' AND status!='uploading'
@@ -189,23 +200,26 @@ export function steamHistoryRoutes(app: FastifyInstance, db: Store, c: Config, k
        )
        SELECT * FROM matches ${condition}
        ORDER BY seq DESC,created_at DESC,match_id DESC LIMIT ? OFFSET ?`,
-      user.id,
-      user.id,
-      matchPageSize + 1,
-      offset,
-    );
-    return {
-      needs_codes: Boolean(saved(user.id)?.needs_codes),
-      retry_at: retryAt(db),
-      had_matches: Boolean(db.one('SELECT 1 FROM steam_matches WHERE user_id=? LIMIT 1', user.id)),
-      next: rows.length > matchPageSize ? String(offset + matchPageSize) : null,
-      items: rows.slice(0, matchPageSize).map((row) => ({
-        match_id: row.match_id,
-        share_code: row.code,
-        demos: row.id ? [matchDemo(row)] : [],
-      })),
-    };
-  });
+        user.id,
+        user.id,
+        matchPageSize + 1,
+        offset,
+      );
+      return {
+        needs_codes: Boolean(saved(user.id)?.needs_codes),
+        retry_at: retryAt(db),
+        had_matches: Boolean(
+          db.one('SELECT 1 FROM steam_matches WHERE user_id=? LIMIT 1', user.id),
+        ),
+        next: rows.length > matchPageSize ? String(offset + matchPageSize) : null,
+        items: rows.slice(0, matchPageSize).map((row) => ({
+          match_id: row.match_id,
+          share_code: row.code,
+          demos: row.id ? [matchDemo(row)] : [],
+        })),
+      };
+    }),
+  );
   app.put('/api/connections/steam/history', async (r) => {
     const body = z.object({ auth_code: gameCode, share_code: knownCode }).strict().parse(r.body);
     const operation = begin(r);
@@ -308,12 +322,13 @@ export function steamHistoryRoutes(app: FastifyInstance, db: Store, c: Config, k
   });
   app.delete('/api/connections/steam/history', async (r) => {
     const user = requireUser(r);
-    rateLimit(db, r, 'steam-history-remove', 8, 900, user.id);
-    inFlight.get(user.id)?.abort();
     db.transaction(() => {
+      requireSession(db, r, c, ['full']);
+      chargeBudgets(db, r, [['steam-history-remove', 8, 900, user.id]]);
       db.run('DELETE FROM steam_history WHERE user_id=?', user.id);
       db.run('DELETE FROM steam_matches WHERE user_id=?', user.id);
     });
+    inFlight.get(user.id)?.abort();
     return { ok: true };
   });
 }

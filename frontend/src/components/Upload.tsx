@@ -2,7 +2,7 @@ import { t } from '../i18n';
 import { useEffect, useId, useRef, useState } from 'react';
 import { FileUp, LockKeyhole } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { api, uploadFile } from '../api';
+import { prepareGuestUpload, uploadFile } from '../api';
 import { useApp } from '../context';
 import './upload.css';
 
@@ -65,15 +65,17 @@ export default function Upload({
     const controller = new AbortController();
     pending.current = controller;
     try {
-      const session = !user
-        ? await api<{ csrf: string; expires_at: number }>('/api/guest/session', {
-            method: 'POST',
-            signal: controller.signal,
-          })
-        : undefined;
+      let session: { csrf: string; expires_at: number } | undefined;
+      if (!user) {
+        session = await prepareGuestUpload(controller.signal);
+        if (session === undefined) {
+          await refresh();
+          return;
+        }
+        if (!session || typeof session.csrf !== 'string' || !session.csrf)
+          throw new Error(t('Could not start a private upload. Try again.'));
+      }
       if (controller.signal.aborted || !mounted.current) return;
-      if (!user && (!session || typeof session.csrf !== 'string' || !session.csrf))
-        throw new Error(t('Could not start a private upload. Try again.'));
       const result = await uploadFile(
         file,
         (value) => {

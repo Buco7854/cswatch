@@ -1,3 +1,4 @@
+import { requestData } from './api';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   pendingDemoMap,
@@ -54,15 +55,20 @@ export function useDemoMapAssets(
       request = controller;
       const deadline = setTimeout(() => controller.abort(), 15000);
       try {
-        const response = await fetch(path, {
-          ...init,
-          credentials: 'same-origin',
-          redirect: 'error',
-          signal: controller.signal,
-          headers: { Accept: 'application/json', ...init.headers },
-        });
-        if (!response.ok && response.status !== 503) throw new Error('Map discovery failed');
-        return await readMapJSON(response);
+        return await requestData(
+          path,
+          {
+            ...init,
+            credentials: 'same-origin',
+            redirect: 'error',
+            signal: controller.signal,
+            headers: { Accept: 'application/json', ...init.headers },
+          },
+          async (response) => {
+            if (!response.ok && response.status !== 503) throw new Error('Map discovery failed');
+            return readMapJSON(response);
+          },
+        );
       } finally {
         clearTimeout(deadline);
         if (request === controller) request = undefined;

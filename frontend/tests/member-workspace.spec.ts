@@ -1,3 +1,4 @@
+import { accountStatus } from './fixtures/account-status';
 import { test, expect, type Page } from '@playwright/test';
 import { installMemberWorkspace, memberAdminData, memberUser } from './fixtures/member-workspace';
 
@@ -57,7 +58,7 @@ test('member lists and settings keep readable controls and metadata in both them
           }
         }
         await page.goto('/admin');
-        await expect(page.locator('.admin-policy-panel')).toBeVisible();
+        await expect(page.locator('form[aria-labelledby="instance-access-heading"]')).toBeVisible();
         await fits(page);
         for (const toggle of await page.getByRole('switch').all()) {
           const geometry = await toggle.evaluate((element) => {
@@ -69,7 +70,9 @@ test('member lists and settings keep readable controls and metadata in both them
           expect(geometry.height).toBeLessThanOrEqual(24);
           expect(geometry.targetHeight).toBeGreaterThanOrEqual(44);
         }
-        const save = page.locator('.admin-policy-panel .button.primary');
+        const save = page.locator(
+          'form[aria-labelledby="instance-access-heading"] .button.primary',
+        );
         expect(
           await save.evaluate((element) => {
             const { width, height } = element.getBoundingClientRect();
@@ -105,10 +108,9 @@ test('administrator status refresh preserves policy edits and save refreshes aut
   await page.route('**/api/admin', async (route) => {
     if (route.request().method() === 'PATCH') {
       expect(route.request().headers()['x-csrf-token']).toBe('synthetic-member-csrf');
-      const values = route.request().postDataJSON();
-      expect(values.auto_official_maps_enabled).toBe(false);
-      expect(values.public_access).toBe(true);
+      expect(route.request().postDataJSON()).toEqual({ auto_official_maps_enabled: false });
       data.flags.auto_official_maps_enabled.value = false;
+      data.flags.faceit_enabled.value = true;
       saved = true;
       await route.fulfill({ json: { ok: true } });
     } else {
@@ -130,9 +132,13 @@ test('administrator status refresh preserves policy edits and save refreshes aut
   });
   await page.goto('/admin');
   const automatic = page.getByRole('switch', { name: /Automatic official map preparation/ });
+  const registrations = page.getByRole('switch', { name: /New registrations/ });
+  const faceit = page.getByRole('switch', { name: /FACEIT integration/ });
   await expect(automatic).toBeChecked();
   await expect(page.getByRole('switch', { name: /Public access/ })).toBeDisabled();
   await automatic.uncheck();
+  await registrations.check();
+  await faceit.uncheck();
   const status = page.getByRole('region', { name: 'Map preparation', exact: true });
   await expect(status.getByText('Unavailable', { exact: true }).first()).toBeVisible();
   await expect(status.getByText('Maps listed: 0', { exact: true })).toHaveCount(0);
@@ -142,19 +148,22 @@ test('administrator status refresh preserves policy edits and save refreshes aut
   available = true;
   // A restarted instance may now lock a policy through its environment. Only
   // unlocked edits survive refresh, never obsolete lock metadata or values.
-  data.flags.registrations_enabled = { value: true, locked: true };
+  data.flags.registrations_enabled = { value: false, locked: true };
+  data.flags.faceit_enabled.value = false;
   await page.getByRole('button', { name: 'Refresh map status' }).click();
   await expect(status.locator('.readiness-details > div').nth(2).locator('dd')).toContainText(
     'Up to date',
   );
   await expect(automatic).not.toBeChecked();
-  await expect(page.getByRole('switch', { name: /New registrations/ })).toBeChecked();
-  await expect(page.getByRole('switch', { name: /New registrations/ })).toBeDisabled();
+  await expect(registrations).not.toBeChecked();
+  await expect(registrations).toBeDisabled();
+  await expect(faceit).not.toBeChecked();
   await expect(status.getByText('Maps listed: 42', { exact: true })).toBeVisible();
   await expect(status.locator('.readiness-help')).toHaveCount(0);
   await page.getByRole('button', { name: 'Save settings', exact: true }).click();
   await expect(page.getByText('Instance settings saved.', { exact: true })).toBeVisible();
   expect(saved).toBe(true);
+  await expect(faceit).toBeChecked();
   await expect(status.locator('.readiness-details > div').first().locator('dd')).toHaveText(
     'Disabled',
   );
@@ -231,10 +240,10 @@ test('admin loading failures retain a local retry and a successful retry restore
   );
   await page.goto('/admin');
   await expect(page.getByRole('alert')).toContainText('Connection lost. Try again.');
-  await expect(page.locator('.admin-policy-panel')).toHaveCount(0);
+  await expect(page.locator('form[aria-labelledby="instance-access-heading"]')).toHaveCount(0);
   fail = false;
   await page.getByRole('button', { name: 'Try again', exact: true }).click();
-  await expect(page.locator('.admin-policy-panel')).toBeVisible();
+  await expect(page.locator('form[aria-labelledby="instance-access-heading"]')).toBeVisible();
   await expect(page.getByRole('alert')).toHaveCount(0);
 });
 
@@ -250,7 +259,7 @@ test('a password response after leaving the form cannot publish stale CSRF or no
     mutationCsrf = '';
   await page.route('**/api/auth/me', async (route) => {
     if (passwordCompleted) await refreshGate;
-    await route.fulfill({ json: { user: memberUser } });
+    await route.fulfill({ json: accountStatus(memberUser) });
   });
   await page.route('**/api/auth/password', async (route) => {
     attempts++;
@@ -267,7 +276,6 @@ test('a password response after leaving the form cannot publish stale CSRF or no
   });
   try {
     await page.goto('/account');
-    await page.getByLabel('Current password', { exact: true }).fill('Original-password-2026');
     await page.getByLabel('New password', { exact: true }).fill('Replacement-password-2026');
     await page.getByRole('button', { name: 'Update password', exact: true }).click();
     await expect.poll(() => attempts).toBe(1);
@@ -278,14 +286,16 @@ test('a password response after leaving the form cannot publish stale CSRF or no
       history.pushState({}, '', '/admin');
       dispatchEvent(new PopStateEvent('popstate'));
     });
-    await expect(page.locator('.admin-policy-panel')).toBeVisible();
+    await expect(page.locator('form[aria-labelledby="instance-access-heading"]')).toBeVisible();
+    await page.getByRole('switch', { name: /New registrations/ }).check();
     const refreshing = page.waitForRequest('**/api/auth/me');
     completePassword();
     await refreshing;
     await page.getByRole('button', { name: 'Save settings', exact: true }).click();
-    await expect.poll(() => mutationCsrf).not.toBe('');
-    expect(mutationCsrf).toBe(memberUser.csrf);
+    // Every admin mutation revalidates current identity and freshness before sending.
+    expect(mutationCsrf).toBe('');
     completeRefresh();
+    await expect.poll(() => mutationCsrf).toBe(memberUser.csrf);
     await expect(page.getByText('Instance settings saved.', { exact: true })).toBeVisible();
     await expect(
       page.getByText('Password updated. Other sessions have been signed out.', { exact: true }),

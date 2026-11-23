@@ -1,7 +1,9 @@
+import { accountStatus } from './fixtures/account-status';
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { installMemberWorkspace, memberDemos, memberUser } from './fixtures/member-workspace';
+import { chooseSelectOption } from './fixtures/select-control';
 
 test.beforeEach(() => {
   test.skip(Boolean(process.env.E2E_PRIVATE) || Boolean(process.env.E2E_SETUP));
@@ -43,19 +45,17 @@ async function installSources(page: Page, steam = true, faceit = true, canDownlo
   await installMemberWorkspace(page);
   await page.route('**/api/auth/me', (route) =>
     route.fulfill({
-      json: {
-        user: {
-          ...memberUser,
-          is_admin: false,
-          match_sources: {
-            steam,
-            faceit,
-            faceit_download: canDownload(),
-            faceit_verification: faceit ? 'ready' : 'unavailable',
-          },
-          identities: [...memberUser.identities, { provider: 'faceit', subject: 'fixture' }],
+      json: accountStatus({
+        ...memberUser,
+        role: 'member',
+        match_sources: {
+          steam,
+          faceit,
+          faceit_download: canDownload(),
+          faceit_verification: faceit ? 'ready' : 'unavailable',
         },
-      },
+        identities: [...memberUser.identities, { provider: 'faceit', subject: 'fixture' }],
+      }),
     }),
   );
 }
@@ -217,7 +217,7 @@ test('FACEIT pagination, viewer return, filter, fallback and recovery preserve t
     status: 502,
     json: { detail: 'FACEIT returned an invalid response. Try again later.' },
   };
-  await page.getByLabel('Show matches').selectOption('missing');
+  await chooseSelectOption(page, 'Show matches', 'Not downloaded');
   await expect(page.getByRole('tabpanel').getByRole('alert')).toHaveText(
     /FACEIT returned an invalid response/,
   );
@@ -226,9 +226,9 @@ test('FACEIT pagination, viewer return, filter, fallback and recovery preserve t
   await page.getByRole('button', { name: 'Try again' }).click();
   await expect(page.getByText('All matches have been downloaded.')).toBeVisible();
   await capture(page, 'faceit-all-downloaded');
-  await page.getByLabel('Show matches').selectOption('downloaded');
+  await chooseSelectOption(page, 'Show matches', 'Downloaded');
   await expect(page.getByText('No demos have been added from this source.')).toBeVisible();
-  await page.getByLabel('Show matches').selectOption('all');
+  await chooseSelectOption(page, 'Show matches', 'All');
   await expect(page.getByText('FACEIT lists no CS2 matches for this account.')).toBeVisible();
   await capture(page, 'faceit-empty');
 });
@@ -390,7 +390,7 @@ test('Steam pages and filters use local offsets and show recorded match evidence
   await expect(page).toHaveURL(/cursor=25&page=2/);
   await page.getByRole('button', { name: 'Previous page' }).click();
   await expect(page.getByText('Steam match ' + steamMatches[0].match_id)).toBeVisible();
-  await page.getByLabel('Show matches').selectOption('downloaded');
+  await chooseSelectOption(page, 'Show matches', 'Downloaded');
   await expect(page.getByText('13–11')).toBeVisible();
   await expect(page.getByText('ancient', { exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Open Ready' })).toBeVisible();

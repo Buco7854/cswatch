@@ -23,6 +23,8 @@ import {
   openEncryptionKey,
   seal,
   steamCodeBinding,
+  totpBinding,
+  totpEnrollmentBinding,
   unseal,
 } from '../src/encryption-key.js';
 import { createApp } from '../src/server.js';
@@ -56,7 +58,14 @@ function context() {
     config,
     path: join(root, 'encryption.key'),
     save(key: Buffer, user: string) {
-      db.run('INSERT INTO users VALUES(?,?,?,?,?)', user, user, null, 0, now());
+      db.run(
+        'INSERT INTO users(id,username,password_hash,role,created_at) VALUES(?,?,?,?,?)',
+        user,
+        user,
+        null,
+        'member',
+        now(),
+      );
       db.run(
         'INSERT INTO steam_history(user_id,steam_id,encrypted_code,cursor,generation) VALUES(?,?,?,?,?)',
         user,
@@ -71,6 +80,60 @@ function context() {
       const row = db.one('SELECT * FROM steam_history WHERE user_id=?', user)!;
       return unseal(key, steamCodeBinding(user, row.steam_id), row.encrypted_code);
     },
+  };
+}
+
+function saveTotp(db: Store, key: Buffer, user: string, kind: 'pending' | 'confirmed') {
+  const sessionHash = `fixture-session-${user}`;
+  const seed = Buffer.from('12345678901234567890').toString('hex');
+  const time = now();
+  db.run('INSERT INTO users(id,username,created_at) VALUES(?,?,?)', user, user, time);
+  db.run(
+    `INSERT INTO sessions(id,token_hash,user_id,csrf,stage,generation,created_at,last_used_at,expires_at,device)
+    VALUES(?,?,?,?,?,0,?,?,?,?)`,
+    user,
+    sessionHash,
+    user,
+    'fixture-csrf',
+    kind === 'pending' ? 'enroll' : 'full',
+    time,
+    time,
+    time + 600,
+    'Test browser',
+  );
+  const binding = kind === 'pending' ? totpEnrollmentBinding(user, sessionHash) : totpBinding(user);
+  const encrypted = seal(key, binding, seed);
+  if (kind === 'pending') {
+    db.run(
+      'INSERT INTO auth_totp_enrollments VALUES(?,?,?,?,?)',
+      sessionHash,
+      user,
+      'fixture-enrollment',
+      encrypted,
+      time + 600,
+    );
+  } else {
+    db.run('INSERT INTO auth_totp VALUES(?,?,?,?)', user, encrypted, 41, time);
+    db.run(
+      'INSERT INTO auth_recovery_codes VALUES(?,?,?)',
+      user,
+      'fixture-recovery-code-hash',
+      time,
+    );
+  }
+  return {
+    seed,
+    read: (key: Buffer) =>
+      unseal(
+        key,
+        binding,
+        db.one(
+          kind === 'pending'
+            ? 'SELECT encrypted_secret FROM auth_totp_enrollments WHERE user_id=?'
+            : 'SELECT encrypted_secret FROM auth_totp WHERE user_id=?',
+          user,
+        )!.encrypted_secret,
+      ),
   };
 }
 
@@ -121,6 +184,16 @@ test('one secret under another key is enough to stop', () =>
     save(openEncryptionKey(config(), db), 'a');
     save(Buffer.from(first, 'hex'), 'b');
     assert.throws(() => openEncryptionKey(config(), db), /does not match 1 of 2 saved secrets/);
+  }));
+
+test('restart completes an interrupted key publication without replacing the key', () =>
+  instance(({ root, db, config, path }) => {
+    const key = openEncryptionKey(config(), db);
+    const staging = join(root, 'encryption.key.abcdef012345');
+    linkSync(path, staging);
+    assert.deepEqual(openEncryptionKey(config(), db), key);
+    assert.equal(existsSync(staging), false);
+    assert.equal(statSync(path).nlink, 1);
   }));
 
 test('an unsafe key file is refused rather than replaced', () =>
@@ -194,4 +267,81 @@ test('a lost key can be given up explicitly, keeping readable secrets and match 
     );
     assert.equal(db.all('SELECT * FROM steam_matches').length, 1);
     assert.equal(openEncryptionKey(config(first), db).toString('hex'), first);
+  }));
+
+test('startup and key rotation cover active TOTP enrollment and confirmed seeds', () =>
+  instance(async ({ db, config }) => {
+    const original = Buffer.from(first, 'hex');
+    const next = Buffer.from(second, 'hex');
+    const pending = saveTotp(db, original, 'pending_member', 'pending');
+    const confirmed = saveTotp(db, original, 'confirmed_member', 'confirmed');
+    assert.deepEqual(openEncryptionKey(config(first), db), original);
+    await assert.rejects(createApp(config(second), db), /does not match 2 of 2 saved secrets/);
+    assert.equal(changeEncryptionKey(config(second), db, original), 2);
+    assert.deepEqual(openEncryptionKey(config(second), db), next);
+    for (const record of [pending, confirmed]) {
+      assert.equal(record.read(next), record.seed);
+      assert.throws(() => record.read(original));
+    }
+    assert.equal(db.one('SELECT last_step FROM auth_totp')?.last_step, 41);
+    assert.equal(
+      db.one('SELECT enrollment_hash FROM auth_totp_enrollments')?.enrollment_hash,
+      'fixture-enrollment',
+    );
+  }));
+
+test('forgetting a lost TOTP key removes only unreadable usable seeds and revokes affected confirmed sessions', () =>
+  instance(({ db, config }) => {
+    const current = Buffer.from(first, 'hex');
+    const lost = Buffer.from(second, 'hex');
+    const readable = saveTotp(db, current, 'readable', 'confirmed');
+    saveTotp(db, lost, 'lost_confirmed', 'confirmed');
+    saveTotp(db, lost, 'lost_pending', 'pending');
+    saveTotp(db, lost, 'expired_pending', 'pending');
+    db.run(
+      "UPDATE auth_totp_enrollments SET expires_at=? WHERE user_id='expired_pending'",
+      now() - 1,
+    );
+    assert.equal(forgetUnreadableSecrets(config(first), db, false), 2);
+    assert.equal(db.one('SELECT count(*) AS n FROM auth_totp')?.n, 2);
+    assert.equal(db.one('SELECT count(*) AS n FROM auth_totp_enrollments')?.n, 2);
+    assert.equal(forgetUnreadableSecrets(config(first), db, true), 2);
+    assert.deepEqual(openEncryptionKey(config(first), db), current);
+    assert.equal(readable.read(current), readable.seed);
+    assert.deepEqual(
+      db.all('SELECT user_id FROM auth_totp').map((row) => row.user_id),
+      ['readable'],
+    );
+    assert.deepEqual(
+      db.all('SELECT user_id FROM auth_recovery_codes').map((row) => row.user_id),
+      ['readable'],
+    );
+    assert.deepEqual(
+      db.all('SELECT user_id FROM auth_totp_enrollments').map((row) => row.user_id),
+      ['expired_pending'],
+    );
+    assert.deepEqual(
+      db.all('SELECT user_id FROM sessions ORDER BY user_id').map((row) => row.user_id),
+      ['expired_pending', 'lost_pending', 'readable'],
+    );
+    assert.equal(
+      db.one("SELECT auth_generation FROM users WHERE id='lost_confirmed'")?.auth_generation,
+      1,
+    );
+  }));
+
+test('a failed operator audit rolls back rotation and confirmed key loss', () =>
+  instance(({ db, config, save, rows }) => {
+    save(Buffer.from(first, 'hex'), 'a');
+    const original = JSON.stringify(rows());
+    db.db.exec(
+      "CREATE TRIGGER fixture_reject_audit BEFORE INSERT ON audit BEGIN SELECT RAISE(ABORT,'audit unavailable'); END",
+    );
+    assert.throws(
+      () => changeEncryptionKey(config(second), db, Buffer.from(first, 'hex')),
+      /audit unavailable/,
+    );
+    assert.equal(JSON.stringify(rows()), original);
+    assert.throws(() => forgetUnreadableSecrets(config(second), db, true), /audit unavailable/);
+    assert.equal(JSON.stringify(rows()), original);
   }));

@@ -7,9 +7,11 @@ import { loadConfig } from '../src/config.js';
 import { Store } from '../src/db.js';
 import { COOKIE, digest, HttpError } from '../src/security.js';
 import { createApp } from '../src/server.js';
+import { browserBootstrap } from './fixtures/browser-bootstrap.js';
 import { initializeFixture } from './fixtures/initialized.js';
+import { fixtureCookie, insertFixtureSession } from './fixtures/member-session.js';
 
-test('FACEIT verification, history and download lookup use current verified identity and fixed APIs', async () => {
+test('FACEIT verification, history and download lookup use current verified identity and fixed APIs', async (t) => {
   const root = mkdtempSync(join(tmpdir(), 'cswatch-providers-'));
   const origin = 'http://localhost:8000';
   const config = loadConfig({
@@ -43,6 +45,10 @@ test('FACEIT verification, history and download lookup use current verified iden
       ? Buffer.from([0x1f, 0x8b])
       : Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
     writeFileSync(destination, bytes);
+    if (downloadBehavior === 'late publication') {
+      const wallTime = Date.now();
+      t.mock.method(Date, 'now', () => wallTime + 600_001);
+    }
     return { bytes: bytes.length };
   });
   const fetchBefore = globalThis.fetch;
@@ -51,7 +57,7 @@ test('FACEIT verification, history and download lookup use current verified iden
     const registered = await app.inject({
       method: 'POST',
       url: '/api/auth/register',
-      headers,
+      headers: await browserBootstrap(app, config),
       payload: { username: 'provider_fixture', password: 'disposable-fixture-password' },
     });
     assert.equal(registered.statusCode, 201);
@@ -140,8 +146,16 @@ test('FACEIT verification, history and download lookup use current verified iden
       });
     };
     const link = () =>
-      app.inject({ method: 'POST', url: '/api/connections/faceit/link', headers: authenticated });
-    assert.equal((await link()).statusCode, 200);
+      app.inject({
+        method: 'POST',
+        url: '/api/connections/faceit/link',
+        headers: authenticated,
+        payload: {},
+      });
+    const linked = await link();
+    assert.equal(linked.statusCode, 200, linked.body);
+    authenticated.cookie = COOKIE + '=' + linked.cookies.find((c) => c.name === COOKIE)!.value;
+    authenticated['x-csrf-token'] = linked.json().session.csrf;
     const history = await app.inject({
       url: '/api/connections/faceit/matches?cursor=1700000000.0',
       headers: authenticated,
@@ -207,7 +221,12 @@ test('FACEIT verification, history and download lookup use current verified iden
     );
     assert.equal((await importDemo()).statusCode, 409);
     signerStatus = 403;
-    assert.match((await importDemo(fileList[0].id)).body, /denied the download/);
+    const deniedDownload = await importDemo(fileList[0].id);
+    assert.equal(deniedDownload.statusCode, 502, deniedDownload.body);
+    assert.deepEqual(deniedDownload.json(), {
+      detail: 'This instance cannot download FACEIT demos. Upload the demo file from your device.',
+    });
+    assert.equal(db.one('SELECT id FROM demos'), undefined);
     signerStatus = 200;
     signedHost = 'arbitrary-bucket.s3.amazonaws.com';
     assert.match((await importDemo(fileList[0].id)).body, /unsupported download host/);
@@ -217,6 +236,11 @@ test('FACEIT verification, history and download lookup use current verified iden
     downloadBehavior = 'oversized';
     assert.equal((await importDemo(fileList[0].id)).statusCode, 413);
     assert.equal(db.one('SELECT id FROM demos'), undefined);
+    downloadBehavior = 'late publication';
+    const late = await importDemo(fileList[0].id);
+    assert.equal(late.statusCode, 408, late.body);
+    assert.equal(db.one('SELECT id FROM demos'), undefined);
+    t.mock.restoreAll();
     downloadBehavior = 'success';
     for (const [index, file] of fileList.entries()) {
       const imported = await importDemo(file.id);
@@ -229,13 +253,23 @@ test('FACEIT verification, history and download lookup use current verified iden
       assert.ok(input.byteLength > 0);
     }
     assert.equal((await importDemo(fileList[0].id)).statusCode, 409);
-    assert.equal(signerCalls, 6);
+    assert.equal(signerCalls, 7);
     assert.ok(
       (await details()).json().files.every((file: { demo: { id: string } }) => !!file.demo?.id),
     );
     db.run('DELETE FROM demos');
     downloadBehavior = 'changed';
-    assert.equal((await importDemo(fileList[0].id)).statusCode, 409);
+    assert.equal((await importDemo(fileList[0].id)).statusCode, 429);
+    // Test identity revalidation in a new import window with the same signed-in account.
+    const time = Date.now();
+    const importClock = t.mock.method(Date, 'now', () => time + 3_600_000);
+    try {
+      const changed = await importDemo(fileList[0].id);
+      assert.equal(changed.statusCode, 409, changed.body);
+      assert.match(changed.json().detail, /FACEIT connection changed/);
+    } finally {
+      importClock.mock.restore();
+    }
     assert.equal(db.one('SELECT id FROM demos'), undefined);
     malformed = true;
     assert.equal((await link()).statusCode, 502);
@@ -281,7 +315,7 @@ test('Steam match sync needs only the operator API key', async () => {
     const registered = await app.inject({
       method: 'POST',
       url: '/api/auth/register',
-      headers: { origin, host: 'localhost:8000' },
+      headers: await browserBootstrap(app, config),
       payload: { username: 'steam_key_fixture', password: 'disposable-fixture-password' },
     });
     const { id, csrf } = registered.json().user;
@@ -342,7 +376,7 @@ test('Steam match sync verifies before saving, resumes and protects user credent
       const response = await app.inject({
         method: 'POST',
         url: '/api/auth/register',
-        headers: { origin, host: 'localhost:8000' },
+        headers: await browserBootstrap(app, config),
         payload: { username, password: 'disposable-fixture-password' },
       });
       assert.equal(response.statusCode, 201);
@@ -542,7 +576,7 @@ test('FACEIT library walks the full history with a timestamp cursor and keeps do
       const registered = await app.inject({
         method: 'POST',
         url: '/api/auth/register',
-        headers: { host: 'localhost:8000', origin },
+        headers: await browserBootstrap(app, config),
         payload: { username, password: 'disposable-fixture-password' },
       });
       assert.equal(registered.statusCode, 201, registered.body);
@@ -638,20 +672,16 @@ test('FACEIT library walks the full history with a timestamp cursor and keeps do
 
     // Populate the global member cache without performing password work for each fixture.
     for (let index = 0; index < 65; index++) {
-      const id = 'cache-member-' + index;
+      const label = 'cache-member-' + index;
+      const id = digest(label).slice(0, 32);
+      const issued = Math.floor(Date.now() / 1000);
       const provider = index % 2 ? 'owner-faceit' : 'other-faceit';
-      db.run('INSERT INTO users VALUES(?,?,NULL,0,0)', id, id);
+      db.run('INSERT INTO users(id,username,created_at) VALUES(?,?,?)', id, id, issued);
       db.run("INSERT INTO identities VALUES('faceit',?,?)", provider + '-' + index, id);
-      db.run(
-        'INSERT INTO sessions VALUES(?,?,?,?)',
-        digest(id),
-        id,
-        id,
-        Math.floor(Date.now() / 1000) + 900,
-      );
+      insertFixtureSession(db, label, id, id, issued + 900);
       const cached = await read('?cursor=' + (newer - 100) + '.0', {
         ...owner.headers,
-        cookie: COOKIE + '=' + id,
+        cookie: fixtureCookie(label),
         'x-csrf-token': id,
       });
       assert.equal(cached.statusCode, 200, cached.body);
@@ -763,16 +793,22 @@ test('FACEIT library walks the full history with a timestamp cursor and keeps do
       inFlight.resolve();
       return finish.promise;
     };
-    const pending = read('?cursor=' + (newer - 122) + '.0', other.headers);
+    const retiredHeaders = { ...other.headers };
+    const pending = read('?cursor=' + (newer - 122) + '.0', retiredHeaders);
     await inFlight.promise;
     const unlinked = await app.inject({
       method: 'DELETE',
       url: '/api/connections/faceit/link',
       headers: other.headers,
+      payload: {},
     });
-    assert.equal(unlinked.statusCode, 200);
     finish.resolve(Response.json({ items: [] }));
-    assert.equal((await pending).statusCode, 409);
+    assert.equal(unlinked.statusCode, 200, unlinked.body);
+    other.headers.cookie =
+      COOKIE + '=' + unlinked.cookies.find((cookie) => cookie.name === COOKIE)!.value;
+    other.headers['x-csrf-token'] = unlinked.json().session.csrf;
+    assert.equal((await pending).statusCode, 401, 'unlink retires the session that began history');
+    assert.equal((await read('?filter=downloaded', retiredHeaders)).statusCode, 401);
     assert.equal((await read('', other.headers)).statusCode, 403);
 
     respond = undefined;
@@ -780,6 +816,7 @@ test('FACEIT library walks the full history with a timestamp cursor and keeps do
       method: 'POST',
       url: '/api/auth/logout',
       headers: owner.headers,
+      payload: {},
     });
     assert.equal(logout.statusCode, 200);
     assert.equal((await read()).statusCode, 401);

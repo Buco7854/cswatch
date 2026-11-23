@@ -601,8 +601,9 @@ test('enqueue revalidates the complete failure snapshot and current cooldown aft
     const operation = enqueuePresentationRetry(
       options.jobs,
       'agents',
-      () => {
+      (write) => {
         authorized++;
+        write();
       },
       {
         beforeRevalidate: async () => {
@@ -678,8 +679,9 @@ test('presentation failures retain a durable three-attempt budget and require ex
     false,
   );
   assert.equal(
-    await enqueuePresentationRetry(options.jobs, 'agents', () => {
+    await enqueuePresentationRetry(options.jobs, 'agents', (write) => {
       authorized++;
+      write();
     }),
     'queued',
   );

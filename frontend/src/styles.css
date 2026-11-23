@@ -24,14 +24,12 @@ body {
 }
 button,
 input,
-select,
 textarea {
   font: inherit;
 }
 button,
 a,
-input,
-select {
+input {
   touch-action: manipulation;
 }
 button,
@@ -52,8 +50,7 @@ a {
 button {
   color: inherit;
 }
-button,
-select {
+button {
   transition: background 0.15s;
 }
 :focus-visible {
@@ -420,15 +417,6 @@ svg {
   overflow: hidden;
   min-width: 0;
 }
-select {
-  background: #232323;
-  border: 1px solid #3d3d3d;
-  border-radius: 6px;
-  padding: 6px 8px;
-  font-size: 12px;
-  color: white;
-  min-width: 0;
-}
 .controls {
   padding: 14px 18px;
 }
@@ -436,10 +424,6 @@ select {
   display: flex;
   align-items: center;
   gap: 10px;
-}
-.transport select {
-  border: 0;
-  background: none;
 }
 .transport .button {
   font-size: 12px;
@@ -655,12 +639,6 @@ details form {
 .kv-row > span:last-child {
   color: var(--faint);
   text-align: right;
-}
-.audit-panel {
-  margin-top: 32px;
-}
-.audit-panel h2 {
-  margin-bottom: 16px;
 }
 .toggle-row {
   display: flex;
@@ -974,10 +952,6 @@ details form {
     font-size: 11px;
     gap: 6px;
   }
-  .transport select {
-    font-size: 12px;
-    padding: 8px 4px;
-  }
   .icon-button {
     min-width: 40px;
     min-height: 40px;
@@ -1188,7 +1162,9 @@ details form {
 [data-theme='light'] .library-meta,
 [data-theme='light'] .settings-section,
 [data-theme='light'] .event-panel > .tabs,
-[data-theme='light'] .kv-row,
+[data-theme='light'] .kv-row {
+  border-color: #dedede;
+}
 [data-theme='light'] .tabs button.active {
   color: #111;
 }
@@ -1222,17 +1198,13 @@ details form {
 [data-theme='light'] .text-button {
   color: #111;
 }
-[data-theme='light'] input:not([type='checkbox'], [type='range']),
-[data-theme='light'] select {
+[data-theme='light'] input:not([type='checkbox'], [type='range']) {
   background: #fff;
   color: #111;
   border-color: #aaa;
 }
 [data-theme='light'] input::placeholder {
   color: #666;
-}
-[data-theme='light'] .transport select {
-  background: transparent;
 }
 [data-theme='light'] .options-dialog {
   background: #fff;

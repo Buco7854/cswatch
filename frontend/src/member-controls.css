@@ -18,6 +18,18 @@
   text-align: left;
   cursor: pointer;
 }
+/* One pager for every paged list: previous, position, next. */
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.pagination [role='status'] {
+  padding-inline: 6px;
+}
 .select-value {
   overflow: hidden;
   white-space: nowrap;

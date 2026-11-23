@@ -1,3 +1,4 @@
+import { accountStatus } from './fixtures/account-status';
 import { expect, test, type Locator } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -38,7 +39,7 @@ for (const profile of profiles) {
     test.skip(Boolean(process.env.E2E_PRIVATE) || Boolean(process.env.E2E_SETUP));
     await page.setViewportSize({ width: profile.width, height: profile.height });
     await installMemberWorkspace(page);
-    await page.route('**/api/auth/me', (route) => route.fulfill({ json: { user: null } }));
+    await page.route('**/api/auth/me', (route) => route.fulfill({ json: accountStatus(null) }));
     await page.addInitScript(({ language, theme }) => {
       localStorage.setItem('cswatch.language', language);
       localStorage.setItem('theme', theme);
@@ -70,11 +71,7 @@ for (const profile of profiles) {
     };
     await page.goto('/login?returnTo=%2Fwatch%2Fprovider-fixture');
     const label = profile.language === 'fr' ? 'Continuer avec Steam' : 'Continue with Steam';
-    const signIn = page.getByRole('link', { name: label, exact: true });
-    await expect(signIn).toHaveAttribute(
-      'href',
-      '/api/auth/steam?returnTo=%2Fwatch%2Fprovider-fixture',
-    );
+    const signIn = page.getByRole('button', { name: label, exact: true });
     await expect(signIn).toHaveText(label);
     await expect(signIn.locator('img')).toHaveCount(0);
     await compactIcon(signIn.locator('svg'), signIn);
@@ -93,13 +90,11 @@ for (const profile of profiles) {
       profile.theme === 'light' ? 'unavailable' : connected ? 'ready' : 'steam_required';
     await page.route('**/api/auth/me', (route) =>
       route.fulfill({
-        json: {
-          user: {
-            ...memberUser,
-            identities: connected ? memberUser.identities : [],
-            match_sources: { ...memberUser.match_sources, faceit_verification: faceitVerification },
-          },
-        },
+        json: accountStatus({
+          ...memberUser,
+          identities: connected ? memberUser.identities : [],
+          match_sources: { ...memberUser.match_sources, faceit_verification: faceitVerification },
+        }),
       }),
     );
     await page.goto('/account/connections');
@@ -137,7 +132,7 @@ for (const profile of profiles) {
     if (connected) {
       await page.route('**/api/connections/steam/history', (route) =>
         route.fulfill({
-          json: { configured: false, retry_at: 0 },
+          json: { available: false, configured: false, needs_codes: false, retry_at: 0 },
         }),
       );
       await page
@@ -178,7 +173,7 @@ for (const profile of profiles) {
   });
 }
 
-test('sign-in and connections expose only configured actions and link Steam with a same-origin POST', async ({
+test('sign-in and connections expose only configured actions and start Steam with same-origin POSTs', async ({
   page,
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE) || Boolean(process.env.E2E_SETUP));
@@ -186,15 +181,32 @@ test('sign-in and connections expose only configured actions and link Steam with
   await page.route('**/api/config', (route) =>
     route.fulfill({ json: { ...memberConfig, steam_enabled: false } }),
   );
-  await page.route('**/api/auth/me', (route) => route.fulfill({ json: { user: null } }));
-  await page.goto('/login?steam=cancelled&returnTo=%2Faccount%2Fconnections');
+  const anonymous = accountStatus(null);
+  await page.route('**/api/auth/me', (route) => route.fulfill({ json: anonymous }));
+  const cancelled = '/login?steam=cancelled&returnTo=%2Faccount%2Fconnections';
+  await page.goto(cancelled);
   await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
   await expect(page.getByText('Steam sign-in was cancelled. Start again.')).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Continue with Steam' })).toHaveCount(0);
+  const steam = page.getByRole('button', { name: 'Continue with Steam', exact: true });
+  await expect(steam).toHaveCount(0);
   await expect(page.getByRole('link', { name: /FACEIT/ })).toHaveCount(0);
+
   await page.route('**/api/config', (route) => route.fulfill({ json: memberConfig }));
+  await page.route('**/api/auth/steam', (route) => {
+    const request = route.request();
+    expect(request.method()).toBe('POST');
+    expect(request.headers()['x-csrf-token']).toBe(anonymous.session.csrf);
+    expect(request.postDataJSON()).toEqual({ return_to: '/account/connections' });
+    return route.fulfill({ json: { location: cancelled } });
+  });
+  await page.goto('/login?returnTo=%2Faccount%2Fconnections');
+  await expect(steam).toBeEnabled();
+  await steam.press('Enter');
+  await expect(page).toHaveURL(/\/login\?steam=cancelled&returnTo=%2Faccount%2Fconnections$/);
+  await expect(page.getByText('Steam sign-in was cancelled. Start again.')).toBeVisible();
+
   await page.route('**/api/auth/me', (route) =>
-    route.fulfill({ json: { user: { ...memberUser, identities: [] } } }),
+    route.fulfill({ json: accountStatus({ ...memberUser, identities: [] }) }),
   );
   await page.route('**/api/auth/steam/link', (route) => {
     expect(route.request().method()).toBe('POST');
@@ -206,6 +218,97 @@ test('sign-in and connections expose only configured actions and link Steam with
   await page.keyboard.press('Enter');
   await expect(page.getByRole('alert')).toHaveText('Steam sign-in is disabled.');
   await expect(page.getByRole('button', { name: 'Verify FACEIT' })).toHaveCount(0);
+});
+
+for (const language of ['en', 'fr']) {
+  test(`Steam callback messages stay by their action in ${language}`, async ({ page }) => {
+    test.skip(Boolean(process.env.E2E_PRIVATE) || Boolean(process.env.E2E_SETUP));
+    const french = language === 'fr';
+    await page.setViewportSize(french ? { width: 390, height: 844 } : { width: 1440, height: 900 });
+    await installMemberWorkspace(page);
+    await page.addInitScript(
+      ({ language, french }) => {
+        localStorage.setItem('cswatch.language', language);
+        localStorage.setItem('theme', french ? 'light' : 'dark');
+      },
+      { language, french },
+    );
+    const anonymous = accountStatus(null);
+    await page.route('**/api/config', (route) =>
+      route.fulfill({ json: { ...memberConfig, registrations_enabled: false } }),
+    );
+    await page.route('**/api/auth/me', (route) => route.fulfill({ json: anonymous }));
+    const returnTo = '/watch/private-review?t=128#round-3';
+    await page.goto('/login?' + new URLSearchParams({ steam: 'registration-closed', returnTo }));
+    const signIn = page.getByRole('button', {
+      name: french ? 'Continuer avec Steam' : 'Continue with Steam',
+      exact: true,
+    });
+    const registrationMessage = french
+      ? 'Les inscriptions sont fermées. Utilisez un compte Steam déjà associé ou connectez-vous autrement.'
+      : 'Registration is closed. Use an existing linked Steam account, or sign in another way.';
+    await expect(page.getByRole('alert').filter({ hasText: registrationMessage })).toBeVisible();
+    await expect(signIn).toHaveAccessibleDescription(registrationMessage);
+    await page.route('**/api/auth/steam', (route) =>
+      route.fulfill({ status: 403, json: { detail: 'Steam sign-in is disabled.' } }),
+    );
+    const retry = page.waitForRequest('**/api/auth/steam');
+    await signIn.press('Enter');
+    expect((await retry).postDataJSON()).toEqual({ return_to: returnTo });
+
+    await page.route('**/api/auth/me', (route) =>
+      route.fulfill({ json: accountStatus({ ...memberUser, identities: [] }) }),
+    );
+    await page.goto('/account/connections?steam=link-conflict');
+    const connect = page.getByRole('button', {
+      name: french ? 'Associer Steam' : 'Connect Steam',
+      exact: true,
+    });
+    const linkMessage = french
+      ? 'Ce compte Steam n’a pas pu être associé. Vérifiez le compte Steam que vous utilisez, puis réessayez.'
+      : 'This Steam account could not be linked. Check which Steam account you’re using and try again.';
+    await expect(page.getByRole('alert').filter({ hasText: linkMessage })).toBeVisible();
+    await expect(connect).toHaveAccessibleDescription(linkMessage);
+  });
+}
+
+test('an expired proof prompts for Steam verification and restores the connection notice on cancellation', async ({
+  page,
+}) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE) || Boolean(process.env.E2E_SETUP));
+  await installMemberWorkspace(page);
+  const account = accountStatus(memberUser);
+  await page.route('**/api/auth/me', (route) =>
+    route.fulfill({
+      json: {
+        ...account,
+        session: {
+          ...account.session,
+          proof_fresh: false,
+          proof_at: Math.floor(Date.now() / 1000) - 600,
+        },
+      },
+    }),
+  );
+  const cancelled = '/account/connections?steam=verification-cancelled&proofFor=steam';
+  await page.route('**/api/auth/step-up/steam', (route) => {
+    const request = route.request();
+    expect(request.method()).toBe('POST');
+    expect(request.headers()['x-csrf-token']).toBe(memberUser.csrf);
+    expect(request.postDataJSON()).toEqual({ return_to: '/account/connections?proofFor=steam' });
+    return route.fulfill({ json: { location: cancelled } });
+  });
+
+  await page.goto('/account/connections');
+  await page.getByRole('button', { name: 'Verify Steam again', exact: true }).click();
+  const proof = page.getByRole('dialog', { name: 'Confirm your identity' });
+  await proof.getByRole('button', { name: 'Confirm with Steam', exact: true }).click();
+  await expect(page).toHaveURL(
+    /\/account\/connections\?steam=verification-cancelled&proofFor=steam$/,
+  );
+  await expect(page.getByRole('alert')).toHaveText(
+    'Steam identity verification was cancelled. Try the action again.',
+  );
 });
 
 test('Steam sync displays discovered matches and opens a pre-identified upload', async ({
@@ -221,12 +324,10 @@ test('Steam sync displays discovered matches and opens a pre-identified upload',
   let saved = false;
   await page.route('**/api/auth/me', (route) =>
     route.fulfill({
-      json: {
-        user: {
-          ...memberUser,
-          match_sources: { ...memberUser.match_sources, steam: saved },
-        },
-      },
+      json: accountStatus({
+        ...memberUser,
+        match_sources: { ...memberUser.match_sources, steam: saved },
+      }),
     }),
   );
   await page.route('**/api/connections/steam/matches?*', (route) =>
@@ -248,7 +349,7 @@ test('Steam sync displays discovered matches and opens a pre-identified upload',
   );
   await page.route('**/api/connections/steam/history', (route) => {
     if (route.request().method() === 'GET')
-      return route.fulfill({ json: { configured: saved, needs_codes: false } });
+      return route.fulfill({ json: { available: true, configured: saved, needs_codes: false } });
     expect(route.request().method()).toBe('PUT');
     expect(route.request().postDataJSON()).toEqual({
       auth_code: 'ABCD-EFGHI-JKLM',
@@ -308,11 +409,11 @@ test('connection setup names the exact server settings for administrators only',
   let admin = true;
   await page.route('**/api/config', (route) => route.fulfill({ json: config }));
   await page.route('**/api/auth/me', (route) =>
-    route.fulfill({ json: { user: { ...memberUser, is_admin: admin } } }),
+    route.fulfill({ json: accountStatus({ ...memberUser, role: admin ? 'admin' : 'member' }) }),
   );
   await page.route('**/api/connections/steam/history', (route) =>
     route.fulfill({
-      json: { configured: false, needs_codes: false },
+      json: { available: false, configured: false, needs_codes: false },
     }),
   );
   const open = async () => {
@@ -327,7 +428,7 @@ test('connection setup names the exact server settings for administrators only',
   await expect(page.getByText('download FACEIT demos')).toHaveCount(0);
 
   admin = false;
-  config = { ...config, steam_enabled: false, faceit_enabled: true };
+  config = { ...config, faceit_enabled: true };
   await open();
   await expect(page.getByText('everything needed for automatic Steam match sync')).toBeVisible();
   await expect(page.getByText('everything needed for FACEIT matches')).toBeVisible();
@@ -335,6 +436,7 @@ test('connection setup names the exact server settings for administrators only',
     page.getByText('Verify the FACEIT account linked to your Steam account.', { exact: true }),
   ).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Verify FACEIT' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Verify and save codes' })).toHaveCount(0);
   await expect(page.getByText('administrator', { exact: false })).toHaveCount(0);
   await expect(page.getByText('STEAM_API_KEY')).toHaveCount(0);
   await expect(page.getByText('FACEIT_ENABLED')).toHaveCount(0);

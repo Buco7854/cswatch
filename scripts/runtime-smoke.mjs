@@ -105,10 +105,19 @@ try {
     404,
     'Same-size unverified sound replacement is not served.',
   );
+  async function anonymousHeaders() {
+    const status = await app.inject({ url: '/api/auth/me', headers });
+    assert.equal(status.statusCode, 200);
+    return {
+      ...headers,
+      cookie: status.cookies.map(({ name, value }) => name + '=' + value).join('; '),
+      'x-csrf-token': status.json().session.csrf,
+    };
+  }
   const registration = await app.inject({
     method: 'POST',
     url: '/api/auth/register',
-    headers,
+    headers: await anonymousHeaders(),
     payload: { username: 'runtime_fixture', password: 'Disposable-runtime-password-392!' },
   });
   assert.equal(registration.statusCode, 201, registration.body);
@@ -274,7 +283,12 @@ try {
   const sharedManifest = JSON.parse(gunzipSync(sharedPlayback.rawPayload).toString());
   assert.deepEqual(sharedManifest.matchState, manifest.matchState);
   assert.deepEqual(sharedManifest.throwInputs, manifest.throwInputs);
-  const guest = await app.inject({ method: 'POST', url: '/api/guest/session', headers });
+  const guest = await app.inject({
+    method: 'POST',
+    url: '/api/guest/session',
+    headers: await anonymousHeaders(),
+    payload: {},
+  });
   assert.equal(guest.statusCode, 201, guest.body);
   const guestHeaders = {
     ...headers,

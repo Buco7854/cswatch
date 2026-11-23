@@ -53,8 +53,7 @@
 }
 
 .provider-match-toolbar,
-.provider-match-toolbar label,
-.provider-match-pagination,
+.provider-match-filter,
 .provider-match-actions,
 .provider-match-meta {
   display: flex;
@@ -69,16 +68,13 @@
   border-bottom: 1px solid var(--border);
 }
 
-.provider-match-toolbar label {
+.provider-match-filter {
   flex-direction: row;
   flex-wrap: nowrap;
 }
 
-.provider-match-pagination {
+.provider-match-toolbar .pagination {
   margin-inline-start: auto;
-  justify-content: space-between;
-  gap: 2px;
-  font-variant-numeric: tabular-nums;
 }
 
 .provider-match-hint,
@@ -245,15 +241,11 @@
     gap: 8px 12px;
   }
 
-  .provider-match-toolbar label {
+  .provider-match-filter {
     flex: 1 1 100%;
   }
 
-  .provider-match-toolbar select {
-    flex: 1;
-  }
-
-  .provider-match-pagination {
+  .provider-match-toolbar .pagination {
     margin-inline-start: 0;
   }
 

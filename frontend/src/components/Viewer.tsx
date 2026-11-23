@@ -44,7 +44,7 @@ import { openingPlayer, playerShortcut } from '../replay-opening';
 import { useReplay } from '../useReplay';
 import { useViewerChrome } from '../useViewerChrome';
 import { useReviewLayout } from '../useReviewLayout';
-import { useApp } from '../context';
+import { useApp, useWorkspaceConcealed } from '../context';
 import type { Bookmark } from '../types';
 import { frameAt, skipDeadTime, type DeadTimeFilter } from '../playback';
 import { useViewerPreferences } from '../viewer-device';
@@ -112,7 +112,8 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
   const location = useLocation();
   const { user, config, notify, signIn } = useApp();
   const audioIdentity = `${id || ''}:${user?.id || ''}`;
-  const audio = useViewerAudio(audioIdentity);
+  const concealed = useWorkspaceConcealed();
+  const audio = useViewerAudio(audioIdentity, concealed);
   const audioCameraReady = useRef(false);
   const cameraAudio = useCallback(
     (pose: ListenerPose | null) => {
@@ -142,7 +143,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
         ? '/library'
         : '/';
   const backState = backTo === previous ? location.state?.fromState : undefined;
-  const [playing, setPlaying] = useState(false),
+  const [requestedPlayback, setPlaying] = useState(false),
     [tick, setTick] = useState(0),
     [speed, setSpeed] = useState(1),
     [mode, setMode] = useState(id === 'sample' ? 'orbit' : 'pov'),
@@ -152,6 +153,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     [label, setLabel] = useState(''),
     [showNote, setShowNote] = useState(false),
     [busy, setBusy] = useState(false);
+  const playing = requestedPlayback && !concealed;
   const {
     data,
     demo,
@@ -687,7 +689,12 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       const target = e.target as HTMLElement;
       if (mapLoading || e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
       const viewer = full.current;
-      if (!viewer || (target !== document.body && !viewer.contains(target))) return;
+      if (
+        !viewer ||
+        viewer.closest('[inert]') ||
+        (target !== document.body && !viewer.contains(target))
+      )
+        return;
       if (
         e.code === 'Escape' &&
         compactFeedVisible &&

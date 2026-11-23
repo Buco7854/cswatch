@@ -1,7 +1,7 @@
 import { mapPreparerRevision } from './asset-preparer.js';
 /** Shared disk protocol for administrator-requested deletion. No app/database imports. */
-import { constants } from 'node:fs';
-import { open, opendir, rename, unlink } from 'node:fs/promises';
+import { constants, fsyncSync, renameSync, unlinkSync } from 'node:fs';
+import { open, opendir, unlink } from 'node:fs/promises';
 import { createHash, randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import type { ManagedMap, MapJobRequest, MapJobResult } from '../../shared/map-acquisition.js';
@@ -123,32 +123,40 @@ async function writeRecord(
   jobs: string,
   folder: string,
   value: MapRemovalRequest | MapRemovalResult,
+  publish: (write: () => void) => void = (write) => write(),
 ) {
   const bytes = Buffer.from(JSON.stringify(value));
   if (bytes.length > mapRemovalLimits.bytes) throw Error('Map management record limit');
   if (folder === 'removals') await readMapRemoval(jobs, value.packId);
   else await readMapRemovalResult(jobs, value.packId);
-  const success = await withDirectory(jobs, [folder], async (directory) => {
-    const temporary = `/proc/self/fd/${directory.fd}/.${value.packId}-${randomBytes(12).toString('hex')}.tmp`;
-    let file;
-    try {
-      file = await open(
-        temporary,
-        constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW,
-        0o640,
-      );
-      await file.writeFile(bytes);
-      await file.sync();
-      await file.close();
-      file = undefined;
-      await rename(temporary, `/proc/self/fd/${directory.fd}/${value.packId}.json`);
-      await directory.sync();
-      return true;
-    } finally {
-      await file?.close();
-      await unlink(temporary).catch(() => undefined);
-    }
-  });
+  const success = await withDirectory(
+    jobs,
+    [folder],
+    async (directory) => {
+      const temporary = `/proc/self/fd/${directory.fd}/.${value.packId}-${randomBytes(12).toString('hex')}.tmp`;
+      let file;
+      try {
+        file = await open(
+          temporary,
+          constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW,
+          0o640,
+        );
+        await file.writeFile(bytes);
+        await file.sync();
+        await file.close();
+        file = undefined;
+        publish(() => {
+          renameSync(temporary, `/proc/self/fd/${directory.fd}/${value.packId}.json`);
+          fsyncSync(directory.fd);
+        });
+        return true;
+      } finally {
+        await file?.close();
+        await unlink(temporary).catch(() => undefined);
+      }
+    },
+    { propagateReadError: true },
+  );
   if (!success) throw Error('Map management queue unavailable');
 }
 export function writeMapRemovalResult(jobs: string, result: MapRemovalResult) {
@@ -267,7 +275,7 @@ export function enqueueMapRemoval(
   jobs: string,
   packId: string,
   version: string,
-  authorize: () => void = () => {},
+  publish: (write: () => void) => void = (write) => write(),
 ) {
   const operation = queue.then(async () => {
     packIdSchema.parse(packId);
@@ -277,7 +285,7 @@ export function enqueueMapRemoval(
     if (existing?.markerSha256 === version && (await pendingMapRemoval(jobs, packId))) {
       const request = await readMapRequest(jobs, existing.requestId);
       if (!request || request.generation !== existing.generation) return 'changed' as const;
-      authorize();
+      publish(() => {});
       return 'queued' as const;
     }
     const ids = await mapQueueIds(jobs, 'removals');
@@ -299,15 +307,28 @@ export function enqueueMapRemoval(
         request.generation === existing.generation &&
         (result?.status === 'ready' || result?.code === 'removed_by_admin')
       ) {
-        authorize();
-        const cleared = await withDirectory(jobs, ['removal-results'], async (directory) => {
-          const file = await regularFile(directory, `${packId}.json`, 2, mapRemovalLimits.bytes);
-          if (!file) return false;
-          await file.close();
-          await unlink(`/proc/self/fd/${directory.fd}/${packId}.json`);
-          await directory.sync();
-          return true;
-        });
+        const cleared = await withDirectory(
+          jobs,
+          ['removal-results'],
+          async (directory) => {
+            const file = await regularFile(
+              directory,
+              `${packId}.json`,
+              2,
+              mapRemovalLimits.bytes,
+            ).catch((error: unknown) => {
+              if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+            });
+            if (!file) return false;
+            await file.close();
+            publish(() => {
+              unlinkSync(`/proc/self/fd/${directory.fd}/${packId}.json`);
+              fsyncSync(directory.fd);
+            });
+            return true;
+          },
+          { propagateReadError: true },
+        );
         return cleared ? ('queued' as const) : ('changed' as const);
       }
     }
@@ -318,7 +339,6 @@ export function enqueueMapRemoval(
         continue;
       const pack = await inspectManagedPack(assets, request, result);
       if (!pack || pack.version !== version) return 'changed' as const;
-      authorize();
       await writeRecord(
         jobs,
         'removals',
@@ -334,6 +354,7 @@ export function enqueueMapRemoval(
           markerSha256: version,
           requestedAt: Math.floor(Date.now() / 1000),
         }),
+        publish,
       );
       return 'queued' as const;
     }

@@ -2,15 +2,15 @@
 
 ## Route families
 
-| Route                              | Logged-out visitor                                                    | Signed-in member                           | Private-instance visitor |
-| ---------------------------------- | --------------------------------------------------------------------- | ------------------------------------------ | ------------------------ |
-| `/`                                | One compact upload entry, subject to guest policy                     | Redirect to `/library`                     | Branded sign-in entry    |
-| `/setup`                           | Operator-code enrollment only while no admin exists                   | Redirect after initialization              | Same initialization gate |
-| `/watch/:id`                       | Own temporary guest capability or explicit shared link, otherwise 404 | Own or explicitly shared demo              | Sign-in gate             |
-| `/watch/sample`                    | Labeled internal practice fixture, no public CTA                      | Same, separate from history                | Sign-in gate             |
-| `/library`                         | Account gate with safe return intent                                  | Own demos and eligible provider match tabs | Sign-in gate             |
-| `/account`, `/account/connections` | Sign-in with return intent                                            | Own identity/password and linked sources   | Sign-in gate             |
-| `/admin`                           | Sign-in then enforce role                                             | Admin policy only, other members forbidden | Sign-in then role check  |
+| Route                                                   | Logged-out visitor                                                    | Signed-in member                                 | Private-instance visitor |
+| ------------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------ | ------------------------ |
+| `/`                                                     | One compact upload entry, subject to guest policy                     | Redirect to `/library`                           | Branded sign-in entry    |
+| `/setup`                                                | Operator-code enrollment only while no admin exists                   | Redirect after initialization                    | Same initialization gate |
+| `/watch/:id`                                            | Own temporary guest capability or explicit shared link, otherwise 404 | Own or explicitly shared demo                    | Sign-in gate             |
+| `/watch/sample`                                         | Labeled internal practice fixture, no public CTA                      | Same, separate from history                      | Sign-in gate             |
+| `/library`                                              | Account gate with safe return intent                                  | Own demos and eligible provider match tabs       | Sign-in gate             |
+| `/account`, `/account/sessions`, `/account/connections` | Sign-in with return intent                                            | Own sign-in methods, sessions and linked sources | Sign-in gate             |
+| `/admin`                                                | Sign-in then enforce role                                             | Authorized admin on an allowed network           | Sign-in then role check  |
 
 Private mode must protect APIs and game assets independently of SPA navigation. It may serve the generic frontend shell for routes so users receive a useful gate; it must not fetch or show gated content before authentication. Public registration is independent: private + registrations enabled permits account creation; private + registrations disabled offers sign-in and operator contact guidance only.
 
@@ -25,6 +25,8 @@ An uninitialized instance redirects to `/setup` before account or upload entry. 
 ## Intent-preserving authentication
 
 An account-required action records a **safe local return path** and, where relevant, an action intent (upload/import/notes). Authentication success returns to the intended route and exposes that action. Steam callback returns through a local completion route/state, not a user-controlled external URL. Never lose a selected file silently: explain if a file must be selected again after an external redirect. Keep registration-disabled and provider-disabled states consistent at entry and submit time.
+
+Public registration shows the assigned sign-in username before continuing. Members can add a passkey or an authenticator app and save single-use recovery codes. When a role requires a factor, setup and sign-in lead directly to enrollment. A pending challenge exposes only the available ways to finish sign-in and the sign-out action. Account security changes ask for current proof when needed. Administration shows accounts, audit records and instance policy to eligible administrators.
 
 ## First-use member journey
 

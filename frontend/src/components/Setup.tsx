@@ -5,7 +5,7 @@ import { api } from '../api';
 import { t } from '../i18n';
 import './setup.css';
 
-export default function Setup({ onComplete }: { onComplete: () => Promise<void> }) {
+export default function Setup({ onComplete }: { onComplete: () => Promise<unknown> }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [created, setCreated] = useState(false);

@@ -8,8 +8,10 @@ export async function withDirectory<T>(
   root: string,
   parts: string[],
   read: (directory: FileHandle) => Promise<T>,
+  { propagateReadError = false } = {},
 ): Promise<T | undefined> {
   const handles: FileHandle[] = [];
+  let reading = false;
   try {
     if (process.platform !== 'linux') return;
     handles.push(
@@ -22,8 +24,10 @@ export async function withDirectory<T>(
           constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
         ),
       );
+    reading = true;
     return await read(handles.at(-1)!);
-  } catch {
+  } catch (error) {
+    if (reading && propagateReadError) throw error;
     return;
   } finally {
     for (const handle of handles.reverse()) await handle.close();

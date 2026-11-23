@@ -1,6 +1,10 @@
+import { accountStatus, configForSyntheticAccount } from './fixtures/account-status';
 import { test, expect, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
+
+if (!process.env.E2E_EXISTING_SERVER)
+  test.use({ extraHTTPHeaders: { 'x-forwarded-for': '192.0.2.22' } });
 
 test.use({ reducedMotion: 'reduce' });
 const privateInstance = Boolean(process.env.E2E_PRIVATE);
@@ -12,17 +16,16 @@ const file = {
 
 async function member(page: Page, french = false) {
   if (french) await page.addInitScript(() => localStorage.setItem('cswatch.language', 'fr'));
+  await configForSyntheticAccount(page);
   await page.route('**/api/auth/me', (route) =>
     route.fulfill({
-      json: {
-        user: {
-          id: 'upload-fixture-user',
-          username: 'upload_fixture',
-          is_admin: false,
-          csrf: 'upload-fixture-csrf',
-          identities: [],
-        },
-      },
+      json: accountStatus({
+        id: 'upload-fixture-user',
+        username: 'upload_fixture',
+        role: 'member',
+        csrf: 'upload-fixture-csrf',
+        identities: [],
+      }),
     }),
   );
   await page.route('**/api/demos?**', (route) =>
@@ -137,12 +140,14 @@ test('guests sign in for accounts and return directly to connections', async ({ 
   await page.getByRole('link', { name: 'New here? Create an account', exact: true }).click();
   const registration = page.getByRole('form', { name: 'Create account', exact: true });
   await registration
-    .getByLabel('Username', { exact: true })
+    .getByLabel('Display name', { exact: true })
     .fill('connections_' + Date.now().toString(36));
   await registration
     .getByLabel('Password', { exact: true })
     .fill('Disposable-browser-password-2026!');
   await registration.getByRole('button', { name: 'Create account', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Save your sign-in name' })).toBeVisible();
+  await page.getByRole('button', { name: 'Continue', exact: true }).click();
   await expect(page).toHaveURL(/\/account\/connections$/);
   await expect(
     page.getByRole('heading', { name: 'Connected accounts', exact: true }),

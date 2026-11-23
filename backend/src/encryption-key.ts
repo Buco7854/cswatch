@@ -4,15 +4,18 @@ import {
   constants,
   fstatSync,
   linkSync,
+  lstatSync,
+  readdirSync,
   openSync,
   readSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import type { Config } from './config.js';
-import type { Store } from './db.js';
-import { token } from './security.js';
+import { now, type Store } from './db.js';
+import { syncDirectory } from './directory-sync.js';
+import { hasSecondFactor, revokeUserSessions, token } from './security.js';
 
 export class EncryptionKeyError extends Error {}
 const help = 'See “Encryption key” in docs/ACCESS-SETUP.md.';
@@ -33,17 +36,45 @@ export function unseal(key: Buffer, binding: string, sealed: Uint8Array) {
 }
 export const steamCodeBinding = (userId: string, steamId: string) =>
   `cswatch:steam-history:1:${userId}:${steamId}`;
+export const totpBinding = (userId: string) => `cswatch:totp:1:${userId}`;
+export const totpEnrollmentBinding = (userId: string, sessionHash: string) =>
+  `cswatch:totp-enrollment:1:${userId}:${sessionHash}`;
 
-type Saved = { user_id: string; binding: string; sealed: Uint8Array };
+type Saved = { userId: string; binding: string; sealed: Uint8Array } & (
+  { kind: 'steam' | 'totp' } | { kind: 'totp-enrollment'; sessionHash: string }
+);
 /** Everything this key protects. A new kind of secret has to be listed here. */
 function savedSecrets(db: Store): Saved[] {
-  return db
-    .all('SELECT user_id,steam_id,encrypted_code FROM steam_history')
-    .map(({ user_id, steam_id, encrypted_code }) => ({
-      user_id,
-      binding: steamCodeBinding(user_id, steam_id),
-      sealed: encrypted_code,
-    }));
+  return [
+    ...db
+      .all('SELECT user_id,steam_id,encrypted_code FROM steam_history')
+      .map(({ user_id, steam_id, encrypted_code }) => ({
+        kind: 'steam' as const,
+        userId: user_id,
+        binding: steamCodeBinding(user_id, steam_id),
+        sealed: encrypted_code,
+      })),
+    ...db
+      .all('SELECT user_id,encrypted_secret FROM auth_totp')
+      .map(({ user_id, encrypted_secret }) => ({
+        kind: 'totp' as const,
+        userId: user_id,
+        binding: totpBinding(user_id),
+        sealed: encrypted_secret,
+      })),
+    ...db
+      .all(
+        'SELECT user_id,session_hash,encrypted_secret FROM auth_totp_enrollments WHERE expires_at>?',
+        now(),
+      )
+      .map(({ user_id, session_hash, encrypted_secret }) => ({
+        kind: 'totp-enrollment' as const,
+        userId: user_id,
+        sessionHash: session_hash,
+        binding: totpEnrollmentBinding(user_id, session_hash),
+        sealed: encrypted_secret,
+      })),
+  ];
 }
 function opens(key: Buffer, { binding, sealed }: Saved) {
   try {
@@ -63,7 +94,22 @@ function readKeyFile(path: string) {
     throw new EncryptionKeyError(`${path} cannot be read. ${help}`);
   }
   try {
-    const info = fstatSync(fd);
+    let info = fstatSync(fd);
+    // A crash after publishing the key can leave the creator's temporary link.
+    // Discard only that private link to this same open inode.
+    if (info.isFile() && (info.mode & 0o7777) === 0o600 && info.nlink === 2) {
+      const prefix = basename(path) + '.';
+      for (const name of readdirSync(dirname(path))) {
+        if (!name.startsWith(prefix) || !/^[a-f0-9]{12}$/.test(name.slice(prefix.length))) continue;
+        const staged = join(dirname(path), name);
+        const candidate = lstatSync(staged, { throwIfNoEntry: false });
+        if (candidate?.dev === info.dev && candidate.ino === info.ino) {
+          rmSync(staged, { force: true });
+          break;
+        }
+      }
+      info = fstatSync(fd);
+    }
     const bytes = Buffer.alloc(66);
     const length = readSync(fd, bytes, 0, bytes.length, 0);
     const contents = bytes.toString('utf8', 0, length);
@@ -76,6 +122,8 @@ function readKeyFile(path: string) {
       throw new EncryptionKeyError(
         `${path} must be one private file (mode 0600) with 64 hexadecimal characters. ${help}`,
       );
+    // A concurrent publisher may have linked the key but not yet synced its directory.
+    syncDirectory(dirname(path));
     return Buffer.from(contents.trim(), 'hex');
   } finally {
     closeSync(fd);
@@ -85,11 +133,12 @@ function createKeyFile(path: string) {
   const key = randomBytes(32);
   const staged = path + '.' + randomBytes(6).toString('hex');
   try {
-    writeFileSync(staged, key.toString('hex') + '\n', { flag: 'wx', mode: 0o600 });
+    writeFileSync(staged, key.toString('hex') + '\n', { flag: 'wx', mode: 0o600, flush: true });
     linkSync(staged, path);
   } finally {
     rmSync(staged, { force: true });
   }
+  syncDirectory(dirname(path));
   return key;
 }
 
@@ -141,32 +190,65 @@ export function changeEncryptionKey(c: Config, db: Store, previous?: Buffer) {
           throw new EncryptionKeyError(
             'A saved secret opens with neither the previous nor the new key. Nothing was changed.',
           );
-        db.run(
-          'UPDATE steam_history SET encrypted_code=?,generation=? WHERE user_id=?',
-          seal(next, secret.binding, unseal(old, secret.binding, secret.sealed)),
-          token(),
-          secret.user_id,
-        );
+        const encrypted = seal(next, secret.binding, unseal(old, secret.binding, secret.sealed));
+        if (secret.kind === 'steam')
+          db.run(
+            'UPDATE steam_history SET encrypted_code=?,generation=? WHERE user_id=?',
+            encrypted,
+            token(),
+            secret.userId,
+          );
+        else if (secret.kind === 'totp')
+          db.run(
+            'UPDATE auth_totp SET encrypted_secret=? WHERE user_id=?',
+            encrypted,
+            secret.userId,
+          );
+        else if (secret.kind === 'totp-enrollment')
+          db.run(
+            'UPDATE auth_totp_enrollments SET encrypted_secret=? WHERE session_hash=?',
+            encrypted,
+            secret.sessionHash,
+          );
         count++;
       }
+      if (count) db.audit(null, 'encryption-key.changed', { administrative: true });
       return count;
     });
-    if (c.encryptionKey && file) rmSync(path);
+    if (c.encryptionKey && file) {
+      rmSync(path);
+      syncDirectory(dirname(path));
+    }
     return changed;
   } catch (error) {
-    if (!c.encryptionKey && !file) rmSync(path, { force: true });
+    if (!c.encryptionKey && !file) {
+      rmSync(path, { force: true });
+      syncDirectory(dirname(path));
+    }
     throw error;
   }
 }
 
-/** For a lost key: members save their codes again. Readable secrets and match lists stay. */
+/** For a lost key: unreadable secrets can be removed by the operator. */
 export function forgetUnreadableSecrets(c: Config, db: Store, confirmed: boolean) {
   const key = c.encryptionKey ? Buffer.from(c.encryptionKey, 'hex') : readKeyFile(keyPath(db));
   return db.transaction(() => {
     const unreadable = savedSecrets(db).filter((secret) => !key || !opens(key, secret));
-    if (confirmed)
-      for (const { user_id } of unreadable)
-        db.run('DELETE FROM steam_history WHERE user_id=?', user_id);
+    if (!confirmed) return unreadable.length;
+    for (const secret of unreadable) {
+      if (secret.kind === 'steam')
+        db.run('DELETE FROM steam_history WHERE user_id=?', secret.userId);
+      else if (secret.kind === 'totp-enrollment')
+        db.run('DELETE FROM auth_totp_enrollments WHERE session_hash=?', secret.sessionHash);
+      else {
+        db.run('DELETE FROM auth_totp WHERE user_id=?', secret.userId);
+        db.audit(null, 'cli.unreadable_totp_removed', { target: secret.userId });
+        if (!hasSecondFactor(db, secret.userId))
+          db.run('DELETE FROM auth_recovery_codes WHERE user_id=?', secret.userId);
+        revokeUserSessions(db, secret.userId);
+      }
+    }
+    if (unreadable.length) db.audit(null, 'encryption-key.forgot', { administrative: true });
     return unreadable.length;
   });
 }

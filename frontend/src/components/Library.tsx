@@ -11,6 +11,7 @@ import { ProviderLogo } from './ProviderBrand';
 import ProviderMatches, { type MatchSource } from './ProviderMatches';
 import type { MatchActivity } from '../match-activity';
 import UploadDialog from './UploadDialog';
+import { SelectControl } from './Controls';
 
 function returnFocus(target: HTMLElement | null, context: FocusReturnContext) {
   requestAnimationFrame(() => {
@@ -207,16 +208,17 @@ function MyDemos() {
             {t('demo_count', { count: total })}
             {more ? ' · ' + t('{{v0}} shown', { v0: demos.length }) : ''}
           </span>
-          <select
-            aria-label={t('Demo source')}
-            value={source}
-            onChange={(event) => setSource(event.target.value)}
-          >
-            <option value="">{t('All sources')}</option>
-            <option value="upload">{t('Upload')}</option>
-            <option value="faceit">{t('FACEIT')}</option>
-            <option value="steam">{t('Steam')}</option>
-          </select>
+          <SelectControl
+            label={t('Demo source')}
+            value={source || 'all'}
+            onValueChange={(value) => setSource(value === 'all' ? '' : value)}
+            options={[
+              { value: 'all', label: t('All sources') },
+              { value: 'upload', label: t('Upload') },
+              { value: 'faceit', label: t('FACEIT') },
+              { value: 'steam', label: t('Steam') },
+            ]}
+          />
         </div>
         <div className="library-tools">
           <label className="search">

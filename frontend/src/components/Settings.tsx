@@ -1,12 +1,21 @@
 import { t, locale } from '../i18n';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { LockKeyhole } from 'lucide-react';
+import { SwitchRow } from './Controls';
 import type { MapPreparationDiagnostics } from '../../../shared/map-acquisition';
 import type { PresentationKind, PresentationStatus } from '../../../shared/presentation-assets';
-import { api } from '../api';
+import { api, sessionDeadline } from '../api';
 import { useApp } from '../context';
-import { NavLink } from 'react-router-dom';
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { hasPermission } from '../../../shared/roles.mjs';
+import { authReturnPath } from '../auth-navigation';
+import { useAction } from '../useAction';
+import { ActionError, CopyValue, roleLabel, SecuritySection } from './AuthControls';
+import AccountSecurity from './AccountSecurity';
+import AccountSessions from './AccountSessions';
+import { StepUpProvider, SteamStepUpNotice, useStepUp } from './StepUp';
+import { ConfirmationProvider } from './Confirmation';
+import { AdminUsers, AdminAudit, MfaPolicy, type Policy } from './AdminAccounts';
 import Connections from './Connections';
 import AdminMapReadiness from './AdminMapReadiness';
 import AdminMaps from './AdminMaps';
@@ -23,168 +32,202 @@ type AdminData = {
   mapReadiness?: MapPreparationDiagnostics;
   presentationAssets?: PresentationStatus;
   flags: Record<string, { value: boolean; locked: boolean }>;
-  users: { id: string; username: string; is_admin: boolean; created_at: number }[];
+  mfa_required_roles: Policy;
   queue: { status: string; count: number }[];
-  audit: { action: string; created_at: number }[];
 };
-export function Account({ section = 'security' }: { section?: 'security' | 'connections' }) {
-  const { user, signIn, refresh, notify } = useApp();
-  const [busy, setBusy] = useState(false),
-    [error, setError] = useState('');
-  const scope = useRef({ active: true });
-  const pending = useRef<object | null>(null);
-  const currentIdentity = useRef(user?.id);
-  currentIdentity.current = user?.id;
+type FlagDrafts = Partial<Record<string, boolean>>;
+type SettingsSnapshot = { data: AdminData | null; drafts: FlagDrafts };
+const emptySettings: SettingsSnapshot = { data: null, drafts: {} };
+
+export function Account({
+  section = 'security',
+  enrollment = false,
+}: {
+  section?: 'security' | 'connections' | 'sessions';
+  enrollment?: boolean;
+}) {
+  const { user, session, signOut: logout } = useApp();
+  const navigate = useNavigate();
+  const { search } = useLocation();
+  const signOut = useAction();
+  const title = useRef<HTMLHeadingElement>(null);
+  const limited = session.stage === 'enroll';
+  const destination = authReturnPath(new URLSearchParams(search).get('returnTo'));
   useEffect(() => {
-    const current = { active: true };
-    scope.current = current;
-    pending.current = null;
-    setBusy(false);
-    setError('');
-    return () => {
-      current.active = false;
-    };
-  }, [user?.id, section]);
-  async function change(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (pending.current || !scope.current.active || !user) return;
-    const current = scope.current,
-      identity = user.id,
-      attempt = {};
-    pending.current = attempt;
-    const isCurrent = () =>
-      current.active && pending.current === attempt && currentIdentity.current === identity;
-    setBusy(true);
-    setError('');
-    const form = e.currentTarget;
-    const fd = new FormData(form);
-    let failure: Error | undefined;
-    try {
-      await api('/api/auth/password', {
-        method: 'POST',
-        body: JSON.stringify(Object.fromEntries(fd)),
-      });
-    } catch (error) {
-      failure = error as Error;
-    }
-    // A committed password mutation replaces the session cookie, even after
-    // leaving this form or losing its response. Only an authoritative session
-    // refresh publishes identity and CSRF together, never this response's token.
-    try {
-      await refresh();
-    } catch (error) {
-      failure ??= error as Error;
-    }
-    try {
-      if (!isCurrent()) return;
-      if (failure) setError(failure.message);
-      else {
-        form.reset();
-        notify(t('Password updated. Other sessions have been signed out.'));
-      }
-    } finally {
-      if (isCurrent()) {
-        pending.current = null;
-        setBusy(false);
-      }
-    }
-  }
+    if (enrollment) title.current?.focus();
+  }, [enrollment]);
+  if (enrollment)
+    return (
+      <div className="auth-enrollment">
+        <header className="auth-intro">
+          <h1 ref={title} tabIndex={-1}>
+            {t('Secure your account')}
+          </h1>
+          <p>
+            {t(
+              'This account needs a second factor. Add a passkey or an authenticator app to continue.',
+            )}
+          </p>
+        </header>
+        {limited && session.username && (
+          <CopyValue wrap label={t('Your sign-in username')} value={session.username} />
+        )}
+        <AccountSecurity
+          key={limited ? session.username : user?.username}
+          enrollment
+          onComplete={() => navigate(destination, { replace: true })}
+        />
+        <button
+          className="button auth-secondary"
+          type="button"
+          disabled={signOut.busy}
+          onClick={() => void signOut.run(() => logout({ returnTo: destination }))}
+        >
+          {t('Sign out')}
+        </button>
+        <ActionError error={signOut.error} />
+      </div>
+    );
+  if (!user) return null;
   return (
     <>
       <header className="page-heading">
-        <h1>{t(section === 'connections' ? 'Connected accounts' : 'Account settings')}</h1>
+        <h1>
+          {t(
+            section === 'connections'
+              ? 'Connected accounts'
+              : section === 'sessions'
+                ? 'Sessions'
+                : 'Account settings',
+          )}
+        </h1>
       </header>
       <nav className="account-tabs" aria-label={t('Account settings')}>
         <NavLink end to="/account">
           {t('Your account')}
         </NavLink>
+        <NavLink to="/account/sessions">{t('Sessions')}</NavLink>
         <NavLink to="/account/connections">{t('Connected accounts')}</NavLink>
       </nav>
-      {!user ? (
-        <button className="button primary" onClick={signIn}>
-          {t('Sign in')}
-        </button>
-      ) : section === 'connections' ? (
-        <Connections />
+      {section === 'connections' ? (
+        <Connections key={user.id} />
+      ) : section === 'sessions' ? (
+        <AccountSessions key={user.id} />
       ) : (
         <>
-          <div className="settings-section">
-            <div>
-              <h2>{t('Your account')}</h2>
-              <p>
-                {t('Signed in as')} {user.username}.
-              </p>
+          <SecuritySection title={t('Your account')}>
+            <div className="settings-panel security-panel">
+              <div className="account-identity">
+                <h3>{user.display_name || user.username}</h3>
+                <span className="member-role">{roleLabel(user.role)}</span>
+              </div>
+              <CopyValue wrap label={t('Your sign-in username')} value={user.username} />
             </div>
-            <div className="settings-panel">
-              <h3>{t('Connected identities')}</h3>
-              <p>
-                {user.identities?.length
-                  ? user.identities
-                      .map((i) => (i.provider === 'steam' ? t('Steam') : 'FACEIT'))
-                      .join(' · ')
-                  : t('No external accounts linked.')}
-              </p>
-              <NavLink className="button" to="/account/connections">
-                {t('Manage connections')}
-              </NavLink>
-            </div>
-          </div>
-          <div className="settings-section">
-            <div>
-              <h2>{t('Password')}</h2>
-              <p>
-                {t(
-                  'Changing your password signs out all other sessions. Steam-only accounts can set a password here.',
-                )}
-              </p>
-              <p>
-                {t(
-                  'For account recovery, contact this instance’s administrator. Passwords are never sent by email.',
-                )}
-              </p>
-            </div>
-            <form className="settings-panel" onSubmit={change}>
-              <label>
-                {t('Current password')}
-                <input
-                  name="current_password"
-                  type="password"
-                  maxLength={128}
-                  autoComplete="current-password"
-                />
-              </label>
-              <label>
-                {t('New password')}
-                <input
-                  name="new_password"
-                  type="password"
-                  minLength={12}
-                  maxLength={128}
-                  required
-                  autoComplete="new-password"
-                  aria-describedby="new-password-help"
-                />
-              </label>
-              <small id="new-password-help">{t('12–128 characters. Use a unique password.')}</small>
-              {error && (
-                <p className="error" role="alert">
-                  {t(error)}
-                </p>
-              )}
-              <button className="button primary" disabled={busy}>
-                {busy ? t('Updating…') : t('Update password')}
-              </button>
-            </form>
-          </div>
+          </SecuritySection>
+          <AccountSecurity key={user.id} enrollment={false} onComplete={() => {}} />
         </>
       )}
     </>
   );
 }
 export function Admin() {
-  const { user, config, notify, refresh } = useApp();
-  const [data, setData] = useState<AdminData | null>(null),
-    [error, setError] = useState(''),
+  const { user, config, refresh, isAdminAvailable } = useApp();
+  const { search } = useLocation();
+  const query = new URLSearchParams(search);
+  const section = query.get('section');
+  const [access, setAccess] = useState<{ checked: boolean; error?: string }>({ checked: false });
+  const [revision, recheck] = useReducer((current: number) => current + 1, 0);
+  const current = section === 'users' || section === 'audit' ? section : 'settings';
+  useEffect(() => {
+    if (!config.admin_access) return;
+    let active = true;
+    void refresh().then(
+      () => {
+        if (active) setAccess({ checked: true });
+      },
+      (error: Error) => {
+        if (active) setAccess({ checked: true, error: error.message });
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [config.admin_access, refresh, revision]);
+  return (
+    <>
+      <header className="page-heading">
+        <div>
+          <h1>{t('Instance administration')}</h1>
+        </div>
+      </header>
+      {!config.admin_access ? (
+        <p role="alert">
+          {t(
+            hasPermission(user?.role, 'admin')
+              ? 'Administration is unavailable from this network.'
+              : 'Administrator access required.',
+          )}
+        </p>
+      ) : !access.checked ? (
+        <p role="status">{t('Loading…')}</p>
+      ) : access.error ? (
+        <>
+          <ActionError error={access.error} />
+          <button
+            className="button"
+            onClick={() => {
+              setAccess({ checked: false });
+              recheck();
+            }}
+          >
+            {t('Retry')}
+          </button>
+        </>
+      ) : (
+        <ConfirmationProvider identity={user?.id}>
+          <StepUpProvider allowed={() => isAdminAvailable(user?.id)}>
+            <nav className="account-tabs" aria-label={t('Administration')}>
+              <Link
+                to="/admin"
+                aria-current={current === 'settings' ? 'page' : false}
+                className={current === 'settings' ? 'active' : ''}
+              >
+                {t('Instance settings')}
+              </Link>
+              <Link
+                to="/admin?section=users"
+                aria-current={current === 'users' ? 'page' : false}
+                className={current === 'users' ? 'active' : ''}
+              >
+                {t('Users')}
+              </Link>
+              <Link
+                to="/admin?section=audit"
+                aria-current={current === 'audit' ? 'page' : false}
+                className={current === 'audit' ? 'active' : ''}
+              >
+                {t('Security events')}
+              </Link>
+            </nav>
+            {current === 'users' ? (
+              <AdminUsers key={user?.id} />
+            ) : current === 'audit' ? (
+              <AdminAudit key={user?.id} />
+            ) : (
+              <InstanceSettings key={user?.id} />
+            )}
+          </StepUpProvider>
+        </ConfirmationProvider>
+      )}
+    </>
+  );
+}
+function InstanceSettings() {
+  const { user, config, notify, refresh, isAdminAvailable } = useApp();
+  const verifySettings = useStepUp('instance-settings');
+  const verifyAssetRetry = useStepUp('asset-retry');
+  const [{ data, drafts }, setSettings] = useState(emptySettings);
+  const [error, setError] = useState(''),
     [busy, setBusy] = useState(false),
     [loading, setLoading] = useState(true);
   const [retryingAsset, setRetryingAsset] = useState<PresentationKind>();
@@ -192,70 +235,88 @@ export function Admin() {
   currentIdentity.current = user?.id;
   const request = useRef<AbortController | null>(null);
   const scope = useRef({ active: true });
-  const load = useCallback(async (preserveFlags = false) => {
-    request.current?.abort();
-    const controller = new AbortController();
-    request.current = controller;
-    setLoading(true);
-    setError('');
-    try {
-      const next = await api<AdminData>('/api/admin', { signal: controller.signal });
-      if (!controller.signal.aborted)
-        setData((previous) =>
-          preserveFlags && previous
-            ? {
-                ...next,
-                flags: Object.fromEntries(
-                  Object.entries(next.flags).map(([key, flag]) => [
-                    key,
-                    flag.locked || !previous.flags[key] || previous.flags[key].locked
-                      ? flag
-                      : { ...flag, value: previous.flags[key].value },
-                  ]),
-                ),
-              }
-            : next,
-        );
-    } catch (failure) {
-      if (!controller.signal.aborted) setError((failure as Error).message);
-    } finally {
-      if (request.current === controller) {
-        request.current = null;
-        setLoading(false);
-      }
-    }
+  const latestSettings = useRef(emptySettings);
+  const updateSettings = useCallback((next: SettingsSnapshot) => {
+    latestSettings.current = next;
+    setSettings(next);
   }, []);
+  const load = useCallback(
+    async (policyContext?: string) => {
+      const live = () => isAdminAvailable(user?.id, policyContext);
+      if (!live()) return;
+      request.current?.abort();
+      const controller = new AbortController();
+      request.current = controller;
+      setLoading(true);
+      setError('');
+      try {
+        const next = await api<AdminData>(
+          '/api/admin',
+          { signal: sessionDeadline(controller.signal) },
+          policyContext,
+        );
+        if (controller.signal.aborted || !live()) return;
+        const edits = Object.entries(latestSettings.current.drafts).filter(([key, value]) => {
+          const saved = next.flags[key];
+          return saved && !saved.locked && saved.value !== value;
+        });
+        updateSettings({ data: next, drafts: Object.fromEntries(edits) });
+        return next;
+      } catch (failure) {
+        if (controller.signal.aborted || !live()) return;
+        if (policyContext !== undefined) throw failure;
+        setError((failure as Error).message);
+      } finally {
+        if (request.current === controller) {
+          request.current = null;
+          setLoading(false);
+        }
+      }
+    },
+    [isAdminAvailable, updateSettings, user?.id],
+  );
   useEffect(() => {
     const current = { active: true };
     scope.current = current;
-    setData(null);
+    updateSettings(emptySettings);
     setBusy(false);
     setRetryingAsset(undefined);
     setError('');
-    if (user?.is_admin) void load();
+    if (config.admin_access) void load();
     return () => {
       current.active = false;
       request.current?.abort();
     };
-  }, [user?.id, user?.is_admin, load]);
+  }, [user?.id, config.admin_access, load, updateSettings]);
+  function editFlag(key: string, value: boolean) {
+    const { data, drafts } = latestSettings.current;
+    const saved = data?.flags[key];
+    if (!saved || saved.locked) return;
+    const edits = { ...drafts };
+    if (saved.value === value) delete edits[key];
+    else edits[key] = value;
+    updateSettings({ data, drafts: edits });
+  }
+  const dirty = Object.keys(drafts).length > 0;
   async function save(e: FormEvent) {
     e.preventDefault();
-    if (!data || busy) return;
+    if (!dirty || busy) return;
     const current = scope.current;
+    const live = (csrf: string) => current.active && isAdminAvailable(user?.id, csrf);
     setBusy(true);
     setError('');
     try {
-      await api('/api/admin', {
-        method: 'PATCH',
-        body: JSON.stringify(
-          Object.fromEntries(Object.entries(data.flags).map(([k, v]) => [k, v.value])),
-        ),
-      });
-      if (!current.active) return;
+      const csrf = await verifySettings();
+      if (!csrf || !live(csrf)) return;
+      // A policy or diagnostics read can settle while the step-up is open.
+      const changes = latestSettings.current.drafts;
+      if (!Object.keys(changes).length) return;
+      await api('/api/admin', { method: 'PATCH', body: JSON.stringify(changes) }, csrf);
+      if (!live(csrf)) return;
       await refresh();
-      if (!current.active) return;
+      if (!live(csrf)) return;
       await load();
-      if (!current.active) return;
+      if (!live(csrf)) return;
       notify(t('Instance settings saved.'));
     } catch (e) {
       if (current.active) setError((e as Error).message);
@@ -264,18 +325,25 @@ export function Admin() {
     }
   }
   async function retryAsset(kind: PresentationKind) {
-    if (busy || !user?.is_admin) return;
+    if (busy || !user || !config.admin_access) return;
     const current = scope.current,
       identity = user.id;
-    const live = () => current.active && currentIdentity.current === identity;
+    const live = (csrf?: string) =>
+      current.active && currentIdentity.current === identity && isAdminAvailable(identity, csrf);
     setBusy(true);
     setRetryingAsset(kind);
     setError('');
     try {
-      await api(`/api/admin/assets/presentation/${kind}/retry`, { method: 'POST', body: '{}' });
-      if (!live()) return;
-      await load(true);
-      if (live()) notify(t('Asset preparation retry queued.'));
+      const csrf = await verifyAssetRetry();
+      if (!csrf || !live(csrf)) return;
+      await api(
+        `/api/admin/assets/presentation/${kind}/retry`,
+        { method: 'POST', body: '{}' },
+        csrf,
+      );
+      if (!live(csrf)) return;
+      await load();
+      if (live(csrf)) notify(t('Asset preparation retry queued.'));
     } catch (failure) {
       if (live()) setError((failure as Error).message);
     } finally {
@@ -290,171 +358,123 @@ export function Admin() {
   const buildDate = config.build?.builtAt ? new Date(config.build.builtAt) : null;
   return (
     <>
-      <header className="page-heading">
-        <div>
-          <h1>{t('Instance administration')}</h1>
-          <p>{t('Access, identity providers, and processing.')}</p>
+      {error && (
+        <div className="member-inline-error" role="alert">
+          <p className="error">{t(error)}</p>
+          <button className="button" onClick={() => void load()} disabled={loading || busy}>
+            {t('Try again')}
+          </button>
         </div>
-      </header>
-      {!user?.is_admin ? (
-        <p role="alert">{t('Administrator access required.')}</p>
-      ) : (
+      )}
+      {loading && !data && (
+        <p className="member-loading" role="status">
+          {t('Loading instance settings…')}
+        </p>
+      )}
+      {data && (
         <>
-          {error && (
-            <div className="member-inline-error" role="alert">
-              <p className="error">{t(error)}</p>
-              <button
-                className="button"
-                onClick={() => void load(Boolean(data))}
-                disabled={loading || busy}
-              >
-                {t('Try again')}
-              </button>
-            </div>
-          )}
-          {loading && !data && (
-            <p className="member-loading" role="status">
-              {t('Loading instance settings…')}
-            </p>
-          )}
-          {data && (
-            <>
-              <div className="settings-section">
-                <div>
-                  <h2>{t('Access & providers')}</h2>
-                  <p>
-                    {t(
-                      'Environment values take precedence. Unset an environment variable to control that setting here.',
-                    )}
-                  </p>
-                  <p>
-                    {t(
-                      'Provider API keys are configured through the environment and are never exposed in this interface.',
-                    )}
-                  </p>
-                </div>
-                <form className="settings-panel admin-policy-panel" onSubmit={save}>
-                  <div className="admin-policy-rows">
-                    {Object.entries(data.flags).map(([key, flag]) => (
-                      <label className="toggle-row" key={key}>
-                        <span>
-                          {t(names[key])}
-                          {flag.locked && (
-                            <small>
-                              <LockKeyhole size={12} aria-hidden="true" />
-                              {t('Managed by environment')}
-                            </small>
-                          )}
-                        </span>
-                        <input
-                          type="checkbox"
-                          role="switch"
-                          checked={flag.value}
-                          disabled={flag.locked || busy}
-                          onChange={(e) =>
-                            setData({
-                              ...data,
-                              flags: { ...data.flags, [key]: { ...flag, value: e.target.checked } },
-                            })
-                          }
-                        />
-                      </label>
-                    ))}
-                  </div>
-                  <div className="form-actions">
-                    <button className="button primary" disabled={busy}>
-                      {busy ? t('Saving…') : t('Save settings')}
-                    </button>
-                  </div>
-                </form>
-              </div>
-              <AdminMapReadiness
-                data={data.mapReadiness}
-                presentation={data.presentationAssets}
-                retryingAsset={retryingAsset}
-                retryAsset={(kind) => void retryAsset(kind)}
-                refreshing={loading || busy}
-                refresh={() => void load(true)}
-              />
-              <AdminMaps />
-              <div className="admin-grid">
-                <section className="settings-panel">
-                  <h2>{t('Processing queue')}</h2>
-                  {data.queue.length ? (
-                    data.queue.map((q) => (
-                      <div className="kv-row" key={t(q.status)}>
-                        <span>{t(q.status)}</span>
-                        <span className="num">{q.count}</span>
-                      </div>
-                    ))
-                  ) : (
-                    <p>{t('No demos submitted yet.')}</p>
-                  )}
-                  <p className="muted">
-                    {t('A separate worker processes demos. Run both Compose services.')}
-                  </p>
-                </section>
-                <section className="settings-panel">
-                  <h2>{t('Accounts')}</h2>
-                  <p>
-                    {data.users.length} {t('most recent accounts')}
-                  </p>
-                  {data.users.map((u) => (
-                    <div className="kv-row" key={u.id}>
-                      <span>{u.username}</span>
-                      <span className="member-role">{u.is_admin ? t('Admin') : t('Member')}</span>
-                    </div>
-                  ))}
-                </section>
-              </div>
-              <section className="audit-panel">
-                <h2>{t('Recent security events')}</h2>
-                {data.audit.length ? (
-                  data.audit.map((a, i) => (
-                    <div className="kv-row" key={i}>
-                      <span>{a.action.replaceAll('.', ' · ')}</span>
-                      <time dateTime={new Date(a.created_at * 1000).toISOString()}>
-                        {new Date(a.created_at * 1000).toLocaleString(locale())}
-                      </time>
-                    </div>
-                  ))
-                ) : (
-                  <p>{t('No security events yet.')}</p>
+          <div className="settings-section">
+            <div>
+              <h2 id="instance-access-heading">{t('Access & providers')}</h2>
+              <p>
+                {t(
+                  'Environment values take precedence. Unset an environment variable to control that setting here.',
                 )}
-              </section>
-              <dl className="instance-build">
-                <div>
-                  <dt>{t('Application revision')}</dt>
-                  <dd>
-                    {validRevision ? (
-                      <a
-                        href={'https://github.com/Buco7854/cswatch/commit/' + revision}
-                        target="_blank"
-                        rel="noreferrer"
-                        title={revision}
-                      >
-                        {revision.slice(0, 8)}
-                      </a>
-                    ) : (
-                      t('Unavailable')
-                    )}
-                  </dd>
-                </div>
-                <div>
-                  <dt>{t('Built')}</dt>
-                  <dd>
-                    {buildDate && Number.isFinite(buildDate.getTime()) ? (
-                      <time dateTime={buildDate.toISOString()}>
-                        {buildDate.toLocaleString(locale())}
-                      </time>
-                    ) : (
-                      t('Unavailable')
-                    )}
-                  </dd>
-                </div>
-              </dl>
-            </>
-          )}
+              </p>
+              <p>
+                {t(
+                  'Provider API keys are configured through the environment and are never exposed in this interface.',
+                )}
+              </p>
+            </div>
+            <form
+              aria-labelledby="instance-access-heading"
+              className="settings-panel admin-policy-panel"
+              onSubmit={save}
+            >
+              <SteamStepUpNotice action="instance-settings" />
+              <div className="admin-policy-rows">
+                {Object.entries(data.flags).map(([key, flag]) => (
+                  <SwitchRow
+                    key={key}
+                    label={t(names[key])}
+                    locked={flag.locked}
+                    checked={drafts[key] ?? flag.value}
+                    disabled={busy}
+                    onChange={(checked) => editFlag(key, checked)}
+                  />
+                ))}
+              </div>
+              <div className="form-actions">
+                <button className="button primary" disabled={busy || !dirty}>
+                  {busy ? t('Saving…') : t('Save settings')}
+                </button>
+              </div>
+            </form>
+          </div>
+          <MfaPolicy
+            policy={data.mfa_required_roles}
+            reload={async (csrf) => (await load(csrf))?.mfa_required_roles}
+          />
+          <SteamStepUpNotice action="asset-retry" />
+          <AdminMapReadiness
+            data={data.mapReadiness}
+            presentation={data.presentationAssets}
+            retryingAsset={retryingAsset}
+            retryAsset={(kind) => void retryAsset(kind)}
+            refreshing={loading || busy}
+            refresh={() => void load()}
+          />
+          <AdminMaps />
+          <div className="admin-grid">
+            <section className="settings-panel">
+              <h2>{t('Processing queue')}</h2>
+              {data.queue.length ? (
+                data.queue.map((q) => (
+                  <div className="kv-row" key={t(q.status)}>
+                    <span>{t(q.status)}</span>
+                    <span className="num">{q.count}</span>
+                  </div>
+                ))
+              ) : (
+                <p>{t('No demos submitted yet.')}</p>
+              )}
+              <p className="muted">
+                {t('A separate worker processes demos. Run both Compose services.')}
+              </p>
+            </section>
+          </div>
+          <dl className="instance-build">
+            <div>
+              <dt>{t('Application revision')}</dt>
+              <dd>
+                {validRevision ? (
+                  <a
+                    href={'https://github.com/Buco7854/cswatch/commit/' + revision}
+                    target="_blank"
+                    rel="noreferrer"
+                    title={revision}
+                  >
+                    {revision.slice(0, 8)}
+                  </a>
+                ) : (
+                  t('Unavailable')
+                )}
+              </dd>
+            </div>
+            <div>
+              <dt>{t('Built')}</dt>
+              <dd>
+                {buildDate && Number.isFinite(buildDate.getTime()) ? (
+                  <time dateTime={buildDate.toISOString()}>
+                    {buildDate.toLocaleString(locale())}
+                  </time>
+                ) : (
+                  t('Unavailable')
+                )}
+              </dd>
+            </div>
+          </dl>
         </>
       )}
     </>

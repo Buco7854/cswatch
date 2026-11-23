@@ -1,3 +1,4 @@
+import { requireMutationRequest } from './request-security.js';
 import { mapGradeFile } from './map-grade-wire.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
@@ -10,7 +11,8 @@ import type {
 import type { Config } from './config.js';
 import type { Store } from './db.js';
 import { accessDemo } from './ingestion.js';
-import { HttpError, rateLimit } from './security.js';
+import { HttpError, rateLimit, requireSession, sessionUser } from './security.js';
+import { currentGuest } from './guest.js';
 import {
   readMapCatalog,
   resolveMap,
@@ -57,6 +59,44 @@ export async function demoMapAssetRoutes(
   c: Config,
   repository: Repository,
 ) {
+  function livePrincipals(request: FastifyRequest) {
+    const user = request.user ? sessionUser(requireSession(db, request, c, ['full'])) : null;
+    if (!user && !db.flag(c, 'public_access'))
+      throw new HttpError(401, 'This instance is private. Sign in to continue.');
+    const current = request.guest ? currentGuest(db, request, c) : null;
+    const guest =
+      current?.id === request.guest?.id && current?.csrf === request.guest?.csrf ? current : null;
+    if (request.guest && !guest && !user)
+      throw new HttpError(401, 'Session expired. Refresh the page and try again.');
+    return { user, guest };
+  }
+
+  function liveDemo(request: FastifyRequest, id: string, ownerOnly: boolean) {
+    const { user, guest } = livePrincipals(request);
+    if (ownerOnly) {
+      const csrf = user?.csrf ?? guest?.csrf;
+      requireMutationRequest(request, c, csrf, false);
+    }
+    const demo = accessDemo(db, id, user, ownerOnly, guest);
+    if (demo.status !== 'ready') throw new HttpError(409, 'This demo is not ready.');
+    return demo;
+  }
+
+  function requireCurrentDemo(
+    request: FastifyRequest,
+    demo: ReturnType<typeof accessDemo>,
+    enabled: boolean,
+    ownerOnly: boolean,
+  ) {
+    const current = liveDemo(request, demo.id, ownerOnly);
+    if (
+      current.map !== demo.map ||
+      current.metadata !== demo.metadata ||
+      db.flag(c, 'auto_official_maps_enabled') !== enabled
+    )
+      throw new HttpError(409, 'Map availability changed. Refresh and try again.');
+  }
+
   const recordedIdentity = (demo: Record<string, any>) => {
     try {
       const raw = JSON.parse(demo.metadata || '{}').mapIdentity;
@@ -147,9 +187,9 @@ export async function demoMapAssetRoutes(
     request: FastifyRequest,
     demo: Record<string, any>,
     state: PreparationState,
+    enabled: boolean,
   ): Promise<DemoMapAssets> => {
     let resolution = await resolutionFor(demo, state);
-    const enabled = state.diagnostics.enabled;
     const owned = request.user?.id === demo.owner_id || request.guest?.id === demo.owner_id;
     if (resolution.status === 'approved' || resolution.status === 'latest') {
       const requestId =
@@ -282,10 +322,10 @@ export async function demoMapAssetRoutes(
   const describe = async (
     request: FastifyRequest,
     demo: Record<string, any>,
+    enabled: boolean,
   ): Promise<DemoMapAssets> => {
-    const enabled = db.flag(c, 'auto_official_maps_enabled');
-    const state = await readMapPreparationState(c, enabled);
-    const assets = await describeAssets(request, demo, state);
+    const state = await readMapPreparationState(c);
+    const assets = await describeAssets(request, demo, state, enabled);
     if (
       assets.acquisition === 'ready' ||
       assets.acquisition === 'queued' ||
@@ -314,42 +354,50 @@ export async function demoMapAssetRoutes(
     return readinessReason ? { ...assets, readinessReason } : assets;
   };
   app.get<{ Params: { id: string } }>('/api/demos/:id/map-assets', async (request, reply) => {
-    const demo = accessDemo(db, request.params.id, request.user, false, request.guest);
+    const demo = liveDemo(request, request.params.id, false);
+    const enabled = db.flag(c, 'auto_official_maps_enabled');
+    const assets = await describe(request, demo, enabled);
+    db.transaction(() => requireCurrentDemo(request, demo, enabled, false));
     reply.header('Cache-Control', 'private, no-store');
-    if (demo.status !== 'ready') throw new HttpError(409, 'This demo is not ready.');
-    return describe(request, demo);
+    return assets;
   });
   app.post<{ Params: { id: string } }>('/api/demos/:id/map-assets', async (request, reply) => {
-    const demo = accessDemo(db, request.params.id, request.user, true, request.guest);
+    const demo = liveDemo(request, request.params.id, true);
     z.object({})
       .strict()
       .parse(request.body ?? {});
-    if (demo.status !== 'ready') throw new HttpError(409, 'This demo is not ready.');
-    const before = await describe(request, demo);
-    if (
-      before.acquisition === 'queued' ||
-      before.acquisition === 'processing' ||
-      before.acquisition === 'ready'
-    )
-      return before;
+    const enabled = db.flag(c, 'auto_official_maps_enabled');
+    const before = await describe(request, demo, enabled);
+    db.transaction(() => requireCurrentDemo(request, demo, enabled, true));
     if (!before.canAcquire || !['approved', 'latest'].includes(before.resolution.status))
       return before;
-    rateLimit(db, request, 'map-acquisition', 6, 3600, request.user?.id || request.guest!.id);
+
+    const publish = (write: () => void) =>
+      db.transaction(() => {
+        requireCurrentDemo(request, demo, enabled, true);
+        write();
+      });
+    rateLimit(db, request, 'map-acquisition', 6, 3600, demo.owner_id);
     rateLimit(db, request, 'map-acquisition-ip', 12, 3600);
     const queued =
       before.resolution.status === 'approved'
         ? before.acquisition === 'failed'
-          ? await retryMapRequest(c.mapJobsDir, before.resolution.approval)
-          : await enqueueMapRequest(c.mapJobsDir, before.resolution.approval)
+          ? await retryMapRequest(c.mapJobsDir, before.resolution.approval, undefined, { publish })
+          : await enqueueMapRequest(c.mapJobsDir, before.resolution.approval, publish)
         : before.resolution.status === 'latest'
           ? before.acquisition === 'failed'
-            ? await retryLatestMapRequest(c.mapJobsDir, before.resolution.selection)
-            : await enqueueLatestMapRequest(c.mapJobsDir, before.resolution.selection)
+            ? await retryLatestMapRequest(c.mapJobsDir, before.resolution.selection, undefined, {
+                publish,
+              })
+            : await enqueueLatestMapRequest(c.mapJobsDir, before.resolution.selection, publish)
           : 'ineligible';
-    if (queued === 'ineligible') return describe(request, demo);
-    reply.code(queued === 'full' ? 503 : 202);
-    if (queued === 'full') return { ...before, canAcquire: false, code: 'queue_full' };
-    return describe(request, demo);
+    const assets =
+      queued === 'full'
+        ? { ...before, canAcquire: false, code: 'queue_full' }
+        : await describe(request, demo, enabled);
+    db.transaction(() => requireCurrentDemo(request, demo, enabled, true));
+    if (queued !== 'ineligible') reply.code(queued === 'full' ? 503 : 202);
+    return assets;
   });
 
   /** Delivery requires a current exact approval, or a worker-proven immutable
@@ -376,15 +424,21 @@ export async function demoMapAssetRoutes(
   await mapModelFileRoutes(app, c.mapAssetsDir, {
     url: '/api/map-packs/:packId/models/*',
     resolveLocation: readyLocation,
+    authorize: livePrincipals,
   });
   app.get<{ Params: { packId: string; name: string } }>(
     '/api/map-packs/:packId/maps/:name',
-    async (request) => repository.describe(request.params.name, await readyLocation(request)),
+    async (request) => {
+      const assets = await repository.describe(request.params.name, await readyLocation(request));
+      livePrincipals(request);
+      return assets;
+    },
   );
   app.get<{ Params: { packId: string; name: string } }>(
     '/api/map-packs/:packId/maps/:name/overview.png',
     async (request, reply) => {
       const item = await repository.loadOverview(request.params.name, await readyLocation(request));
+      livePrincipals(request);
       if (!item) throw new HttpError(404, 'Map overview not found.');
       return reply.header('Cache-Control', 'private, no-store').type('image/png').send(item.image);
     },
@@ -394,6 +448,7 @@ export async function demoMapAssetRoutes(
     async (request, reply) => {
       const location = await readyLocation(request);
       const item = await repository.loadEnvironment(request.params.name, location);
+      livePrincipals(request);
       if (!item?.gradeLut) throw new HttpError(404, 'Map grading LUT not found.');
       return reply
         .header('Cache-Control', 'private, no-store')
@@ -408,6 +463,7 @@ export async function demoMapAssetRoutes(
       if (!environmentFaces.includes(request.params.face as (typeof environmentFaces)[number]))
         throw new HttpError(404, 'Map environment not found.');
       const item = await repository.loadEnvironment(request.params.name, location);
+      livePrincipals(request);
       const image = item?.images[request.params.face as (typeof environmentFaces)[number]];
       if (!image) throw new HttpError(404, 'Map environment not found.');
       return reply.header('Cache-Control', 'private, no-store').type('image/png').send(image);

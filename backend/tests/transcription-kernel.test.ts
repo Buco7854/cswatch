@@ -35,11 +35,11 @@ test(
     const db = new Store(root);
     try {
       db.run(
-        'INSERT INTO users VALUES(?,?,?,?,?)',
+        'INSERT INTO users(id,username,password_hash,role,created_at) VALUES(?,?,?,?,?)',
         'public-fixture-user',
         'public-fixture-user',
         null,
-        0,
+        'member',
         now(),
       );
       const demo = reserve(
