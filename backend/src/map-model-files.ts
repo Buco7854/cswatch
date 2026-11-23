@@ -1,4 +1,6 @@
 import { join } from 'node:path';
+import { pipeline } from 'node:stream';
+import { createGzip, type Gzip } from 'node:zlib';
 import { presentationParts } from './presentation-assets.js';
 import type { FastifyInstance } from 'fastify';
 import type { FileHandle } from 'node:fs/promises';
@@ -109,6 +111,25 @@ function singleRange(
   return { start, end };
 }
 
+// Share one compressor between manual and immutable routes. Other simultaneous loads
+// can stream identity without waiting for another client's network connection.
+let gzipBusy = false;
+function modelEncoding(header: string | undefined, canCompress: boolean) {
+  if (!header) return 'identity';
+  const weights = new Map<string, number>();
+  for (const item of header.split(',')) {
+    const match = /^\s*(gzip|identity|\*)\s*(?:;\s*q=(0(?:\.\d{0,3})?|1(?:\.0{0,3})?))?\s*$/i.exec(
+      item,
+    );
+    if (match) weights.set(match[1].toLowerCase(), Number(match[2] ?? 1));
+  }
+  const gzip = weights.get('gzip') ?? weights.get('*') ?? 0;
+  const explicitIdentity = weights.get('identity');
+  if (canCompress && gzip > 0 && gzip >= (explicitIdentity ?? 0)) return 'gzip';
+  if ((explicitIdentity ?? (weights.get('*') === 0 ? 0 : 1)) > 0) return 'identity';
+  throw new HttpError(406, 'No acceptable map model encoding.');
+}
+
 /** Fixed model paths only. A broad static server must never follow operator links into private data. */
 export async function mapModelFileRoutes(
   app: FastifyInstance,
@@ -135,9 +156,11 @@ export async function mapModelFileRoutes(
       const cancellation = new AbortController();
       let model: ModelFile | undefined;
       let stream: ReadStream | undefined;
+      let encoder: Gzip | undefined;
       let streamOwnsFile = false;
       const abort = () => {
         cancellation.abort();
+        encoder?.destroy();
         stream?.destroy();
       };
       const closed = () => {
@@ -169,22 +192,36 @@ export async function mapModelFileRoutes(
         } catch {
           throw new HttpError(404, 'Map model not found.');
         }
-        const etag = `"${digest}"`;
         connected();
         if (model.version !== (await fileVersion(model.file)))
           throw new HttpError(404, 'Map model not found.');
         authorize?.(request);
+        const encoding = modelEncoding(
+          request.headers['accept-encoding'],
+          path.filename === 'scene.glb' &&
+            !request.headers.range &&
+            model.size >= 1024 ** 2 &&
+            model.size <= 128 * 1024 ** 2 &&
+            !gzipBusy,
+        );
+        // Encoder versions may produce different gzip bytes for the same file.
+        const etag = encoding === 'gzip' ? `W/"${digest}-gzip"` : `"${digest}"`;
         reply
           .header('Cache-Control', 'private, no-store')
           .header('ETag', etag)
-          .header('Accept-Ranges', 'bytes')
+          .header('Vary', 'Accept-Encoding')
+          .header('Accept-Ranges', encoding === 'gzip' ? 'none' : 'bytes')
           .type('model/gltf-binary');
         const condition = request.headers['if-none-match'];
         if (
           typeof condition === 'string' &&
           condition
             .split(',')
-            .some((entry) => entry.trim() === '*' || entry.trim().replace(/^W\//, '') === etag)
+            .some(
+              (entry) =>
+                entry.trim() === '*' ||
+                entry.trim().replace(/^W\//, '') === etag.replace(/^W\//, ''),
+            )
         )
           return reply.code(304).send();
         const ifRange = request.headers['if-range'];
@@ -195,16 +232,31 @@ export async function mapModelFileRoutes(
         const start = range?.start ?? 0,
           end = range?.end ?? model.size - 1;
         if (range) reply.code(206).header('Content-Range', `bytes ${start}-${end}/${model.size}`);
-        reply.header('Content-Length', end - start + 1);
+        if (encoding === 'gzip')
+          reply.header('Content-Encoding', 'gzip').header('X-File-Size', model.size);
+        else reply.header('Content-Length', end - start + 1);
         if (request.method === 'HEAD') return reply.send();
         connected();
         stream = model.file.createReadStream({ start, end, autoClose: true });
         streamOwnsFile = true;
-        stream.once('close', cleanup);
         try {
           connected();
+          if (encoding === 'gzip') {
+            encoder = createGzip({ level: 1 });
+            gzipBusy = true;
+            encoder.once('close', () => {
+              gzipBusy = false;
+              cleanup();
+            });
+            // Closing the response or rejecting the payload also releases the source FD.
+            pipeline(stream, encoder, () => {});
+            return reply.send(encoder);
+          }
+          stream.once('close', cleanup);
           return reply.send(stream);
         } catch (error) {
+          cleanup();
+          encoder?.destroy();
           stream.destroy();
           throw error;
         }
