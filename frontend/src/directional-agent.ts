@@ -295,6 +295,11 @@ export function createDirectionalAgent(root: Object3D, clips: ClipSet) {
       channelFor(bones.get(name)!, 'quaternion');
     channelFor(bones.get('wpnPivot')!, 'position');
   }
+  for (const side of ['L', 'R'])
+    for (const prefix of ['leg_upper_', 'leg_lower_', 'ankle_']) {
+      const joint = bones.get(prefix + side);
+      if (joint) channelFor(joint, 'quaternion');
+    }
   const vector = new Vector3(),
     rotation = new Quaternion();
   const deathRoles = contract.deaths as AgentDeath[];
@@ -309,9 +314,14 @@ export function createDirectionalAgent(root: Object3D, clips: ClipSet) {
       mix(channel.value, data, weight / channel.weight);
     }
   }
-  function overlay(role: DirectionalAgentRole, time: number, weight: number) {
+  function overlay(role: DirectionalAgentRole, time: number, weight: number, spineWeight = 1) {
     for (const { track, channel } of curves.get(role)!)
-      if (channel.masked) mix(channel.target, track.interpolant.evaluate(time), weight);
+      if (channel.masked)
+        mix(
+          channel.target,
+          track.interpolant.evaluate(time),
+          track.bone.name.startsWith('spine_') ? weight * spineWeight : weight,
+        );
   }
 
   function carryClass(weapon: string) {
@@ -326,7 +336,7 @@ export function createDirectionalAgent(root: Object3D, clips: ClipSet) {
 
   function carryPose(weapon: string, duck: number, weight: number) {
     if (!weight) return;
-    if (canonicalEquipmentKey(weapon) === 'c4') overlay('c4-carry', 0, weight);
+    if (canonicalEquipmentKey(weapon) === 'c4') overlay('c4-carry', 0, weight, 0.2);
     const variant = carryClass(weapon);
     if (!variant) return;
     overlay(`${variant}-idle`, 0, weight);
@@ -361,7 +371,8 @@ export function createDirectionalAgent(root: Object3D, clips: ClipSet) {
       const deathRole = death && deathRoles[death.variant % deathRoles.length];
       const deathTime =
         death && deathRole ? Math.min(death.age, clips.get(deathRole)!.clip.duration) : undefined;
-      if (deathRole && lastDeath?.role === deathRole && lastDeath.time === deathTime) return;
+      if (deathRole && lastDeath?.role === deathRole && lastDeath.time === deathTime)
+        return deathTime;
       lastDeath =
         deathRole && deathTime !== undefined ? { role: deathRole, time: deathTime } : undefined;
       for (const channel of channels.values()) channel.weight = 0;
@@ -405,11 +416,16 @@ export function createDirectionalAgent(root: Object3D, clips: ClipSet) {
             const envelope =
               smooth(age / Math.min(0.06, duration / 4)) *
               smooth((duration - age) / Math.min(0.12, duration / 4));
-            overlay(role, age, envelope);
+            const throwing = kind === 'throw' || kind === 'throw-underhand';
+            const running = throwing ? smooth((speed - 2.5) / 2) : 0;
+            const release = kind === 'throw-underhand' ? 13 / 30 : 0.5;
+            const windup = 1 - smooth((age - release + 0.16) / 0.12);
+            overlay(role, age, envelope * (1 - 0.32 * running * windup), 1 - 0.6 * running);
           }
         }
       }
       if (!death) aim?.(input.pitch);
+      return deathTime;
     },
   };
 }

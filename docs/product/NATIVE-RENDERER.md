@@ -38,7 +38,9 @@ POV weapon and arm placement now samples a bounded stride from contiguous record
 
 Static equipment is packed in the authored weapon skeleton frame. The viewer samples the character’s weapon and finger joints for the mount. Grenades, Dual Berettas and defusing use their dedicated upper-body overlays in the directional bank. Grenade throws align the observed release to the corresponding clip’s hand-IK marker. The compact renderer uses a floor-traced contact shadow. Live sun shadows add a player-only depth pass and modulate the map’s existing direct sun term, including its baked sun mask.
 
-The renderer still uses class locomotion for the lower body and class poses for many individual firearms. Replay evidence and continuous authored terrain contacts remain incomplete for airborne states, ladders, planting and corpse placement on uneven surfaces.
+The locomotion sampler now derives a fixed boot plant from demo time and the recorded travel phase. It resolves the plant against nearby rendered terrain and applies a bounded two-bone correction that keeps the authored knee bend and leg lengths. The swing toe lifts as the plant releases. Recorded vertical acceleration fades the correction during ballistic movement. Settled bodies sample nearby floor support and keep the horizontal death anchor. Replay evidence and dedicated animation states remain incomplete for airborne actions, ladders, planting and flashes. Foreground terrain that lacks an opaque render surface cannot contribute to the support trace.
+
+On compact device profiles, decoded world equipment textures shrink to at most 512 pixels on the longest edge before the resident cache accounts for them. First-person weapon materials keep their source textures and apply the authored metalness remap and diffuse transition with a local highlight shoulder before the common grade.
 
 ## Recorded smoke
 

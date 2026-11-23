@@ -4,6 +4,8 @@ After the private preview was gracefully stopped, the complete ignored pack tree
 
 Local third-person work adds authored grenade, Dual Berettas, C4 carry and defuse poses to the CT/T directional bank. The renderer fits the model’s grip to the posed hand and keeps player sun shadows independent of the static map cache. Recorded movement still drives gait phase and the centred blend window across chunks. Terrain contacts remain approximate. [Renderer](NATIVE-RENDERER.md#third-person-rendering)
 
+The foothold follow-up adds bounded two-bone contact and swing clearance. Backward walking and walking over elevation changes still exceed the p90 slip target in the fixed Mirage probe. Compact device verification now loads all ten equipment instances at the selected tick within the existing resource budget. [Verification](../VERIFICATION.md)
+
 The renderer follow-up covers demo-time gait and weapon transitions, mipmapped map detail and the recorded C4 shockwave. [The renderer and replay roadmap](NATIVE-RENDERER.md#renderer-and-replay-roadmap) tracks FSR 3 upscaling and frame generation, a compatible WebGPU trial, round-by-round ingestion and further utility fidelity.
 
 Compact 3D adds a smaller map tier to the existing viewer and keeps all camera modes and the calibrated radar. The next renderer work covers verified visibility and LOD, compressed textures for the detailed renderer, typed replay slices, and recorded inferno and motion evidence.

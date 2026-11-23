@@ -205,7 +205,7 @@ const stationary = Object.freeze({ speed: 0, velocityX: 0, velocityY: 0, coheren
 /** Centred secant of the recorded horizontal trajectory, clipped to a continuous run.
  * The full-match history supplies both sides even at a cold playback-chunk boundary. */
 export function centeredGaitMotion(text, rate) {
-  if (!text) return () => stationary;
+  if (!text) return Object.assign(() => stationary, { duckAt: () => 0 });
   const view = unbox(text);
   const count = view.byteLength / bytesPerStep;
   const ends = new Uint32Array(count),
@@ -225,7 +225,7 @@ export function centeredGaitMotion(text, rate) {
   }
   const radius = rate * 0.1;
   const start = (index) => ends[index] - spans[index];
-  return (tick) => {
+  const motion = (tick) => {
     let middle = firstEndAfter(ends, tick);
     if (middle === count || tick < start(middle)) {
       // Keep the old run's last sample at its exact endpoint. The open gap is idle.
@@ -257,4 +257,12 @@ export function centeredGaitMotion(text, rate) {
       coherence: Math.min(1, length / travel),
     };
   };
+  return Object.assign(motion, {
+    duckAt(tick) {
+      const index = firstEndAfter(ends, tick);
+      if (index < count && tick >= start(index))
+        return view.getUint8(index * bytesPerStep + 8) / 255;
+      return 0;
+    },
+  });
 }

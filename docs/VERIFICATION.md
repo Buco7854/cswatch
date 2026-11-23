@@ -1,5 +1,21 @@
 # Verification record
 
+## Local foot planting and equipment budget, 2026-11-22
+
+The follow-up uses merged revision `f927578` as its baseline. It reads the SHA-256-pinned Mirage recording `84a1a4191302bdd2a3bbb5a727842093744b1fb1a228aeec630369e44b622cb2` and the genuine CT/T and equipment packs from Steam depot `2347770`, manifest `8225060435969537482`. Capture and numerical evidence is indexed in `.design/r3b/PROOF.md`.
+
+The foot probe sampled 355 matched windows at 64 Hz across walk, run and crouch. Each direction, turn or elevation group has 16–20 windows. The same 2 cm toe-height rule is applied separately to each pose. All 18 medians meet the 12% target. Sixteen p90 values meet 35%. Backward walking and walking with elevation change have p90 values of 103.3% and 102.1%. The raw data also keeps the baseline contact ticks fixed for comparison. That comparison includes toes that the new animation raises into swing and retains high tails for several walk and crouch groups. The vertical-origin probe approximates support height in the elevation windows.
+
+A separate floor-projected pass using the Compact Mirage geometry found 1,996 support hits in 2,127 queries. Backward and elevation walking missed the target at 103.3% and 86.6% p90. Three support-duration or restart-anchor variants left at least two groups over the target.
+
+The 390 × 844 and 768 × 1024 touch profiles went from six to ten of ten world equipment instances in Compact 3D at tick 16,184, within the existing 128 MiB resident limit. Chromium with ANGLE SwiftShader supplied the browser evidence. The first-live knife crop at tick 1,761 fell from 964 near-white luma samples out of 2,108 to zero. The Deagle’s slide-rear crop on the A-site deck at tick 48,096 fell from 133 near-white samples out of 1,537 to zero. Both measurements use the same recorded angle and Rec. 709 luma threshold of 245 on a 0–255 scale.
+
+The rendered action sequences include jump, fall and land, ladder, planting, defuse, flash, a running HE throw, C4 carry and death on a sloped approach. The settled corpse’s maximum sampled floor penetration went from 26.3 to 1.6 cm across 879 points. The two C4 carry frames show spine inclinations changing from 29.5° and 28.9° to 13.3° and 12.8°. The running HE wind-up shows a modest elbow-span reduction of 1.4–2.0 cm. The ladder climb keeps the rifle pose, airborne frames retain the locomotion animation, and the inspected plant and flash states still use the existing poses.
+
+On Node 24.22.3 the production build, formatting and locale coverage passed. The dedicated backend suite passed 429 tests with local speech fixtures. The assets suite passed 298, including the genuine fixed-frame pack check for all 67 equipment models. Both runs had zero skips. The local tip script passed with three speech skips and one optional genuine-asset skip in its separate runs. Its native and asset worker confinement smokes passed. Docker was unavailable for the container boundary check.
+
+The full Playwright public run passed 251 tests with two policy skips. Both private modes passed 53 tests with 200 skips each. The paused viewer settled after its camera announcement and remained idle while all three presentation catalogs refreshed. The changed viewer returned from tick 52,352 to 47,164 with identical positions for all 14 sampled bones.
+
 ## Local automatic first-person preparation
 
 The real Node 24.22.3 asset worker refreshed official depot 2347770 manifest `8225060435969537482` and verified selected resources from a private cache copy. The fresh asset and job directories produced two directional agent models and all 83 HUD icons. The first pass then published 12 hash-bound first-person rigs. It was stopped after an isolated Molotov preparation failure to retain the published output and diagnose the converter. The sampled worker-tree peak RSS for that pass was 1,970,200 KiB over 551.3 seconds. A confined rerun isolated an authored scale channel on the lighter flame. The packer applies authored component scale after retargeting the rigid grip. A real 81.8-second continuation published the Molotov, C4, MP9 and MAC-10 rigs and completed the capture cohort.

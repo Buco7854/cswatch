@@ -22,6 +22,14 @@ export type EquipmentCatalog = EquipmentModelCatalog & { viewmodels?: ViewmodelC
 type EquipmentAssets = { status: AssetStatus; catalog: EquipmentCatalog };
 const emptyRigs: ViewmodelCatalog['items'] = Object.freeze({});
 
+function sameItems(installed: Record<string, unknown>, incoming: Record<string, unknown>) {
+  const entries = Object.entries(incoming);
+  return (
+    Object.keys(installed).length === entries.length &&
+    entries.every(([id, asset]) => JSON.stringify(installed[id]) === JSON.stringify(asset))
+  );
+}
+
 function validateViewmodels(value: unknown): ViewmodelCatalog {
   if (!value || typeof value !== 'object') throw Error('Invalid viewmodel catalog');
   const { items: raw, complete } = value as Partial<ViewmodelCatalog>;
@@ -48,7 +56,13 @@ function validateViewmodels(value: unknown): ViewmodelCatalog {
       !integer(item.decodedGeometryBytes, 8 * MiB)
     )
       throw Error('Invalid viewmodel descriptor');
-    items[id] = item;
+    items[id] = {
+      model: item.model,
+      sha256: item.sha256,
+      bytes: item.bytes,
+      decodedGeometryBytes: item.decodedGeometryBytes,
+      decodedTextureBytes: item.decodedTextureBytes,
+    };
   }
   return { items, complete };
 }
@@ -62,14 +76,11 @@ function useViewmodelAssets(identity: string, enabled: boolean) {
         validateViewmodels(await readAssetJSON('/api/assets/viewmodels', 32768, signal)),
       complete: (catalog) => catalog.complete === true,
       changed: ({ items }) =>
-        setState((previous) => {
-          const ids = Object.keys(items);
-          const installed = previous?.identity === identity ? previous.items : emptyRigs;
-          return Object.keys(installed).length === ids.length &&
-            ids.every((id) => JSON.stringify(installed[id]) === JSON.stringify(items[id]))
+        setState((previous) =>
+          sameItems(previous?.identity === identity ? previous.items : emptyRigs, items)
             ? previous
-            : { identity, items };
-        }),
+            : { identity, items },
+        ),
     });
   }, [identity, enabled]);
   return enabled && state?.identity === identity ? state.items : emptyRigs;
@@ -164,17 +175,13 @@ export function useEquipmentAssets(identity: string, enabled: boolean) {
         Object.keys(equipment.items).every((id) => Boolean(catalog.items[id])),
       changed: (catalog) =>
         setState((previous) => {
-          const entries = Object.entries(catalog.items);
-          const status = entries.length ? 'ready' : 'missing';
+          const status = Object.keys(catalog.items).length ? 'ready' : 'missing';
           const installed = previous.value.catalog;
           if (
             previous.identity === identity &&
             previous.value.status === status &&
             installed.complete === catalog.complete &&
-            Object.keys(installed.items).length === entries.length &&
-            entries.every(
-              ([id, model]) => JSON.stringify(installed.items[id]) === JSON.stringify(model),
-            )
+            sameItems(installed.items, catalog.items)
           )
             return previous;
           return { identity, value: { status, catalog } };

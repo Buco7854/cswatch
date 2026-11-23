@@ -15,9 +15,14 @@ import {
   Bone,
   Group,
   LoopOnce,
+  Mesh,
+  MeshPhysicalMaterial,
+  MeshStandardMaterial,
   Quaternion,
   Vector3,
   type AnimationAction,
+  type Material,
+  type Object3D,
 } from 'three';
 import type { ViewmodelAsset } from '../../../shared/viewmodel-assets';
 import type { EquipmentCatalog } from '../equipment-assets';
@@ -35,6 +40,82 @@ import type { WeaponPoseSample } from '../weapon-fire';
 import { EquipmentModels, PovEquipment, type PovEquipmentProps } from './RenderEquipment';
 
 type ReplayHistory = Pick<Playback, 'frames' | 'rounds' | 'tickRate'>;
+
+function viewmodelWeaponMaterials(model: Object3D) {
+  const copies = new Map<Material, MeshPhysicalMaterial>();
+  const adapt = (base: Material) => {
+    const source = base.userData.vmat;
+    if (!(base instanceof MeshStandardMaterial) || source?.ShaderName !== 'csgo_weapon.vfx')
+      return base;
+    const known = copies.get(base);
+    if (known) return known;
+    const range = source.VectorParams?.g_vMetalnessRemapRange ?? [0, 1];
+    if (!Array.isArray(range) || range.length < 2) return base;
+    const [low, high] = range;
+    const bias = source.FloatParams?.g_flMetalnessTransitionBias ?? 2;
+    if (
+      ![low, high, bias].every(Number.isFinite) ||
+      low < 0 ||
+      high < low ||
+      high > 1 ||
+      bias < 1 ||
+      bias > 4
+    )
+      return base;
+    const material = new MeshPhysicalMaterial();
+    const defines = material.defines;
+    MeshStandardMaterial.prototype.copy.call(material, base);
+    material.defines = defines;
+    // The weapon shader's dielectric F0 is 0.02. Preserve the packed metal,
+    // roughness, normal and AO maps while applying its metalness transition.
+    material.ior = (1 + Math.sqrt(0.02)) / (1 - Math.sqrt(0.02));
+    material.onBeforeCompile = (shader) => {
+      shader.uniforms.cswatchWeaponMetal = { value: [low, high] };
+      shader.uniforms.cswatchWeaponDiffuseBias = { value: bias };
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <common>',
+          `#include <common>
+          uniform vec2 cswatchWeaponMetal;
+          uniform float cswatchWeaponDiffuseBias;`,
+        )
+        .replace(
+          '#include <metalnessmap_fragment>',
+          `#include <metalnessmap_fragment>
+          metalnessFactor = mix(cswatchWeaponMetal.x, cswatchWeaponMetal.y, metalnessFactor);`,
+        )
+        .replace(
+          '#include <lights_physical_fragment>',
+          `#include <lights_physical_fragment>
+          material.diffuseContribution = diffuseColor.rgb * pow(1.0 - metalnessFactor, cswatchWeaponDiffuseBias);`,
+        )
+        .replace(
+          '#include <lights_fragment_end>',
+          `#include <lights_fragment_end>
+          // Retain the hue and low-level detail of the highlight under the shared map grade.
+          vec3 highlights = reflectedLight.directSpecular + reflectedLight.indirectSpecular;
+          float peak = max3(highlights);
+          float excess = max(0.0, peak - 0.25);
+          float shoulder = mix(1.5, 0.55, metalnessFactor);
+          float gain = (min(peak, 0.25) + excess / (1.0 + excess / shoulder)) / max(peak, 0.00001);
+          reflectedLight.directSpecular *= gain;
+          reflectedLight.indirectSpecular *= gain;`,
+        );
+    };
+    material.customProgramCacheKey = () => 'cswatch-weapon-metal';
+    copies.set(base, material);
+    return material;
+  };
+  model.traverse((node) => {
+    if (node instanceof Mesh)
+      node.material = Array.isArray(node.material)
+        ? node.material.map(adapt)
+        : adapt(node.material);
+  });
+  return () => {
+    for (const material of copies.values()) material.dispose();
+  };
+}
 
 function sampleAction(action?: AnimationAction, sample?: WeaponPoseSample) {
   if (!action) return;
@@ -102,11 +183,13 @@ function AuthoredViewmodel({
     if (origin.lengthSq() > 1e-8) throw new Error('Unsupported first-person rest origin');
     assertMapBaseColorTextures({ scene: gltf.scene, parser: gltf.parser });
     const model = prepareEquipmentModel(gltf.scene);
+    const disposeMaterials = viewmodelWeaponMaterials(model);
     const mixer = new AnimationMixer(model);
     const action = (value: AnimationClip | undefined) =>
       value ? mixer.clipAction(value).setLoop(LoopOnce, 1) : undefined;
     return {
       model,
+      disposeMaterials,
       mixer,
       fire: action(clip),
       priorFire: action(clip && new AnimationClip(id + '-prior-fire', clip.duration, clip.tracks)),
@@ -147,6 +230,7 @@ function AuthoredViewmodel({
       rig.mixer.stopAllAction();
       rig.mixer.uncacheRoot(rig.model);
       disposeEquipmentInstance(rig.model);
+      rig.disposeMaterials();
     },
     [rig],
   );

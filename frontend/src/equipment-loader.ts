@@ -18,6 +18,7 @@ function equipmentLoader(
     inactiveBytes: () => number;
     residentBytes: () => number;
   },
+  textureEdge?: (url: string) => number | undefined,
 ) {
   class EquipmentGLTFLoader extends Loader<GLTF> {
     constructor() {
@@ -40,17 +41,22 @@ function equipmentLoader(
     ...limits,
     inspect: mapModelResources,
     clear: (url) => useLoader.clear(EquipmentGLTFLoader, url),
-    load: (url, callbacks) => loadScopedGLTF(url, callbacks, transferMiB * MiB, true),
+    load: (url, callbacks) =>
+      loadScopedGLTF(url, callbacks, transferMiB * MiB, true, undefined, textureEdge?.(url)),
   });
   return { Loader: EquipmentGLTFLoader, cache };
 }
 
-const world = equipmentLoader(16, {
-  maxUnused: 12,
-  maxConcurrent: 2,
-  inactiveBytes: () => (mobile() ? 32 : 64) * MiB,
-  residentBytes: () => (mobile() ? 128 : 256) * MiB,
-});
+const world = equipmentLoader(
+  16,
+  {
+    maxUnused: 12,
+    maxConcurrent: 2,
+    inactiveBytes: () => (mobile() ? 32 : 64) * MiB,
+    residentBytes: () => (mobile() ? 128 : 256) * MiB,
+  },
+  (url) => (mobile() && url.startsWith('/api/assets/equipment-models/') ? 512 : undefined),
+);
 
 // Reserve a small independent budget so the visible POV can load while
 // agents and world items still own their live leases on compact devices.
