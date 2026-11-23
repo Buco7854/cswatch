@@ -25,7 +25,5 @@ export function integrateGait(
 ): (tick: number) => number;
 
 export type GaitMotion = { speed: number; velocityX: number; velocityY: number; coherence: number };
-export function centeredGaitMotion(
-  encoded: string | undefined,
-  rate: number,
-): (tick: number) => GaitMotion;
+export type GaitMotionAt = ((tick: number) => GaitMotion) & { duckAt(tick: number): number };
+export function centeredGaitMotion(encoded: string | undefined, rate: number): GaitMotionAt;

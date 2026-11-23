@@ -1,4 +1,11 @@
-import { FileLoader, ImageBitmapLoader, LoaderUtils, LoadingManager } from 'three';
+import {
+  FileLoader,
+  ImageBitmapLoader,
+  LoaderUtils,
+  LoadingManager,
+  TextureLoader,
+  type Texture,
+} from 'three';
 import { GLTFLoader, MeshoptDecoder, type GLTF } from 'three-stdlib';
 import type { ModelLoadCallbacks } from './model-cache';
 type ScopedGLTFJob = (
@@ -7,7 +14,35 @@ type ScopedGLTFJob = (
   maxBytes?: number,
   embeddedOnly?: boolean,
   configure?: (parser: GLTFLoader) => void,
+  maxTextureEdge?: number,
 ) => () => void;
+
+async function compactImage(image: ImageBitmap | HTMLImageElement, edge: number) {
+  const width = 'naturalWidth' in image ? image.naturalWidth : image.width;
+  const height = 'naturalHeight' in image ? image.naturalHeight : image.height;
+  const scale = edge / Math.max(width, height);
+  if (scale >= 1) return image;
+  const resizeWidth = Math.max(1, Math.round(width * scale));
+  const resizeHeight = Math.max(1, Math.round(height * scale));
+  if (typeof createImageBitmap === 'function') {
+    const resized = await createImageBitmap(image, {
+      resizeWidth,
+      resizeHeight,
+      resizeQuality: 'high',
+      premultiplyAlpha: 'none',
+      colorSpaceConversion: 'none',
+    });
+    if ('close' in image) image.close();
+    return resized;
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = resizeWidth;
+  canvas.height = resizeHeight;
+  const context = canvas.getContext('2d');
+  if (!context) throw Error('Could not prepare compact equipment textures');
+  context.drawImage(image, 0, 0, resizeWidth, resizeHeight);
+  return canvas;
+}
 
 /** A private manager owns only this request's cancellation, blob URLs and image bitmaps. */
 export const loadScopedGLTF: ScopedGLTFJob = (
@@ -16,6 +51,7 @@ export const loadScopedGLTF: ScopedGLTFJob = (
   maxBytes = Infinity,
   embeddedOnly = false,
   configure,
+  maxTextureEdge,
 ) => {
   const manager = new LoadingManager(),
     file = new FileLoader(manager),
@@ -81,13 +117,47 @@ export const loadScopedGLTF: ScopedGLTFJob = (
             load(
               url,
               (bitmap) => {
-                if (cancelled && !parsing) {
-                  bitmap.close();
-                  onError?.(aborted());
-                  return;
-                }
                 bitmaps.add(bitmap);
-                onLoad?.(bitmap);
+                const deliver = (result: ImageBitmap) => {
+                  bitmaps.delete(bitmap);
+                  if (finished || (cancelled && !parsing)) {
+                    result.close();
+                    onError?.(aborted());
+                    return;
+                  }
+                  bitmaps.add(result);
+                  onLoad?.(result);
+                };
+                if (maxTextureEdge)
+                  void compactImage(bitmap, maxTextureEdge).then(
+                    (result) => deliver(result as ImageBitmap),
+                    onError,
+                  );
+                else deliver(bitmap);
+              },
+              onProgress,
+              onError,
+            );
+        } else if (maxTextureEdge && textures instanceof TextureLoader) {
+          const load = textures.load.bind(textures);
+          textures.load = (url, onLoad, onProgress, onError) =>
+            load(
+              url,
+              (texture) => {
+                void compactImage(texture.image as HTMLImageElement, maxTextureEdge).then(
+                  (image) => {
+                    if (finished || (cancelled && !parsing)) {
+                      if ('close' in image) image.close();
+                      onError?.(aborted());
+                      return;
+                    }
+                    if ('close' in image) bitmaps.add(image);
+                    (texture as Texture).image = image;
+                    texture.needsUpdate = true;
+                    onLoad?.(texture);
+                  },
+                  onError,
+                );
               },
               onProgress,
               onError,

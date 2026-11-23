@@ -34,6 +34,9 @@ import { assertMapBaseColorTextures } from '../map-model';
 import type { AgentDeathSample } from '../agent-replay';
 import { weaponAnchor, type WeaponAnchor } from '../agent-attachment';
 import { agentXray } from '../agent-xray';
+import { createAgentFootLock, type FootPoseAt } from '../agent-feet';
+import { createCorpseFloor } from '../agent-corpse-floor';
+import type { followObstruction } from '../follow-obstruction';
 
 /** A stable reference: inline userData redraws a paused scene on every React update. */
 const playerShadowCaster = { playerShadowCaster: true };
@@ -142,6 +145,9 @@ type AgentProps = {
   shadowPose?: boolean;
   registerWeaponAnchor?: (anchor: WeaponAnchor) => () => void;
   registerHeadAnchor?: (bone: Bone) => () => void;
+  footPoseAt?: FootPoseAt;
+  floor?: ReturnType<ReturnType<typeof followObstruction>['fork']>;
+  airborne?: number;
 };
 function LoadedAgent({
   url,
@@ -158,11 +164,14 @@ function LoadedAgent({
   registerHeadAnchor,
   xrayColor,
   shadowPose,
+  footPoseAt,
+  floor,
+  airborne,
 }: AgentProps & { scope: ModelScope; ready: () => void }) {
   const gltf = useEquipmentGLTF(url),
     { invalidate } = useThree();
   useLayoutEffect(() => scope.acquire(), [scope]);
-  const { prepared, pose, strideProfile } = useMemo(() => {
+  const { prepared, pose, strideProfile, footLock, corpseFloor } = useMemo(() => {
     const clips = directionalClips(gltf.animations, gltf.parser.json.animations);
     if (!clips) throw Error('Agent model requires the complete directional animation set.');
     const prepared = prepareAgentModel(gltf.scene);
@@ -170,7 +179,13 @@ function LoadedAgent({
       assertMapBaseColorTextures({ scene: gltf.scene, parser: gltf.parser });
       const pose = createDirectionalAgent(prepared.instance, clips);
       if (!pose) throw Error('Agent model has unsupported directional tracks.');
-      return { prepared, pose, strideProfile: agentStrideProfile(clips) };
+      return {
+        prepared,
+        pose,
+        strideProfile: agentStrideProfile(clips),
+        footLock: createAgentFootLock(prepared.instance),
+        corpseFloor: createCorpseFloor(prepared.root),
+      };
     } catch (error) {
       disposeEquipmentInstance(prepared.root);
       prepared.disposeMaterials();
@@ -220,13 +235,43 @@ function LoadedAgent({
   useFrame(({ camera }) => {
     if (!poseVisible(camera, prepared.root, xrayEnabled || Boolean(shadowPose))) return;
     const motion = directional.death ? undefined : motionAt?.(tick);
-    pose.sample(
+    const phase = phaseAt?.(tick);
+    const actor = prepared.root.parent;
+    const lock =
+      footLock && actor && motion && motionAt && phaseAt && footPoseAt && phase !== undefined;
+    if (lock)
+      footLock.prepare(
+        actor,
+        tick,
+        rate,
+        phase,
+        motion.speed,
+        duck,
+        phaseAt,
+        (at) => footPoseAt(id, at),
+        (at, contactPhase, contact) => {
+          const movement = motionAt(at);
+          if (movement.speed < 0.38) return false;
+          pose.sample(at / rate, movement.speed, motionAt.duckAt(at), contactPhase, {
+            ...movement,
+            weapon: contact.weapon,
+            yaw: MathUtils.radToDeg(contact.yaw),
+            pitch: 0,
+          });
+          return true;
+        },
+        floor,
+        airborne,
+      );
+    const deathTime = pose.sample(
       tick / rate,
       motion?.speed ?? speed,
       duck,
-      phaseAt?.(tick),
+      phase,
       motion ? { ...directional, ...motion } : directional,
     );
+    if (lock) footLock.apply();
+    if (deathTime !== undefined) corpseFloor?.(deathTime, floor);
     xray?.sample(xrayColor);
   }, -2);
   return <primitive object={prepared.root} dispose={null} />;
@@ -274,6 +319,7 @@ export function RecordedAgentBody({
   rate,
   reducedMotion,
   shadowPose,
+  floor,
 }: {
   body: AgentDeathSample;
   url: string | null;
@@ -281,6 +327,7 @@ export function RecordedAgentBody({
   rate: number;
   reducedMotion: boolean;
   shadowPose: boolean;
+  floor?: AgentProps['floor'];
 }) {
   if (!url) return null;
   const inchesToMeters = 0.0254;
@@ -302,6 +349,7 @@ export function RecordedAgentBody({
         duck={0}
         fallback={null}
         shadowPose={shadowPose}
+        floor={floor}
         directional={{
           yaw: position.yaw,
           pitch: 0,

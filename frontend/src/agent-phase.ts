@@ -1,7 +1,7 @@
 import {
   integrateGait,
   centeredGaitMotion,
-  type GaitMotion,
+  type GaitMotionAt,
   type AgentStrideAt,
   type GaitHistory,
 } from '../../shared/agent-gait-history.mjs';
@@ -31,7 +31,7 @@ export function agentPhaseAt(
   return sample;
 }
 
-const motionTables = new WeakMap<GaitHistory, Map<string, (tick: number) => GaitMotion>>();
+const motionTables = new WeakMap<GaitHistory, Map<string, GaitMotionAt>>();
 
 export function agentCenteredMotionAt(history: GaitHistory, id: string, rate: number) {
   if (history.version !== 2) return;

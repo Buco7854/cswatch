@@ -1,4 +1,6 @@
 import type { WeaponAnchor } from '../agent-attachment';
+import { recordedFootPose, type FootPoseAt } from '../agent-feet';
+import { recordedAirPose } from '../agent-vertical';
 import { playerShadows } from '../player-shadows';
 import { PlayerContactShadow, PlayerSunPass } from './PlayerShadow';
 import { t } from '../i18n';
@@ -422,6 +424,9 @@ function Agent({
   hideNearCamera,
   overheadMarker,
   contactTrace,
+  contactShadow,
+  footPoseAt,
+  airborne,
   shadowPose,
   sample,
   model,
@@ -442,6 +447,9 @@ function Agent({
   hideNearCamera: boolean;
   overheadMarker: boolean;
   contactTrace: ReturnType<ReturnType<typeof followObstruction>['fork']> | null;
+  contactShadow: boolean;
+  footPoseAt?: FootPoseAt;
+  airborne?: number;
   shadowPose: boolean;
   sample: boolean;
   model: string | null;
@@ -527,6 +535,9 @@ function Agent({
           rate={timing.tickRate}
           speed={motion.speed}
           gaitHistory={gaitHistory}
+          footPoseAt={footPoseAt}
+          floor={contactTrace ?? undefined}
+          airborne={airborne}
           shadowPose={shadowPose}
           directional={{
             yaw: pose.yaw,
@@ -554,7 +565,7 @@ function Agent({
         <GenericAgentBody team={position.team} id={position.id} xray={xray} castStatic={sample} />
       )}
       <HeldEquipment position={pose} anchor={weaponAnchor} released={action?.released} />
-      {contactTrace && <PlayerContactShadow body={ref} trace={contactTrace} />}
+      {contactShadow && contactTrace && <PlayerContactShadow body={ref} trace={contactTrace} />}
       {labels && name && !nearCamera && (
         <group ref={labelAnchor} position={[0, fallbackLabelHeight, 0]}>
           <Html
@@ -683,6 +694,7 @@ function World({
   }, []);
   const traceMap =
     !shadows ||
+    Boolean(agents.ct || agents.t) ||
     mode === 'follow' ||
     mode === 'pov' ||
     Boolean(focus) ||
@@ -699,11 +711,12 @@ function World({
   const smokeSunTrace = useMemo(() => followTrace?.fork(), [followTrace]);
   // Separate per-actor floor queries keep their paused-ray caches independent.
   const floorTraces = useMemo(
-    () =>
-      new Map(
-        !shadows && followTrace ? data.players.map(({ id }) => [id, followTrace.fork(0)]) : [],
-      ),
-    [data.players, followTrace, shadows],
+    () => new Map(followTrace ? data.players.map(({ id }) => [id, followTrace.fork(0)]) : []),
+    [data.players, followTrace],
+  );
+  const footPoseAt = useMemo(
+    () => recordedFootPose(data),
+    [data.frames, data.rounds, data.tickRate],
   );
   const fogResources = useRef<SourceFogResources>({ fog: null, cube: null });
   const movement = useRef(new Set<string>());
@@ -1087,6 +1100,9 @@ function World({
                 }
                 overheadMarker={mode === 'tactical'}
                 contactTrace={floorTraces.get(p.id) ?? null}
+                contactShadow={!shadows}
+                footPoseAt={preview || data.sample ? undefined : footPoseAt}
+                airborne={preview || data.sample ? undefined : recordedAirPose(data, p.id, tick)}
                 shadowPose={shadows && Boolean(sun)}
                 sample={Boolean(data.sample)}
                 model={!preview ? (p.team === 3 ? agents.ct : agents.t) : null}
@@ -1108,13 +1124,14 @@ function World({
             ))}
           {bodies.map((body) => (
             <RecordedAgentBody
-              key={body.position.id}
+              key={body.position.id + ':' + body.variant}
               body={body}
               url={body.position.team === 3 ? agents.ct : agents.t}
               tick={tick}
               rate={data.tickRate}
               reducedMotion={reduceAgentMotion}
               shadowPose={shadows && Boolean(sun)}
+              floor={floorTraces.get(body.position.id)}
             />
           ))}
         </group>

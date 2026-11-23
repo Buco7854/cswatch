@@ -1358,10 +1358,12 @@ test('paused viewer stops native rendering and camera, held keys, POV seeks and 
   await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
   await page.locator('.timeline-slider').fill('0');
   await camera(page, 'Free camera');
+  const cameraNotice = page.locator('.viewer-camera-tools');
+  await expect(cameraNotice).toHaveAttribute('data-camera-changed', 'false');
   await idle();
   const initial = await frames();
   await Promise.all(
-    ['/api/assets/agents', '/api/assets/equipment-models'].map((path) =>
+    ['/api/assets/agents', '/api/assets/equipment-models', '/api/assets/viewmodels'].map((path) =>
       page.waitForResponse((response) => new URL(response.url()).pathname === path),
     ),
   );
@@ -1393,6 +1395,7 @@ test('paused viewer stops native rendering and camera, held keys, POV seeks and 
   before = await frames();
   await camera(page, 'Player perspective');
   await expect.poll(frames).toBeGreaterThan(before);
+  await expect(cameraNotice).toHaveAttribute('data-camera-changed', 'false');
   before = await frames();
   await page.locator('.timeline-slider').fill('64');
   await expect.poll(frames).toBeGreaterThan(before);
