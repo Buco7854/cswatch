@@ -308,6 +308,20 @@ test('parallel FACEIT downloads keep row progress and return without changing th
   await expect(third.getByRole('status')).toHaveText('No demo available');
   expect(detailsCalls).toBe(3);
   await capture(page, 'faceit-row-error');
+  // With automatic downloads available, a failed or missing download still offers the
+  // member's own file for that match, while a downloaded match does not.
+  const failed = page.getByRole('listitem').filter({ hasText: 'Fixture 2' });
+  for (const row of [failed, third])
+    await expect(row.getByRole('link', { name: 'Upload demo', exact: true })).toBeVisible();
+  await expect(
+    page
+      .getByRole('listitem')
+      .filter({ hasText: 'Fixture 1' })
+      .getByRole('link', { name: 'Upload demo', exact: true }),
+  ).toHaveCount(0);
+  await third.getByRole('link', { name: 'Upload demo', exact: true }).click();
+  await expect(page.getByRole('dialog').getByText('FACEIT match match-3')).toBeVisible();
+  await page.keyboard.press('Escape');
 
   available = false;
   await page.reload();
