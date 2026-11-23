@@ -27,6 +27,7 @@ const signal = new AbortController().signal;
 function mock(config = cfg, requestTimeout = 300, idleTimeout = 60_000, cacheTtl = 0) {
   const commands: Command['kind'][] = [];
   const statuses: number[] = [];
+  const blocks: string[] = [];
   let opened = 0;
   let closed = 0;
   let admitted = 0;
@@ -47,6 +48,7 @@ function mock(config = cfg, requestTimeout = 300, idleTimeout = 60_000, cacheTtl
     {
       idleTimeout,
       cacheTtl,
+      onLoginBlocked: (reason) => blocks.push(reason),
       loginTimeout: requestTimeout,
       requestTimeout,
       start(reply) {
@@ -69,6 +71,7 @@ function mock(config = cfg, requestTimeout = 300, idleTimeout = 60_000, cacheTtl
     gc,
     commands,
     statuses,
+    blocks,
     counts: () => ({ opened, closed, admitted }),
     respondWith(f: typeof respond) {
       respond = f;
@@ -136,12 +139,13 @@ test('deadline and rate limits retire the transport, classify safely and report 
 });
 
 test('Steam Guard and rejected credentials need operator intervention, unavailable replay preserves the login', async () => {
-  for (const codeName of ['guard', 'credentials'] as const) {
+  for (const codeName of ['guard', 'guard_email', 'guard_mobile', 'credentials'] as const) {
     const s = mock();
     s.respondWith(() => ({ kind: 'failed', code: codeName }));
     for (let i = 0; i < 2; i++)
       await assert.rejects(s.gc.resolve(code, signal), { code: codeName });
     assert.deepEqual(s.commands, ['login']);
+    assert.deepEqual(s.blocks, [codeName]);
   }
   const s = mock();
   s.respondWith((c) =>
@@ -195,7 +199,14 @@ test('match list uses exact IDs, bounded recorded roster, optional map and expli
     ),
     { kind: 'failed', code: 'transient' },
   );
-  assert.deepEqual([5, 63, 84, 3].map(steamFailure), ['credentials', 'guard', 'busy', 'transient']);
+  assert.deepEqual([5, 63, 88, 93, 84, 3].map(steamFailure), [
+    'credentials',
+    'guard_email',
+    'guard_mobile',
+    'guard',
+    'busy',
+    'transient',
+  ]);
 });
 
 test('installed GC wire codec and Steam application flow work offline with a synthetic transport', async () => {
@@ -258,6 +269,25 @@ test('installed GC wire codec and Steam application flow work offline with a syn
   assert.equal(messages.length, 2);
   client.emit('receivedFromGC', 730, 9139, response);
   assert.deepEqual(messages, [{ kind: 'ok' }, { kind: 'ok' }, { kind: 'ok', source }]);
+});
+
+test('Steam Guard prompts report only the challenge method and discard account metadata', (t) => {
+  const require = createRequire(import.meta.url);
+  const SteamUser = require('steam-user');
+  for (const [domain, expected] of [
+    ['private.invalid', 'guard_email'],
+    [null, 'guard_mobile'],
+    [undefined, 'guard'],
+  ] as const) {
+    const client = new SteamUser({ dataDirectory: null });
+    t.mock.method(client, 'logOn', () =>
+      client.emit('steamGuard', domain, () => assert.fail(), false),
+    );
+    const replies: Reply[] = [];
+    const send = steamProtocol((reply) => replies.push(reply), client);
+    send({ kind: 'login', username: 'fixture', password: 'fixture' });
+    assert.deepEqual(replies, [{ kind: 'failed', code: expected }]);
+  }
 });
 
 test('real worker loads pinned packages offline and closes after an out-of-order command', async () => {

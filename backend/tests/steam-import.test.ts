@@ -215,14 +215,36 @@ test('exact GC match, roster, reservation and token are checked before downloadi
     throw new SteamCoordinatorError('unavailable');
   };
   assert.equal((await f.post()).json().code, 'steam_no_demo');
-  f.hooks.resolve = async () => {
-    throw new SteamCoordinatorError('guard');
-  };
-  assert.equal((await f.post()).json().code, 'steam_coordinator_setup');
   assert.equal(f.activity.downloads, 0);
   f.hooks.resolve = async () => source;
   f.hooks.download = async () => Buffer.from('not a replay');
   assert.equal((await f.post()).statusCode, 400);
+  f.noReservation();
+});
+
+test('server import failures tell members when the administrator must act and preserve automatic retries', async (t) => {
+  const f = await fixture(t);
+  for (const [cause, detail] of [
+    ['guard_email', /Steam Guard/],
+    ['guard_mobile', /Steam Guard/],
+    ['guard', /Steam Guard/],
+    ['credentials', /Steam refused/],
+  ] as const) {
+    f.hooks.resolve = async () => {
+      throw new SteamCoordinatorError(cause);
+    };
+    const response = await f.post();
+    assert.equal(response.statusCode, 503);
+    assert.equal(response.json().code, 'steam_coordinator_setup');
+    assert.match(response.json().detail, detail);
+    f.noReservation();
+  }
+  f.config.steamCoordinatorEnabled = false;
+  const disabled = await f.post();
+  assert.equal(disabled.statusCode, 503);
+  assert.equal(disabled.json().code, 'steam_coordinator_setup');
+  assert.match(disabled.json().detail, /disabled/);
+  assert.deepEqual(f.activity, { lookups: 4, downloads: 0 });
   f.noReservation();
 });
 

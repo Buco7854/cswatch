@@ -438,7 +438,11 @@ export async function createApp(
   await setupRoutes(app, db, c, mail);
   await guestRoutes(app, db, c);
   prepareSteamImports(db);
-  const coordinator = steam.steamCoordinator ?? createSteamCoordinator(c, requests);
+  const coordinator =
+    steam.steamCoordinator ??
+    createSteamCoordinator(c, requests, {
+      onLoginBlocked: (reason) => app.log.warn({ reason }, 'Steam Coordinator sign-in paused'),
+    });
   const imports = steamImportRoutes(app, db, c, coordinator, requests, steam.steamDownload);
   const sync = steamHistoryRoutes(app, db, c, key, requests, (userId) =>
     autoImports.cancel(userId),

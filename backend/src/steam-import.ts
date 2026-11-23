@@ -15,13 +15,10 @@ import { decodeSteamShareCode } from './steam-share-code.js';
 const importBody = z.object({ match_id: z.string().regex(/^[1-9]\d{0,19}$/) }).strict();
 const changed = () =>
   new HttpError(409, 'The Steam connection changed. Try again.', undefined, 'steam_import_changed');
-const unavailable = () =>
-  new HttpError(
-    503,
-    'Steam server imports are unavailable. Open CS2 or upload the demo file.',
-    undefined,
-    'steam_coordinator_setup',
-  );
+const setupError = (message: string) =>
+  new HttpError(503, message, undefined, 'steam_coordinator_setup');
+const disabled = () =>
+  setupError('Steam imports are disabled on this server. Open CS2 or upload the demo file.');
 const unconfirmed = () => new HttpError(502, 'Steam could not confirm the replay for this match.');
 
 function coordinatorFailure(error: unknown): never {
@@ -36,9 +33,17 @@ function coordinatorFailure(error: unknown): never {
           'steam_no_demo',
         );
       case 'guard':
-      case 'disabled':
+      case 'guard_email':
+      case 'guard_mobile':
+        throw setupError(
+          'Steam Guard blocked the server account from signing in. Contact the administrator or upload the demo file.',
+        );
       case 'credentials':
-        throw unavailable();
+        throw setupError(
+          'Steam refused the server account’s sign-in. Contact the administrator or upload the demo file.',
+        );
+      case 'disabled':
+        throw disabled();
       case 'busy':
         throw new HttpError(429, 'Too many requests. Try again later.', 5);
     }
@@ -59,7 +64,7 @@ export function steamImportRoutes(
 ) {
   function savedMatch(owner: string, matchId: string) {
     if (!c.steamCoordinatorEnabled || !c.steamApiKey || !db.flag(c, 'steam_enabled'))
-      throw unavailable();
+      throw disabled();
     return db.one(
       `SELECT m.code,h.generation,h.steam_id FROM steam_matches m
        JOIN steam_history h ON h.user_id=m.user_id AND h.needs_codes=0

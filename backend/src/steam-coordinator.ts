@@ -5,8 +5,8 @@ import { decodeSteamShareCode } from './steam-share-code.js';
 
 export type MatchRequest = { matchId: string; outcomeId: string; token: number };
 export type SteamReplaySource = MatchRequest & { url: string; accountIds: number[]; map?: string };
-export type SteamCoordinatorCode =
-  'disabled' | 'unavailable' | 'transient' | 'guard' | 'credentials' | 'busy';
+type LoginBlock = 'credentials' | 'guard' | 'guard_email' | 'guard_mobile';
+export type SteamCoordinatorCode = 'disabled' | 'unavailable' | 'transient' | 'busy' | LoginBlock;
 
 export class SteamCoordinatorError extends Error {
   constructor(readonly code: SteamCoordinatorCode) {
@@ -27,7 +27,7 @@ export type Command =
   | { kind: 'match'; request: MatchRequest };
 export type Reply =
   | { kind: 'ok'; source?: SteamReplaySource }
-  | { kind: 'failed'; code: 'unavailable' | 'transient' | 'guard' | 'credentials' | 'busy' };
+  | { kind: 'failed'; code: Exclude<SteamCoordinatorCode, 'disabled'> };
 
 interface Transport {
   send(command: Command): void;
@@ -70,12 +70,14 @@ export function createSteamCoordinator(
   limiter: Pick<ProviderRequests, 'run'>,
   {
     start = startWorker,
+    onLoginBlocked,
     loginTimeout = 25_000,
     requestTimeout = 12_000,
     idleTimeout = 300_000,
     cacheTtl = 120_000,
   }: {
     start?: Start;
+    onLoginBlocked?: (reason: LoginBlock) => void;
     loginTimeout?: number;
     requestTimeout?: number;
     idleTimeout?: number;
@@ -87,7 +89,7 @@ export function createSteamCoordinator(
   let stopping: Promise<void> = Promise.resolve();
   let idle: NodeJS.Timeout | undefined;
   let pending: ((reply: Reply) => void) | undefined;
-  let locked: 'credentials' | 'guard' | undefined;
+  let locked: LoginBlock | undefined;
   let active = false;
   const shutdown = new AbortController();
   const cache = new Map<
@@ -160,11 +162,19 @@ export function createSteamCoordinator(
       });
       if (reply.kind === 'failed') {
         if (reply.code !== 'unavailable') await retire();
-        if (reply.code === 'guard' || reply.code === 'credentials') locked = reply.code;
-        if (!external.aborted && !shutdown.signal.aborted) {
-          if (reply.code === 'busy') report(429);
-          else if (reply.code === 'transient') report(503);
-          else if (command.kind === 'match' && reply.code === 'unavailable') report(200);
+        switch (reply.code) {
+          case 'busy':
+          case 'transient':
+            if (!external.aborted && !shutdown.signal.aborted)
+              report(reply.code === 'busy' ? 429 : 503);
+            break;
+          case 'unavailable':
+            if (command.kind === 'match' && !external.aborted && !shutdown.signal.aborted)
+              report(200);
+            break;
+          default:
+            locked = reply.code;
+            onLoginBlocked?.(locked);
         }
         throw new SteamCoordinatorError(reply.code);
       }

@@ -609,6 +609,35 @@ test('Steam server import uses only the selected synced match and keeps local al
   expect(calls).toBe(2);
 });
 
+test('a Steam Guard failure identifies the server account in French and keeps the paired upload', async ({
+  page,
+}) => {
+  await page.addInitScript(() => localStorage.setItem('cswatch.language', 'fr'));
+  await installSources(page, true, false);
+  await page.route('**/api/connections/steam/matches?*', (route) =>
+    route.fulfill({
+      json: { next: null, server_import_available: true, items: [steamMatches[0]] },
+    }),
+  );
+  await page.route('**/api/connections/steam/import', (route) =>
+    route.fulfill({
+      status: 503,
+      json: {
+        code: 'steam_coordinator_setup',
+        detail:
+          'Steam Guard blocked the server account from signing in. Contact the administrator or upload the demo file.',
+      },
+    }),
+  );
+  await page.goto('/library?source=steam');
+  const row = page.locator('.provider-match-row');
+  await row.getByRole('button', { name: 'Importer', exact: true }).click();
+  await expect(row.getByRole('alert')).toContainText(
+    'Steam Guard bloque la connexion du compte Steam du serveur.',
+  );
+  await expect(row.getByRole('link', { name: 'Ajouter cette démo' })).toBeVisible();
+});
+
 test('a shared Steam upload route exposes a client download only for its exact match', async ({
   page,
 }) => {

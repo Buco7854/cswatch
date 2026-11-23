@@ -68,7 +68,9 @@ interface Protobuf {
 }
 export function steamFailure(result?: number): Extract<Reply, { kind: 'failed' }>['code'] {
   if ([5, 15, 17, 18, 43, 73, 114].includes(result ?? 0)) return 'credentials';
-  if ([63, 65, 66, 71, 74, 85, 88, 93].includes(result ?? 0)) return 'guard';
+  if ([63, 65, 66, 71, 74].includes(result ?? 0)) return 'guard_email';
+  if ([85, 88].includes(result ?? 0)) return 'guard_mobile';
+  if (result === 93) return 'guard';
   if ([25, 84, 87, 96].includes(result ?? 0)) return 'busy';
   return 'transient';
 }
@@ -116,7 +118,11 @@ export function steamProtocol(reply: (message: Reply) => void, inject?: SteamCli
 
   client.on('error', (error: { eresult?: number }) => fail(steamFailure(error?.eresult)));
   client.on('disconnected', (result: number) => fail(steamFailure(result)));
-  client.on('steamGuard', () => fail('guard'));
+  // The SDK identifies an email challenge by its domain. Only pass on the method.
+  client.on('steamGuard', (domain?: string | null) => {
+    if (domain === null) return fail('guard_mobile');
+    fail(domain ? 'guard_email' : 'guard');
+  });
   client.on('loggedOn', () => {
     if (state !== 'login') return;
     state = 'online';
