@@ -86,10 +86,14 @@ export function steamProtocol(reply: (message: Reply) => void, inject?: SteamCli
   let state: 'new' | 'login' | 'online' | 'hello' | 'ready' | 'match' | 'dead' = 'new';
   let requested: MatchRequest | undefined;
 
-  function fail(code: Extract<Reply, { kind: 'failed' }>['code'] = 'transient') {
+  function fail(code: Extract<Reply, { kind: 'failed' }>['code'] = 'transient', result?: number) {
     if (state === 'dead') return;
     state = 'dead';
-    reply({ kind: 'failed', code });
+    const eresult =
+      typeof result === 'number' && Number.isInteger(result) && result > 0 && result <= 65535
+        ? result
+        : undefined;
+    reply({ kind: 'failed', code, ...(eresult !== undefined && { eresult }) });
   }
   // steam-user 5.3.0 also retries during first login, independently of
   // autoRelogin. Suppress these retries and the unsolicited web-cookie login.
@@ -116,8 +120,9 @@ export function steamProtocol(reply: (message: Reply) => void, inject?: SteamCli
       changelistUpdateInterval: 0,
     });
 
-  client.on('error', (error: { eresult?: number }) => fail(steamFailure(error?.eresult)));
-  client.on('disconnected', (result: number) => fail(steamFailure(result)));
+  const failWithResult = (result?: number) => fail(steamFailure(result), result);
+  client.on('error', (error: { eresult?: number }) => failWithResult(error?.eresult));
+  client.on('disconnected', failWithResult);
   // The SDK identifies an email challenge by its domain. Only pass on the method.
   client.on('steamGuard', (domain?: string | null) => {
     if (domain === null) return fail('guard_mobile');

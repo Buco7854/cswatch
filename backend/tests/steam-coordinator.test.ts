@@ -27,7 +27,7 @@ const signal = new AbortController().signal;
 function mock(config = cfg, requestTimeout = 300, idleTimeout = 60_000, cacheTtl = 0) {
   const commands: Command['kind'][] = [];
   const statuses: number[] = [];
-  const blocks: string[] = [];
+  const diagnostics: object[] = [];
   let opened = 0;
   let closed = 0;
   let admitted = 0;
@@ -48,7 +48,7 @@ function mock(config = cfg, requestTimeout = 300, idleTimeout = 60_000, cacheTtl
     {
       idleTimeout,
       cacheTtl,
-      onLoginBlocked: (reason) => blocks.push(reason),
+      onFailure: (diagnostic) => diagnostics.push(diagnostic),
       loginTimeout: requestTimeout,
       requestTimeout,
       start(reply) {
@@ -71,7 +71,7 @@ function mock(config = cfg, requestTimeout = 300, idleTimeout = 60_000, cacheTtl
     gc,
     commands,
     statuses,
-    blocks,
+    diagnostics,
     counts: () => ({ opened, closed, admitted }),
     respondWith(f: typeof respond) {
       respond = f;
@@ -119,6 +119,7 @@ test('single flight, cancellation and late messages from the previous session', 
   s.unsolicited({ kind: 'ok', source });
   assert.equal(s.counts().closed, 1);
   assert.deepEqual(s.statuses, []);
+  assert.deepEqual(s.diagnostics, []);
   s.respondWith((c) => (c.kind === 'match' ? { kind: 'ok', source } : { kind: 'ok' }));
   await s.gc.resolve(code, signal);
   assert.equal(s.counts().opened, 2);
@@ -132,9 +133,13 @@ test('deadline and rate limits retire the transport, classify safely and report 
   await assert.rejects(s.gc.resolve(code, signal), { code: 'transient' });
   assert.deepEqual(s.statuses, [503]);
   await keepAlive;
-  s.respondWith(() => ({ kind: 'failed', code: 'busy' }));
+  s.respondWith(() => ({ kind: 'failed', code: 'busy', eresult: 84 }));
   await assert.rejects(s.gc.resolve(code, signal), { code: 'busy' });
   assert.deepEqual(s.statuses, [503, 429]);
+  assert.deepEqual(s.diagnostics, [
+    { stage: 'login', reason: 'timeout', eresult: undefined },
+    { stage: 'login', reason: 'busy', eresult: 84 },
+  ]);
   assert.equal(s.counts().closed, 2);
 });
 
@@ -145,7 +150,7 @@ test('Steam Guard and rejected credentials need operator intervention, unavailab
     for (let i = 0; i < 2; i++)
       await assert.rejects(s.gc.resolve(code, signal), { code: codeName });
     assert.deepEqual(s.commands, ['login']);
-    assert.deepEqual(s.blocks, [codeName]);
+    assert.deepEqual(s.diagnostics, [{ stage: 'login', reason: codeName, eresult: undefined }]);
   }
   const s = mock();
   s.respondWith((c) =>
@@ -287,6 +292,31 @@ test('Steam Guard prompts report only the challenge method and discard account m
     const send = steamProtocol((reply) => replies.push(reply), client);
     send({ kind: 'login', username: 'fixture', password: 'fixture' });
     assert.deepEqual(replies, [{ kind: 'failed', code: expected }]);
+  }
+});
+
+test('SDK sign-in errors pass only a bounded numeric Steam result into diagnostics', (t) => {
+  const require = createRequire(import.meta.url);
+  const SteamUser = require('steam-user');
+  for (const result of [5, 'private.invalid', -1, 100000]) {
+    const client = new SteamUser({ dataDirectory: null });
+    t.mock.method(client, 'logOn', () =>
+      client.emit('error', {
+        eresult: result,
+        message: 'sensitive SDK details',
+        accountName: 'fixture',
+      }),
+    );
+    const replies: Reply[] = [];
+    steamProtocol(
+      (reply) => replies.push(reply),
+      client,
+    )({ kind: 'login', username: 'fixture', password: 'fixture' });
+    assert.deepEqual(replies, [
+      result === 5
+        ? { kind: 'failed', code: 'credentials', eresult: 5 }
+        : { kind: 'failed', code: 'transient' },
+    ]);
   }
 });
 

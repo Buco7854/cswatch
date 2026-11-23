@@ -441,7 +441,7 @@ export async function createApp(
   const coordinator =
     steam.steamCoordinator ??
     createSteamCoordinator(c, requests, {
-      onLoginBlocked: (reason) => app.log.warn({ reason }, 'Steam Coordinator sign-in paused'),
+      onFailure: (diagnostic) => app.log.warn(diagnostic, 'Steam Coordinator request failed'),
     });
   const imports = steamImportRoutes(app, db, c, coordinator, requests, steam.steamDownload);
   const sync = steamHistoryRoutes(app, db, c, key, requests, (userId) =>

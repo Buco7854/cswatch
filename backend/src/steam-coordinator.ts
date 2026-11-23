@@ -27,7 +27,13 @@ export type Command =
   | { kind: 'match'; request: MatchRequest };
 export type Reply =
   | { kind: 'ok'; source?: SteamReplaySource }
-  | { kind: 'failed'; code: Exclude<SteamCoordinatorCode, 'disabled'> };
+  | { kind: 'failed'; code: Exclude<SteamCoordinatorCode, 'disabled'>; eresult?: number };
+
+type CoordinatorDiagnostic = {
+  stage: Command['kind'];
+  reason: Exclude<SteamCoordinatorCode, 'disabled' | 'unavailable'> | 'timeout' | 'invalid_reply';
+  eresult?: number;
+};
 
 interface Transport {
   send(command: Command): void;
@@ -70,14 +76,14 @@ export function createSteamCoordinator(
   limiter: Pick<ProviderRequests, 'run'>,
   {
     start = startWorker,
-    onLoginBlocked,
+    onFailure,
     loginTimeout = 25_000,
     requestTimeout = 12_000,
     idleTimeout = 300_000,
     cacheTtl = 120_000,
   }: {
     start?: Start;
-    onLoginBlocked?: (reason: LoginBlock) => void;
+    onFailure?: (diagnostic: CoordinatorDiagnostic) => void;
     loginTimeout?: number;
     requestTimeout?: number;
     idleTimeout?: number;
@@ -161,6 +167,7 @@ export function createSteamCoordinator(
         }
       });
       if (reply.kind === 'failed') {
+        const timedOut = signal.aborted && signal.reason?.name === 'TimeoutError';
         if (reply.code !== 'unavailable') await retire();
         switch (reply.code) {
           case 'busy':
@@ -174,7 +181,13 @@ export function createSteamCoordinator(
             break;
           default:
             locked = reply.code;
-            onLoginBlocked?.(locked);
+        }
+        if (!external.aborted && !shutdown.signal.aborted && reply.code !== 'unavailable') {
+          onFailure?.({
+            stage: command.kind,
+            reason: reply.code === 'transient' && timedOut ? 'timeout' : reply.code,
+            eresult: reply.eresult,
+          });
         }
         throw new SteamCoordinatorError(reply.code);
       }
@@ -190,6 +203,7 @@ export function createSteamCoordinator(
       ) {
         await retire();
         report(503);
+        onFailure?.({ stage: 'match', reason: 'invalid_reply' });
         throw new SteamCoordinatorError('transient');
       }
       report(200);
