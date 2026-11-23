@@ -2,6 +2,8 @@
 
 The web port defaults to `0.0.0.0:8000` for reverse proxies on another host. The Compose deployment requires `APP_URL` and forwards optional settings by service. Parser and transcription workers receive processing settings. Supply bootstrap, SMTP and provider credentials to the web service. [Docker deployment](../README.md#docker-deployment)
 
+The Steam library can import a completed replay from a user-selected CS2 folder and accepts paired BZip2 uploads. FACEIT rows can take their map from player stats before download. Administration appears in workspace navigation for eligible administrators. A network denial identifies an unresolved client address or an excluded client network. [Operator guide](ACCESS-SETUP.md#administrative-networks)
+
 The provider upload action stays available alongside eligible automatic downloads. Library filters and admin role and audit fields use the shared select. Admin and library lists share pagination controls.
 
 - **Accounts.** Schema 9 requires a fresh data directory. Configure the fixed SMTP relay before enabling mailbox verification and email-based password recovery. Steam-only signups supply their address in the app. [Account email and operator controls](ACCESS-SETUP.md#email-delivery-verification-and-password-reset). Administrators enroll a second factor by default. Keep proxy trust and administrative networks explicit. Before disabling Steam, ensure all linked accounts can sign in with a password or passkey. See [account setup](ACCESS-SETUP.md#account-sign-in-and-recovery) and [security evidence](ACCOUNT-SECURITY.md).

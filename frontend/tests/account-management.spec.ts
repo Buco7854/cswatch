@@ -127,7 +127,10 @@ test('account email and sessions, administrative reset audit, and browser-bound 
     await expect(other.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible();
 
     await signInAdmin(admin);
-    await admin.goto('/admin?section=users');
+    const navigation = admin.getByRole('navigation', { name: 'Main navigation' });
+    await navigation.getByRole('link', { name: 'Administration', exact: true }).click();
+    await expect(admin.getByRole('heading', { name: 'Instance administration' })).toBeVisible();
+    await admin.getByRole('link', { name: 'Users', exact: true }).click();
     await admin.getByLabel('Username or display name').fill(displayName);
     await chooseSelectOption(admin, 'Role', 'Member');
     await admin.getByRole('button', { name: 'Search', exact: true }).click();

@@ -59,7 +59,12 @@ import {
   demoWriteTimeoutMs,
   enqueueUserDemoDeletion,
 } from './demo-deletion.js';
-import { adminClientAddress, adminNetworkAllowed, trustProxyAddress } from './admin-network.js';
+import {
+  adminClientAddress,
+  adminNetworkAllowed,
+  adminNetworkDenial,
+  trustProxyAddress,
+} from './admin-network.js';
 import { hasPermission } from './roles.js';
 import { authRoutes } from './auth.js';
 import {
@@ -465,9 +470,13 @@ export async function createApp(
     reply.header('Cache-Control', 'private, no-store');
     return db.transaction(() => {
       checkReadContext(r, reply);
+      const administrator = hasPermission(r.user?.role, 'admin');
+      const denial = administrator ? adminNetworkDenial(r, c) : null;
+      const adminAccess = administrator && !denial;
       return {
         build: buildInfo,
-        admin_access: !!r.user && hasPermission(r.user.role, 'admin') && adminNetworkAllowed(r, c),
+        admin_access: adminAccess,
+        ...(denial ? { admin_network_denial: denial } : {}),
         ...Object.fromEntries(Object.keys(flagDefaults).map((k) => [k, db.flag(c, k as Flag)])),
         guest_uploads_enabled: guestUploadsEnabled(db, c),
         email_delivery_enabled: emailDeliveryEnabled(db, c),
@@ -478,9 +487,7 @@ export async function createApp(
             ? Math.min(c.maxUploadMb, c.guestStorageMb)
             : c.maxUploadMb,
         retention_days: c.retentionDays,
-        ...(r.user && hasPermission(r.user.role, 'admin') && adminNetworkAllowed(r, c)
-          ? { steam_discovery: Boolean(c.steamApiKey) }
-          : {}),
+        ...(adminAccess ? { steam_discovery: Boolean(c.steamApiKey) } : {}),
         transcription_configured: Boolean(c.transcriptionModelDir),
       };
     });
@@ -573,15 +580,28 @@ export async function createApp(
       checkUploadOwner();
       const uploadMb = r.user ? c.maxUploadMb : Math.min(c.maxUploadMb, c.guestStorageMb),
         file = await r.file({ limits: { fileSize: uploadMb * 1024 ** 2 } });
-      if (!file) throw new HttpError(400, 'Choose a .dem or .dem.zst file.');
+      if (!file)
+        throw new HttpError(
+          400,
+          steam_match
+            ? 'Choose a .dem, .dem.zst or .dem.bz2 file.'
+            : 'Choose a .dem or .dem.zst file.',
+        );
       const filename = basename(file.filename),
         lower = filename.toLowerCase(),
-        suffix = lower.endsWith('.dem.zst') ? '.dem.zst' : lower.endsWith('.dem') ? '.dem' : null;
+        suffix = (steam_match ? ['.dem', '.dem.zst', '.dem.bz2'] : ['.dem', '.dem.zst']).find(
+          (candidate) => lower.endsWith(candidate),
+        );
       if (!suffix) {
         file.file.resume();
-        throw new HttpError(400, 'Only .dem and .dem.zst files are supported.');
+        throw new HttpError(
+          400,
+          steam_match
+            ? 'Only .dem, .dem.zst and .dem.bz2 files are supported for Steam matches.'
+            : 'Only .dem and .dem.zst files are supported.',
+        );
       }
-      const ext = suffix === '.dem.zst' ? '.zst' : '.dem';
+      const ext = suffix.slice(suffix.lastIndexOf('.'));
       const name =
         filename.length > 120
           ? filename.slice(0, 120 - suffix.length) + filename.slice(-suffix.length)

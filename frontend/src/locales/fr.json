@@ -1352,5 +1352,21 @@
   "Recorded kills, deaths and assists": "Éliminations, morts et assistances enregistrées",
   "Recorded CT–T score": "Score AT–T enregistré",
   "FACEIT level {{v0}}": "Niveau FACEIT {{v0}}",
-  "CT {{v0}} T": "AT {{v0}} T"
+  "CT {{v0}} T": "AT {{v0}} T",
+  "Too many files to check. Choose the demo file directly.": "Ce dossier contient trop de fichiers. Choisissez directement le fichier de démo.",
+  "Several files match this reservation. Choose the demo file directly.": "Plusieurs fichiers correspondent à cette réservation. Choisissez directement le fichier de démo.",
+  "The replay information does not confirm this match. Choose the demo file directly.": "Les informations de la démo ne confirment pas ce match. Choisissez directement le fichier de démo.",
+  "The replay did not finish in time. Try again or choose the demo file.": "Le téléchargement de la démo a pris trop de temps. Réessayez ou choisissez le fichier de démo.",
+  "Replay not found here. Download it in CS2 to continue.": "Cette démo est absente du dossier. Téléchargez-la dans CS2 pour continuer.",
+  "Waiting for CS2 to finish saving this replay…": "En attente de la fin de l’enregistrement de cette démo par CS2…",
+  "Could not read this folder. Choose the replays folder again or select a demo file.": "Impossible de lire ce dossier. Choisissez à nouveau le dossier replays ou sélectionnez un fichier de démo.",
+  "Checking the replays folder…": "Vérification du dossier des démos…",
+  "To import a match, choose the game/csgo/replays folder on your CS2 computer.": "Pour importer un match, choisissez le dossier game/csgo/replays sur l’ordinateur où CS2 est installé.",
+  "Replay folder: {{name}}": "Dossier des démos : {{name}}",
+  "Forget folder": "Oublier le dossier",
+  "Choose a .dem, .dem.zst or .dem.bz2 file.": "Choisissez un fichier .dem, .dem.zst ou .dem.bz2.",
+  "Only .dem, .dem.zst and .dem.bz2 files are supported for Steam matches.": "Seuls les fichiers .dem, .dem.zst et .dem.bz2 sont pris en charge pour les matchs Steam.",
+  "Drop a .dem, .dem.zst or .dem.bz2 file · {{size}} MB max": "Déposez un fichier .dem, .dem.zst ou .dem.bz2 · {{size}} Mo max.",
+  "Use a network listed in ADMIN_ALLOWED_IPS or ask the operator to check the allowed client networks.": "Utilisez un réseau autorisé par ADMIN_ALLOWED_IPS ou demandez à la personne qui gère l’instance de vérifier les réseaux clients autorisés.",
+  "The server could not verify your client address. Ask the operator to check TRUSTED_PROXY_IPS and the X-Real-IP or X-Forwarded-For header.": "Le serveur n’a pas pu vérifier votre adresse IP. Demandez à la personne qui gère l’instance de vérifier TRUSTED_PROXY_IPS et l’en-tête X-Real-IP ou X-Forwarded-For."
 }

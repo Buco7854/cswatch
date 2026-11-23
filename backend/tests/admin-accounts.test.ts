@@ -233,6 +233,19 @@ test('admin network and session boundaries cover every registered route and the 
     headers: f.admin,
   });
   assert.equal(config.json().admin_access, false);
+  assert.equal(config.json().admin_network_denial, 'outside_network');
+  const unverifiable = await f.inject({
+    url: '/api/config',
+    remoteAddress: '198.51.100.8',
+    headers: { ...f.admin, 'x-forwarded-for': '198.51.100.1' },
+  });
+  assert.equal(unverifiable.json().admin_access, false);
+  assert.equal(unverifiable.json().admin_network_denial, 'unknown_client');
+  for (const headers of [member, pending]) {
+    const status = await f.inject({ url: '/api/config', remoteAddress: '203.0.113.5', headers });
+    assert.equal(status.json().admin_access, false);
+    assert.equal(status.json().admin_network_denial, undefined);
+  }
   const library = await f.inject({
     url: '/api/demos',
     remoteAddress: '203.0.113.5',
@@ -264,6 +277,14 @@ test('admin IP restrictions use the socket and a configured proxy chain', async 
     });
     assert.equal(response.statusCode, allowed ? 200 : 403, response.body);
   }
+  const singleHop = {
+    remoteAddress: '192.0.2.2',
+    headers: { ...f.admin, 'x-real-ip': '198.51.100.42' },
+  };
+  const page = await f.inject({ ...singleHop, url: '/admin' });
+  assert.equal(page.statusCode, 200, page.body);
+  assert.equal((await f.inject({ ...singleHop, url: '/api/config' })).json().admin_access, true);
+  assert.equal((await f.inject({ ...singleHop, url })).statusCode, 200);
   assert.throws(
     () => loadConfig({ COOKIE_SECURE: 'false', ADMIN_ALLOWED_IPS: '192.0.2.1/40' }),
     /CIDR/,

@@ -21,6 +21,7 @@ export type User = {
 };
 export type Config = {
   admin_access: boolean;
+  admin_network_denial?: 'outside_network' | 'unknown_client';
   email_delivery_enabled: boolean;
   build?: { revision: string | null; builtAt: string | null };
   setup_required: boolean;

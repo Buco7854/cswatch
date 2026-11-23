@@ -44,7 +44,7 @@ import { recoveryReceiptDeadline } from './auth-actions';
 import Library from './components/Library';
 import Viewer from './components/Viewer';
 import WorkspaceShell from './components/WorkspaceShell';
-import { Account, Admin } from './components/Settings';
+import { Account, Admin, AdminAccessNotice } from './components/Settings';
 import AuthPage from './components/AuthPage';
 import { discardVerificationCode, EmailOnboarding, VerifyEmail } from './components/AccountEmail';
 import AuthFrame from './components/AuthFrame';
@@ -999,15 +999,7 @@ function App() {
             </div>
           ) : (
             <WorkspaceShell key={user?.id} {...appearance}>
-              {(adminDenial === 'network' || adminDenial === 'role') && (
-                <p className="member-inline-error" role="alert">
-                  {t(
-                    adminDenial === 'network'
-                      ? 'Administration is unavailable from this network.'
-                      : 'Administrator access required.',
-                  )}
-                </p>
-              )}
+              {(adminDenial === 'network' || adminDenial === 'role') && <AdminAccessNotice />}
               <Routes>
                 <Route
                   path="/library"

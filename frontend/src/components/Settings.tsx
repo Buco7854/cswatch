@@ -138,6 +138,36 @@ export function Account({
     </>
   );
 }
+export function AdminAccessNotice() {
+  const { config, user } = useApp();
+  const admin = hasPermission(user?.role, 'admin');
+  return (
+    <div className="notice" role="alert">
+      <strong>
+        {t(
+          admin
+            ? 'Administration is unavailable from this network.'
+            : 'Administrator access required.',
+        )}
+      </strong>
+      {admin && config.admin_network_denial === 'outside_network' && (
+        <p>
+          {t(
+            'Use a network listed in ADMIN_ALLOWED_IPS or ask the operator to check the allowed client networks.',
+          )}
+        </p>
+      )}
+      {admin && config.admin_network_denial === 'unknown_client' && (
+        <p>
+          {t(
+            'The server could not verify your client address. Ask the operator to check TRUSTED_PROXY_IPS and the X-Real-IP or X-Forwarded-For header.',
+          )}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function Admin() {
   const { user, config, refresh, isAdminAvailable } = useApp();
   const { search } = useLocation();
@@ -169,13 +199,7 @@ export function Admin() {
         </div>
       </header>
       {!config.admin_access ? (
-        <p role="alert">
-          {t(
-            hasPermission(user?.role, 'admin')
-              ? 'Administration is unavailable from this network.'
-              : 'Administrator access required.',
-          )}
-        </p>
+        <AdminAccessNotice />
       ) : !access.checked ? (
         <p role="status">{t('Loading…')}</p>
       ) : access.error ? (

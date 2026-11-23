@@ -1,5 +1,13 @@
 # Verification record
 
+## Steam replay import and administrative proxy access
+
+The Steam browser fixture exercised a completed local replay, an incomplete download, a mismatched sidecar, cancellation, timeout and account changes. Chromium used its filesystem with a substituted folder picker and Steam launch. Both provider specs passed 41 cases. The captured Steam rows cover English and French, light and dark, and 1440, 768 and 390 px widths. FACEIT provider fixtures matched maps by exact game ID and verified that a limited stats endpoint preserves match history. Live provider calls and a desktop Steam download were outside this run.
+
+A locally compressed copy of the pinned Mirage fixture was 47,088,062 bytes. The durable worker processed it with required Linux kernel confinement, producing 31 chunks with ten players. Additional checks cover CRCs, truncated streams and the expanded-size limit.
+
+A real local web service used a trusted loopback proxy peer and a synthetic administrator. Production Chromium opened the admin page with only an allowed LAN client in `X-Real-IP`. An outside client and a missing forwarded address reached the library with distinct explanations. The page, private admin API and configuration route also have backend coverage. The 36 browser captures cover those three states, both themes, English and French, and desktop, tablet and phone widths with touch emulation. Production reverse proxies and physical devices were outside this run.
+
 The deployment configuration was rendered with Docker Compose v2.39.4 using the default example and a separate environment file with synthetic overrides. All five services resolved. The web port rendered as `0.0.0.0:8000` by default and `192.0.2.50:8200` with an explicit bind address and port. The configured web service received the test credentials, both processing workers received their shared limits and subtitle policy, and neither worker received web credentials. Both workers resolved to `network_mode: none`. This check exercised Compose configuration without starting containers.
 
 ## Schema 9 account email

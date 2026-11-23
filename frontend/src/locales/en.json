@@ -1352,5 +1352,21 @@
   "Recorded kills, deaths and assists": "Recorded kills, deaths and assists",
   "Recorded CT–T score": "Recorded CT–T score",
   "FACEIT level {{v0}}": "FACEIT level {{v0}}",
-  "CT {{v0}} T": "CT {{v0}} T"
+  "CT {{v0}} T": "CT {{v0}} T",
+  "Too many files to check. Choose the demo file directly.": "Too many files to check. Choose the demo file directly.",
+  "Several files match this reservation. Choose the demo file directly.": "Several files match this reservation. Choose the demo file directly.",
+  "The replay information does not confirm this match. Choose the demo file directly.": "The replay information does not confirm this match. Choose the demo file directly.",
+  "The replay did not finish in time. Try again or choose the demo file.": "The replay did not finish in time. Try again or choose the demo file.",
+  "Replay not found here. Download it in CS2 to continue.": "Replay not found here. Download it in CS2 to continue.",
+  "Waiting for CS2 to finish saving this replay…": "Waiting for CS2 to finish saving this replay…",
+  "Could not read this folder. Choose the replays folder again or select a demo file.": "Could not read this folder. Choose the replays folder again or select a demo file.",
+  "Checking the replays folder…": "Checking the replays folder…",
+  "To import a match, choose the game/csgo/replays folder on your CS2 computer.": "To import a match, choose the game/csgo/replays folder on your CS2 computer.",
+  "Replay folder: {{name}}": "Replay folder: {{name}}",
+  "Forget folder": "Forget folder",
+  "Choose a .dem, .dem.zst or .dem.bz2 file.": "Choose a .dem, .dem.zst or .dem.bz2 file.",
+  "Only .dem, .dem.zst and .dem.bz2 files are supported for Steam matches.": "Only .dem, .dem.zst and .dem.bz2 files are supported for Steam matches.",
+  "Drop a .dem, .dem.zst or .dem.bz2 file · {{size}} MB max": "Drop a .dem, .dem.zst or .dem.bz2 file · {{size}} MB max",
+  "Use a network listed in ADMIN_ALLOWED_IPS or ask the operator to check the allowed client networks.": "Use a network listed in ADMIN_ALLOWED_IPS or ask the operator to check the allowed client networks.",
+  "The server could not verify your client address. Ask the operator to check TRUSTED_PROXY_IPS and the X-Real-IP or X-Forwarded-For header.": "The server could not verify your client address. Ask the operator to check TRUSTED_PROXY_IPS and the X-Real-IP or X-Forwarded-For header."
 }

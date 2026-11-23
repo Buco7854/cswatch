@@ -1012,6 +1012,17 @@
   .workspace-rail {
     display: none;
   }
+  .workspace-rail.with-admin {
+    display: block;
+    padding: 4px var(--workspace-gutter);
+    border: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .workspace-rail.with-admin nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
   .app-shell .main {
     padding: 28px var(--workspace-gutter) 36px;
   }

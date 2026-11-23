@@ -370,6 +370,7 @@ test('Steam match sync verifies before saving, resumes and protects user credent
     APP_URL: origin,
     COOKIE_SECURE: 'false',
     DATA_DIR: root,
+    MAX_UPLOAD_MB: '1',
     STEAM_ENABLED: 'true',
     STEAM_API_KEY: 'synthetic-operator-key',
     // Deterministic synthetic key for a temporary test database only.
@@ -496,18 +497,32 @@ test('Steam match sync verifies before saving, resumes and protects user credent
       [later, next, start],
     );
     const { match_id } = items[0];
-    const upload = (headers: typeof owner.headers) =>
+    const archive = Buffer.from(
+      'QlpoOTFBWSZTWZG46yYAAANPgEAAEAAWAkgACmEMICAAIppiZMT0FMABNCZkXrvMjV0BeC7kinChISNx1kw=',
+      'base64',
+    );
+    const upload = (headers: typeof owner.headers, data = archive, paired = true) =>
       app.inject({
         method: 'POST',
-        url: '/api/demos?steam_match=' + match_id,
+        url: '/api/demos' + (paired ? '?steam_match=' + match_id : ''),
         headers: { ...headers, 'content-type': 'multipart/form-data; boundary=steam-test' },
-        payload:
-          '--steam-test\r\nContent-Disposition: form-data; name="file"; filename="fixture.dem"\r\n\r\nPBDEMS2\0synthetic\r\n--steam-test--\r\n',
+        payload: Buffer.concat([
+          Buffer.from(
+            '--steam-test\r\nContent-Disposition: form-data; name="file"; filename="fixture.dem.BZ2"\r\n\r\n',
+          ),
+          data,
+          Buffer.from('\r\n--steam-test--\r\n'),
+        ]),
       });
     assert.equal((await upload(other.headers)).statusCode, 404);
+    assert.equal((await upload(owner.headers, archive, false)).statusCode, 400);
+    assert.equal((await upload(owner.headers, Buffer.from('PBDEMS2\0'))).statusCode, 400);
+    const oversized = Buffer.concat([archive, Buffer.alloc(1024 * 1024)]);
+    assert.equal((await upload(owner.headers, oversized)).statusCode, 413);
     const uploaded = await upload(owner.headers);
     assert.equal(uploaded.statusCode, 202, uploaded.body);
     const demoId = uploaded.json().id;
+    assert.deepEqual(readFileSync(join(root, 'demos', demoId, 'input.bz2')), archive);
     assert.equal((await list()).json().items[0].demos[0].id, demoId);
     assert.equal((await list(owner.headers, 'downloaded')).json().items[0].match_id, match_id);
     assert.equal((await list(owner.headers, 'missing')).json().items.length, 2);
@@ -631,11 +646,25 @@ test('FACEIT library walks the full history with a timestamp cursor and keeps do
       results: { winner: 'faction1', score: { faction1: 13, faction2: 9 } },
     }));
     let calls = 0;
+    let statsCalls = 0;
     let respond: (() => Response | Promise<Response>) | undefined;
     globalThis.fetch = async (input) => {
-      calls++;
       const url = new URL(String(input));
       assert.equal(url.origin, 'https://open.faceit.com');
+      if (url.pathname.endsWith('/games/cs2/stats')) {
+        assert.ok(Number(url.searchParams.get('from')) >= 1_699_999_000_000);
+        if (++statsCalls > 1)
+          return new Response(null, { status: 429, headers: { 'retry-after': '120' } });
+        return Response.json({
+          items: [
+            { stats: { Map: 42 } },
+            { stats: { 'Match Id': 'match-0', Map: 'de_mirage' } },
+            { stats: { 'Match Id': 'match-1', Map: 'de_nuke' } },
+            { stats: { 'Match Id': 'match-1', Map: 'de_mirage' } },
+          ],
+        });
+      }
+      calls++;
       if (url.pathname.includes('/matches/')) {
         const match_id = url.pathname.split('/').at(-1);
         return Response.json({
@@ -664,6 +693,8 @@ test('FACEIT library walks the full history with a timestamp cursor and keeps do
         .faceit_download,
       false,
     );
+    assert.equal(first.items[0].map, 'de_mirage');
+    assert.equal(first.items[1].map, null);
     assert.equal(first.items[0].result, 'win');
     assert.equal(first.items[0].faceit_level, 8);
     assert.deepEqual(first.items[0].teams, [
@@ -680,6 +711,7 @@ test('FACEIT library walks the full history with a timestamp cursor and keeps do
       next = page.json().next;
     }
     assert.deepEqual(walked, expected);
+    assert.equal(statsCalls, 2, 'the stats cooldown preserves history paging');
     const beforeCache = calls;
     const cursor = '?cursor=' + (newer - 41) + '.10';
     await read(cursor);
