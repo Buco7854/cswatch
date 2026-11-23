@@ -16,6 +16,7 @@ export default function Upload({
   returnTo?: string;
 }) {
   const { config, user, signIn, refresh } = useApp();
+  const steam = match?.source === 'steam';
   const nav = useNavigate();
   const location = useLocation();
   const input = useRef<HTMLInputElement>(null);
@@ -46,12 +47,14 @@ export default function Upload({
     }
     if (!file || busy || pending.current) return;
     setError('');
-    if (!/\.dem(\.zst)?$/i.test(file.name)) {
+    if (!/\.dem(\.zst)?$/i.test(file.name) && !(steam && /\.dem\.bz2$/i.test(file.name))) {
       setError(
         t(
-          /\.(?:bz2|gz|zip|rar|7z)$/i.test(file.name)
-            ? 'Extract this download first, then choose its .dem file. You can upload .dem.zst directly.'
-            : 'Choose a .dem or .dem.zst file.',
+          steam
+            ? 'Choose a .dem, .dem.zst or .dem.bz2 file.'
+            : /\.(?:bz2|gz|zip|rar|7z)$/i.test(file.name)
+              ? 'Extract this download first, then choose its .dem file. You can upload .dem.zst directly.'
+              : 'Choose a .dem or .dem.zst file.',
         ),
       );
       return;
@@ -157,16 +160,21 @@ export default function Upload({
           </div>
         ) : (
           <p className="demo-file-hint" id={hint}>
-            {t('Drop a .dem or .dem.zst file · {{size}} MB max', {
-              size: config.max_upload_mb,
-            })}
+            {t(
+              steam
+                ? 'Drop a .dem, .dem.zst or .dem.bz2 file · {{size}} MB max'
+                : 'Drop a .dem or .dem.zst file · {{size}} MB max',
+              {
+                size: config.max_upload_mb,
+              },
+            )}
           </p>
         )}
       </div>
       <input
         ref={input}
         type="file"
-        accept=".dem,.zst"
+        accept={steam ? '.dem,.zst,.bz2' : '.dem,.zst'}
         hidden
         aria-label={t('Choose a CS2 demo')}
         onChange={(e) => void upload(e.target.files?.[0])}

@@ -472,3 +472,233 @@ test('Steam states show sync progress, cooldown, replace-codes and empty results
   await expect(page.getByRole('button', { name: 'Sync Steam matches' })).toBeDisabled();
   await capture(page, 'steam-needs-codes');
 });
+
+// Use a real browser file system with a disposable directory. Only the native
+// picker and the external Steam protocol handoff need substituting.
+// CS Demo Manager's Valve match fixture, revision 5a1a0059. The filename
+// contains a reservation and full TV port, while the sidecar holds the match ID.
+const replayId = '3668529891923460401';
+const replayCode = 'CSGO-98ykZ-EJ952-QzetT-kWNp6-Oe2ED';
+const replayName = 'match730_003668537425296097309_2104686856_273.dem';
+async function installReplayPicker(page: Page) {
+  await installSources(page, true, false);
+  await page.route('**/api/connections/steam/matches?*', (route) =>
+    route.fulfill({
+      json: { next: null, items: [{ match_id: replayId, share_code: replayCode, demos: [] }] },
+    }),
+  );
+  await page.addInitScript(() => {
+    Object.defineProperty(window, 'showDirectoryPicker', {
+      configurable: true,
+      value: async ({ mode }: { mode: string }) => {
+        if (mode !== 'read') throw new Error('Expected read-only access');
+        return (await navigator.storage.getDirectory()).getDirectoryHandle('replays', {
+          create: true,
+        });
+      },
+    });
+    document.addEventListener('click', (event) => {
+      if ((event.target as HTMLElement)?.closest('a[href^="steam:"]')) {
+        event.preventDefault();
+        document.documentElement.dataset.steamLaunched = String(event.isTrusted);
+      }
+    });
+  });
+  await page.goto('/library?source=steam');
+}
+
+async function writeReplay(page: Page, name = replayName, matchId = replayId, complete = true) {
+  await page.evaluate(
+    async ({ name, matchId, complete }) => {
+      const dir = await (
+        await navigator.storage.getDirectory()
+      ).getDirectoryHandle('replays', { create: true });
+      async function write(name: string, data: number[]) {
+        const file = await (await dir.getFileHandle(name, { create: true })).createWritable();
+        await file.write(Uint8Array.from(data));
+        await file.close();
+      }
+      // Valve's CDataGCCStrike15_v2_MatchInfo.matchid is uint64 field 1.
+      const sidecar = [8];
+      let value = BigInt(matchId);
+      while (value > 127n) {
+        sidecar.push(Number(value & 127n) | 128);
+        value >>= 7n;
+      }
+      sidecar.push(Number(value));
+      await write(name + '.info', sidecar);
+      const header = [80, 66, 68, 69, 77, 83, 50, 0, 16, 0, 0, 0, 0, 0, 0, 0];
+      // DEM_FileInfo, tick 1, length 3; withhold the payload to simulate a paused write.
+      await write(name, [...header, 2, 1, 3, ...(complete ? [13, 8, 1] : [])]);
+    },
+    { name, matchId, complete },
+  );
+}
+
+test('Steam imports the selected existing replay and leaves other local files alone', async ({
+  page,
+}) => {
+  await installReplayPicker(page);
+  await writeReplay(page, 'something-else.dem');
+  await writeReplay(page);
+  const received: string[] = [];
+  await page.route('**/api/demos?steam_match=*', (route) => {
+    expect(new URL(route.request().url()).searchParams.get('steam_match')).toBe(replayId);
+    expect(route.request().headers()['x-csrf-token']).toBe(memberUser.csrf);
+    received.push(route.request().postDataBuffer()!.toString('latin1'));
+    return route.fulfill({ json: { id: 'local-demo' } });
+  });
+  await page.getByRole('button', { name: 'Import', exact: true }).click();
+  await expect(page.getByRole('link', { name: /Open.*queue/i })).toHaveAttribute(
+    'href',
+    '/watch/local-demo',
+  );
+  expect(received).toHaveLength(1);
+  expect(received[0]).toContain('filename="' + replayName + '"');
+  expect(received[0]).not.toContain('something-else');
+  await expect(page.locator('html')).not.toHaveAttribute('data-steam-launched', 'true');
+});
+
+test('Steam waits for the selected download and rejects a paused partial replay', async ({
+  page,
+}) => {
+  await page.clock.install();
+  await installReplayPicker(page);
+  let uploads = 0;
+  await page.route('**/api/demos?steam_match=*', (route) => {
+    uploads++;
+    return route.fulfill({ json: { id: 'completed-demo' } });
+  });
+  await page.getByRole('button', { name: 'Import', exact: true }).click();
+  await expect(page.getByRole('listitem').getByRole('status')).toContainText(
+    'Replay not found here',
+  );
+  await capture(page, 'steam-folder-missing');
+  await page.getByRole('link', { name: 'Download in CS2' }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-steam-launched', 'true');
+  await expect(page.getByRole('listitem').getByRole('status')).toContainText('Waiting for CS2');
+  await capture(page, 'steam-folder-waiting');
+  await writeReplay(page, replayName, replayId, false);
+  await page.clock.runFor(4600);
+  expect(uploads).toBe(0);
+  await writeReplay(page);
+  await page.clock.runFor(4600);
+  await expect(page.getByRole('link', { name: /Open.*queue/i })).toBeVisible();
+  expect(uploads).toBe(1);
+});
+
+test('Steam keeps ambiguous files and mismatched replay information out of the upload', async ({
+  page,
+}) => {
+  await page.clock.install();
+  await installReplayPicker(page);
+  let uploads = 0;
+  await page.route('**/api/demos?steam_match=*', (route) => {
+    uploads++;
+    return route.fulfill({ json: { id: 'unexpected' } });
+  });
+  await writeReplay(page, replayName, '1');
+  await page.getByRole('button', { name: 'Import', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('does not confirm this match');
+  await writeReplay(page, replayName.replace('_273.', '_271.'));
+  await page.getByRole('button', { name: 'Import', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Several files match');
+  expect(uploads).toBe(0);
+  await page.getByRole('link', { name: 'Upload this demo' }).click();
+  await expect(page.getByRole('dialog').locator('input[type=file]')).toHaveAttribute(
+    'accept',
+    /\.bz2/,
+  );
+});
+
+test('Steam releases pending imports on cancellation and a change of member', async ({ page }) => {
+  await page.clock.install();
+  await installReplayPicker(page);
+  let uploads = 0;
+  await page.route('**/api/demos?steam_match=*', (route) => {
+    uploads++;
+    return route.fulfill({ json: { id: 'unexpected' } });
+  });
+  const start = page.getByRole('button', { name: 'Import', exact: true });
+  await start.click();
+  await page.getByRole('link', { name: 'Download in CS2' }).click();
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(start).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Forget folder' })).toBeVisible();
+  await start.click();
+  await expect(page.getByRole('listitem').getByRole('status')).toContainText(
+    'Replay not found here',
+  );
+  await page.getByRole('link', { name: 'Download in CS2' }).click();
+  await page.route('**/api/auth/me', (route) =>
+    route.fulfill({
+      json: accountStatus({
+        ...memberUser,
+        id: 'another-member',
+        csrf: 'another-csrf',
+        match_sources: { ...memberUser.match_sources, steam: true },
+      }),
+    }),
+  );
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await expect(page.getByRole('button', { name: 'Forget folder' })).toHaveCount(0);
+  await expect(start).toBeEnabled();
+  await writeReplay(page);
+  await page.clock.runFor(4600);
+  expect(uploads).toBe(0);
+});
+
+test('Steam stops monitoring after its deadline and leaves the file picker available', async ({
+  page,
+}) => {
+  await page.clock.install();
+  await installReplayPicker(page);
+  await page.getByRole('button', { name: 'Import', exact: true }).click();
+  await expect(page.getByRole('listitem').getByRole('status')).toContainText(
+    'Replay not found here',
+  );
+  await page.getByRole('link', { name: 'Download in CS2' }).click();
+  await page.clock.fastForward(120_001);
+  await expect(page.getByRole('alert')).toContainText('did not finish in time');
+  await page.getByRole('button', { name: 'Forget folder' }).click();
+  await expect(page.getByRole('button', { name: 'Forget folder' })).toHaveCount(0);
+  await page.evaluate(() =>
+    Object.defineProperty(window, 'showDirectoryPicker', {
+      value: () => Promise.reject(new DOMException('dismissed', 'AbortError')),
+    }),
+  );
+  await page.getByRole('button', { name: 'Import', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Import', exact: true })).toBeEnabled();
+});
+
+test('Steam retains the manual upload when browser folder access is unavailable', async ({
+  page,
+}) => {
+  await installReplayPicker(page);
+  await page.evaluate(() =>
+    Object.defineProperty(window, 'showDirectoryPicker', { value: undefined }),
+  );
+  await page.getByRole('tab', { name: 'My demos' }).click();
+  await page.getByRole('tab', { name: 'Steam' }).click();
+  await expect(page.getByRole('button', { name: 'Import', exact: true })).toHaveCount(0);
+  await page.getByRole('link', { name: 'Import', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByText('Steam match ' + replayId)).toBeVisible();
+  let uploaded = false;
+  await page.route('**/api/demos?steam_match=*', (route) => {
+    expect(route.request().postDataBuffer()!.toString('latin1')).toContain(
+      'filename="recording.dem.bz2"',
+    );
+    expect(new URL(route.request().url()).searchParams.get('steam_match')).toBe(replayId);
+    uploaded = true;
+    return route.fulfill({ status: 503, json: { detail: 'Upload failed.' } });
+  });
+  await dialog.locator('input[type=file]').setInputFiles({
+    name: 'recording.dem.bz2',
+    mimeType: 'application/octet-stream',
+    buffer: Buffer.from('BZh9'),
+  });
+  await expect(dialog.getByRole('alert')).toHaveText('Upload failed.');
+  expect(uploaded).toBe(true);
+});

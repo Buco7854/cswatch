@@ -2,6 +2,8 @@
 
 Library and administration use the same dropdown and pagination controls. Members can pair a manual upload with a listed match, including when an automatic provider download is offered.
 
+Steam match import uses the member’s installed CS2 client and an explicitly selected replays folder, with paired manual uploads available on all supported browsers. FACEIT player stats can supply the map before import. Authorized administrators can open Administration from workspace navigation on desktop and mobile. [Access setup](ACCESS-SETUP.md)
+
 Library rows show native map emblems, local map previews or a map-name fallback. A linked Steam identity can see its recorded counters and rank. FACEIT can supply a match roster level. [Verification](VERIFICATION.md#local-library-match-details)
 
 ## Access and replay

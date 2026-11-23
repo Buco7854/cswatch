@@ -19,6 +19,7 @@ import { Transform } from 'node:stream';
 import { Decompress } from 'fzstd';
 import { parseHeader, parseTicks, parseEvent, parseGrenades } from '@laihoe/demoparser2';
 import type { Playback, GameEvent, Grenade } from '../../shared/playback.js';
+import { expandBzip2 } from './bzip2.js';
 import { validateMagic } from './demo-format.js';
 import { collectColumnFrameState } from './frame-state.js';
 import { writeReplay } from './replay.js';
@@ -167,6 +168,8 @@ export async function parse(folder: string, maxExpanded: number) {
         }),
         createWriteStream(expanded, { mode: 0o600 }),
       );
+    } else if (source.endsWith('.bz2')) {
+      await expandBzip2(source, expanded, maxExpanded);
     } else {
       const fd = openSync(expanded, 'w', 0o600);
       const decompressor = new Decompress((chunk) => {

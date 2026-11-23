@@ -6,6 +6,7 @@ import {
   Globe2,
   LockKeyhole,
   Moon,
+  ShieldCheck,
   Sun,
   UserRound,
 } from 'lucide-react';
@@ -54,12 +55,18 @@ export default function WorkspaceShell({
         </div>
       </header>
       <div className="workspace-body">
-        <aside className="workspace-rail">
+        <aside className={config.admin_access ? 'workspace-rail with-admin' : 'workspace-rail'}>
           <nav aria-label={t('Main navigation')}>
             <NavLink end to="/library">
               <Clapperboard size={17} aria-hidden="true" />
               {t('Demo library')}
             </NavLink>
+            {config.admin_access && (
+              <NavLink end to="/admin">
+                <ShieldCheck size={17} aria-hidden="true" />
+                {t('Administration')}
+              </NavLink>
+            )}
           </nav>
         </aside>
         <div className="workspace">

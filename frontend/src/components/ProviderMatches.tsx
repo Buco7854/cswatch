@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } fro
 import { ArrowUpRight, Download, RefreshCw } from 'lucide-react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { api, ApiError } from '../api';
+import { folderPicker, replayIdentity } from '../steam-replay-folder';
+import { useSteamReplayImport } from '../useSteamReplayImport';
 import { useApp } from '../context';
 import { locale, t } from '../i18n';
 import type { MatchActivity, MatchActivityRow, MatchDemo } from '../match-activity';
@@ -86,6 +88,7 @@ function MatchRow({
   returnTo,
   inspect,
   download,
+  steamImport,
 }: {
   source: MatchSource;
   match: Match;
@@ -94,12 +97,17 @@ function MatchRow({
   returnTo: string;
   inspect: (id: string) => void;
   download: (id: string, resource: string) => void;
+  steamImport?: ReturnType<typeof useSteamReplayImport>;
 }) {
   const location = useLocation();
   const id = match.match_id;
-  const state = useSyncExternalStore(activity.subscribe, () =>
-    source === 'faceit' ? activity.get(id) : undefined,
-  );
+  const key = source === 'faceit' ? id : 'steam:' + id;
+  const state = useSyncExternalStore(activity.subscribe, () => activity.get(key));
+  const replay =
+    steamImport && match.share_code && folderPicker()
+      ? replayIdentity(id, match.share_code)
+      : undefined;
+  const feedback = steamImport?.feedback?.id === id ? steamImport.feedback : undefined;
   const demos =
     state?.added && !match.demos.some((demo) => demo.id === state.added!.id)
       ? [state.added, ...match.demos]
@@ -165,9 +173,21 @@ function MatchRow({
             }
           />
         ))}
+        {replay && steamImport && needsDemo && (
+          <button
+            className="button primary"
+            disabled={steamImport.busy}
+            onClick={() => void steamImport.start(replay)}
+          >
+            {t('Import')}
+          </button>
+        )}
         {source === 'steam' && match.share_code && (
           <a
             className="button"
+            onClick={(event) => {
+              if (event.isTrusted) steamImport?.download(id);
+            }}
             href={
               'steam://rungame/730/76561202255233023/+csgo_download_match%20' + match.share_code
             }
@@ -182,8 +202,12 @@ function MatchRow({
           </button>
         )}
         {needsDemo && (source === 'faceit' || match.share_code) && (
-          <Link className="button" to={'/library?' + upload} state={location.state}>
-            {t(source === 'steam' ? 'Upload this demo' : 'Upload demo')}
+          <Link
+            className={source === 'steam' && !replay ? 'button primary' : 'button'}
+            to={'/library?' + upload}
+            state={location.state}
+          >
+            {t(source === 'steam' ? (replay ? 'Upload this demo' : 'Import') : 'Upload demo')}
           </Link>
         )}
         {source === 'faceit' && (
@@ -197,6 +221,21 @@ function MatchRow({
           </a>
         )}
       </div>
+      {feedback && (
+        <div className="provider-match-feedback steam-import-feedback">
+          <span
+            className={feedback.phase === 'error' ? 'error' : undefined}
+            role={feedback.phase === 'error' ? 'alert' : 'status'}
+          >
+            {feedback.message}
+          </span>
+          {feedback.phase !== 'error' && (
+            <button className="button" onClick={steamImport?.cancel}>
+              {t('Cancel')}
+            </button>
+          )}
+        </div>
+      )}
       {(state?.busy || unavailable) && (
         <p className="provider-match-feedback" role="status">
           {t(
@@ -281,6 +320,7 @@ export default function ProviderMatches({
   );
   const scope = useRef('');
   const scopeKey = endpoint + ':' + location.key;
+  const steamImport = useSteamReplayImport(activity, scopeKey);
   scope.current = scopeKey;
   useEffect(() => {
     scope.current = scopeKey;
@@ -303,12 +343,12 @@ export default function ProviderMatches({
         .then((result) => {
           if (!controller.signal.aborted) {
             // A completed import lookup is authoritative again after revisiting the list.
-            if (source === 'faceit')
-              for (const match of result.items) {
-                const row = activity.get(match.match_id);
-                if (row?.added && match.demos.some((demo) => demo.id === row.added!.id))
-                  activity.set(match.match_id, { ...row, added: undefined });
-              }
+            for (const match of result.items) {
+              const key = source === 'faceit' ? match.match_id : 'steam:' + match.match_id;
+              const row = activity.get(key);
+              if (row?.added && match.demos.some((demo) => demo.id === row.added!.id))
+                activity.set(key, { ...row, added: undefined });
+            }
             setLoaded({ path: endpoint, page: result });
           }
         })
@@ -492,7 +532,19 @@ export default function ProviderMatches({
       </div>
       {source === 'steam' && (
         <div className="provider-match-hint">
-          <p>{t('CS2 saves the downloaded demo under game/csgo/replays.')}</p>
+          <p>
+            {folderPicker()
+              ? t('To import a match, choose the game/csgo/replays folder on your CS2 computer.')
+              : t('CS2 saves the downloaded demo under game/csgo/replays.')}
+          </p>
+          {steamImport.folderName && (
+            <div className="steam-import-feedback">
+              <span>{t('Replay folder: {{name}}', { name: steamImport.folderName })}</span>
+              <button className="button" onClick={steamImport.forget}>
+                {t('Forget folder')}
+              </button>
+            </div>
+          )}
           {sync.message && (
             <p className={sync.error ? 'error' : undefined} role={sync.error ? 'alert' : 'status'}>
               {t(sync.message)}
@@ -599,6 +651,7 @@ export default function ProviderMatches({
                 match={match}
                 activity={activity}
                 canDownload={canDownload}
+                steamImport={source === 'steam' ? steamImport : undefined}
                 returnTo={returnTo}
                 inspect={(id) => void inspect(id)}
                 download={(id, resource) => void download(id, resource)}

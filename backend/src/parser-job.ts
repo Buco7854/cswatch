@@ -64,7 +64,7 @@ export function inspectParserScratch(folder: string, c: Config) {
         if (chunks && /^(?:0|[1-9]\d{0,2})\.json\.gz$/.test(entry.name)) {
           limit = replayLimits.chunkBytes;
           stored += info.size;
-        } else if (!chunks && /^input\.(?:dem|zst|gz)$/.test(entry.name))
+        } else if (!chunks && /^input\.(?:dem|zst|gz|bz2)$/.test(entry.name))
           limit = c.maxUploadMb * 1024 ** 2;
         else if (!chunks && entry.name === 'expanded.dem') limit = c.maxExpandedMb * 1024 ** 2;
         else if (!chunks && entry.name === performanceFile) {

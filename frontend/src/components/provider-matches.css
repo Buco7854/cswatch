@@ -306,3 +306,11 @@
   object-fit: contain;
   padding: 2px;
 }
+
+.steam-import-feedback {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  overflow-wrap: anywhere;
+}

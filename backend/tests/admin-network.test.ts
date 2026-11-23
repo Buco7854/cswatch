@@ -26,6 +26,23 @@ test('restricted administration identifies direct clients and resolves trusted e
   assert.equal(allowed('192.0.2.128'), false);
   assert.equal(allowed('2001:db8:1::2'), true);
   assert.equal(allowed('10.0.0.2', { 'x-forwarded-for': '192.0.2.3, 10.0.0.1' }), true);
+  assert.equal(allowed('10.0.0.2', { 'x-real-ip': '192.0.2.3' }), true);
+  assert.equal(allowed('::ffff:10.0.0.2', { 'x-real-ip': '::ffff:192.0.2.3' }), true);
+  assert.equal(allowed('10.0.0.2', { 'x-real-ip': '2001:db8:1::3' }), true);
+  assert.equal(allowed('10.0.0.2', { 'x-real-ip': '10.0.0.1' }), false);
+  assert.equal(allowed('10.0.0.2', { 'x-real-ip': '192.0.2.3, 10.0.0.1' }), false);
+  assert.equal(allowed('10.0.0.2', { 'x-real-ip': 'not-an-address' }), false);
+  assert.equal(allowed('192.0.2.3', { 'x-real-ip': '192.0.2.4' }), false);
+  assert.equal(allowed('10.0.0.2', { 'x-real-ip': '192.0.2.3', 'x-forwarded-for': '' }), false);
+  assert.equal(
+    allowed('10.0.0.2', { 'x-real-ip': '192.0.2.3' }, [
+      'X-Real-IP',
+      '192.0.2.3',
+      'x-real-ip',
+      '192.0.2.3',
+    ]),
+    false,
+  );
   const clientHeader = { 'x-forwarded-for': '192.0.2.3' };
   assert.equal(allowed('10.0.0.2', { ...clientHeader, 'x-real-ip': '192.0.2.3' }), true);
   assert.equal(allowed('10.0.0.2', { ...clientHeader, 'x-real-ip': '192.0.2.4' }), false);

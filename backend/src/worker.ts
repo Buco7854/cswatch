@@ -48,7 +48,7 @@ export async function processOne(db: Store, c: Config) {
   let stage = 'input';
   try {
     job = createDemoScratch(db, row.id, 'jobs', stillOwned);
-    const inputs = ['input.dem', 'input.zst', 'input.gz'].filter((name) => {
+    const inputs = ['input.dem', 'input.zst', 'input.gz', 'input.bz2'].filter((name) => {
       try {
         return lstatSync(join(folder, name)).isFile();
       } catch {

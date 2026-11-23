@@ -100,6 +100,59 @@ function matchSummary(entry: HistoryEntry, subject: string) {
         : null,
   };
 }
+// The history endpoint often omits the map. Player match stats can supply it
+// for a whole time window with one request, including before a replay exists.
+const playerMapStat = z.object({
+  stats: z.object({
+    'Match Id': faceitId,
+    Map: z.string().trim().min(1).max(128),
+  }),
+});
+const playerMapStats = z.object({ items: z.array(z.unknown()).max(historyBatch) });
+function retryAt(response: Response) {
+  const header = response.headers.get('retry-after') ?? '';
+  const delay = /^\d+$/.test(header) ? Number(header) * 1000 : Date.parse(header) - Date.now();
+  return Date.now() + Math.min(3600_000, Math.max(1000, Number.isFinite(delay) ? delay : 60_000));
+}
+
+async function fillHistoryMaps(
+  c: Config,
+  subject: string,
+  entries: HistoryEntry[],
+  signal: AbortSignal,
+  onResponse: (response: Response) => void,
+) {
+  const times = entries.flatMap((entry) => {
+    const time = historyTime(entry);
+    return !entry.map && time !== null ? [time] : [];
+  });
+  if (!times.length) return;
+  const raw = await faceit(
+    c,
+    `players/${subject}/games/cs2/stats`,
+    'FACEIT could not find the linked player.',
+    {
+      from: String(Math.min(...times) * 1000),
+      to: String(Math.max(...times) * 1000 + 999),
+      limit: String(historyBatch),
+    },
+    onResponse,
+    AbortSignal.any([signal, AbortSignal.timeout(3000)]),
+  );
+  const parsed = playerMapStats.safeParse(raw);
+  if (!parsed.success) return;
+  const maps = new Map<string, string | null>();
+  for (const item of parsed.data.items) {
+    const row = playerMapStat.safeParse(item);
+    if (!row.success) continue;
+    const { 'Match Id': id, Map: map } = row.data.stats;
+    maps.set(id, maps.has(id) && maps.get(id) !== map ? null : map);
+  }
+  for (const entry of entries) {
+    if (!entry.map) entry.map = maps.get(entry.match_id);
+  }
+}
+
 const faceitMatch = z.object({
   match_id: faceitId,
   game: z.string(),
@@ -142,12 +195,13 @@ async function faceit(
   missing: string,
   params: Record<string, string> = {},
   onResponse?: (response: Response) => void,
+  signal = AbortSignal.timeout(20000),
 ) {
   return requestJson(
     'https://open.faceit.com/data/v4/' + path + '?' + new URLSearchParams(params),
     {
       headers: { Authorization: 'Bearer ' + c.faceitApiKey },
-      signal: AbortSignal.timeout(20000),
+      signal,
     },
     'FACEIT returned an invalid response. Try again later.',
     async (response) => {
@@ -190,6 +244,7 @@ export async function providerRoutes(
   >();
   const activeOperations = new Map<string, Set<AbortController>>();
   let historyRetryAt = 0;
+  let mapStatsRetryAt = 0;
   function existingCache(user: SessionUser, subject: string) {
     const member = historyCache.get(user.id);
     return member?.binding === user.csrf + ':' + subject ? member : undefined;
@@ -370,14 +425,7 @@ export async function providerRoutes(
           to: String(to),
         },
         (response) => {
-          if (response.status !== 429) return;
-          const header = response.headers.get('retry-after') ?? '';
-          const delay = /^\d+$/.test(header)
-            ? Number(header) * 1000
-            : Date.parse(header) - Date.now();
-          historyRetryAt =
-            Date.now() +
-            Math.min(3600_000, Math.max(1000, Number.isFinite(delay) ? delay : 60_000));
+          if (response.status === 429) historyRetryAt = retryAt(response);
         },
       ).catch((error: unknown) => {
         revalidateFaceit(r, user, subject);
@@ -399,6 +447,17 @@ export async function providerRoutes(
         previousTime = time;
       }
 
+      // Optional enrichment must not hide the member's history on a provider outage.
+      if (mapStatsRetryAt <= Date.now()) {
+        await fillHistoryMaps(c, subject, entries, operation.signal, (response) => {
+          if (response.status === 429) mapStatsRetryAt = retryAt(response);
+        }).catch((error: unknown) => {
+          if (!(error instanceof HttpError)) throw error;
+        });
+        revalidateFaceit(r, user, subject);
+        if (operation.signal.aborted)
+          throw new HttpError(409, 'The FACEIT connection changed. Try again.');
+      }
       const items = entries.map((entry) => ({
         ...matchSummary(entry, subject),
         cursorTime: historyTime(entry),

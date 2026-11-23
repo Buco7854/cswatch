@@ -82,7 +82,9 @@ export function adminClientAddress(request: FastifyRequest, config: Config) {
       name,
     );
   if (!contains(proxies, peer)) return Object.keys(headers).some(forwardedName) ? null : peer;
-  const forwarded = headers['x-forwarded-for'];
+  const real = headers['x-real-ip'];
+  // A trusted single-hop proxy can overwrite X-Real-IP instead of sending a chain.
+  const forwarded = headers['x-forwarded-for'] ?? real;
   const forwardingHeaders = new Set<string>();
   const rawHeaders = request.raw.rawHeaders;
   for (let i = 0; i < rawHeaders.length; i += 2) {
@@ -105,14 +107,18 @@ export function adminClientAddress(request: FastifyRequest, config: Config) {
   for (let i = chain.length - 1; i >= 0 && contains(proxies, peer); i--) peer = chain[i]!;
   // Every hop is trusted infrastructure: there is no distinct client address.
   if (contains(proxies, peer)) return null;
-  const real = headers['x-real-ip'];
   if (real !== undefined && (typeof real !== 'string' || canonicalAddress(real)?.ip !== peer.ip))
     return null;
   return peer;
 }
 
-export function adminNetworkAllowed(request: FastifyRequest, config: Config) {
-  if (!config.adminAllowedIps.length) return true;
+export function adminNetworkDenial(request: FastifyRequest, config: Config) {
+  if (!config.adminAllowedIps.length) return null;
   const client = adminClientAddress(request, config);
-  return client !== null && contains(networkPolicy(config).allowed, client);
+  if (!client) return 'unknown_client';
+  return contains(networkPolicy(config).allowed, client) ? null : 'outside_network';
+}
+
+export function adminNetworkAllowed(request: FastifyRequest, config: Config) {
+  return adminNetworkDenial(request, config) === null;
 }
