@@ -13,7 +13,7 @@ type ScopedGLTFJob = (
   callbacks: ModelLoadCallbacks<GLTF>,
   maxBytes?: number,
   embeddedOnly?: boolean,
-  configure?: (parser: GLTFLoader) => void,
+  configure?: (parser: GLTFLoader, ownBitmap: (image: ImageBitmap) => void) => void,
   maxTextureEdge?: number,
 ) => () => void;
 
@@ -170,7 +170,13 @@ export const loadScopedGLTF: ScopedGLTFJob = (
   parser.setMeshoptDecoder(
     typeof MeshoptDecoder === 'function' ? MeshoptDecoder() : MeshoptDecoder,
   );
-  configure?.(parser);
+  configure?.(parser, (bitmap) => {
+    if (finished || (cancelled && !parsing)) {
+      bitmap.close();
+      throw aborted();
+    }
+    bitmaps.add(bitmap);
+  });
   file.setResponseType('arraybuffer');
   file.load(
     url,

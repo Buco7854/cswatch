@@ -1016,6 +1016,14 @@ test('embedded WebP map textures render under production CSP and missing require
   page,
 }, info) => {
   test.skip(Boolean(process.env.E2E_PRIVATE));
+  await page.addInitScript(() => {
+    const fetch = window.fetch.bind(window);
+    window.fetch = (resource, options) => {
+      const url = resource instanceof Request ? resource.url : String(resource);
+      if (url.startsWith('blob:')) throw new Error('Embedded map images should decode directly');
+      return fetch(resource, options);
+    };
+  });
   let broken = true;
   const cspErrors: string[] = [];
   page.on('console', (message) => {
