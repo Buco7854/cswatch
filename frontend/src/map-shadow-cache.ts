@@ -96,7 +96,7 @@ export class MapShadowCache {
       }
       if (!object.visible) continue;
       const signature: Signature = [object.layers.mask];
-      if (object instanceof StaticMapGroup) {
+      if (object instanceof StaticMapGroup && !object.canTrackRigCasters) {
         if (!object.immutableDescendants) {
           // Animated/unsupported map branches keep the original shadow pass;
           // do not turn a large mutable asset into a per-mesh snapshot cache.
