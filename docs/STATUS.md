@@ -1,5 +1,7 @@
 # Feature status
 
+During 3D playback, detailed map batches skip triangle blocks outside the camera view. The graded renderer reuses the same multisampled color buffer for sky, map and first-person equipment. Smoke reuses its depth buffer as its screen coverage changes. Timeline markers update when the recorded events or layout change. [Viewer measurements](VERIFICATION.md)
+
 The viewer decodes supported embedded map images directly and skips disjoint triangle groups during camera and terrain queries. [Matched Mirage measurements](VERIFICATION.md#viewer-opening-and-playback-2026-11-23)
 
 Library and administration use the same dropdown and pagination controls. Members can pair a manual upload with a listed match, including when an automatic provider download is offered.

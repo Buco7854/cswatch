@@ -1,5 +1,7 @@
 # Current handoff
 
+Viewer playback work covers first person, third-person follow and free camera. Static map draws can trim the ends of a batch using bounds for groups of 64 triangles. Keep the draw range local to each draw so shadow and depth passes retain their own camera visibility. Grading shares its MSAA attachments until the final color resolve on supported WebGL contexts. Rigged map props retain live shadow updates. The same map packs work with this renderer. Compare the same recorded ticks and distinguish the first traversal from repeat playback when measuring stutter. [Benchmarks and test conditions](VERIFICATION.md)
+
 Viewer startup now uses precompressed application bundles and direct bitmap decoding for embedded map textures. Camera and terrain queries share bounded triangle-block indices on static geometry. [Local performance evidence](VERIFICATION.md#viewer-opening-and-playback-2026-11-23)
 
 The web port defaults to `0.0.0.0:8000` for reverse proxies on another host. The Compose deployment requires `APP_URL` and forwards optional settings by service. Parser and transcription workers receive processing settings. Supply bootstrap, SMTP and provider credentials to the web service. [Docker deployment](../README.md#docker-deployment)
