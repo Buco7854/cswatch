@@ -13,7 +13,13 @@ import { useApp } from '../context';
 import { t } from '../i18n';
 import type { AuthStatus } from '../types';
 import { useAction } from '../useAction';
-import { ActionError, CopyValue, PasswordField } from './AuthControls';
+import {
+  ActionError,
+  CopyValue,
+  DisplayNameField,
+  EmailField,
+  PasswordField,
+} from './AuthControls';
 import AuthFrame, { type AuthAppearance } from './AuthFrame';
 import ProofForm from './ProofForm';
 import { ProviderBrandNotice, ProviderLogo } from './ProviderBrand';
@@ -137,7 +143,7 @@ export default function AuthPage(appearance: AuthAppearance) {
             <p>
               {t(
                 signInName
-                  ? 'Use this username the next time you sign in with your password.'
+                  ? 'You can sign in with this username or your email address.'
                   : challenge
                     ? 'Choose a second factor to finish signing in.'
                     : !config.public_access
@@ -262,24 +268,23 @@ export default function AuthPage(appearance: AuthAppearance) {
               aria-busy={task.busy}
               className="auth-credentials"
             >
-              <label className="security-field">
-                {t(register ? 'Display name' : 'Username')}
-                <input
-                  name="username"
-                  autoComplete={register ? 'nickname' : 'username'}
-                  autoCapitalize="none"
-                  spellCheck={false}
-                  required
-                  minLength={register ? 3 : 1}
-                  maxLength={register ? 32 : 64}
-                  pattern={register ? '[A-Za-z0-9_\\-]+' : undefined}
-                  aria-describedby={register ? 'register-name-help' : undefined}
-                />
-              </label>
-              {register && (
-                <small id="register-name-help">
-                  {t('3–32 letters, digits, underscores, or hyphens.')}
-                </small>
+              {register ? (
+                <>
+                  <DisplayNameField />
+                  <EmailField />
+                </>
+              ) : (
+                <label className="security-field">
+                  {t('Username or email')}
+                  <input
+                    name="username"
+                    autoComplete="username"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    required
+                    maxLength={254}
+                  />
+                </label>
               )}
               <PasswordField
                 label={t('Password')}

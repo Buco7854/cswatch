@@ -1,5 +1,7 @@
 # Active work
 
+Schema 9 adds optional account email verification and recovery. It requires a fresh data directory. New signups verify before using the workspace when delivery is enabled. Steam onboarding collects an address locally. [Operator guide](../ACCESS-SETUP.md#email-delivery-verification-and-password-reset)
+
 Schema 8 adds account roles, WebAuthn passkeys, authenticator codes, session management and administrator recovery and network policy. Use a fresh data directory. Verification distinguishes source coverage, local test results and operator hardware or proxy checks. [Account security](../ACCOUNT-SECURITY.md)
 
 The private library now contains eligible Steam and FACEIT match tabs. Connected accounts handles credentials and identity management. Live provider verification remains the next provider checkpoint, including FACEIT history and signed Downloads access, Steam sync and the desktop CS2 download handoff. [Provider setup](../ACCESS-SETUP.md#steam-and-faceit)

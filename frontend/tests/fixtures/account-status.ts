@@ -1,8 +1,21 @@
+import { randomUUID } from 'node:crypto';
 import type { Page } from '@playwright/test';
+
+export function syntheticEmail() {
+  return `${randomUUID()}@example.test`;
+}
 
 /** Project mock accounts through the same browser-visible fields as /api/auth/me. */
 export function accountStatus<T extends { username?: string; csrf?: string }>(account: T | null) {
-  const user = account && { has_password: true, display_name: account.username, ...account };
+  const user = account && {
+    has_password: true,
+    display_name: account.username,
+    email: null,
+    email_verified_at: null,
+    profile_required: false,
+    email_verification_required: false,
+    ...account,
+  };
   return {
     user,
     session: {

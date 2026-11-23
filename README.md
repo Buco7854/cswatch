@@ -47,6 +47,7 @@ These variables accept `true`, `false`, or an empty/unset value:
 | `REGISTRATIONS_ENABLED`      | `true`             | Local registrations and creation of new accounts through Steam. Existing users can still sign in.                         |
 | `STEAM_ENABLED`              | `false`            | Steam OpenID sign-in and account linking.                                                                                 |
 | `FACEIT_ENABLED`             | `false`            | Steam-verified FACEIT profile linking, match history, and approved imports.                                               |
+| `EMAIL_DELIVERY_ENABLED`     | `false`            | Verify new signups and let verified accounts request password resets by email. Requires a configured SMTP relay.          |
 | `TRANSCRIPTION_ENABLED`      | `false`            | Optional offline CPU speech transcription with a prepared local model and the transcription worker.                       |
 | `AUTO_OFFICIAL_MAPS_ENABLED` | `false`            | Prefer approved map sources, otherwise prepare a disclosed latest official snapshot. Requires the separate asset service. |
 
@@ -62,7 +63,7 @@ For FACEIT, enable `FACEIT_ENABLED` and configure a server-side `FACEIT_API_KEY`
 
 Obtain Premier, Competitive and Wingman replays in CS2, or download other replays from their FACEIT or HLTV match pages. Extract `.bz2`, `.gz` or archives on your device when necessary, then use Add a demo to upload `.dem` or `.dem.zst`. Use Connected accounts for Steam match history and configured FACEIT imports. Steam OpenID alone does not download demos. There is no HLTV scraper, match catalog or proxy wrapper.
 
-Accounts use usernames, not email addresses. There is no email verification or email password reset flow. An operator can issue a one-time password recovery code from an interactive terminal.
+Password accounts accept a unique email address or the assigned username at sign-in. With SMTP enabled, new registrations verify their email and verified accounts can request a password reset. An operator can also issue a one-time recovery code from an interactive terminal. [Email setup and recovery](docs/ACCESS-SETUP.md#email-delivery-verification-and-password-reset)
 
 ```sh
 docker compose exec web node dist/cli.js list-admins
@@ -169,6 +170,7 @@ node scripts/runtime-smoke.mjs    # upload → required sandbox → private chun
 npm run test:e2e                  # public journeys; uses an isolated test server
 E2E_PRIVATE=1 E2E_REGISTRATIONS=false npm run test:e2e
 E2E_PRIVATE=1 E2E_REGISTRATIONS=true npm run test:e2e
+npm run test:e2e:email            # production signup and recovery against a disposable loopback TLS relay
 npm run test:visual               # optional rendered EN/FR × light/dark viewport matrix
 npm run format:check
 ```

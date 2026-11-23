@@ -21,6 +21,33 @@ export function ActionError({ error, id }: { error: string; id?: string }) {
   ) : null;
 }
 
+export function EmailField(props: Omit<ComponentProps<'input'>, 'type'>) {
+  return (
+    <label className="security-field">
+      {t('Email address')}
+      <input
+        name="email"
+        type="email"
+        autoComplete="email"
+        autoCapitalize="none"
+        spellCheck={false}
+        maxLength={254}
+        required
+        {...props}
+      />
+    </label>
+  );
+}
+
+export function DisplayNameField(props: ComponentProps<'input'>) {
+  return (
+    <label className="security-field">
+      {t('Display name')}
+      <input name="display_name" autoComplete="nickname" maxLength={64} required {...props} />
+    </label>
+  );
+}
+
 export function PasswordField({
   label,
   ...props

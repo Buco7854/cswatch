@@ -29,6 +29,7 @@ import {
 import { abandonUpload, reserve } from '../src/ingestion.js';
 import { mapPackId } from '../src/map-catalog.js';
 import { prepareMapJobs, readMapRequest, writeMapWorkerStatus } from '../src/map-jobs.js';
+import { issuePasswordReset } from '../src/recovery.js';
 import { COOKIE, digest, token } from '../src/security.js';
 import { browserBootstrap } from './fixtures/browser-bootstrap.js';
 import { withRouteInventory } from './fixtures/route-inventory.js';
@@ -109,7 +110,7 @@ async function fixture(
   });
   const inject = (options: InjectOptions = {}) =>
     app.inject({ ...options, headers: { host, origin, ...options.headers } });
-  const action = (id: string, payload: Record<string, string>, headers = admin) =>
+  const action = (id: string, payload: Record<string, string | null>, headers = admin) =>
     inject({ method: 'POST', url: `/api/admin/users/${id}/actions`, payload, headers });
   return { app, routes, db, config, root, owner, admin, user, passkey, session, inject, action };
 }
@@ -327,6 +328,81 @@ test('admin account pages paginate, exclude guests and withhold demo contents an
   assert.equal((await f.inject({ url: `/api/demos/${demoId}`, headers: f.admin })).statusCode, 404);
 });
 
+test('admin email changes require fresh proof, preserve handles and retire recovery', async (t) => {
+  const f = await fixture(t, { MFA_REQUIRED_ROLES: 'none' });
+  const member = f.user('email_member');
+  const other = f.user('other_member');
+  const memberSession = f.session(member);
+  f.db.run(
+    'UPDATE users SET email=?,email_verified_at=? WHERE id=?',
+    'prior@example.test',
+    now(),
+    member,
+  );
+  f.db.run('UPDATE users SET email=? WHERE id=?', 'reserved@example.test', other);
+  issuePasswordReset(f.db, member);
+  const change = (email: string, headers = f.admin) =>
+    f.action(
+      member,
+      { action: 'change-email', expected_email: ' PRIOR@example.test ', email },
+      headers,
+    );
+  assert.equal(
+    (await f.action(member, { action: 'change-email', email: 'new@example.test' })).statusCode,
+    400,
+  );
+  assert.equal(
+    (await f.action(member, { action: 'sign-out', expected_email: null })).statusCode,
+    400,
+  );
+  assert.equal((await change('denied@example.test', memberSession)).statusCode, 403);
+  assert.equal(
+    (await change('denied@example.test', f.session(f.owner, 'full', true))).statusCode,
+    403,
+  );
+  const conflict = await change('RESERVED@example.test');
+  assert.equal(conflict.statusCode, 409);
+  assert.equal(conflict.json().code, 'email_unavailable');
+  assert.ok(f.db.one('SELECT 1 FROM password_resets WHERE user_id=?', member));
+
+  const changed = await change('Changed@Example.Test');
+  assert.equal(changed.statusCode, 200, changed.body);
+  assert.equal(changed.json().recovery_code, undefined);
+  assert.equal(f.db.one('SELECT 1 FROM password_resets WHERE user_id=?', member), undefined);
+  assert.equal(f.db.one('SELECT 1 FROM sessions WHERE user_id=?', member), undefined);
+  const renewed = f.session(member);
+  const stale = await change('stale@example.test');
+  assert.equal(stale.statusCode, 409);
+  assert.equal(stale.json().code, 'email_changed');
+  assert.ok(
+    f.db.one('SELECT 1 FROM sessions WHERE user_id=? AND csrf=?', member, renewed['x-csrf-token']),
+  );
+  const detail = await f.inject({ url: `/api/admin/users/${member}`, headers: f.admin });
+  assert.equal(detail.statusCode, 200, detail.body);
+  assert.equal(detail.json().user.email, 'changed@example.test');
+  assert.equal(detail.json().user.email_verified_at, null);
+  assert.equal(detail.json().user.username, 'email_member');
+  const list = await f.inject({ url: '/api/admin/users', headers: f.admin });
+  assert.equal(list.json().users.find(({ id }: { id: string }) => id === member).email, undefined);
+  assert.equal(
+    f.db.one(
+      "SELECT target FROM audit WHERE action='admin.user.change-email' AND outcome='success'",
+    )?.target,
+    member,
+  );
+  const withoutAddress = f.user('no_address');
+  const added = await f.action(withoutAddress, {
+    action: 'change-email',
+    expected_email: null,
+    email: 'first@example.test',
+  });
+  assert.equal(added.statusCode, 200, added.body);
+  assert.equal(
+    f.db.one('SELECT email FROM users WHERE id=?', withoutAddress)?.email,
+    'first@example.test',
+  );
+});
+
 test('admin changes revoke pending grants and self-demotion requires another signable administrator', async (t) => {
   const f = await fixture(t, { MFA_REQUIRED_ROLES: 'none' });
   const second = f.user('second_operator', 'admin');
@@ -358,6 +434,49 @@ test('admin changes revoke pending grants and self-demotion requires another sig
   });
   assert.equal(resumed.json().session.csrf, permitted.json().session.csrf);
   assert.equal(f.db.one("SELECT id FROM users WHERE role='admin'")!.id, demoted);
+});
+
+test('administrators still completing signup cannot be the last usable operator', async (t) => {
+  const f = await fixture(t, {
+    MFA_REQUIRED_ROLES: 'none',
+    EMAIL_DELIVERY_ENABLED: 'true',
+    SMTP_HOST: '127.0.0.1',
+    SMTP_FROM: 'sending@example.test',
+    SMTP_USERNAME: 'fixture-mailer',
+    SMTP_PASSWORD: 'synthetic-password',
+  });
+  const incompleteProfile = f.user('incomplete_profile', 'admin');
+  const unverifiedAddress = f.user('unverified_address', 'admin');
+  f.db.run('UPDATE users SET profile_required=1 WHERE id=?', incompleteProfile);
+  f.db.run(
+    'UPDATE users SET email=?,email_verification_required=1 WHERE id=?',
+    'pending@example.test',
+    unverifiedAddress,
+  );
+  for (const id of [incompleteProfile, unverifiedAddress]) {
+    const gated = await f.inject({ url: '/api/admin', headers: f.session(id) });
+    assert.equal(gated.statusCode, 403, gated.body);
+    assert.equal(gated.json().code, 'account_onboarding_required');
+  }
+  const demote = () => f.action(f.owner, { action: 'change-role', role: 'member' });
+  assert.equal((await demote()).statusCode, 409);
+  assert.equal(f.db.one('SELECT role FROM users WHERE id=?', f.owner)?.role, 'admin');
+
+  // Simulate an instance whose only remaining admins still need to finish signup.
+  f.db.run("UPDATE users SET role='member' WHERE id=?", f.owner);
+  const startupStore = new Store(f.root);
+  try {
+    await assert.rejects(() => createApp(f.config, startupStore), /No administrator can sign in/);
+  } finally {
+    startupStore.close();
+    f.db.run("UPDATE users SET role='admin' WHERE id=?", f.owner);
+  }
+  f.db.run(
+    'UPDATE users SET email_verified_at=?,email_verification_required=0 WHERE id=?',
+    now(),
+    unverifiedAddress,
+  );
+  assert.equal((await demote()).statusCode, 200);
 });
 
 test('recovery removes the old password immediately and renewed grants omit raw codes and provider secrets', async (t) => {

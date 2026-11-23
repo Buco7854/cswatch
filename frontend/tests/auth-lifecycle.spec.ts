@@ -1,5 +1,9 @@
 import { chooseSelectOption } from './fixtures/select-control';
-import { accountStatus, configForSyntheticAccount } from './fixtures/account-status';
+import {
+  accountStatus,
+  configForSyntheticAccount,
+  syntheticEmail,
+} from './fixtures/account-status';
 import { test, expect, type Page, type Route } from '@playwright/test';
 import {
   installMemberWorkspace,
@@ -64,7 +68,7 @@ test('leaving sign-in still refreshes its session without replacing a newer sign
     const form = page.getByRole('form', { name: 'Sign in', exact: true });
     await expect(page.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible();
     await expect(page.getByText('Sign in to your review room.', { exact: true })).toBeVisible();
-    await form.getByLabel('Username', { exact: true }).fill('fixture');
+    await form.getByLabel('Username or email', { exact: true }).fill('fixture');
     await form.getByLabel('Password', { exact: true }).fill('Disposable-password-2026');
     await form.getByRole('button', { name: 'Sign in', exact: true }).click();
     await expect.poll(() => attempts).toBe(1);
@@ -74,7 +78,7 @@ test('leaving sign-in still refreshes its session without replacing a newer sign
     await expect(form).toHaveCount(0);
     await changeRoute(page, '/account');
     await expect(page).toHaveURL(/\/login\?returnTo=%2Faccount$/);
-    await form.getByLabel('Username', { exact: true }).fill('new_attempt');
+    await form.getByLabel('Username or email', { exact: true }).fill('new_attempt');
 
     const refreshed = page.waitForResponse(
       async (response) =>
@@ -121,14 +125,14 @@ test('an obsolete login cannot overwrite an active attempt after route navigatio
     await page.goto('/');
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
     const form = page.getByRole('form', { name: 'Sign in', exact: true });
-    await form.getByLabel('Username', { exact: true }).fill('fixture');
+    await form.getByLabel('Username or email', { exact: true }).fill('fixture');
     await form.getByLabel('Password', { exact: true }).fill('Disposable-password-2026');
     await form.getByRole('button', { name: 'Sign in', exact: true }).click();
     await expect.poll(() => attempts).toBe(1);
 
     await changeRoute(page, '/account');
     await expect(page).toHaveURL(/\/login\?returnTo=%2Faccount$/);
-    await form.getByLabel('Username', { exact: true }).fill('new_attempt');
+    await form.getByLabel('Username or email', { exact: true }).fill('new_attempt');
     await expect(form.getByLabel('Password', { exact: true })).toHaveValue('');
     await form.getByLabel('Password', { exact: true }).fill('Disposable-new-password-2026');
     await form.getByRole('button', { name: 'Sign in', exact: true }).click();
@@ -144,7 +148,7 @@ test('an obsolete login cannot overwrite an active attempt after route navigatio
     await expect(page).toHaveURL(/\/login\?returnTo=%2Faccount$/);
     await expect(form).toBeVisible();
     await expect(form.getByRole('button', { name: 'One moment…', exact: true })).toBeDisabled();
-    await expect(form.getByLabel('Username', { exact: true })).toHaveValue('new_attempt');
+    await expect(form.getByLabel('Username or email', { exact: true })).toHaveValue('new_attempt');
 
     second.resolve();
     await expect(page.getByRole('alert')).toHaveText('Invalid username or password.');
@@ -194,7 +198,7 @@ test('an older session response cannot replace the latest authenticated identity
   try {
     await page.goto('/account');
     const form = page.getByRole('form', { name: 'Sign in', exact: true });
-    await form.getByLabel('Username', { exact: true }).fill(firstUser.username);
+    await form.getByLabel('Username or email', { exact: true }).fill(firstUser.username);
     await form.getByLabel('Password', { exact: true }).fill('Disposable-first-password-2026');
     await form.getByRole('button', { name: 'Sign in', exact: true }).click();
     await oldRefreshStarted.promise;
@@ -202,7 +206,7 @@ test('an older session response cannot replace the latest authenticated identity
     await expect(form).toHaveCount(0);
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 
-    await form.getByLabel('Username', { exact: true }).fill(latestUser.username);
+    await form.getByLabel('Username or email', { exact: true }).fill(latestUser.username);
     await form.getByLabel('Password', { exact: true }).fill('Disposable-latest-password-2026');
     await form.getByRole('button', { name: 'Sign in', exact: true }).click();
     await expect(form).toHaveCount(0);
@@ -291,14 +295,14 @@ test('a late successful login cannot authorize another session while its identit
   try {
     await page.goto('/account');
     const form = page.getByRole('form', { name: 'Sign in', exact: true });
-    await form.getByLabel('Username', { exact: true }).fill(lateUser.username);
+    await form.getByLabel('Username or email', { exact: true }).fill(lateUser.username);
     await form.getByLabel('Password', { exact: true }).fill('Disposable-late-password-2026');
     await form.getByRole('button', { name: 'Sign in', exact: true }).click();
     await expect.poll(() => attempts).toBe(1);
     await page.getByRole('link', { name: 'Go back', exact: true }).click();
     await expect(form).toHaveCount(0);
     await changeRoute(page, '/account');
-    await form.getByLabel('Username', { exact: true }).fill(displayedUser.username);
+    await form.getByLabel('Username or email', { exact: true }).fill(displayedUser.username);
     await form.getByLabel('Password', { exact: true }).fill('Disposable-displayed-password-2026');
     await form.getByRole('button', { name: 'Sign in', exact: true }).click();
     await expect(page.getByLabel('Your sign-in username', { exact: true })).toHaveValue(
@@ -443,10 +447,10 @@ test('two tabs share sign-in changes and retire the previous registration receip
       process.env.E2E_REGISTRATIONS === 'false',
     'Uses a fresh Playwright instance with open registrations.',
   );
+  const displayName = 'tab_' + randomUUID().slice(0, 8);
   async function register(target: Page) {
-    await target
-      .getByLabel('Display name', { exact: true })
-      .fill('tab_' + randomUUID().slice(0, 8));
+    await target.getByLabel('Display name', { exact: true }).fill(displayName);
+    await target.getByLabel('Email address', { exact: true }).fill(syntheticEmail());
     await target.getByLabel('Password', { exact: true }).fill('Disposable-tab-password-2026');
     await target.getByRole('button', { name: 'Create account', exact: true }).click();
     await expect(
@@ -1947,6 +1951,35 @@ async function installAdminDetail(
   );
   return apiPath;
 }
+
+test('administrator email edits show verification status for the saved address only', async ({
+  page,
+}) => {
+  const target = {
+    ...memberUser,
+    id: 'admin-email-draft-fixture',
+    role: 'member',
+    username: 'reviewer_email_fixture',
+    email: syntheticEmail(),
+    email_verified_at: 1_795_000_000,
+  };
+  await installAdminDetail(page, target);
+  await page.goto('/admin?section=users&user=' + target.id);
+  const address = page.getByRole('textbox', { name: 'Email address', exact: true });
+  const edit = page.locator('form').filter({ has: address });
+  const verified = edit.getByText('Verified email address', { exact: true });
+  await expect(address).toHaveValue(target.email);
+  await expect(verified).toBeVisible();
+
+  await address.fill(syntheticEmail());
+  await expect(verified).toHaveCount(0);
+  const change = edit.getByRole('button', { name: 'Change email address', exact: true });
+  await expect(change).toBeEnabled();
+
+  await address.fill(target.email);
+  await expect(verified).toBeVisible();
+  await expect(change).toBeDisabled();
+});
 
 test('administrator Steam unlink names the account and explains the effects before consent', async ({
   page,

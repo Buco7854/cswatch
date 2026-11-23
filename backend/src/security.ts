@@ -1,11 +1,12 @@
 import { matchSources } from './match-library.js';
+import { allowedAccountOnboarding } from './auth-routes.js';
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { canonicalAddress } from './admin-network.js';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import * as argon2 from 'argon2';
 import type { Store } from './db.js';
 import { now } from './db.js';
-import type { Config } from './config.js';
+import { emailDeliveryEnabled, type Config } from './config.js';
 import { HttpError } from './errors.js';
 import type { Role } from './roles.js';
 
@@ -46,12 +47,18 @@ type SessionFields = {
   address: string | null;
   device: string;
 };
-type AccountFields = {
+type AccountOnboardingFields = {
+  email_verified_at: number | null;
+  profile_required: number;
+  email_verification_required: number;
+};
+type AccountFields = AccountOnboardingFields & {
   has_password: number;
   user_id: string;
   role: Role;
   username: string;
   display_name: string;
+  email: string | null;
 };
 export type Session =
   | (SessionFields & {
@@ -73,6 +80,7 @@ type SessionGrant = {
   proofFresh: boolean;
   identities: SessionIdentity[];
   matchSources: ReturnType<typeof matchSources> | null;
+  emailVerificationRequired: boolean;
 };
 type SessionIdentity = { provider: string; subject: string };
 type SessionFactors = { passkey: boolean; totp: boolean; recovery: boolean };
@@ -190,9 +198,13 @@ export function unlinkSteamIdentity(db: Store, id: string) {
 }
 
 export function signableAdminExists(db: Store, config: Config) {
-  return db
-    .all("SELECT id FROM users WHERE role='admin'")
-    .some(({ id }) => canSignIn(db, config, id));
+  const admins = db.all(
+    `SELECT id,profile_required,email_verification_required,email_verified_at FROM users
+     WHERE role='admin'`,
+  ) as (AccountOnboardingFields & { id: string })[];
+  return admins.some(
+    (admin) => !requiresAccountSetup(db, config, admin) && canSignIn(db, config, admin.id),
+  );
 }
 
 export function firstFactorStage(db: Store, config: Config, userId: string): AccountSessionStage {
@@ -202,7 +214,8 @@ export function firstFactorStage(db: Store, config: Config, userId: string): Acc
   return db.mfaRequiredRoles(config).includes(user.role) ? 'enroll' : 'full';
 }
 
-const sessionSelect = `SELECT s.*,b.browser_hash,u.role,u.username,(u.password_hash IS NOT NULL) AS has_password,coalesce(u.display_name,u.username) AS display_name
+const sessionSelect = `SELECT s.*,b.browser_hash,u.role,u.username,(u.password_hash IS NOT NULL) AS has_password,coalesce(u.display_name,u.username) AS display_name,
+  u.email,u.email_verified_at,u.profile_required,u.email_verification_required
   FROM sessions s LEFT JOIN users u ON u.id=s.user_id
   LEFT JOIN session_browser_bindings b ON b.session_hash=s.token_hash
   WHERE s.token_hash=?
@@ -288,6 +301,8 @@ export function requireSession<Stage extends SessionStage>(
     !stages.includes(live.stage as Stage)
   )
     throw new HttpError(401, expiredMessage);
+  if (accountOnboardingRequired(db, config, live) && !allowedAccountOnboarding(request))
+    throw accountOnboardingError();
   return live as SessionOf<Stage>;
 }
 
@@ -347,7 +362,33 @@ export function currentUser(
   config: Config,
 ): SessionUser | null {
   const session = currentSession(db, request, config);
-  return session?.stage === 'full' ? sessionUser(session) : null;
+  return session?.stage === 'full' && !accountOnboardingRequired(db, config, session)
+    ? sessionUser(session)
+    : null;
+}
+function signupEmailVerificationRequired(
+  db: Store,
+  config: Config,
+  account: AccountOnboardingFields,
+) {
+  return (
+    Boolean(account.email_verification_required && account.email_verified_at === null) &&
+    emailDeliveryEnabled(db, config)
+  );
+}
+function requiresAccountSetup(db: Store, config: Config, account: AccountOnboardingFields) {
+  return Boolean(account.profile_required) || signupEmailVerificationRequired(db, config, account);
+}
+export function accountOnboardingRequired(db: Store, config: Config, session: Session | null) {
+  return session?.stage === 'full' && requiresAccountSetup(db, config, session);
+}
+export function accountOnboardingError() {
+  return new HttpError(
+    403,
+    'Complete your account setup to continue.',
+    undefined,
+    'account_onboarding_required',
+  );
 }
 export function sessionUser(session: SessionOf<'full'>): SessionUser {
   return {
@@ -403,7 +444,7 @@ export function admitRequest(db: Store, request: FastifyRequest, budgets: Budget
   db.transaction(() => chargeBudgets(db, request, budgets));
 }
 /** Caller holds the write transaction that also reserves this request's work. */
-export function chargeBudgets(db: Store, request: FastifyRequest, budgets: Budget[]) {
+export function chargeBudgets(db: Store, request: Pick<FastifyRequest, 'ip'>, budgets: Budget[]) {
   const time = now();
   db.run('DELETE FROM rate_limits WHERE expires_at<=?', time);
   for (const [scope, max, seconds, identity] of budgets) {
@@ -731,7 +772,12 @@ function sessionDetails(db: Store, config: Config, session: Session, raw?: strin
     proofFresh:
       (session.stage === 'full' || session.stage === 'enroll') && recentProof(db, config, session),
     factors: session.user_id ? sessionFactors(db, session.user_id) : null,
-    matchSources: session.stage === 'full' ? matchSources(db, config, session.user_id) : null,
+    emailVerificationRequired:
+      session.stage === 'full' && signupEmailVerificationRequired(db, config, session),
+    matchSources:
+      session.stage === 'full' && !accountOnboardingRequired(db, config, session)
+        ? matchSources(db, config, session.user_id)
+        : null,
     identities:
       session.stage === 'full'
         ? (db.all(
@@ -747,7 +793,15 @@ function sessionStatus(grant: SessionGrant, guest: FastifyRequest['guest'] = nul
   return {
     user:
       stage === 'full'
-        ? { ...sessionUser(session), identities, match_sources: grant.matchSources }
+        ? {
+            ...sessionUser(session),
+            identities,
+            match_sources: grant.matchSources,
+            email: session.email,
+            email_verified_at: session.email_verified_at,
+            profile_required: Boolean(session.profile_required),
+            email_verification_required: grant.emailVerificationRequired,
+          }
         : null,
     session: {
       stage,
@@ -767,8 +821,9 @@ function sessionStatus(grant: SessionGrant, guest: FastifyRequest['guest'] = nul
 }
 
 export function readSessionStatus(db: Store, config: Config, request: FastifyRequest) {
-  return request.authSession
-    ? sessionStatus(sessionDetails(db, config, request.authSession), request.guest)
+  const current = request.authSession && currentSession(db, request, config);
+  return current && current.token_hash === request.authSession?.token_hash
+    ? sessionStatus(sessionDetails(db, config, current), request.guest)
     : { user: null, session: null, guest_session: null };
 }
 

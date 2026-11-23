@@ -1,5 +1,5 @@
 import { BrowserStorageError, withBrowserSession } from './browser-bootstrap';
-import { t } from './i18n';
+import { locale, t } from './i18n';
 import type { AuthStatus } from './types';
 let sessionCsrf = '';
 let guestCsrf = '';
@@ -128,7 +128,9 @@ async function exchangeData<T>(
   if (boundRead || boundAdminWrite) headers.set('X-Session-Context', context);
   const body = options.body ?? (unsafe ? '{}' : undefined);
   if (body && !(body instanceof FormData)) headers.set('Content-Type', 'application/json');
-  const account = path.startsWith('/api/auth/') || path === '/api/setup';
+  const account =
+    path.startsWith('/api/auth/') || path.startsWith('/api/account/') || path === '/api/setup';
+  if (unsafe && (account || boundAdminWrite)) headers.set('Accept-Language', locale());
   if (unsafe && !headers.has('X-CSRF-Token')) {
     headers.set('X-CSRF-Token', account ? context : guestCsrf || context);
   }

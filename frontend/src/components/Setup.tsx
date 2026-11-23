@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import Brand from './Brand';
+import { EmailField } from './AuthControls';
 import LanguageControl from './LanguageControl';
 import { api } from '../api';
 import { t } from '../i18n';
@@ -34,6 +35,7 @@ export default function Setup({ onComplete }: { onComplete: () => Promise<unknow
             method: 'POST',
             body: JSON.stringify({
               username: form.get('username'),
+              email: form.get('email'),
               password: form.get('password'),
               setupToken: String(form.get('setupToken') || '').trim(),
             }),
@@ -107,6 +109,7 @@ export default function Setup({ onComplete }: { onComplete: () => Promise<unknow
                   maxLength={32}
                 />
               </label>
+              <EmailField />
               <label>
                 {t('Password')}
                 <input

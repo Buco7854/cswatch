@@ -249,3 +249,13 @@
 .auth-page .auth-sign-in-methods:empty {
   display: none;
 }
+
+.auth-page .email-reset-request {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.email-verification {
+  overflow-wrap: anywhere;
+}

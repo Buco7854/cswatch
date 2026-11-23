@@ -19,6 +19,7 @@ type StepUpAction =
   | 'passkeys'
   | 'authenticator'
   | 'password'
+  | 'email'
   | 'recovery-codes'
   | 'sessions'
   | 'steam'

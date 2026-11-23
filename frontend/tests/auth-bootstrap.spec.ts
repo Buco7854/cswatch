@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
+import { syntheticEmail } from './fixtures/account-status';
 
 function deferred() {
   let resolve!: () => void;
@@ -81,6 +82,7 @@ test('cold tabs share one browser grant before guest issuance and account sign-i
 
     const name = 'cold_' + randomUUID().slice(0, 8);
     await page.getByLabel('Display name', { exact: true }).fill(name);
+    await page.getByLabel('Email address', { exact: true }).fill(syntheticEmail());
     await page.getByLabel('Password', { exact: true }).fill('Disposable-cold-tab-password-2026');
     await page.getByRole('button', { name: 'Create account', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Save your sign-in name' })).toBeVisible();

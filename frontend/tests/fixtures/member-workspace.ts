@@ -9,6 +9,7 @@ export const memberConfig: Config = {
   admin_access: true,
   public_access: true,
   registrations_enabled: true,
+  email_delivery_enabled: false,
   guest_uploads_enabled: true,
   auto_official_maps_enabled: true,
   guest_retention_hours: 24,
@@ -51,6 +52,7 @@ export function memberAdminData() {
       Object.entries({
         public_access: true,
         registrations_enabled: false,
+        email_delivery_enabled: false,
         guest_uploads_enabled: true,
         auto_official_maps_enabled: true,
         steam_enabled: true,
@@ -59,6 +61,7 @@ export function memberAdminData() {
       }).map(([key, value]) => [key, { value, locked: key === 'public_access' }]),
     ),
     mfa_required_roles: { value: ['admin'], locked: false },
+    email_delivery_configured: false,
     queue: [
       { status: 'ready', count: 12 },
       { status: 'processing', count: 1 },

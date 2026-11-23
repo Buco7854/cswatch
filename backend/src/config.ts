@@ -1,8 +1,10 @@
-import { accountName, accountPassword } from './credentials.js';
+import { accountEmail, accountName, accountPassword } from './credentials.js';
 import { configuredNetworks } from './admin-network.js';
+import { isIP } from 'node:net';
 import { resolve } from 'node:path';
 import { z } from 'zod';
 import { roles, type Role } from './roles.js';
+import type { Store } from './db.js';
 
 export const defaultMfaRequiredRoles: readonly Role[] = ['admin'];
 
@@ -31,6 +33,46 @@ const fixedHosts = (value: string | undefined) =>
     .array(z.string().regex(/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/))
     .max(8)
     .parse(value ? value.split(',').map((host) => host.trim().toLowerCase()) : []);
+
+function smtpConfig(env: NodeJS.ProcessEnv, appUrl: URL, enabled: boolean | undefined) {
+  const host = env.SMTP_HOST;
+  const port = env.SMTP_PORT;
+  const from = env.SMTP_FROM;
+  const username = env.SMTP_USERNAME;
+  const password = env.SMTP_PASSWORD;
+  // A default port in an environment template does not configure a relay by itself.
+  if (!enabled && !host && !from && !username && !password && (!port || port === '465'))
+    return undefined;
+  const sender = accountEmail.safeParse(from);
+  const credentials = /^[\x20-\x7e]{1,128}$/;
+  const dnsName =
+    /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i;
+  const tlsPort = Number(port || 465);
+  if (
+    !host ||
+    host.length > 253 ||
+    (!isIP(host) && !dnsName.test(host)) ||
+    (port && !/^[0-9]{1,5}$/.test(port)) ||
+    !Number.isInteger(tlsPort) ||
+    tlsPort < 1 ||
+    tlsPort > 65535 ||
+    !sender.success ||
+    !username ||
+    !password ||
+    !credentials.test(username) ||
+    !credentials.test(password)
+  )
+    throw new Error(
+      'Configure SMTP_HOST, SMTP_FROM, SMTP_USERNAME and SMTP_PASSWORD for email delivery. SMTP_PORT defaults to 465.',
+    );
+  if (
+    appUrl.protocol !== 'https:' &&
+    !['localhost', '127.0.0.1', '[::1]'].includes(appUrl.hostname)
+  )
+    throw new Error('Email delivery requires an HTTPS APP_URL outside local development.');
+  return { host, port: tlsPort, from: sender.data, username, password };
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
   const appUrl = new URL(env.APP_URL || 'http://localhost:8000');
   if (
@@ -44,6 +86,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     throw new Error('APP_URL must be an HTTP(S) origin');
   const proxies = configuredNetworks(env.TRUSTED_PROXY_IPS, 'TRUSTED_PROXY_IPS');
   const cookieSecure = boolean(env.COOKIE_SECURE) ?? true;
+  const mailEnabled = boolean(env.EMAIL_DELIVERY_ENABLED);
   if (cookieSecure && appUrl.protocol !== 'https:')
     throw new Error('HTTPS APP_URL required. Set COOKIE_SECURE=false only for local development.');
   return {
@@ -66,8 +109,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
       registrations_enabled: boolean(env.REGISTRATIONS_ENABLED),
       steam_enabled: boolean(env.STEAM_ENABLED),
       faceit_enabled: boolean(env.FACEIT_ENABLED),
+      email_delivery_enabled: mailEnabled,
       transcription_enabled: boolean(env.TRANSCRIPTION_ENABLED),
     },
+    smtp: smtpConfig(env, appUrl, mailEnabled),
     encryptionKey: z
       .string()
       .regex(/^(?:[a-fA-F0-9]{64})?$/, 'ENCRYPTION_KEY must be 64 hexadecimal characters.')
@@ -75,6 +120,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     steamApiKey: env.STEAM_API_KEY || '',
     adminUsername: accountName.optional().parse(env.ADMIN_USERNAME || undefined) || '',
     adminPassword: accountPassword.optional().parse(env.ADMIN_PASSWORD || undefined) || '',
+    adminEmail: accountEmail.optional().parse(env.ADMIN_EMAIL || undefined),
     guestRetentionHours: z.coerce
       .number()
       .int()
@@ -130,6 +176,10 @@ export const flagDefaults = {
   registrations_enabled: true,
   steam_enabled: false,
   faceit_enabled: false,
+  email_delivery_enabled: false,
   transcription_enabled: false,
 };
 export type Flag = keyof typeof flagDefaults;
+
+export const emailDeliveryEnabled = (db: Store, config: Config) =>
+  Boolean(config.smtp && db.flag(config, 'email_delivery_enabled'));

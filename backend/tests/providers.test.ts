@@ -58,7 +58,11 @@ test('FACEIT verification, history and download lookup use current verified iden
       method: 'POST',
       url: '/api/auth/register',
       headers: await browserBootstrap(app, config),
-      payload: { username: 'provider_fixture', password: 'disposable-fixture-password' },
+      payload: {
+        display_name: 'provider_fixture',
+        email: 'provider_fixture@example.test',
+        password: 'disposable-fixture-password',
+      },
     });
     assert.equal(registered.statusCode, 201);
     const { id, csrf } = registered.json().user;
@@ -316,7 +320,11 @@ test('Steam match sync needs only the operator API key', async () => {
       method: 'POST',
       url: '/api/auth/register',
       headers: await browserBootstrap(app, config),
-      payload: { username: 'steam_key_fixture', password: 'disposable-fixture-password' },
+      payload: {
+        display_name: 'steam_key_fixture',
+        email: 'steam_key_fixture@example.test',
+        password: 'disposable-fixture-password',
+      },
     });
     const { id, csrf } = registered.json().user;
     const headers = {
@@ -377,7 +385,11 @@ test('Steam match sync verifies before saving, resumes and protects user credent
         method: 'POST',
         url: '/api/auth/register',
         headers: await browserBootstrap(app, config),
-        payload: { username, password: 'disposable-fixture-password' },
+        payload: {
+          display_name: username,
+          email: `${username}@example.test`,
+          password: 'disposable-fixture-password',
+        },
       });
       assert.equal(response.statusCode, 201);
       const { id, csrf } = response.json().user;
@@ -577,7 +589,11 @@ test('FACEIT library walks the full history with a timestamp cursor and keeps do
         method: 'POST',
         url: '/api/auth/register',
         headers: await browserBootstrap(app, config),
-        payload: { username, password: 'disposable-fixture-password' },
+        payload: {
+          display_name: username,
+          email: `${username}@example.test`,
+          password: 'disposable-fixture-password',
+        },
       });
       assert.equal(registered.statusCode, 201, registered.body);
       const { id, csrf } = registered.json().user;

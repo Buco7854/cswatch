@@ -1,5 +1,5 @@
 import { createHmac } from 'node:crypto';
-import { accountStatus } from './fixtures/account-status';
+import { accountStatus, syntheticEmail } from './fixtures/account-status';
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -16,6 +16,7 @@ test('first administrator enrollment requires the private setup code and closes 
   await expect(page.getByRole('heading', { name: 'Set up cswatch', exact: true })).toBeVisible();
   await page.getByLabel('Setup code', { exact: true }).fill('0'.repeat(64));
   await page.getByLabel('Username', { exact: true }).fill('fixture_admin');
+  await page.getByLabel('Email address', { exact: true }).fill(syntheticEmail());
   await page.getByLabel('Password', { exact: true }).fill('Disposable-admin-password-2026');
   await page.getByRole('button', { name: 'Create administrator', exact: true }).click();
   await expect(page.getByRole('alert')).toHaveText('Setup code is invalid.');
@@ -49,6 +50,7 @@ test('first administrator enrollment requires the private setup code and closes 
     headers: { origin: baseURL!, 'x-csrf-token': anonymous.session.csrf },
     data: {
       username: 'another_admin',
+      email: syntheticEmail(),
       password: 'Disposable-admin-password-2026',
       setupToken: token,
     },
@@ -111,6 +113,7 @@ test('setup retries configuration refresh without creating the administrator twi
   await page.goto('/setup');
   await page.getByLabel('Setup code', { exact: true }).fill('a'.repeat(64));
   await page.getByLabel('Username', { exact: true }).fill('fixture_admin');
+  await page.getByLabel('Email address', { exact: true }).fill(syntheticEmail());
   await page.getByLabel('Password', { exact: true }).fill('Disposable-admin-password-2026');
   await page.getByRole('button', { name: 'Create administrator', exact: true }).click();
   await expect(page.getByRole('alert')).toBeVisible();
@@ -157,6 +160,7 @@ test('setup recovers a committed enrollment when its POST response is interrupte
   await page.goto('/setup');
   await page.getByLabel('Setup code', { exact: true }).fill('a'.repeat(64));
   await page.getByLabel('Username', { exact: true }).fill('fixture_admin');
+  await page.getByLabel('Email address', { exact: true }).fill(syntheticEmail());
   await page.getByLabel('Password', { exact: true }).fill('Disposable-admin-password-2026');
   await page.getByRole('button', { name: 'Create administrator', exact: true }).click();
   await expect(page).toHaveURL(/\/library$/);
@@ -209,10 +213,13 @@ test('an uncertain uncommitted setup preserves edits and prevents duplicate subm
     await page.goto('/setup');
     await page.getByLabel('Setup code', { exact: true }).fill('a'.repeat(64));
     await page.getByLabel('Username', { exact: true }).fill('initial_admin');
+    await page.getByLabel('Email address', { exact: true }).fill(syntheticEmail());
     await page.getByLabel('Password', { exact: true }).fill('Disposable-admin-password-2026');
     await page.getByRole('button', { name: 'Create administrator', exact: true }).click();
     await expect.poll(() => checking).toBe(true);
     await page.getByLabel('Username', { exact: true }).fill('edited_admin');
+    const editedEmail = syntheticEmail();
+    await page.getByLabel('Email address', { exact: true }).fill(editedEmail);
     await page.getByLabel('Setup code', { exact: true }).fill('b'.repeat(64));
     await page
       .locator('.setup-page form')
@@ -224,6 +231,7 @@ test('an uncertain uncommitted setup preserves edits and prevents duplicate subm
     releaseRefresh();
     await expect(page.getByRole('alert')).toHaveText('Connection lost. Try again.');
     await expect(page.getByLabel('Username', { exact: true })).toHaveValue('edited_admin');
+    await expect(page.getByLabel('Email address', { exact: true })).toHaveValue(editedEmail);
     await expect(page.getByLabel('Setup code', { exact: true })).toHaveValue('b'.repeat(64));
     await expect(page.getByLabel('Password', { exact: true })).toHaveValue(
       'Disposable-admin-password-2026',

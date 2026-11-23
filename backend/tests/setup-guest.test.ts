@@ -395,7 +395,11 @@ for (const secure of [false, true])
             method: 'POST',
             url: '/api/auth/register',
             headers,
-            payload: { username: 'not_admin', password: 'synthetic-member-password' },
+            payload: {
+              display_name: 'not_admin',
+              email: 'member@example.test',
+              password: 'synthetic-member-password',
+            },
           })
         ).statusCode,
         503,
@@ -406,7 +410,12 @@ for (const secure of [false, true])
             method: 'POST',
             url: '/api/setup',
             headers: { ...headers, origin: 'https://evil.invalid' },
-            payload: { username: 'admin', password: 'synthetic-admin-password', setupToken: code },
+            payload: {
+              username: 'admin',
+              email: 'admin@example.test',
+              password: 'synthetic-admin-password',
+              setupToken: code,
+            },
           })
         ).statusCode,
         403,
@@ -419,6 +428,7 @@ for (const secure of [false, true])
             headers: browser,
             payload: {
               username: 'admin',
+              email: 'admin@example.test',
               password: 'synthetic-admin-password',
               setupToken: '0'.repeat(64),
             },
@@ -432,12 +442,21 @@ for (const secure of [false, true])
             method: 'POST',
             url: '/api/setup',
             headers: await browserBootstrap(f.app, f.config),
-            payload: { username, password: 'synthetic-admin-password', setupToken: code },
+            payload: {
+              username,
+              email: `${username}@example.test`,
+              password: 'synthetic-admin-password',
+              setupToken: code,
+            },
           }),
         ),
       );
       assert.deepEqual(results.map((r) => r.statusCode).sort(), [201, 409]);
       assert.equal(f.db.one("SELECT count(*) AS n FROM users WHERE role='admin'")!.n, 1);
+      assert.match(
+        f.db.one("SELECT email FROM users WHERE role='admin'")!.email,
+        /^admin_(one|two)@example\.test$/,
+      );
       const success = results.find((r) => r.statusCode === 201)!;
       const cookie = success.cookies.find((cookie) => cookie.name === sessionCookieName(f.config))!;
       assert.equal(success.json().session.stage, 'enroll');
@@ -464,6 +483,7 @@ for (const secure of [false, true])
             headers: await browserBootstrap(f.app, f.config),
             payload: {
               username: 'attacker',
+              email: 'attacker@example.test',
               password: 'synthetic-attacker-password',
               setupToken: code,
             },

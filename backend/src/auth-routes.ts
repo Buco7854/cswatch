@@ -5,12 +5,15 @@ type Entry = 'status' | 'setup' | 'anonymous' | 'challenge' | 'enroll' | 'full' 
 declare module 'fastify' {
   interface FastifyContextConfig {
     accountEntry?: Entry;
+    accountOnboarding?: boolean;
   }
 }
 
 /** Routes without an entry declaration cannot be reached with a limited session.
  * Transactions still recheck the live session immediately before granting access. */
-export const accountEntry = (level: Entry) => ({ config: { accountEntry: level } });
+export const accountEntry = (level: Entry, onboarding = false) => ({
+  config: { accountEntry: level, accountOnboarding: onboarding },
+});
 export const allowedBeforeSetup = (r: RouteContext) =>
   r.routeOptions.config?.accountEntry === 'status' ||
   r.routeOptions.config?.accountEntry === 'setup';
@@ -22,6 +25,14 @@ export const allowedPending = (r: RouteContext, stage: 'challenge' | 'enroll') =
   const level = r.routeOptions.config?.accountEntry;
   return level === 'status' || level === 'logout' || level === stage;
 };
+export const allowedAccountOnboarding = (r: RouteContext) => {
+  const config = r.routeOptions.config;
+  return (
+    config?.accountEntry === 'status' ||
+    config?.accountEntry === 'logout' ||
+    config?.accountOnboarding === true
+  );
+};
 
 export const isRead = (r: Pick<FastifyRequest, 'method'>) =>
   r.method === 'GET' || r.method === 'HEAD';
@@ -31,13 +42,22 @@ const publicPages = new Set([
   '/login',
   '/register',
   '/recover',
+  '/verify-email',
   '/setup',
   '/account',
   '/account/connections',
   '/account/sessions',
   '/admin',
 ]);
-const pendingPages = new Set(['/recover', '/', '/login', '/register', '/setup', '/account']);
+const pendingPages = new Set([
+  '/recover',
+  '/verify-email',
+  '/',
+  '/login',
+  '/register',
+  '/setup',
+  '/account',
+]);
 export function authShellRoute(r: RouteContext, path: string, pending: boolean) {
   if (!isRead(r)) return false;
   if (r.routeOptions.url === '/assets/*' || path === '/licenses/provider-brands.txt') return true;

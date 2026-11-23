@@ -118,7 +118,11 @@ try {
     method: 'POST',
     url: '/api/auth/register',
     headers: await anonymousHeaders(),
-    payload: { username: 'runtime_fixture', password: 'Disposable-runtime-password-392!' },
+    payload: {
+      display_name: 'runtime_fixture',
+      email: 'runtime-fixture@example.invalid',
+      password: 'Disposable-runtime-password-392!',
+    },
   });
   assert.equal(registration.statusCode, 201, registration.body);
   const cookie = registration.cookies.map(({ name, value }) => `${name}=${value}`).join('; ');
