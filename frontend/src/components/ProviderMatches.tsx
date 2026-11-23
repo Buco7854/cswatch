@@ -2,7 +2,9 @@ import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } fro
 import { ArrowUpRight, Download, RefreshCw } from 'lucide-react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { api, ApiError } from '../api';
-import { folderPicker, replayIdentity } from '../steam-replay-folder';
+import { faceitRoomUrl, steamMatchLink } from '../provider-match-links';
+import UploadDialog from './UploadDialog';
+import { folderPicker } from '../steam-replay-folder';
 import { useSteamReplayImport } from '../useSteamReplayImport';
 import { useApp } from '../context';
 import { locale, t } from '../i18n';
@@ -10,7 +12,7 @@ import type { MatchActivity, MatchActivityRow, MatchDemo } from '../match-activi
 import { MapThumbnail, MatchDetails, mapName } from './MatchDetails';
 import { useConfirm } from './Confirmation';
 import './provider-matches.css';
-import { Pagination, SelectControl } from './Controls';
+import { Pagination, SelectControl, SwitchRow } from './Controls';
 
 export type MatchSource = 'steam' | 'faceit';
 type Match = {
@@ -31,6 +33,8 @@ type Page = {
   had_matches?: boolean;
   needs_codes?: boolean;
   retry_at?: number;
+  server_import_available?: boolean;
+  auto_import?: boolean;
 };
 
 function faceitMatchId(input: string) {
@@ -89,6 +93,7 @@ function MatchRow({
   inspect,
   download,
   steamImport,
+  serverImport,
 }: {
   source: MatchSource;
   match: Match;
@@ -98,16 +103,17 @@ function MatchRow({
   inspect: (id: string) => void;
   download: (id: string, resource: string) => void;
   steamImport?: ReturnType<typeof useSteamReplayImport>;
+  serverImport?: (id: string) => void;
 }) {
   const location = useLocation();
   const id = match.match_id;
   const key = source === 'faceit' ? id : 'steam:' + id;
   const state = useSyncExternalStore(activity.subscribe, () => activity.get(key));
-  const replay =
-    steamImport && match.share_code && folderPicker()
-      ? replayIdentity(id, match.share_code)
-      : undefined;
+  const steamLink = source === 'steam' ? steamMatchLink(id, match.share_code) : undefined;
+  const replay = steamLink && folderPicker() ? steamLink.identity : undefined;
   const feedback = steamImport?.feedback?.id === id ? steamImport.feedback : undefined;
+  const canImportOnServer = Boolean(serverImport && match.share_code);
+  const folderPending = feedback && feedback.phase !== 'error';
   const demos =
     state?.added && !match.demos.some((demo) => demo.id === state.added!.id)
       ? [state.added, ...match.demos]
@@ -173,24 +179,31 @@ function MatchRow({
             }
           />
         ))}
-        {replay && steamImport && needsDemo && (
+        {canImportOnServer && needsDemo && (
           <button
             className="button primary"
-            disabled={steamImport.busy}
-            onClick={() => void steamImport.start(replay)}
+            disabled={!!state?.busy || !!folderPending}
+            onClick={() => serverImport?.(id)}
           >
             {t('Import')}
           </button>
         )}
-        {source === 'steam' && match.share_code && (
+        {replay && steamImport && needsDemo && (
+          <button
+            className={canImportOnServer ? 'button' : 'button primary'}
+            disabled={steamImport.busy || !!state?.busy}
+            onClick={() => void steamImport.start(replay)}
+          >
+            {t(canImportOnServer ? 'Import from folder' : 'Import')}
+          </button>
+        )}
+        {steamLink && (
           <a
             className="button"
             onClick={(event) => {
               if (event.isTrusted) steamImport?.download(id);
             }}
-            href={
-              'steam://rungame/730/76561202255233023/+csgo_download_match%20' + match.share_code
-            }
+            href={steamLink.url}
           >
             <Download size={16} aria-hidden="true" /> {t('Download in CS2')}
           </a>
@@ -203,20 +216,23 @@ function MatchRow({
         )}
         {needsDemo && (source === 'faceit' || match.share_code) && (
           <Link
-            className={source === 'steam' && !replay ? 'button primary' : 'button'}
+            className={
+              source === 'steam' && !replay && !canImportOnServer ? 'button primary' : 'button'
+            }
             to={'/library?' + upload}
             state={location.state}
           >
-            {t(source === 'steam' ? (replay ? 'Upload this demo' : 'Import') : 'Upload demo')}
+            {t(
+              source === 'steam'
+                ? replay || canImportOnServer
+                  ? 'Upload this demo'
+                  : 'Import'
+                : 'Upload demo',
+            )}
           </Link>
         )}
         {source === 'faceit' && (
-          <a
-            className="button"
-            href={'https://www.faceit.com/en/cs2/room/' + id}
-            target="_blank"
-            rel="noreferrer"
-          >
+          <a className="button" href={faceitRoomUrl(id)} target="_blank" rel="noreferrer">
             {t('Open on FACEIT')} <ArrowUpRight size={16} aria-hidden="true" />
           </a>
         )}
@@ -282,9 +298,11 @@ function MatchRow({
 export default function ProviderMatches({
   source,
   activity,
+  uploadMatch,
 }: {
   source: MatchSource;
   activity: MatchActivity;
+  uploadMatch?: { id: string; close: () => void };
 }) {
   const [params, setParams] = useSearchParams();
   const location = useLocation();
@@ -294,6 +312,8 @@ export default function ProviderMatches({
   const [loaded, setLoaded] = useState<{ path: string; page?: Page; error?: string }>();
   const [reload, setReload] = useState(0);
   const [sync, setSync] = useState({ busy: false, message: '', error: false });
+  const [savingAutoImport, setSavingAutoImport] = useState(false);
+  const [autoImportError, setAutoImportError] = useState('');
   const [manual, setManual] = useState('');
   const [manualError, setManualError] = useState(false);
   const [now, setNow] = useState(() => Date.now() / 1000);
@@ -426,6 +446,42 @@ export default function ProviderMatches({
     }
   }
 
+  async function importSteam(id: string) {
+    const key = 'steam:' + id;
+    if (activity.get(key)?.busy) return;
+    activity.set(key, { busy: 'download' });
+    try {
+      const demo = await api<{ id: string }>('/api/connections/steam/import', {
+        method: 'POST',
+        body: JSON.stringify({ match_id: id }),
+      });
+      activity.set(key, { added: { id: demo.id, status: 'queued' } });
+    } catch (error) {
+      activity.set(key, { error: (error as Error).message });
+      setReload((value) => value + 1);
+    }
+  }
+
+  async function changeAutoImport(enabled: boolean) {
+    if (savingAutoImport) return;
+    setSavingAutoImport(true);
+    setAutoImportError('');
+    try {
+      await api('/api/connections/steam/history/auto-import', {
+        method: 'PUT',
+        body: JSON.stringify({ enabled }),
+      });
+      setLoaded((prior) =>
+        prior?.page ? { ...prior, page: { ...prior.page, auto_import: enabled } } : prior,
+      );
+    } catch (error) {
+      setAutoImportError((error as Error).message);
+    } finally {
+      setSavingAutoImport(false);
+      setReload((value) => value + 1);
+    }
+  }
+
   async function download(id: string, resource: string) {
     const prior = activity.get(id);
     if (prior?.busy) return;
@@ -487,6 +543,10 @@ export default function ProviderMatches({
       : String(Math.max(0, Number(token) - 25));
   const cooldown = (data?.retry_at ?? 0) > now;
   const nextCursor = data?.next;
+  const uploadShareCode =
+    source === 'steam' && uploadMatch
+      ? data?.items.find((match) => match.match_id === uploadMatch.id)?.share_code
+      : undefined;
   return (
     <div className="library-section provider-matches">
       <div className="provider-match-toolbar">
@@ -532,11 +592,31 @@ export default function ProviderMatches({
       </div>
       {source === 'steam' && (
         <div className="provider-match-hint">
-          <p>
-            {folderPicker()
-              ? t('To import a match, choose the game/csgo/replays folder on your CS2 computer.')
-              : t('CS2 saves the downloaded demo under game/csgo/replays.')}
-          </p>
+          {(data?.server_import_available || data?.auto_import) && (
+            <SwitchRow
+              label={t('Automatically import Steam demos')}
+              description={t(
+                data.server_import_available
+                  ? 'The server checks your Steam history regularly and adds available demos from past and future matches to your private library.'
+                  : 'Automatic imports are paused while server import is unavailable.',
+              )}
+              checked={!!data.auto_import}
+              disabled={savingAutoImport || (!data.auto_import && !!data.needs_codes)}
+              onChange={(enabled) => void changeAutoImport(enabled)}
+            />
+          )}
+          {autoImportError && (
+            <p className="error" role="alert">
+              {t(autoImportError)}
+            </p>
+          )}
+          {data && !data.server_import_available && (
+            <p>
+              {folderPicker()
+                ? t('To import a match, choose the game/csgo/replays folder on your CS2 computer.')
+                : t('CS2 saves the downloaded demo under game/csgo/replays.')}
+            </p>
+          )}
           {steamImport.folderName && (
             <div className="steam-import-feedback">
               <span>{t('Replay folder: {{name}}', { name: steamImport.folderName })}</span>
@@ -652,6 +732,9 @@ export default function ProviderMatches({
                 activity={activity}
                 canDownload={canDownload}
                 steamImport={source === 'steam' ? steamImport : undefined}
+                serverImport={
+                  source === 'steam' && data.server_import_available ? importSteam : undefined
+                }
                 returnTo={returnTo}
                 inspect={(id) => void inspect(id)}
                 download={(id, resource) => void download(id, resource)}
@@ -667,6 +750,14 @@ export default function ProviderMatches({
           )
         )}
       </div>
+      {uploadMatch && (
+        <UploadDialog
+          key={uploadMatch.id}
+          close={uploadMatch.close}
+          match={{ source, id: uploadMatch.id, shareCode: uploadShareCode }}
+          returnTo={returnTo}
+        />
+      )}
     </div>
   );
 }

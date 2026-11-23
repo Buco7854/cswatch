@@ -28,9 +28,20 @@ export function reserve(
         throw new HttpError(503, 'Demo storage is unavailable.');
       if (
         sourceRef &&
-        db.one('SELECT id FROM demos WHERE owner_id=? AND source_ref=?', owner, sourceRef)
+        db.one(
+          "SELECT 1 FROM demos WHERE owner_id=? AND source_ref=? AND (status!='failed' OR source_ref NOT LIKE 'steam:%')",
+          owner,
+          sourceRef,
+        )
       )
-        throw new HttpError(409, 'This FACEIT demo has already been added.');
+        throw sourceRef.startsWith('steam:')
+          ? new HttpError(
+              409,
+              'This Steam demo has already been added.',
+              undefined,
+              'steam_already_added',
+            )
+          : new HttpError(409, 'This FACEIT demo has already been added.');
 
       const u = db.one(
         'SELECT count(*) AS n,coalesce(sum(size),0) AS size FROM demos WHERE owner_id=?',
@@ -40,6 +51,8 @@ export function reserve(
         throw new HttpError(
           413,
           'Your storage limit has been reached. Delete a demo before uploading.',
+          undefined,
+          sourceRef?.startsWith('steam:') ? 'steam_storage_limit' : undefined,
         );
       if (globalDemoStorage(db) + size > c.globalStorageMb * 1024 ** 2)
         throw new HttpError(503, 'Demo storage is full. Delete an older demo or try again later.');

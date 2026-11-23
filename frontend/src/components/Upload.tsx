@@ -1,10 +1,13 @@
 import { t } from '../i18n';
 import { useEffect, useId, useRef, useState } from 'react';
-import { FileUp, LockKeyhole } from 'lucide-react';
+import { ArrowUpRight, Download, FileUp, LockKeyhole } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { prepareGuestUpload, uploadFile } from '../api';
+import { faceitRoomUrl, steamMatchLink } from '../provider-match-links';
 import { useApp } from '../context';
 import './upload.css';
+
+export type UploadMatch = { source: 'steam' | 'faceit'; id: string; shareCode?: string | null };
 
 export default function Upload({
   compact = false,
@@ -12,11 +15,13 @@ export default function Upload({
   returnTo,
 }: {
   compact?: boolean;
-  match?: { source: 'steam' | 'faceit'; id: string };
+  match?: UploadMatch;
   returnTo?: string;
 }) {
   const { config, user, signIn, refresh } = useApp();
   const steam = match?.source === 'steam';
+  const faceit = match?.source === 'faceit';
+  const steamLink = steam ? steamMatchLink(match.id, match.shareCode) : undefined;
   const nav = useNavigate();
   const location = useLocation();
   const input = useRef<HTMLInputElement>(null);
@@ -47,14 +52,20 @@ export default function Upload({
     }
     if (!file || busy || pending.current) return;
     setError('');
-    if (!/\.dem(\.zst)?$/i.test(file.name) && !(steam && /\.dem\.bz2$/i.test(file.name))) {
+    const supported =
+      /\.dem(\.zst)?$/i.test(file.name) ||
+      (steam && /\.dem\.bz2$/i.test(file.name)) ||
+      (faceit && /\.dem\.gz$/i.test(file.name));
+    if (!supported) {
       setError(
         t(
           steam
             ? 'Choose a .dem, .dem.zst or .dem.bz2 file.'
-            : /\.(?:bz2|gz|zip|rar|7z)$/i.test(file.name)
-              ? 'Extract this download first, then choose its .dem file. You can upload .dem.zst directly.'
-              : 'Choose a .dem or .dem.zst file.',
+            : faceit
+              ? 'Choose a .dem, .dem.zst or .dem.gz file.'
+              : /\.(?:bz2|gz|zip|rar|7z)$/i.test(file.name)
+                ? 'Extract this download first, then choose its .dem file. You can upload .dem.zst directly.'
+                : 'Choose a .dem or .dem.zst file.',
         ),
       );
       return;
@@ -116,11 +127,29 @@ export default function Upload({
     >
       {!compact && <h2 id="upload-title">{t('Upload a demo')}</h2>}
       {match && (
-        <p>
-          {t(match.source === 'steam' ? 'Steam match {{v0}}' : 'FACEIT match {{v0}}', {
-            v0: match.id,
-          })}
-        </p>
+        <div className="paired-upload-guide">
+          <strong>
+            {t(steam ? 'Steam match {{v0}}' : 'FACEIT match {{v0}}', { v0: match.id })}
+          </strong>
+          <p>
+            {t(
+              steam
+                ? 'Download this match in CS2, then choose its demo from game/csgo/replays.'
+                : 'Download the demo from this FACEIT match room, then choose the file here.',
+            )}
+          </p>
+          {steam ? (
+            steamLink && (
+              <a className="button" href={steamLink.url}>
+                <Download size={16} aria-hidden="true" /> {t('Download in CS2')}
+              </a>
+            )
+          ) : (
+            <a className="button" href={faceitRoomUrl(match.id)} target="_blank" rel="noreferrer">
+              {t('Open on FACEIT')} <ArrowUpRight size={16} aria-hidden="true" />
+            </a>
+          )}
+        </div>
       )}
       <div
         className={'demo-drop-target' + (drag ? ' is-dragging' : '')}
@@ -163,7 +192,9 @@ export default function Upload({
             {t(
               steam
                 ? 'Drop a .dem, .dem.zst or .dem.bz2 file · {{size}} MB max'
-                : 'Drop a .dem or .dem.zst file · {{size}} MB max',
+                : faceit
+                  ? 'Drop a .dem, .dem.zst or .dem.gz file · {{size}} MB max'
+                  : 'Drop a .dem or .dem.zst file · {{size}} MB max',
               {
                 size: config.max_upload_mb,
               },
@@ -174,7 +205,7 @@ export default function Upload({
       <input
         ref={input}
         type="file"
-        accept={steam ? '.dem,.zst,.bz2' : '.dem,.zst'}
+        accept={steam ? '.dem,.zst,.bz2' : faceit ? '.dem,.zst,.gz' : '.dem,.zst'}
         hidden
         aria-label={t('Choose a CS2 demo')}
         onChange={(e) => void upload(e.target.files?.[0])}

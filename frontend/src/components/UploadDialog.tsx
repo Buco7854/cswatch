@@ -3,14 +3,14 @@ import { X } from 'lucide-react';
 import { useWorkspaceDialog } from '../context';
 import { t } from '../i18n';
 import DemoConnectionsLink from './DemoConnectionsLink';
-import Upload from './Upload';
+import Upload, { type UploadMatch } from './Upload';
 export default function UploadDialog({
   close,
   match,
   returnTo,
 }: {
   close: () => void;
-  match?: { source: 'steam' | 'faceit'; id: string };
+  match?: UploadMatch;
   returnTo?: string;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -31,7 +31,7 @@ export default function UploadDialog({
         </button>
       </div>
       <Upload match={match} returnTo={returnTo} />
-      <DemoConnectionsLink />
+      {!match && <DemoConnectionsLink />}
     </dialog>
   );
 }

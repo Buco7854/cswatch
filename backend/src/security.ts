@@ -448,21 +448,35 @@ export function chargeBudgets(db: Store, request: Pick<FastifyRequest, 'ip'>, bu
   const time = now();
   db.run('DELETE FROM rate_limits WHERE expires_at<=?', time);
   for (const [scope, max, seconds, identity] of budgets) {
-    const key = digest(scope + ':' + (identity ?? rateAddress(request.ip)));
-    const current = db.one('SELECT count,expires_at FROM rate_limits WHERE key=?', key);
-    if (current && current.count >= max)
-      throw new HttpError(
-        429,
-        'Too many requests. Try again later.',
-        Math.max(1, current.expires_at - time),
-      );
-    db.run(
-      'INSERT INTO rate_limits VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET count=count+1',
-      key,
-      1,
-      time + seconds,
-    );
+    chargeBudget(db, scope, identity ?? rateAddress(request.ip), max, seconds, time);
   }
+}
+
+/** Caller holds a write transaction. Provider budgets have an explicit instance identity. */
+export function chargeBudget(
+  db: Store,
+  scope: string,
+  identity: string,
+  max: number,
+  seconds: number,
+  time = now(),
+) {
+  const key = digest(scope + ':' + identity);
+  const current = db.one('SELECT count,expires_at FROM rate_limits WHERE key=?', key);
+  if (current && current.expires_at > time && current.count >= max)
+    throw new HttpError(
+      429,
+      'Too many requests. Try again later.',
+      Math.max(1, current.expires_at - time),
+    );
+  db.run(
+    'INSERT INTO rate_limits VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET count=CASE WHEN expires_at<=? THEN 1 ELSE count+1 END,expires_at=CASE WHEN expires_at<=? THEN excluded.expires_at ELSE expires_at END',
+    key,
+    1,
+    time + seconds,
+    time,
+    time,
+  );
 }
 
 export function rateLimit(

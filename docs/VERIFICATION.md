@@ -1,5 +1,11 @@
 # Verification record
 
+## Shared Steam Coordinator and provider limits
+
+On Node 24.22.3, the protocol tests used the installed Steam client and CS2 protobuf codecs with a simulated Steam directory, login and match response. They exercised a cold and warm session, exact match selection, bounded caching, expiry, Steam Guard errors, cancellation and idle disconnect. No live Steam account was used. Request tests covered shared budgets, stream concurrency, persistent provider cooldowns and opted-in queue lifecycle.
+
+An isolated local web service accepted a member import over HTTP with synthetic coordinator and CDN responses. The compressed Mirage fixture was 50,234,803 bytes. Its 60,601,900-byte expanded recording had SHA-256 `84a1a4191302bdd2a3bbb5a727842093744b1fb1a228aeec630369e44b622cb2`. The real parser ran under Linux Landlock ABI 6 and seccomp, produced ten rounds on Mirage and served playback to its owner. Anonymous access returned 404. Production Chromium exercised member permission, fallback uploads scoped to the provider match, and automatic import controls in English and French across both themes and three screen widths. Live account eligibility, actual Steam Guard, public replay availability and Steam delivery throughput need an operator-authorized deployment.
+
 ## Steam replay import and administrative proxy access
 
 The Steam browser fixture exercised a completed local replay, an incomplete download, a mismatched sidecar, cancellation, timeout and account changes. Chromium used its filesystem with a substituted folder picker and Steam launch. Both provider specs passed 41 cases. The captured Steam rows cover English and French, light and dark, and 1440, 768 and 390 px widths. FACEIT provider fixtures matched maps by exact game ID and verified that a limited stats endpoint preserves match history. Live provider calls and a desktop Steam download were outside this run.

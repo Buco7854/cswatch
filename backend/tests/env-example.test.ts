@@ -118,6 +118,9 @@ test('Compose forwards only the configured settings for each service', (t) => {
     'SMTP_PASSWORD',
     'ENCRYPTION_KEY',
     'STEAM_API_KEY',
+    'STEAM_COORDINATOR_USERNAME',
+    'STEAM_COORDINATOR_PASSWORD',
+    'STEAM_COORDINATOR_GUARD_SECRET',
     'FACEIT_API_KEY',
     'FACEIT_DOWNLOAD_TOKEN',
   ];

@@ -1,3 +1,9 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Store } from '../src/db.js';
+import { ProviderRequests } from '../src/provider-requests.js';
+import { loadConfig } from '../src/config.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { cleanSteamName, fetchSteamName } from '../src/steam-name.js';
@@ -16,19 +22,22 @@ test('Steam names keep any script on one bounded line without hidden or reorderi
 });
 
 test('the Steam name comes from one fixed official source and never throws', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'steam-profile-'));
+  const db = new Store(dir);
+  const requests = new ProviderRequests(db, loadConfig({ COOKIE_SECURE: 'false' }).providerLimits);
   const original = globalThis.fetch;
-  const requests: string[] = [];
+  const urls: string[] = [];
   let response: () => Response = () => new Response('');
   globalThis.fetch = async (input, options) => {
-    requests.push(String(input));
+    urls.push(String(input));
     assert.equal(options?.redirect, 'error');
     assert.ok(options?.signal);
     return response();
   };
   try {
     response = () => new Response(xml('Tom &amp; J&lt;3'));
-    assert.equal(await fetchSteamName(subject, ''), 'Tom & J<3');
-    assert.equal(requests.at(-1), `https://steamcommunity.com/profiles/${subject}/?xml=1`);
+    assert.equal(await fetchSteamName(subject, '', requests), 'Tom & J<3');
+    assert.equal(urls.at(-1), `https://steamcommunity.com/profiles/${subject}/?xml=1`);
     for (const body of [
       xml('Other', '76561198000000002'),
       xml('x'.repeat(300)),
@@ -36,29 +45,32 @@ test('the Steam name comes from one fixed official source and never throws', asy
       'x'.repeat(600 * 1024),
     ]) {
       response = () => new Response(body);
-      assert.equal(await fetchSteamName(subject, ''), null);
+      assert.equal(await fetchSteamName(subject, '', requests), null);
     }
-    response = () => new Response('', { status: 429 });
-    assert.equal(await fetchSteamName(subject, ''), null);
-
     response = () =>
       Response.json({ response: { players: [{ steamid: subject, personaname: ' Rifler ' }] } });
-    assert.equal(await fetchSteamName(subject, 'operator-key'), 'Rifler');
+    assert.equal(await fetchSteamName(subject, 'operator-key', requests), 'Rifler');
     assert.equal(
-      requests.at(-1),
+      urls.at(-1),
       `https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/?key=operator-key&steamids=${subject}`,
     );
     response = () =>
       Response.json({ response: { players: [{ steamid: '1', personaname: 'Other' }] } });
-    assert.equal(await fetchSteamName(subject, 'operator-key'), null);
+    assert.equal(await fetchSteamName(subject, 'operator-key', requests), null);
+    response = () => new Response('', { status: 429 });
+    assert.equal(await fetchSteamName(subject, '', requests), null);
+
+    db.run("DELETE FROM settings WHERE key='provider_retry_steamProfile'");
     response = () => {
       throw new Error('offline');
     };
-    assert.equal(await fetchSteamName(subject, ''), null);
-    const before = requests.length;
-    assert.equal(await fetchSteamName('../evil', ''), null);
-    assert.equal(requests.length, before);
+    assert.equal(await fetchSteamName(subject, '', requests), null);
+    const before = urls.length;
+    assert.equal(await fetchSteamName('../evil', '', requests), null);
+    assert.equal(urls.length, before);
   } finally {
     globalThis.fetch = original;
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
   }
 });

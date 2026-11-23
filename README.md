@@ -58,7 +58,7 @@ Explicit environment values take precedence and lock the corresponding admin con
 
 ### Steam and FACEIT
 
-Steam OpenID verifies a Steam ID. Enable `STEAM_ENABLED=true`. Match sync uses the operator’s application key, the member’s game authentication code and a recent match sharing code. Open the discovered match in CS2, download it and upload its file. [Provider setup](docs/ACCESS-SETUP.md#steam-and-faceit)
+Steam OpenID verifies a Steam ID. Enable `STEAM_ENABLED=true`. Match sync uses the operator’s application key, the member’s game authentication code and a recent match sharing code. Members can import a file from their CS2 replay folder, upload it against a match, or use the instance’s optional shared Game Coordinator for server imports and automatic sync. [Provider setup](docs/ACCESS-SETUP.md#steam-and-faceit)
 
 For FACEIT, enable `FACEIT_ENABLED` and configure a server-side `FACEIT_API_KEY`. Members can browse pages of their CS2 history after verifying their Steam association. Importing each recording requires their participation in the match and a separately approved `FACEIT_DOWNLOAD_TOKEN`. [Provider setup](docs/ACCESS-SETUP.md#steam-and-faceit)
 

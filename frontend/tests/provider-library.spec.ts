@@ -1,9 +1,13 @@
 import { accountStatus } from './fixtures/account-status';
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
+import { gzipSync } from 'node:zlib';
+import { encodeMatch } from 'csgo-sharecode';
 import { resolve } from 'node:path';
 import { installMemberWorkspace, memberDemos, memberUser } from './fixtures/member-workspace';
 import { chooseSelectOption } from './fixtures/select-control';
+
+test.use({ reducedMotion: 'reduce' });
 
 test.beforeEach(() => {
   test.skip(Boolean(process.env.E2E_PRIVATE) || Boolean(process.env.E2E_SETUP));
@@ -22,12 +26,15 @@ const faceitMatch = {
   map: 'de_mirage',
   demos: [],
 };
-const code = 'CSGO-GADqf-jjyJ8-cSP2r-smZRo-TO2xK';
+function syntheticShareCode(id: string) {
+  return encodeMatch({ matchId: BigInt(id), reservationId: 3100000000000000000n, tvPort: 27020 });
+}
+const code = syntheticShareCode('3100000000000000001');
 const steamMatches = [
-  { match_id: '3230642215713767580', share_code: code, demos: [] },
+  { match_id: '3100000000000000001', share_code: code, demos: [] },
   {
     match_id: '2811123475613000001',
-    share_code: code,
+    share_code: syntheticShareCode('2811123475613000001'),
     demos: [
       {
         id: 'member-design-0',
@@ -46,12 +53,12 @@ const steamMatches = [
   },
   {
     match_id: '2811123475613000002',
-    share_code: code,
+    share_code: syntheticShareCode('2811123475613000002'),
     demos: [{ id: 'member-design-1', status: 'processing' }],
   },
   {
     match_id: '2811123475613000003',
-    share_code: code,
+    share_code: syntheticShareCode('2811123475613000003'),
     demos: [{ id: 'member-design-3', status: 'failed' }],
   },
 ];
@@ -129,7 +136,12 @@ for (const width of [1440, 768, 390]) {
           );
           await page.route('**/api/connections/steam/matches?*', (route) =>
             route.fulfill({
-              json: { next: '25', items: steamMatches },
+              json: {
+                next: '25',
+                items: steamMatches,
+                server_import_available: true,
+                auto_import: false,
+              },
             }),
           );
           const failures: string[] = [];
@@ -147,6 +159,22 @@ for (const width of [1440, 768, 390]) {
               page.locator('.match-thumbnail img[data-badge="true"]').first(),
             ).toHaveJSProperty('complete', true);
           await capture(page, `faceit-${width}-${lang}-${theme}`);
+          const dialog = page.getByRole('dialog');
+          await page
+            .locator('.provider-match-row')
+            .first()
+            .getByRole('link', {
+              name: lang === 'en' ? 'Upload demo' : 'Importer la démo',
+            })
+            .click();
+          await expect(dialog.getByRole('link')).toHaveCount(1);
+          await expect(dialog.getByRole('link')).toHaveAttribute(
+            'href',
+            'https://www.faceit.com/' + lang + '/cs2/room/room-fixture-1',
+          );
+          await capture(page, `faceit-upload-${width}-${lang}-${theme}`);
+          await page.goBack();
+          await expect(dialog).toHaveCount(0);
           await faceitTab.focus();
           await page.keyboard.press('ArrowRight');
           await expect(steamTab).toBeFocused();
@@ -156,7 +184,24 @@ for (const width of [1440, 768, 390]) {
           await expect(page.getByText(/19\/17\/4/)).toBeVisible();
           await expect(page.getByText('+280', { exact: true })).toBeVisible();
           await expect(page.getByRole('tabpanel').locator('li')).toHaveCount(4);
+          await expect(page.getByRole('switch')).not.toBeChecked();
           await capture(page, `steam-${width}-${lang}-${theme}`);
+          await page
+            .locator('.provider-match-row')
+            .first()
+            .getByRole('link', {
+              name: lang === 'en' ? 'Upload this demo' : 'Ajouter cette démo',
+            })
+            .click();
+          await expect(dialog.getByRole('link')).toHaveCount(1);
+          await expect(dialog.getByRole('link')).toHaveAttribute(
+            'href',
+            'steam://rungame/730/76561202255233023/+csgo_download_match%20' + code,
+          );
+          expect(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+          await capture(page, `steam-upload-${width}-${lang}-${theme}`);
+          await page.goBack();
+          await expect(dialog).toHaveCount(0);
           expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
           await page.goBack();
           await expect(faceitTab).toHaveAttribute('aria-selected', 'true');
@@ -350,6 +395,32 @@ test('parallel FACEIT downloads keep row progress and return without changing th
   await expect(page.getByRole('dialog').getByText('FACEIT match match-1')).toBeVisible();
 });
 
+test('the FACEIT match upload accepts its downloaded .dem.gz directly', async ({ page }) => {
+  await installSources(page, false, true);
+  await page.route('**/api/connections/faceit/matches?*', (route) =>
+    route.fulfill({ json: { items: [faceitMatch], next: null } }),
+  );
+  await page.goto('/library?source=faceit');
+  await page.getByRole('link', { name: 'Upload demo', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  const input = dialog.locator('input[type=file]');
+  await expect(input).toHaveAttribute('accept', '.dem,.zst,.gz');
+  await expect(dialog.getByText(/Drop a .*\.dem\.gz file/)).toBeVisible();
+  const bytes = gzipSync(Buffer.from('PBDEMS2\0synthetic-faceit-match'));
+  await input.setInputFiles({ name: 'other.gz', mimeType: 'application/gzip', buffer: bytes });
+  await expect(dialog.getByRole('alert')).toHaveText('Choose a .dem, .dem.zst or .dem.gz file.');
+  await page.route('**/api/demos?faceit_match=*', (route) => {
+    expect(route.request().method()).toBe('POST');
+    expect(new URL(route.request().url()).searchParams.get('faceit_match')).toBe(
+      faceitMatch.match_id,
+    );
+    expect(route.request().postDataBuffer()!.includes(bytes)).toBe(true);
+    return route.fulfill({ status: 202, json: { id: 'member-design-1' } });
+  });
+  await input.setInputFiles({ name: 'match.dem.gz', mimeType: 'application/gzip', buffer: bytes });
+  await expect(page).toHaveURL(/\/watch\/member-design-1$/);
+});
+
 test('a FACEIT match URL can open an existing file during a history outage', async ({ page }) => {
   await installSources(page, false, true);
   await page.route('**/api/connections/faceit/matches?*', (route) =>
@@ -471,6 +542,137 @@ test('Steam states show sync progress, cooldown, replace-codes and empty results
   await expect(page.getByText('Replace your Steam sync codes to resume sync.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Sync Steam matches' })).toBeDisabled();
   await capture(page, 'steam-needs-codes');
+});
+
+test('Steam server import uses only the selected synced match and keeps local alternatives on failure', async ({
+  page,
+}) => {
+  await installSources(page, true, false);
+  const first = steamMatches[0];
+  let failed = true;
+  let imported = false;
+  await page.route('**/api/connections/steam/matches?*', (route) =>
+    route.fulfill({
+      json: {
+        next: null,
+        server_import_available: true,
+        auto_import: false,
+        items: [
+          { ...first, demos: imported ? [{ id: 'steam-server-replay', status: 'queued' }] : [] },
+          {
+            match_id: '200',
+            share_code: null,
+            demos: [{ id: 'historical-demo', status: 'failed' }],
+          },
+        ],
+      },
+    }),
+  );
+  const pending = Promise.withResolvers<void>();
+  let calls = 0;
+  await page.route('**/api/connections/steam/import', async (route) => {
+    expect(route.request().method()).toBe('POST');
+    expect(route.request().headers()['x-csrf-token']).toBe(memberUser.csrf);
+    expect(route.request().postDataJSON()).toEqual({ match_id: first.match_id });
+    calls++;
+    await pending.promise;
+    if (failed)
+      return route.fulfill({
+        status: 404,
+        json: {
+          detail: 'The demo download is unavailable or has expired. Try again or upload manually.',
+          code: 'steam_no_demo',
+        },
+      });
+    imported = true;
+    return route.fulfill({ status: 202, json: { id: 'steam-server-replay' } });
+  });
+  await page.goto('/library?source=steam');
+  const rows = page.locator('.provider-match-row');
+  const start = rows.first().getByRole('button', { name: 'Import', exact: true });
+  await expect(rows.last().getByRole('button', { name: 'Import', exact: true })).toHaveCount(0);
+  await start.focus();
+  await page.keyboard.press('Enter');
+  await expect(start).toBeDisabled();
+  await expect(rows.first().getByRole('status')).toHaveText('Downloading…');
+  await expect(rows.first().getByRole('button', { name: 'Import from folder' })).toBeDisabled();
+  pending.resolve();
+  await expect(rows.first().getByRole('alert')).toContainText('has expired');
+  await expect(rows.first().getByRole('link', { name: 'Upload this demo' })).toBeVisible();
+  await expect(rows.first().getByRole('button', { name: 'Import from folder' })).toBeEnabled();
+  failed = false;
+  await start.click();
+  await expect(rows.first().getByRole('link', { name: 'Open In queue' })).toHaveAttribute(
+    'href',
+    '/watch/steam-server-replay',
+  );
+  expect(calls).toBe(2);
+});
+
+test('a shared Steam upload route exposes a client download only for its exact match', async ({
+  page,
+}) => {
+  await installSources(page, true, false);
+  const id = '3100000000000000002';
+  await page.route('**/api/connections/steam/matches?*', (route) =>
+    route.fulfill({ json: { items: [{ match_id: id, share_code: code, demos: [] }], next: null } }),
+  );
+  await page.goto('/library?source=steam&upload=1&steamMatch=' + id);
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByText('Steam match ' + id)).toBeVisible();
+  await expect(dialog.getByText(/game\/csgo\/replays/)).toBeVisible();
+  await expect(dialog.getByRole('link')).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: 'Choose demo file' })).toBeEnabled();
+});
+
+test('Steam automatic imports require member opt-in and can be turned off while server import is paused', async ({
+  page,
+}) => {
+  await installSources(page, true, false);
+  let available = true;
+  let optedIn = false;
+  let failNext = true;
+  await page.route('**/api/connections/steam/matches?*', (route) =>
+    route.fulfill({
+      json: { items: [], next: null, server_import_available: available, auto_import: optedIn },
+    }),
+  );
+  const changes: boolean[] = [];
+  await page.route('**/api/connections/steam/history/auto-import', (route) => {
+    expect(route.request().method()).toBe('PUT');
+    expect(route.request().headers()['x-csrf-token']).toBe(memberUser.csrf);
+    const enabled = route.request().postDataJSON().enabled;
+    expect(route.request().postDataJSON()).toEqual({ enabled });
+    changes.push(enabled);
+    if (failNext) {
+      failNext = false;
+      return route.fulfill({
+        status: 429,
+        json: { detail: 'Steam is rate limiting requests. Try again later.' },
+      });
+    }
+    optedIn = enabled;
+    return route.fulfill({ json: { auto_import: enabled } });
+  });
+  await page.goto('/library?source=steam');
+  const toggle = page.getByRole('switch', { name: /Automatically import Steam demos/ });
+  await expect(toggle).not.toBeChecked();
+  expect(changes).toEqual([]);
+  await toggle.focus();
+  await page.keyboard.press('Space');
+  await expect(page.getByRole('alert')).toHaveText(
+    'Steam is rate limiting requests. Try again later.',
+  );
+  await expect(toggle).not.toBeChecked();
+  await toggle.click();
+  await expect(toggle).toBeChecked();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  available = false;
+  await page.reload();
+  await expect(toggle).toBeChecked();
+  await toggle.click();
+  await expect(toggle).toHaveCount(0);
+  expect(changes).toEqual([true, true, false]);
 });
 
 // Use a real browser file system with a disposable directory. Only the native

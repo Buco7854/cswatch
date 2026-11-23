@@ -143,16 +143,23 @@ export default function Library({ activity }: { activity: MatchActivity }) {
           hidden={tab !== active}
         >
           {tab === active &&
-            (tab === 'mine' ? <MyDemos /> : <ProviderMatches source={tab} activity={activity} />)}
+            (tab === 'mine' ? (
+              <MyDemos />
+            ) : (
+              <ProviderMatches
+                source={tab}
+                activity={activity}
+                uploadMatch={
+                  uploadOpen && match?.source === tab
+                    ? { id: match.id, close: closeUpload }
+                    : undefined
+                }
+              />
+            ))}
         </div>
       ))}
-      {uploadOpen && (
-        <UploadDialog
-          key={match?.id}
-          close={closeUpload}
-          match={match}
-          returnTo={'/library' + (back.size ? '?' + back : '')}
-        />
+      {uploadOpen && !match && (
+        <UploadDialog close={closeUpload} returnTo={'/library' + (back.size ? '?' + back : '')} />
       )}
     </>
   );

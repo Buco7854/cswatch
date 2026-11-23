@@ -28,6 +28,13 @@ const integer = (v: string | undefined, fallback: number, min = 1) =>
     .int()
     .min(min)
     .parse(v || fallback);
+const bounded = (value: string | undefined, fallback: number, max: number) =>
+  z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(max)
+    .parse(value ?? fallback);
 const fixedHosts = (value: string | undefined) =>
   z
     .array(z.string().regex(/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/))
@@ -89,6 +96,21 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
   const mailEnabled = boolean(env.EMAIL_DELIVERY_ENABLED);
   if (cookieSecure && appUrl.protocol !== 'https:')
     throw new Error('HTTPS APP_URL required. Set COOKIE_SECURE=false only for local development.');
+  const steamCoordinatorEnabled = boolean(env.STEAM_COORDINATOR_ENABLED) ?? false;
+  const steamCoordinatorUsername = env.STEAM_COORDINATOR_USERNAME || '';
+  const steamCoordinatorPassword = env.STEAM_COORDINATOR_PASSWORD || '';
+  const steamCoordinatorGuardSecret = env.STEAM_COORDINATOR_GUARD_SECRET || undefined;
+  if (steamCoordinatorGuardSecret && !/^[A-Za-z0-9+/]{27}=$/.test(steamCoordinatorGuardSecret))
+    throw new Error(
+      'STEAM_COORDINATOR_GUARD_SECRET must be a base64 Steam mobile authenticator secret.',
+    );
+  if (
+    steamCoordinatorEnabled &&
+    (!steamCoordinatorUsername.trim() || !steamCoordinatorPassword || !env.STEAM_API_KEY)
+  )
+    throw new Error(
+      'Steam Coordinator imports require STEAM_COORDINATOR_USERNAME, STEAM_COORDINATOR_PASSWORD and STEAM_API_KEY.',
+    );
   return {
     appUrl: appUrl.origin,
     host: appUrl.host,
@@ -117,6 +139,30 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
       .string()
       .regex(/^(?:[a-fA-F0-9]{64})?$/, 'ENCRYPTION_KEY must be 64 hexadecimal characters.')
       .parse(env.ENCRYPTION_KEY || ''),
+    steamCoordinatorEnabled,
+    steamCoordinatorUsername,
+    steamCoordinatorPassword,
+    steamCoordinatorGuardSecret,
+    steamSyncIntervalMinutes: bounded(env.STEAM_AUTO_SYNC_MINUTES, 120, 1440),
+    providerLimits: {
+      steam: {
+        perMinute: bounded(env.STEAM_REQUESTS_PER_MINUTE, 60, 600),
+        concurrent: bounded(env.STEAM_MAX_CONCURRENT, 4, 32),
+        downloads: bounded(env.STEAM_MAX_DOWNLOADS, 1, 8),
+        backoff: bounded(env.STEAM_BACKOFF_SECONDS, 60, 3600),
+      },
+      faceit: {
+        perMinute: bounded(env.FACEIT_REQUESTS_PER_MINUTE, 90, 600),
+        concurrent: bounded(env.FACEIT_MAX_CONCURRENT, 4, 32),
+        downloads: bounded(env.FACEIT_MAX_DOWNLOADS, 2, 8),
+        backoff: bounded(env.FACEIT_BACKOFF_SECONDS, 30, 3600),
+      },
+      coordinator: {
+        perMinute: bounded(env.STEAM_COORDINATOR_REQUESTS_PER_MINUTE, 6, 60),
+        concurrent: 1,
+        backoff: bounded(env.STEAM_COORDINATOR_BACKOFF_SECONDS, 120, 3600),
+      },
+    },
     steamApiKey: env.STEAM_API_KEY || '',
     adminUsername: accountName.optional().parse(env.ADMIN_USERNAME || undefined) || '',
     adminPassword: accountPassword.optional().parse(env.ADMIN_PASSWORD || undefined) || '',
