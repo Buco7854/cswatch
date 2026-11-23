@@ -7,7 +7,8 @@ import { join } from 'node:path';
 import { createApp } from '../src/server.js';
 import { loadConfig } from '../src/config.js';
 import { Store, now } from '../src/db.js';
-import { digest, hashPassword, COOKIE, steamStateCookie } from '../src/security.js';
+import { AccountMail } from '../src/account-mail.js';
+import { digest, hashPassword, COOKIE, steamStateCookie, token } from '../src/security.js';
 import { reserve } from '../src/ingestion.js';
 import { browserBootstrap } from './fixtures/browser-bootstrap.js';
 const origin = 'http://localhost:8000';
@@ -29,7 +30,11 @@ async function setup(overrides: Record<string, string> = {}) {
       method: 'POST',
       url: '/api/auth/register',
       headers: await browserBootstrap(app, config),
-      payload: { username, password: 'a-long-test-password' },
+      payload: {
+        display_name: username,
+        email: `${username}@example.test`,
+        password: 'a-long-test-password',
+      },
     });
     assert.equal(r.statusCode, 201, r.body);
     return {
@@ -200,7 +205,7 @@ test('verified Steam subject creates independent ownership when a local username
       });
     const result = await callback();
     assert.equal(result.statusCode, 303, result.body);
-    assert.equal(result.headers.location, '/account/connections');
+    assert.equal(result.headers.location, '/account?returnTo=%2Faccount%2Fconnections');
     const identity = s.db.one(
       "SELECT user_id FROM identities WHERE provider='steam' AND subject=?",
       subject,
@@ -218,8 +223,17 @@ test('verified Steam subject creates independent ownership when a local username
   }
 });
 
-test('Steam-created accounts retain a sign-in handle and update their display name until a password fixes it', async () => {
-  const s = await setup({ STEAM_ENABLED: 'true' });
+test('Steam signup requires its profile and email verification, and preserves the chosen identity', async (t) => {
+  const queued: string[] = [];
+  t.mock.method(AccountMail.prototype, 'queueVerification', (id: string) => queued.push(id));
+  const s = await setup({
+    STEAM_ENABLED: 'true',
+    EMAIL_DELIVERY_ENABLED: 'true',
+    SMTP_HOST: '127.0.0.1',
+    SMTP_FROM: 'sending@example.test',
+    SMTP_USERNAME: 'fixture-mailer',
+    SMTP_PASSWORD: 'synthetic-password',
+  });
   const originalFetch = globalThis.fetch;
   let name = '';
   let nonce = 0;
@@ -235,13 +249,41 @@ test('Steam-created accounts retain a sign-in handle and update their display na
     return new Response('ns:http://specs.openid.net/auth/2.0\nis_valid:true\n');
   };
   const host = 'localhost:8000';
-  async function signIn(subject: string, session?: { cookie: string; csrf: string }) {
+  async function verifyEmail<T extends { id: string; cookie: string; csrf: string }>(user: T) {
+    const { id, cookie, csrf } = user;
+    const code = token();
+    s.db.run(
+      'INSERT INTO email_verifications(user_id,verifier,email_revision,created_at,expires_at) SELECT id,?,email_revision,?,? FROM users WHERE id=?',
+      digest(code),
+      now(),
+      now() + 30,
+      id,
+    );
+    const result = await s.app.inject({
+      method: 'POST',
+      url: '/api/auth/email/verify',
+      headers: { host, origin, cookie, 'x-csrf-token': csrf },
+      payload: { code },
+    });
+    assert.equal(result.statusCode, 200, result.body);
+    const session = result.cookies.find(({ name }) => name === COOKIE)!;
+    return {
+      ...user,
+      cookie: `${session.name}=${session.value}`,
+      csrf: result.json().session.csrf,
+    };
+  }
+  async function signIn(
+    subject: string,
+    session?: { cookie: string; csrf: string },
+    purpose = 'steam/link',
+  ) {
     const browser = session
       ? { host, origin, cookie: session.cookie, 'x-csrf-token': session.csrf }
       : await browserBootstrap(s.app, s.config);
     const start = await s.app.inject({
       method: 'POST',
-      url: session ? '/api/auth/steam/link' : '/api/auth/steam',
+      url: session ? `/api/auth/${purpose}` : '/api/auth/steam',
       headers: browser,
       payload: {},
     });
@@ -281,29 +323,67 @@ test('Steam-created accounts retain a sign-in handle and update their display na
     return { cookie, ...me.json().user } as {
       cookie: string;
       csrf: string;
+      id: string;
       username: string;
       display_name: string;
+      profile_required: boolean;
+      email: string | null;
     };
   }
   try {
     name = "Подсосник blick'a";
     const first = await signIn('76561198000000011');
     assert.equal(first.display_name, name);
+    assert.equal(first.profile_required, true);
+    assert.equal(first.email, null);
+    assert.deepEqual(queued, []);
     const twin = await signIn('76561198000000012');
     assert.equal(twin.display_name, name);
     assert.notEqual(twin.username, first.username);
 
-    name = 'New name';
-    assert.equal((await signIn('76561198000000011')).display_name, 'New name');
-    name = '';
+    const blocked = await s.app.inject({
+      url: '/api/demos',
+      headers: { host, cookie: first.cookie },
+    });
+    assert.equal(blocked.statusCode, 403);
+    assert.equal(blocked.json().code, 'account_onboarding_required');
+    name = 'New Steam name';
+    const resumed = await signIn('76561198000000011');
+    assert.equal(resumed.profile_required, true);
+    assert.equal(resumed.username, first.username);
+    assert.notEqual(resumed.display_name, name);
+    s.db.run('UPDATE sessions SET proof_at=? WHERE user_id=?', now() - 301, resumed.id);
+    const completeProfile = ({ cookie, csrf }: { cookie: string; csrf: string }) =>
+      s.app.inject({
+        method: 'POST',
+        url: '/api/auth/profile',
+        headers: { host, origin, cookie, 'x-csrf-token': csrf },
+        payload: { display_name: 'New name', email: 'steam_signup@example.test' },
+      });
+    assert.equal((await completeProfile(resumed)).statusCode, 403);
+    const fresh = await signIn('76561198000000011', resumed, 'step-up/steam');
+    const completed = await completeProfile(fresh);
+    assert.equal(completed.statusCode, 200, completed.body);
+    assert.equal(completed.json().user.profile_required, false);
+    assert.equal(completed.json().user.email, 'steam_signup@example.test');
+    assert.equal(completed.json().user.email_verified_at, null);
+    assert.equal(completed.json().user.email_verification_required, true);
+    assert.equal(completed.json().user.username, first.username);
+    assert.deepEqual(queued, [first.id]);
     const kept = await signIn('76561198000000011');
-    assert.equal(kept.display_name, 'New name', 'A missing Steam name keeps the previous one.');
+    assert.equal(kept.display_name, 'New name');
+    assert.equal(kept.email, 'steam_signup@example.test');
+    const list = (cookie: string) => s.app.inject({ url: '/api/demos', headers: { host, cookie } });
+    assert.equal((await list(kept.cookie)).statusCode, 403);
+    const verified = await verifyEmail(kept);
+    assert.equal((await list(verified.cookie)).statusCode, 200);
+    assert.equal((await list(kept.cookie)).statusCode, 401);
 
     const password = 'a-long-test-password';
     const set = await s.app.inject({
       method: 'POST',
       url: '/api/auth/password',
-      headers: { host, origin, cookie: kept.cookie, 'x-csrf-token': kept.csrf },
+      headers: { host, origin, cookie: verified.cookie, 'x-csrf-token': verified.csrf },
       payload: { new_password: password },
     });
     assert.equal(set.statusCode, 200, set.body);
@@ -317,9 +397,19 @@ test('Steam-created accounts retain a sign-in handle and update their display na
     });
     assert.equal(login.statusCode, 200, login.body);
 
-    const local = await s.register('local_owner');
+    const local = await verifyEmail(await s.register('local_owner'));
     const linked = await signIn('76561198000000013', local);
     assert.equal(linked.username, local.username, 'Linking never renames a local account.');
+    assert.equal(linked.display_name, 'local_owner');
+    assert.equal(linked.email, 'local_owner@example.test');
+    const unlinked = await s.app.inject({
+      method: 'DELETE',
+      url: '/api/auth/steam/link',
+      headers: { host, origin, cookie: linked.cookie, 'x-csrf-token': linked.csrf },
+    });
+    assert.equal(unlinked.statusCode, 200, unlinked.body);
+    assert.equal(unlinked.json().user.email, linked.email);
+    assert.equal(unlinked.json().user.display_name, linked.display_name);
   } finally {
     globalThis.fetch = originalFetch;
     await s.close();
@@ -352,7 +442,11 @@ test('HTTPS sessions and Steam state use host-only cookie prefixes, including ro
       method: 'POST',
       url: '/api/auth/register',
       headers: await browserBootstrap(app, config),
-      payload: { username: 'secure_review', password: 'a-long-secure-test-password' },
+      payload: {
+        display_name: 'secure_review',
+        email: 'secure_review@example.test',
+        password: 'a-long-secure-test-password',
+      },
     });
     assert.equal(registration.statusCode, 201);
     assertCookie(String(registration.headers['set-cookie']), '__Host-cswatch_session');
@@ -637,7 +731,7 @@ test('Steam match reads and sync removal revalidate the account under their own 
   const s = await setup();
   try {
     for (const method of ['GET', 'DELETE'] as const) {
-      const member = await s.register();
+      const member = await s.register(`reviewer_${method.toLowerCase()}`);
       const transaction = s.db.transaction.bind(s.db);
       s.db.transaction = (work) => {
         s.db.transaction = transaction;
@@ -736,7 +830,11 @@ test('environment wins over admin settings, private access gates public demos', 
           method: 'POST',
           url: '/api/auth/register',
           headers: await browserBootstrap(s.app, s.config),
-          payload: { username: 'someone', password: 'a-long-test-password' },
+          payload: {
+            display_name: 'someone',
+            email: 'someone@example.test',
+            password: 'a-long-test-password',
+          },
         })
       ).statusCode,
       403,
@@ -997,7 +1095,7 @@ test('Steam rejects malformed and stale assertions, cross-state nonce reuse, and
     const valid = await start();
     const signedIn = await valid.callback();
     assert.equal(signedIn.statusCode, 303, signedIn.body);
-    assert.equal(signedIn.headers.location, '/library');
+    assert.equal(signedIn.headers.location, '/account?returnTo=%2Flibrary');
     const replay = await start();
     replay.query.set('openid.response_nonce', valid.query.get('openid.response_nonce')!);
     assert.equal((await replay.callback()).statusCode, 400);

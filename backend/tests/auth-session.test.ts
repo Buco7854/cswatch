@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import test from 'node:test';
 import { loadConfig } from '../src/config.js';
 import { now, Store } from '../src/db.js';
+import { issuePasswordReset } from '../src/recovery.js';
 import {
   browserBindingCookieName,
   confirmAnonymousSignOut,
@@ -288,14 +289,18 @@ test('a status-only browser read never allocates a grant', async () => {
   }
 });
 
-test('browser bootstrap precedes JSON authentication and all registrations receive a distinct handle', async () => {
+test('registration requires bootstrap and unique email while display names can be shared', async () => {
   const f = await fixture();
-  const register = (headers: Record<string, string>) =>
+  const register = (
+    headers: Record<string, string>,
+    email = 'Operator@Example.Test',
+    displayName = 'Ope\u0301rateur 東京',
+  ) =>
     f.app.inject({
       method: 'POST',
       url: '/api/auth/register',
       headers,
-      payload: { username: 'operator', password },
+      payload: { display_name: displayName, email, password },
     });
   try {
     assert.equal((await register({ host: f.c.host, origin: f.c.appUrl })).statusCode, 403);
@@ -307,14 +312,101 @@ test('browser bootstrap precedes JSON authentication and all registrations recei
       payload: '{}',
     });
     assert.equal(wrongFormat.statusCode, 415);
+    for (const name of ['\u202eTest', '\u200b', '\u3164']) {
+      const invalid = await register(firstBrowser, 'invalid@example.test', name);
+      assert.equal(invalid.statusCode, 400, invalid.body);
+    }
     const first = await register(firstBrowser);
-    const second = await register(await browserBootstrap(f.app, f.c));
+    const second = await register(await browserBootstrap(f.app, f.c), 'other@example.test');
     assert.equal(first.statusCode, 201, first.body);
     assert.equal(second.statusCode, 201, second.body);
-    assert.match(first.json().user.username, /^operator-[0-9a-f]{16}$/);
+    assert.match(first.json().user.username, /^Operateur-[0-9a-f]{16}$/);
     assert.notEqual(first.json().user.username, second.json().user.username);
     assert.equal(first.json().user.display_name, second.json().user.display_name);
+    assert.equal(first.json().user.display_name, 'Opérateur 東京');
     assert.equal(first.json().user.role, 'member');
+    assert.equal(first.json().user.email, 'operator@example.test');
+    assert.equal(first.json().user.email_verified_at, null);
+    assert.equal(first.json().user.email_verification_required, false);
+    const duplicate = await register(await browserBootstrap(f.app, f.c), 'operator@EXAMPLE.TEST');
+    assert.equal(duplicate.statusCode, 409, duplicate.body);
+    assert.equal(duplicate.json().code, 'email_unavailable');
+    const signedIn = await f.app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      headers: await browserBootstrap(f.app, f.c),
+      payload: { username: 'OPERATOR@example.test', password },
+    });
+    assert.equal(signedIn.statusCode, 200, signedIn.body);
+    assert.equal(signedIn.json().user.username, first.json().user.username);
+  } finally {
+    await f.close();
+  }
+});
+
+test('self-service email changes use fresh proof and retire old sessions and recovery', async () => {
+  const f = await fixture({ MFA_REQUIRED_ROLES: 'none', ADMIN_EMAIL: 'Original@Example.Test' });
+  try {
+    const { app, db, c } = f;
+    const jsonHeaders = (response: Awaited<ReturnType<typeof f.login>>) => {
+      const signedIn = response.cookies.find(({ name }) => name === sessionCookieName(c))!;
+      return {
+        host: c.host,
+        origin: c.appUrl,
+        cookie: `${signedIn.name}=${signedIn.value}`,
+        'x-csrf-token': response.json().session.csrf,
+      };
+    };
+    const initiator = await f.login();
+    const other = await f.login();
+    const { id, username } = initiator.json().user;
+    const verifiedAt = now();
+    db.run('UPDATE users SET email_verified_at=? WHERE id=?', verifiedAt, id);
+    issuePasswordReset(db, id);
+    const change = (email: string, headers = jsonHeaders(initiator)) =>
+      app.inject({ method: 'POST', url: '/api/auth/profile', headers, payload: { email } });
+    const sameEmail = await change(' ORIGINAL@example.test ');
+    assert.equal(sameEmail.statusCode, 200, sameEmail.body);
+    assert.equal(sameEmail.json().user.email_verified_at, verifiedAt);
+    assert.equal(sameEmail.headers['set-cookie'], undefined);
+    assert.ok(db.one('SELECT 1 FROM password_resets WHERE user_id=?', id));
+
+    const otherHeaders = jsonHeaders(other);
+    db.run(
+      'UPDATE sessions SET proof_at=? WHERE token_hash=?',
+      now() - 301,
+      digest(otherHeaders.cookie.split('=')[1]),
+    );
+    assert.equal((await change('blocked@example.test', otherHeaders)).statusCode, 403);
+    assert.equal(
+      (
+        await change('blocked@example.test', {
+          ...jsonHeaders(initiator),
+          origin: 'https://other.test',
+        })
+      ).statusCode,
+      403,
+    );
+    const changedEmail = await change('Replacement@Example.Test');
+    assert.equal(changedEmail.statusCode, 200, changedEmail.body);
+    assert.equal(changedEmail.json().user.username, username);
+    assert.equal(changedEmail.json().user.email, 'replacement@example.test');
+    assert.equal(changedEmail.json().user.email_verified_at, null);
+    assert.equal(db.one('SELECT email_revision FROM users WHERE id=?', id)!.email_revision, 1);
+    assert.equal(db.one('SELECT 1 FROM password_resets WHERE user_id=?', id), undefined);
+    assert.equal((await change('blocked@example.test', otherHeaders)).statusCode, 403);
+    const audit = db.one("SELECT target FROM audit WHERE action='account.email_changed'");
+    assert.equal(audit?.target, id);
+
+    const login = async (username: string) =>
+      app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        headers: await browserBootstrap(app, c),
+        payload: { username, password },
+      });
+    assert.equal((await login('original@example.test')).statusCode, 401);
+    assert.equal((await login('replacement@example.test')).json().user.id, id);
   } finally {
     await f.close();
   }

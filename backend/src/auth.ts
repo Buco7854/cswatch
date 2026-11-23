@@ -1,10 +1,12 @@
-import { accountPassword, newCredentials } from './credentials.js';
+import { accountDisplayName, accountEmail, accountPassword } from './credentials.js';
 import { accountEntry } from './auth-routes.js';
+import type { AccountMail } from './account-mail.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { Store } from './db.js';
 import { now } from './db.js';
-import type { Config } from './config.js';
+import { emailDeliveryEnabled, type Config } from './config.js';
+import { changeAccountEmail, requireAvailableEmail } from './email-identity.js';
 import { acceptsHtml } from './request-security.js';
 import { fetchSteamName } from './steam-name.js';
 import { readUpstreamText } from './upstream.js';
@@ -43,8 +45,30 @@ const steamStateLifetime = 600;
 const badCredentials = 'Username or password is incorrect.';
 const changed = 'Session expired. Refresh the page and try again.';
 const steamExpired = 'Sign-in expired. Start again.';
-const login = newCredentials.extend({ username: z.string().trim().min(1).max(64) });
+const login = z.strictObject({
+  username: z.string().trim().min(1).max(254),
+  password: accountPassword,
+});
+const registration = z.strictObject({
+  email: accountEmail,
+  display_name: accountDisplayName,
+  password: accountPassword,
+});
+const profile = z.strictObject({
+  email: accountEmail,
+  display_name: accountDisplayName.optional(),
+});
 const empty = z.object({}).strict();
+
+function registeredUsername(displayName: string) {
+  const stem = displayName
+    .normalize('NFKD')
+    .replace(/\p{M}/gu, '')
+    .replace(/[^a-z0-9_-]+/gi, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 32);
+  return (stem || 'member') + '-' + token().slice(0, 16);
+}
 
 type SteamPurpose = 'login' | 'link' | 'step-up';
 type SteamCallbackResult =
@@ -70,6 +94,7 @@ export async function authRoutes(
   db: Store,
   c: Config,
   invalidateProviderCache: (userId: string) => void,
+  mail?: AccountMail,
 ) {
   const policy = () => db.mfaRequiredRoles(c).join(',');
   app.get('/api/auth/me', accountEntry('status'), async (r, reply) => {
@@ -95,7 +120,7 @@ export async function authRoutes(
     requireSession(db, r, c, ['anonymous']);
     if (!db.flag(c, 'registrations_enabled'))
       throw new HttpError(403, 'New registrations are disabled.');
-    const body = newCredentials.parse(r.body);
+    const body = registration.parse(r.body);
     if (registering >= 2) throw new HttpError(429, 'Too many requests. Try again later.', 1);
     admitRequest(db, r, [
       ['register', 5, 3600],
@@ -112,18 +137,19 @@ export async function authRoutes(
       requireSession(db, r, c, ['anonymous']);
       if (!db.flag(c, 'registrations_enabled'))
         throw new HttpError(403, 'New registrations are disabled.');
+      requireAvailableEmail(db, body.email);
       const id = token().slice(0, 32);
-      // All public registrations get a random handle suffix. A caller never
-      // tests whether any specific account name exists by trying to register it.
-      const username = body.username + '-' + token().slice(0, 16);
       db.run(
-        'INSERT INTO users(id,username,password_hash,role,created_at,display_name) VALUES(?,?,?,?,?,?)',
+        `INSERT INTO users(id,username,password_hash,role,created_at,display_name,email,email_verification_required)
+         VALUES(?,?,?,?,?,?,?,?)`,
         id,
-        username,
+        registeredUsername(body.display_name),
         hash,
         'member',
         now(),
-        body.username,
+        body.display_name,
+        body.email,
+        Number(emailDeliveryEnabled(db, c)),
       );
       db.audit(id, 'account.created', { target: id, address: r.clientAddress });
       return rotateSession(db, c, r, {
@@ -132,31 +158,29 @@ export async function authRoutes(
         proof: { kind: 'password' },
       });
     });
+    mail?.queueVerification(grant.session.user_id!, r.headers['accept-language']);
     reply.code(201);
     return sendSession(c, reply, grant);
   });
   const passwordUser = (name: string) =>
     db.one(
       `SELECT id,username,role,password_hash,auth_generation FROM users u
-     WHERE username=? COLLATE NOCASE AND NOT EXISTS(SELECT 1 FROM guest_sessions WHERE owner_id=u.id)`,
+     WHERE ${name.includes('@') ? 'email' : 'username'}=?
+       AND NOT EXISTS(SELECT 1 FROM guest_sessions WHERE owner_id=u.id)`,
       name,
     );
   app.post('/api/auth/login', accountEntry('anonymous'), async (r, reply) => {
     requireSession(db, r, c, ['anonymous']);
     const b = login.parse(r.body);
+    const before = passwordUser(b.username);
+    const loginKey = before ? digest('account\0' + before.id) : digest(b.username.toLowerCase());
     const admitLogin = () =>
       admitRequest(db, r, [
         ['login-ip', 20, 900],
-        [
-          'login-user-address',
-          10,
-          900,
-          digest(rateAddress(r.ip) + '\0' + b.username.toLowerCase()),
-        ],
-        ['login-username', 8, 5, digest(b.username.toLowerCase())],
+        ['login-user-address', 10, 900, digest(rateAddress(r.ip) + '\0' + loginKey)],
+        ['login-username', 8, 5, loginKey],
         ['login-budget', 300, 60, 'instance'],
       ]);
-    const before = passwordUser(b.username);
     const oldPolicy = policy();
     if (!(await verifyPassword(before?.password_hash, b.password, admitLogin))) {
       db.audit(null, 'password.sign_in', { address: r.clientAddress, outcome: 'denied' });
@@ -204,7 +228,7 @@ export async function authRoutes(
     if (r.user) invalidateProviderCache(r.user.id);
     return sendSession(c, reply, grant);
   });
-  app.post('/api/auth/step-up/password', async (r, reply) => {
+  app.post('/api/auth/step-up/password', accountEntry('full', true), async (r, reply) => {
     const active = requireSession(db, r, c, ['full']);
     if (hasSecondFactor(db, active.user_id))
       throw new HttpError(403, 'Confirm using a second factor.');
@@ -275,6 +299,37 @@ export async function authRoutes(
       });
     });
     return sendSession(c, reply, grant);
+  });
+
+  app.post('/api/auth/profile', accountEntry('full', true), async (r, reply) => {
+    const active = requireFreshSession(db, r, c);
+    const body = profile.parse(r.body);
+    rateLimit(db, r, 'account-profile', 10, 900, active.user_id);
+    const result = db.transaction(() => {
+      const live = requireFreshSession(db, r, c);
+      if (Boolean(live.profile_required) !== (body.display_name !== undefined))
+        throw new HttpError(400, 'Check the form fields and try again.');
+      const emailChanged = changeAccountEmail(db, live.user_id, body.email);
+      if (!emailChanged && !live.profile_required) return null;
+      if (live.profile_required)
+        db.run(
+          'UPDATE users SET display_name=?,profile_required=0 WHERE id=?',
+          body.display_name,
+          live.user_id,
+        );
+      db.audit(
+        live.user_id,
+        live.profile_required ? 'account.profile_completed' : 'account.email_changed',
+        {
+          target: live.user_id,
+          address: r.clientAddress,
+        },
+      );
+      return { emailChanged, grant: renewAfterIdentityChange(db, c, r, live) };
+    });
+    if (!result) return readSessionStatus(db, c, r);
+    if (result.emailChanged) mail?.queueVerification(active.user_id, r.headers['accept-language']);
+    return sendSession(c, reply, result.grant);
   });
 
   app.get('/api/auth/sessions', async (r) => {
@@ -399,7 +454,7 @@ export async function authRoutes(
     empty.parse(r.body);
     return startSteam(r, reply, 'link', '/account/connections');
   });
-  app.post('/api/auth/step-up/steam', async (r, reply) => {
+  app.post('/api/auth/step-up/steam', accountEntry('full', true), async (r, reply) => {
     const body = z
       .object({ return_to: z.string().max(1024).optional() })
       .strict()
@@ -425,7 +480,7 @@ export async function authRoutes(
   });
   app.get(
     '/api/auth/steam/callback',
-    { ...accountEntry('anonymous'), exposeHeadRoute: false },
+    { ...accountEntry('anonymous', true), exposeHeadRoute: false },
     async (r, reply) => {
       requireSteam();
       const q = z.record(z.string(), z.string()).parse(r.query),
@@ -523,7 +578,11 @@ export async function authRoutes(
         steamVerifications++;
         try {
           await verifySteam(q);
-          if (initial.stored.purpose === 'login' && !identity?.password_hash) {
+          if (
+            initial.stored.purpose === 'login' &&
+            !identity &&
+            db.flag(c, 'registrations_enabled')
+          ) {
             requireSteam();
             checkState();
             steamName = await fetchSteamName(subject, c.steamApiKey);
@@ -602,16 +661,16 @@ export async function authRoutes(
                 'registration-closed',
               );
             db.run(
-              'INSERT INTO users(id,username,role,created_at,display_name) VALUES(?,?,?,?,?)',
+              `INSERT INTO users(id,username,role,created_at,display_name,profile_required,email_verification_required)
+               VALUES(?,?,?,?,?,1,?)`,
               id,
               'steam_' + subject + '-' + token().slice(0, 16),
               'member',
               now(),
               steamName,
+              Number(emailDeliveryEnabled(db, c)),
             );
             db.run("INSERT INTO identities VALUES('steam',?,?)", subject, id);
-          } else if (steamName && !current.password_hash) {
-            db.run('UPDATE users SET display_name=? WHERE id=?', steamName, id);
           }
           db.audit(id, 'steam.authenticated', { target: id, address: r.clientAddress });
           return rotateSession(db, c, r, {
@@ -626,7 +685,9 @@ export async function authRoutes(
         return reply.redirect(
           status.session.stage === 'challenge'
             ? '/login?' + new URLSearchParams({ returnTo })
-            : status.session.stage === 'enroll'
+            : status.session.stage === 'enroll' ||
+                status.user?.profile_required ||
+                status.user?.email_verification_required
               ? '/account?' + new URLSearchParams({ returnTo })
               : returnTo,
           303,

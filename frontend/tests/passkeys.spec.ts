@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
+import { syntheticEmail } from './fixtures/account-status';
 
 if (!process.env.E2E_EXISTING_SERVER)
   test.use({ extraHTTPHeaders: { 'x-forwarded-for': '192.0.2.24' } });
@@ -24,7 +25,7 @@ async function signOut(page: Page, username: string) {
 }
 
 async function passwordFirstFactor(page: Page, username: string) {
-  await page.getByLabel('Username', { exact: true }).fill(username);
+  await page.getByLabel('Username or email', { exact: true }).fill(username);
   await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Verify your sign-in' })).toBeVisible();
@@ -60,6 +61,7 @@ async function registerAccount(page: Page) {
   const displayName = 'passkey_' + randomUUID().slice(0, 8);
   await page.goto('/register?returnTo=%2Faccount');
   await page.getByLabel('Display name', { exact: true }).fill(displayName);
+  await page.getByLabel('Email address', { exact: true }).fill(syntheticEmail());
   await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Create account', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Save your sign-in name' })).toBeVisible();

@@ -4,6 +4,8 @@ Library and administration use the same dropdown and pagination controls. Member
 
 ## Access and replay
 
+- Schema 9 accounts have private email addresses and shared display names. SMTP is optional. New signups verify mailbox ownership before workspace access when enabled. A verified mailbox can receive a password-reset link. MFA and operator-assisted recovery retain their independent controls. [Account setup](ACCESS-SETUP.md#email-delivery-verification-and-password-reset)
+
 - Public mode offers guest upload and a private temporary viewing capability. Members manage their own demo library, sharing and private notes. Private mode gates viewers and assets independently. Sign-in supports local accounts, configured Steam identity and discoverable passkeys. Enrolled accounts require a second factor after password or Steam sign-in. Optional French and English local speech transcription is available.
 - Passkey setup flags invalid names before opening the browser’s creation prompt. Interrupted setup can resume in its originating tab with the original grant and deadline. Tab data enables resumption after a reload. Selecting a different passkey during confirmation shows guidance to select the newly created key and retry. [Access setup](ACCESS-SETUP.md#account-sign-in-and-recovery)
 - Browser tabs share guest upload setup. An admitted guest upload can finish through an anonymous grant renewal within its original upload window. An unconfirmed guest cookie that protects no demos or upload reservations can be replaced once after a short delay. [Guest upload policy](ACCESS-SETUP.md#guest-upload-policy)

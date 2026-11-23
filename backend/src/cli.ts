@@ -1,8 +1,9 @@
-import { accountName, accountPassword } from './credentials.js';
+import { accountEmail, accountName, accountPassword } from './credentials.js';
 import { stdin, stdout } from 'node:process';
 import { loadConfig } from './config.js';
 import { Store, now } from './db.js';
 import { changeEncryptionKey, forgetUnreadableSecrets } from './encryption-key.js';
+import { requireAvailableEmail } from './email-identity.js';
 import {
   canSignIn,
   signableAdminExists,
@@ -66,11 +67,18 @@ async function account(username: string) {
   const db = new Store(c.dataDir);
   try {
     let hash: string | null = null;
+    let email: string | null = null;
     if (command === 'create-admin') {
       const password = await secret('New password (12+ characters): ');
       const confirmation = await secret('Confirm password: ');
       if (!accountPassword.safeParse(password).success || password !== confirmation)
         throw new Error('Passwords must match and contain 12–128 characters.');
+      const address = (await secret('Email address (optional): ')).trim();
+      if (address) {
+        const result = accountEmail.safeParse(address);
+        if (!result.success) throw new Error('Enter a valid email address.');
+        email = result.data;
+      }
       hash = await hashPassword(password);
     } else if (!stdout.isTTY) {
       throw new Error('Use an interactive terminal for account recovery.');
@@ -81,13 +89,15 @@ async function account(username: string) {
       if (command === 'create-admin') {
         if (db.one('SELECT id FROM users WHERE username=?', username))
           throw new Error('This username is already in use.');
+        if (email) requireAvailableEmail(db, email);
         id = token().slice(0, 32);
         db.run(
-          "INSERT INTO users(id,username,password_hash,role,created_at) VALUES(?,?,?,'admin',?)",
+          "INSERT INTO users(id,username,password_hash,role,created_at,email) VALUES(?,?,?,'admin',?,?)",
           id,
           username,
           hash,
           now(),
+          email,
         );
       } else {
         const user = db.one(

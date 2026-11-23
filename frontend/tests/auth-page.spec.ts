@@ -1,5 +1,5 @@
 import { memberConfig } from './fixtures/member-workspace';
-import { accountStatus } from './fixtures/account-status';
+import { accountStatus, syntheticEmail } from './fixtures/account-status';
 import { expect, test, type Page } from '@playwright/test';
 
 async function policy(page: Page, registrations = true, steam = true) {
@@ -41,6 +41,12 @@ test('dedicated auth routes preserve review intent, share local controls and kee
   await page.getByRole('link', { name: 'New here? Create an account', exact: true }).click();
   await expect(page).toHaveURL(/\/register\?returnTo=%2Fwatch%2Fprivate-demo%3Ft%3D128$/);
   await page.getByLabel('Display name', { exact: true }).fill('original_auth_fixture');
+  const email = page.getByLabel('Email address', { exact: true });
+  await expect(email).toHaveAttribute('type', 'email');
+  await expect(email).toHaveAttribute('autocomplete', 'email');
+  await expect(email).toHaveAttribute('required', '');
+  const address = syntheticEmail();
+  await email.fill(address);
   const password = page.getByLabel('Password', { exact: true });
   await password.fill('Synthetic-password-2026');
   await expect(password).toHaveAttribute('type', 'password');
@@ -51,11 +57,13 @@ test('dedicated auth routes preserve review intent, share local controls and kee
     'true',
   );
   expect(page.url()).not.toContain('Synthetic-password');
+  expect(page.url()).not.toContain(address);
   await page.getByRole('button', { name: 'Hide password', exact: true }).click();
   await expect(password).toHaveAttribute('type', 'password');
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Create account', exact: true })).toBeVisible();
   await expect(password).toHaveValue('');
+  await expect(email).toHaveValue('');
   await page.getByRole('link', { name: 'Go back', exact: true }).click();
   await expect(page).toHaveURL(/\/watch\/private-demo\?t=128$/);
 });

@@ -1,4 +1,8 @@
-import { accountStatus, configForSyntheticAccount } from './fixtures/account-status';
+import {
+  accountStatus,
+  configForSyntheticAccount,
+  syntheticEmail,
+} from './fixtures/account-status';
 import { test, expect, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -142,6 +146,7 @@ test('guests sign in for accounts and return directly to connections', async ({ 
   await registration
     .getByLabel('Display name', { exact: true })
     .fill('connections_' + Date.now().toString(36));
+  await registration.getByLabel('Email address', { exact: true }).fill(syntheticEmail());
   await registration
     .getByLabel('Password', { exact: true })
     .fill('Disposable-browser-password-2026!');

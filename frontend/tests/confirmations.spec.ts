@@ -1,4 +1,8 @@
-import { accountStatus, configForSyntheticAccount } from './fixtures/account-status';
+import {
+  accountStatus,
+  configForSyntheticAccount,
+  syntheticEmail,
+} from './fixtures/account-status';
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { installDemoMapDescriptor } from './fixtures/map-assets';
 import { test, expect } from '@playwright/test';
@@ -42,7 +46,8 @@ test('the library deletes an owned upload from its row without opening the viewe
   const account = await page.request.post('/api/auth/register', {
     headers: { origin: new URL(page.url()).origin, 'x-csrf-token': status.session.csrf },
     data: {
-      username: `delete_${Date.now().toString(36)}`,
+      display_name: `delete_${Date.now().toString(36)}`,
+      email: syntheticEmail(),
       password: 'Disposable-Delete-Browser-2026!',
     },
   });

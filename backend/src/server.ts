@@ -14,11 +14,20 @@ import { join, basename } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import { z, ZodError } from 'zod';
-import { loadConfig, flagDefaults, type Config, type Flag } from './config.js';
+import {
+  emailDeliveryEnabled,
+  loadConfig,
+  flagDefaults,
+  type Config,
+  type Flag,
+} from './config.js';
+import { AccountMail, accountMailRoutes, retireAccountMail } from './account-mail.js';
 import { Store, openStoreForStartup } from './db.js';
 import { buildInfo } from './build-info.js';
 import {
   HttpError,
+  accountOnboardingError,
+  accountOnboardingRequired,
   browserCookieName,
   sessionCookieName,
   chargeBudgets,
@@ -55,6 +64,7 @@ import { hasPermission } from './roles.js';
 import { authRoutes } from './auth.js';
 import {
   accountEntry,
+  allowedAccountOnboarding,
   allowedAnonymous,
   allowedBeforeSetup,
   allowedPending,
@@ -98,6 +108,8 @@ export async function createApp(
   const key = openEncryptionKey(c, db);
   if (Boolean(c.adminUsername) !== Boolean(c.adminPassword))
     throw new Error('ADMIN_USERNAME and ADMIN_PASSWORD must be configured together.');
+  if (c.adminEmail && !c.adminUsername)
+    throw new Error('ADMIN_EMAIL requires ADMIN_USERNAME and ADMIN_PASSWORD.');
   await provisionAdmin(db, c);
   const lockedSteamOnlyAccounts = db.transaction(() => {
     if (!setupRequired(db) && !signableAdminExists(db, c))
@@ -106,6 +118,7 @@ export async function createApp(
       );
     db.bindRelyingParty(c);
     db.retireIneligibleSessions(c);
+    if (!emailDeliveryEnabled(db, c)) retireAccountMail(db);
     return c.flags.steam_enabled === false && hasSteamOnlyAccounts(db);
   });
   prepareSetup(db);
@@ -120,6 +133,7 @@ export async function createApp(
     connectionTimeout: connectionTimeoutMs,
     trustProxy: c.trustProxy ? (ip) => trustProxyAddress(c, ip) : false,
   });
+  const mail = new AccountMail(db, c, () => app.log.warn('Account email submission failed.'));
   const recordAdminDenial = adminDenialRecorder(db, c);
   app.decorateRequest('user', null);
   app.decorateRequest('authSession', null);
@@ -186,7 +200,8 @@ export async function createApp(
     r.clientAddress = adminClientAddress(r, c)?.ip ?? null;
     const session = currentSession(db, r, c);
     r.authSession = session;
-    r.user = session?.stage === 'full' ? sessionUser(session) : null;
+    const onboarding = accountOnboardingRequired(db, c, session);
+    r.user = session?.stage === 'full' && !onboarding ? sessionUser(session) : null;
     const path = r.url.split('?')[0];
     const route = r.routeOptions.url ?? '';
     const apiRoute = route.startsWith('/api/') || path.startsWith('/api/');
@@ -204,6 +219,7 @@ export async function createApp(
     if (isRead(r) && adminPage(r.url)) {
       let destination: string | undefined;
       if (setupRequired(db)) destination = '/setup';
+      else if (onboarding) destination = '/account?returnTo=%2Fadmin';
       else if (!r.user) destination = '/login?returnTo=%2Fadmin';
       else if (!hasPermission(r.user.role, 'admin')) destination = '/library?admin=role';
       else if (!adminNetworkAllowed(r, c)) destination = '/library?admin=network';
@@ -227,15 +243,24 @@ export async function createApp(
       }
       throw new HttpError(403, 'Complete sign-in to continue.');
     }
+    if (onboarding && !allowedAccountOnboarding(r) && !authShellRoute(r, path, true)) {
+      if (authShellRoute(r, path, false))
+        return reply.redirect(
+          '/account?' + new URLSearchParams({ returnTo: safeReturnPath(r.url) }),
+          303,
+        );
+      throw accountOnboardingError();
+    }
     if (
       !db.flag(c, 'public_access') &&
       !r.user &&
       !pending &&
+      !onboarding &&
       !allowedAnonymous(r) &&
       !authShellRoute(r, path, false)
     )
       throw new HttpError(401, 'This instance is private. Sign in to continue.');
-    r.guest = pending || r.user ? null : currentGuest(db, r, c);
+    r.guest = pending || onboarding || r.user ? null : currentGuest(db, r, c);
     if (!isRead(r) && r.method !== 'OPTIONS') {
       // A request that supplied a retired browser grant cannot silently switch
       // to capability-only authority while a successor cookie is in transit.
@@ -246,7 +271,10 @@ export async function createApp(
           r.cookies[sessionCookieName(c)] !== undefined)
       )
         throw sessionChanged(reply);
-      const accountRoute = route.startsWith('/api/auth/') || route === '/api/setup';
+      const accountRoute =
+        route.startsWith('/api/auth/') ||
+        route === '/api/setup' ||
+        route === '/api/account/email/verification/request';
       const csrf = accountRoute ? session?.csrf : (r.user?.csrf ?? r.guest?.csrf ?? session?.csrf);
       const hasBody =
         r.method !== 'DELETE' ||
@@ -383,10 +411,11 @@ export async function createApp(
     });
   });
   const providers = await providerRoutes(app, db, c, providerDownload);
-  await authRoutes(app, db, c, providers.invalidate);
+  await authRoutes(app, db, c, providers.invalidate, mail);
   await registerFactorRoutes(app, db, c, key);
   await recoveryRoutes(app, db, c);
-  await setupRoutes(app, db, c);
+  accountMailRoutes(app, db, c, mail);
+  await setupRoutes(app, db, c, mail);
   await guestRoutes(app, db, c);
   steamHistoryRoutes(app, db, c, key);
   await equipmentAssetRoutes(app, db.root, c.mapAssetsDir, c.mapJobsDir);
@@ -441,6 +470,7 @@ export async function createApp(
         admin_access: !!r.user && hasPermission(r.user.role, 'admin') && adminNetworkAllowed(r, c),
         ...Object.fromEntries(Object.keys(flagDefaults).map((k) => [k, db.flag(c, k as Flag)])),
         guest_uploads_enabled: guestUploadsEnabled(db, c),
+        email_delivery_enabled: emailDeliveryEnabled(db, c),
         guest_retention_hours: c.guestRetentionHours,
         setup_required: setupRequired(db),
         max_upload_mb:
@@ -758,7 +788,7 @@ export async function createApp(
       return { ok: true };
     }),
   );
-  adminRoutes(app, db, c);
+  adminRoutes(app, db, c, mail);
   if (existsSync(join(c.frontendDir, 'assets')))
     await app.register(staticFiles, {
       root: join(c.frontendDir, 'assets'),
@@ -787,7 +817,10 @@ export async function createApp(
       throw new HttpError(503, 'Build the frontend first.');
     return reply.type('text/html').send(createReadStream(join(c.frontendDir, 'index.html')));
   });
-  app.addHook('onClose', async () => db.close());
+  app.addHook('onClose', async () => {
+    await mail.close();
+    db.close();
+  });
   return app;
 }
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

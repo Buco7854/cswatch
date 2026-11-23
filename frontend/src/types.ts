@@ -5,6 +5,10 @@ export type User = {
   username: string;
   display_name: string;
   role: Role;
+  email: string | null;
+  email_verified_at: number | null;
+  profile_required: boolean;
+  email_verification_required: boolean;
   has_password: boolean;
   csrf: string;
   match_sources?: {
@@ -17,6 +21,7 @@ export type User = {
 };
 export type Config = {
   admin_access: boolean;
+  email_delivery_enabled: boolean;
   build?: { revision: string | null; builtAt: string | null };
   setup_required: boolean;
   guest_uploads_enabled: boolean;

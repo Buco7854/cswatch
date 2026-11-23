@@ -1,4 +1,8 @@
-import { accountStatus, configForSyntheticAccount } from './fixtures/account-status';
+import {
+  accountStatus,
+  configForSyntheticAccount,
+  syntheticEmail,
+} from './fixtures/account-status';
 import { expectCameraControl, chooseCameraControl } from './fixtures/viewer-transport';
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { activateViewerAction } from './fixtures/viewer-actions';
@@ -136,6 +140,7 @@ test('account-required upload preserves route intent, registration and logout wo
   await page.getByRole('link', { name: 'New here? Create an account' }).click();
   await expect(page.getByRole('heading', { name: 'Create account', exact: true })).toBeVisible();
   await page.getByLabel('Display name', { exact: true }).fill(username);
+  await page.getByLabel('Email address', { exact: true }).fill(syntheticEmail());
   await page.getByLabel('Password', { exact: true }).fill('Unique-test-password-392!');
   await page.getByRole('button', { name: 'Create account', exact: true }).click();
   await expect(page.getByLabel('Username', { exact: true })).toHaveValue(/-[0-9a-f]{16}$/);
@@ -189,7 +194,9 @@ test('French covers public pages, viewer, auth errors and saved language choice'
   await page.getByRole('button', { name: 'Fermer les options du lecteur' }).click();
   await page.getByRole('button', { name: 'Menu du lecteur', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Se connecter', exact: true }).click();
-  await page.getByLabel('Nom d’utilisateur', { exact: true }).fill('missing_member');
+  await page
+    .getByLabel('Nom d’utilisateur ou adresse e-mail', { exact: true })
+    .fill('missing_member');
   await page.getByLabel('Mot de passe', { exact: true }).fill('wrong-test-password');
   await page
     .getByRole('form', { name: 'Se connecter', exact: true })
@@ -255,6 +262,7 @@ test('private entry gates feature and demo routes and respects registrations pol
     await page
       .getByLabel('Display name', { exact: true })
       .fill('private_' + Date.now().toString(36));
+    await page.getByLabel('Email address', { exact: true }).fill(syntheticEmail());
     await page.getByLabel('Password', { exact: true }).fill('Unique-private-password-392!');
     await page.getByRole('button', { name: 'Create account', exact: true }).click();
     await expect(page.getByLabel('Username', { exact: true })).toHaveValue(/-[0-9a-f]{16}$/);

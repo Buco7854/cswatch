@@ -12,6 +12,7 @@ import { authReturnPath } from '../auth-navigation';
 import { useAction } from '../useAction';
 import { ActionError, CopyValue, roleLabel, SecuritySection } from './AuthControls';
 import AccountSecurity from './AccountSecurity';
+import { AccountEmail } from './AccountEmail';
 import AccountSessions from './AccountSessions';
 import { StepUpProvider, SteamStepUpNotice, useStepUp } from './StepUp';
 import { ConfirmationProvider } from './Confirmation';
@@ -27,12 +28,14 @@ const names: Record<string, string> = {
   steam_enabled: 'Steam sign-in',
   faceit_enabled: 'FACEIT integration',
   transcription_enabled: 'Local speech transcription',
+  email_delivery_enabled: 'Email verification and password recovery',
 };
 type AdminData = {
   mapReadiness?: MapPreparationDiagnostics;
   presentationAssets?: PresentationStatus;
   flags: Record<string, { value: boolean; locked: boolean }>;
   mfa_required_roles: Policy;
+  email_delivery_configured?: boolean;
   queue: { status: string; count: number }[];
 };
 type FlagDrafts = Partial<Record<string, boolean>>;
@@ -122,6 +125,11 @@ export function Account({
                 <span className="member-role">{roleLabel(user.role)}</span>
               </div>
               <CopyValue wrap label={t('Your sign-in username')} value={user.username} />
+            </div>
+          </SecuritySection>
+          <SecuritySection title={t('Email address')}>
+            <div className="settings-panel security-panel">
+              <AccountEmail key={user.id} />
             </div>
           </SecuritySection>
           <AccountSecurity key={user.id} enrollment={false} onComplete={() => {}} />
@@ -400,11 +408,21 @@ function InstanceSettings() {
                     label={t(names[key])}
                     locked={flag.locked}
                     checked={drafts[key] ?? flag.value}
-                    disabled={busy}
+                    disabled={
+                      busy ||
+                      (key === 'email_delivery_enabled' && data.email_delivery_configured === false)
+                    }
                     onChange={(checked) => editFlag(key, checked)}
                   />
                 ))}
               </div>
+              {data.email_delivery_configured === false && (
+                <p className="muted">
+                  {t(
+                    'Configure SMTP on the server to enable verification and password reset emails.',
+                  )}
+                </p>
+              )}
               <div className="form-actions">
                 <button className="button primary" disabled={busy || !dirty}>
                   {busy ? t('Saving…') : t('Save settings')}

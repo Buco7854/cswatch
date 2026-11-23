@@ -9,7 +9,14 @@ import { currentFocus, focusReturn } from '../focus-restore';
 import { t } from '../i18n';
 import { useAction } from '../useAction';
 import { useResource } from '../useResource';
-import { AccountTime, ActionError, CopyValue, roleLabel, SecuritySection } from './AuthControls';
+import {
+  AccountTime,
+  ActionError,
+  CopyValue,
+  EmailField,
+  roleLabel,
+  SecuritySection,
+} from './AuthControls';
 import { useConfirm } from './Confirmation';
 import { Pagination, SelectControl, SwitchRow } from './Controls';
 import { formatBytes } from '../format-bytes';
@@ -23,7 +30,11 @@ type UserRow = {
   created_at: number;
 };
 type UserDetails = {
-  user: UserRow & { last_active: number | null };
+  user: UserRow & {
+    last_active: number | null;
+    email: string | null;
+    email_verified_at: number | null;
+  };
   identities: { provider: string; subject: string }[];
   factors: { passkeys: number; totp: boolean; recovery_codes: number };
   sessions: { id: string; device: string; address: string | null; last_used_at: number }[];
@@ -302,7 +313,7 @@ function UserDetail({ id, onRemove }: { id: string; onRemove: () => void }) {
               )}
             </SecurityList>
           </div>
-          <UserActions data={data} reload={reload} onRemove={onRemove} />
+          <UserActions data={data} reload={reload} onRemove={onRemove} refreshing={loading} />
         </>
       )}
     </section>
@@ -311,6 +322,7 @@ function UserDetail({ id, onRemove }: { id: string; onRemove: () => void }) {
 
 const userActions = {
   'change-role': 'Change role',
+  'change-email': 'Change email address',
   'sign-out': 'Sign out everywhere',
   'reset-password': 'Reset password',
   'reset-totp': 'Reset authenticator',
@@ -322,9 +334,14 @@ const userActions = {
 } as const;
 type UserAction = keyof typeof userActions;
 
-function userActionDescription(action: UserAction, role: Role) {
+function userActionDescription(action: UserAction, role: Role, email: string) {
   let effect: string;
   switch (action) {
+    case 'change-email':
+      return t(
+        'Change the address to {{email}} and end all sessions for this account. The new address must be verified before it can receive reset links.',
+        { email },
+      );
     case 'change-role':
       effect = t('Change this account to {{v0}} and end all of its active sessions.', {
         v0: roleLabel(role),
@@ -435,10 +452,12 @@ function RecoveryLink({
 }
 
 function UserActions({
+  refreshing,
   data,
   reload,
   onRemove,
 }: {
+  refreshing: boolean;
   data: UserDetails;
   reload: () => void;
   onRemove: () => void;
@@ -459,6 +478,8 @@ function UserActions({
   const confirm = useConfirm();
   const verify = useStepUp('user-action');
   const [role, setRole] = useState(user.role);
+  const [email, setEmail] = useState(user.email || '');
+  useEffect(() => setEmail(user.email || ''), [user.email]);
   const [chosen, setChosen] = useState<UserAction>();
   const [receipt, setReceipt] = useState<{
     code: string;
@@ -499,6 +520,8 @@ function UserActions({
     delete: true,
   };
   async function act(action: UserAction) {
+    if (action === 'change-email' && (refreshing || email.trim().toLowerCase() === user.email))
+      return;
     if (
       receipt ||
       !isAdminAvailable(actor?.id, session.csrf) ||
@@ -509,9 +532,9 @@ function UserActions({
     if (
       !(await confirm({
         title: t('{{v0}} for {{v1}}?', { v0: label, v1: user.username }),
-        description: userActionDescription(action, role),
+        description: userActionDescription(action, role, email.trim()),
         confirmLabel: label,
-        tone: action === 'change-role' ? 'normal' : 'danger',
+        tone: action === 'change-role' || action === 'change-email' ? 'normal' : 'danger',
       }))
     )
       return;
@@ -524,7 +547,13 @@ function UserActions({
       const path = '/api/admin/users/' + encodeURIComponent(user.id) + '/actions';
       const options = {
         method: 'POST',
-        body: JSON.stringify(action === 'change-role' ? { action, role } : { action }),
+        body: JSON.stringify(
+          action === 'change-role'
+            ? { action, role }
+            : action === 'change-email'
+              ? { action, email: email.trim(), expected_email: user.email }
+              : { action },
+        ),
       };
       if (actor?.id === user.id) {
         await signOut({
@@ -540,6 +569,7 @@ function UserActions({
         response = await api(path, options, csrf);
       } catch (error) {
         await refresh().catch(() => {});
+        if (action === 'change-email' && live()) reload();
         throw error;
       }
       if (response.recovery_code) {
@@ -583,6 +613,37 @@ function UserActions({
         </button>
       </form>
       {chosen === 'change-role' && <ActionError error={task.error} />}
+      <form
+        className="security-inline-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void act('change-email');
+        }}
+      >
+        <EmailField
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          readOnly={task.busy || refreshing}
+        />
+        {user.email && email.trim().toLowerCase() === user.email && (
+          <p className="muted">
+            {t(user.email_verified_at ? 'Verified email address' : 'Unverified email address')}
+          </p>
+        )}
+        <ActionError error={chosen === 'change-email' ? task.error : ''} />
+        <button
+          className="button"
+          disabled={
+            task.busy ||
+            refreshing ||
+            Boolean(receipt) ||
+            !email.trim() ||
+            email.trim().toLowerCase() === user.email
+          }
+        >
+          {t('Change email address')}
+        </button>
+      </form>
       <ul className="security-admin-actions">
         {(Object.keys(can) as (keyof typeof can)[])
           .filter((action) => can[action])

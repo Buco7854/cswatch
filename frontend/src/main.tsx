@@ -46,6 +46,7 @@ import Viewer from './components/Viewer';
 import WorkspaceShell from './components/WorkspaceShell';
 import { Account, Admin } from './components/Settings';
 import AuthPage from './components/AuthPage';
+import { discardVerificationCode, EmailOnboarding, VerifyEmail } from './components/AccountEmail';
 import AuthFrame from './components/AuthFrame';
 import { RecoveryLinkDetails } from './components/AdminAccounts';
 import Recover, { discardInitialRecoveryCode } from './components/Recover';
@@ -69,7 +70,14 @@ import '@fontsource/barlow-condensed/latin-700.css';
 
 const adminRoute = { path: '/admin' };
 const isAdminPage = (pathname: string) => matchRoutes([adminRoute], pathname) !== null;
-const accountForms = ['/account/*', '/recover', '/register', '/login', '/setup'].map((path) => ({
+const accountForms = [
+  '/account/*',
+  '/recover',
+  '/verify-email',
+  '/register',
+  '/login',
+  '/setup',
+].map((path) => ({
   path,
 }));
 function openDemoId() {
@@ -131,7 +139,12 @@ async function confirmBrowserSignOut(confirmation: SignOutConfirmation, observed
 
 function previousScopeEnded(previous: AuthStatus, next: AuthStatus) {
   if (previous.user)
-    return previous.user.id !== next.user?.id || previous.user.role !== next.user?.role;
+    return (
+      previous.user.id !== next.user?.id ||
+      previous.user.role !== next.user?.role ||
+      (!previous.user.profile_required && !!next.user?.profile_required) ||
+      (!previous.user.email_verification_required && !!next.user?.email_verification_required)
+    );
   if (previous.session.stage === 'enroll')
     return previous.session.username !== (next.user?.username ?? next.session.username);
   return Boolean(
@@ -253,6 +266,7 @@ function App() {
     clearHandoff();
     saveSelfRecovery();
     if (!/^\/recover\/?$/.test(location.pathname)) discardInitialRecoveryCode();
+    if (!/^\/verify-email\/?$/.test(location.pathname)) discardVerificationCode();
   }, [location.key, location.pathname, clearHandoff, saveSelfRecovery]);
   useEffect(() => {
     if (!selfRecovery) return;
@@ -357,6 +371,8 @@ function App() {
               openDemoId();
             if (
               demoId &&
+              !status.user?.profile_required &&
+              !status.user?.email_verification_required &&
               (status.user || (status.session.stage === 'anonymous' && settings.public_access))
             ) {
               try {
@@ -843,9 +859,13 @@ function App() {
   const accountRoute = path === '/library' || isAdminPage(path) || path.startsWith('/account');
   const enroll = session.stage === 'enroll';
   const recovery = path === '/recover';
+  const emailVerification = path === '/verify-email';
+  const emailOnboarding = user?.profile_required || user?.email_verification_required;
+  const onboardingReturn =
+    path === '/account' || authRoute ? new URLSearchParams(location.search).get('returnTo') : null;
   const privateGate = !user && (!config.public_access || accountRoute);
   const publicSurface = path === '/' && session.stage === 'anonymous';
-  const guestPath = path + location.search + (recovery ? '' : location.hash);
+  const guestPath = path + location.search + (recovery || emailVerification ? '' : location.hash);
   const appearance = { theme, toggleTheme: () => setTheme(theme === 'dark' ? 'light' : 'dark') };
   const adminDenial =
     path === '/library' && user && !config.admin_access
@@ -906,6 +926,8 @@ function App() {
             ) : (
               <Navigate replace to="/setup" />
             )
+          ) : emailVerification ? (
+            <VerifyEmail key={user?.id || session.stage} {...appearance} />
           ) : enroll &&
             !recovery &&
             path !== '/register' &&
@@ -943,7 +965,7 @@ function App() {
               }}
               {...appearance}
             />
-          ) : authRoute ? (
+          ) : authRoute && !emailOnboarding ? (
             <AuthPage key={location.key} {...appearance} />
           ) : enroll ||
             (user &&
@@ -953,6 +975,10 @@ function App() {
             <AuthFrame key={session.username ?? user?.username} {...appearance}>
               <Account enrollment />
             </AuthFrame>
+          ) : emailOnboarding && onboardingReturn ? (
+            <Navigate replace to={authReturnPath(onboardingReturn)} />
+          ) : emailOnboarding ? (
+            <EmailOnboarding key={user?.id} {...appearance} />
           ) : privateGate ? (
             <Navigate
               replace

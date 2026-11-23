@@ -8,6 +8,7 @@
     "dev:web": "npm --prefix backend run dev",
     "dev:ui": "npm --prefix frontend run dev",
     "worker": "npm --prefix backend run worker",
+    "test:e2e:email": "node frontend/tests/fixtures/run-email-smtp.mjs",
     "test:e2e": "npm --prefix frontend run test:e2e",
     "format": "prettier --write backend/src backend/tests backend/scripts/*.mjs frontend/src frontend/tests frontend/playwright.config.ts shared scripts/*.mjs tools/assets/*.mjs tools/transcription/*.mjs tools/transcription/*.json tools/transcription/*.md *.md \"docs/**/*.md\" *.yaml .github",
     "format:check": "prettier --check backend/src backend/tests backend/scripts/*.mjs frontend/src frontend/tests frontend/playwright.config.ts shared scripts/*.mjs tools/assets/*.mjs tools/transcription/*.mjs tools/transcription/*.json tools/transcription/*.md *.md \"docs/**/*.md\" *.yaml .github",

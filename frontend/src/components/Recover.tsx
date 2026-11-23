@@ -1,3 +1,5 @@
+import { takeMailFragment } from '../auth-navigation';
+import { EmailResetRequest } from './AccountEmail';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { api, sessionDeadline } from '../api';
@@ -58,24 +60,15 @@ async function attemptReceipt(code: string) {
 export function discardInitialRecoveryCode() {
   linkedCode = '';
 }
-if (/^\/recover\/?$/.test(window.location.pathname) && window.location.hash) {
-  const fragment = window.location.hash.slice(1);
-  window.history.replaceState(
-    window.history.state,
-    '',
-    window.location.pathname + window.location.search,
-  );
-  if (/^[0-9a-f]{64}$/.test(fragment)) {
-    linkedCode = fragment;
-    window.setTimeout(discardInitialRecoveryCode, 60_000);
-  }
-}
+linkedCode = takeMailFragment('/recover');
+if (linkedCode) window.setTimeout(discardInitialRecoveryCode, 60_000);
 
 export default function Recover({
   takeHandoff,
   ...appearance
 }: AuthAppearance & { takeHandoff: () => string }) {
-  const { session, refresh, signOut, captureSessionVersion, verifiedSessionVersion } = useApp();
+  const { config, session, refresh, signOut, captureSessionVersion, verifiedSessionVersion } =
+    useApp();
   const concealed = useWorkspaceConcealed();
   const task = useAction();
   const { pathname, search, key } = useLocation();
@@ -272,7 +265,9 @@ export default function Recover({
                 ? 'Use the password from the completed reset and any second factor you already set up to sign in.'
                 : resetClaim
                   ? 'Use a unique password with at least 12 characters.'
-                  : 'Enter the one-time password reset code provided for your account.',
+                  : config.email_delivery_enabled
+                    ? 'Use a reset code or request a link at your verified email address.'
+                    : 'Email recovery is off on this instance. Enter the one-time reset code supplied by your operator.',
             )}
           </p>
         </header>
@@ -431,6 +426,11 @@ export default function Recover({
             </form>
           </div>
         )}
+        {session.stage === 'anonymous' &&
+          phase === 'claim' &&
+          !retainedClaim &&
+          !username &&
+          config.email_delivery_enabled && <EmailResetRequest />}
         {!username && (
           <Link className="auth-switch-link" to="/login">
             {t('Back to sign in')}

@@ -430,8 +430,9 @@ export function registerFactorRoutes(app: FastifyInstance, db: Store, c: Config,
   for (const purpose of Object.keys(assertionStages) as AssertionPurpose[]) {
     const path = assertionPaths[purpose];
     const stage = assertionStages[purpose];
+    const entry = accountEntry(stage, purpose === 'step-up');
     const requireSource = (r: FastifyRequest) => requireSession(db, r, c, [stage]);
-    app.post(`${path}/options`, { ...factorOptions, ...accountEntry(stage) }, async (r) => {
+    app.post(`${path}/options`, { ...factorOptions, ...entry }, async (r) => {
       noBody.parse(r.body);
       const { source, known, deadline } = db.transaction(() => {
         const source = requireSource(r);
@@ -456,7 +457,7 @@ export function registerFactorRoutes(app: FastifyInstance, db: Store, c: Config,
         return bounded;
       });
     });
-    app.post(`${path}/verify`, { ...passkeyOptions, ...accountEntry(stage) }, async (r, reply) => {
+    app.post(`${path}/verify`, { ...passkeyOptions, ...entry }, async (r, reply) => {
       const { response } = assertionBody.parse(r.body);
       const { source, hash, passkey, policyRequired } = db.transaction(() => {
         const source = requireSource(r);
@@ -915,7 +916,8 @@ export function registerFactorRoutes(app: FastifyInstance, db: Store, c: Config,
     { path: '/api/auth/mfa/recovery', stage: 'challenge', method: 'recovery' },
   ] as const;
   for (const { path, stage, method } of codeRoutes) {
-    app.post(path, { ...factorOptions, ...accountEntry(stage) }, async (r, reply) => {
+    const entry = accountEntry(stage, stage === 'full');
+    app.post(path, { ...factorOptions, ...entry }, async (r, reply) => {
       const { code } = z
         .strictObject({ code: method === 'totp' ? totpCode : recoveryCode })
         .parse(r.body);

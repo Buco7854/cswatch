@@ -1,13 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 import { chooseSelectOption } from './fixtures/select-control';
+import { syntheticEmail } from './fixtures/account-status';
 
 const oldPassword = 'Synthetic-member-credential-2026';
 const newPassword = 'Synthetic-recovered-credential-2026';
 
 async function login(page: Page, username: string, password: string) {
   await page.goto('/login?returnTo=%2Flibrary');
-  await page.getByLabel('Username', { exact: true }).fill(username);
+  await page.getByLabel('Username or email', { exact: true }).fill(username);
   await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 }
@@ -63,7 +64,7 @@ async function signInAdmin(page: Page) {
   await expect(library).toBeVisible();
 }
 
-test('account sessions, administrative reset audit, and browser-bound recovery', async ({
+test('account email and sessions, administrative reset audit, and browser-bound recovery', async ({
   page: admin,
   browser,
   baseURL,
@@ -82,15 +83,32 @@ test('account sessions, administrative reset audit, and browser-bound recovery',
     const member = await memberContext.newPage();
     const other = await otherContext.newPage();
     const displayName = 'account_' + randomUUID().slice(0, 8);
+    const registeredEmail = syntheticEmail();
+    const memberEmail = syntheticEmail();
+    const adminEmail = syntheticEmail();
     await member.goto('/register?returnTo=%2Flibrary');
     await member.getByLabel('Display name', { exact: true }).fill(displayName);
+    await member.getByLabel('Email address', { exact: true }).fill(registeredEmail);
     await member.getByLabel('Password', { exact: true }).fill(oldPassword);
     await member.getByRole('button', { name: 'Create account', exact: true }).click();
     await expect(member.getByRole('heading', { name: 'Save your sign-in name' })).toBeVisible();
     const username = await member.getByLabel('Username', { exact: true }).inputValue();
     await member.getByRole('button', { name: 'Continue', exact: true }).click();
 
-    await login(other, username, oldPassword);
+    await member.goto('/account');
+    await expect(member.getByText(registeredEmail, { exact: true })).toBeVisible();
+    await expect(member.getByRole('button', { name: 'Send verification email' })).toHaveCount(0);
+    await member.getByRole('button', { name: 'Change email address', exact: true }).click();
+    const email = member.getByRole('textbox', { name: 'Email address', exact: true });
+    await expect(email).toHaveValue(registeredEmail);
+    await expect(email).toBeFocused();
+    await email.fill(memberEmail);
+    await member.getByRole('button', { name: 'Save email address', exact: true }).click();
+    await expect
+      .poll(async () => (await (await member.request.get('/api/auth/me')).json()).user?.email)
+      .toBe(memberEmail);
+
+    await login(other, memberEmail.toUpperCase(), oldPassword);
     await expect(other.getByRole('heading', { name: 'Demo library', exact: true })).toBeVisible();
     await member.goto('/account/sessions');
     const sessions = member.locator('.security-list-row');
@@ -116,6 +134,35 @@ test('account sessions, administrative reset audit, and browser-bound recovery',
     await admin.getByRole('link', { name: new RegExp(username) }).click();
     await expect(admin.getByRole('heading', { name: username, exact: true })).toBeVisible();
     const target = new URL(admin.url()).searchParams.get('user')!;
+    const address = admin.getByRole('textbox', { name: 'Email address', exact: true });
+    await expect(address).toHaveValue(memberEmail);
+    await address.fill(adminEmail);
+    await admin.getByRole('button', { name: 'Change email address', exact: true }).click();
+    const emailWrite = admin.waitForRequest(
+      (request) =>
+        request.method() === 'POST' &&
+        new URL(request.url()).pathname === `/api/admin/users/${target}/actions`,
+    );
+    await admin
+      .getByRole('dialog', { name: 'Change email address for ' + username + '?' })
+      .getByRole('button', { name: 'Change email address', exact: true })
+      .click();
+    expect((await emailWrite).postDataJSON()).toMatchObject({
+      action: 'change-email',
+      email: adminEmail,
+      expected_email: memberEmail,
+    });
+    await expect(address).toHaveValue(adminEmail);
+    await expect(
+      admin.getByRole('button', { name: 'Change email address', exact: true }),
+    ).toBeDisabled();
+    await member.goto('/account');
+    await expect(member.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible();
+    await login(other, memberEmail, oldPassword);
+    await expect(other.getByRole('alert')).toHaveText('Username or password is incorrect.');
+    await login(other, adminEmail, oldPassword);
+    await expect(other.getByRole('heading', { name: 'Demo library', exact: true })).toBeVisible();
+
     await admin.getByRole('button', { name: 'Reset password', exact: true }).click();
     await admin
       .getByRole('dialog', { name: 'Reset password for ' + username + '?' })

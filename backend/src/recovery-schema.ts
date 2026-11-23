@@ -4,6 +4,7 @@ export const recoverySchema = `
     verifier TEXT UNIQUE NOT NULL,
     claim_id TEXT UNIQUE NOT NULL DEFAULT (lower(hex(randomblob(16)))),
     generation INTEGER NOT NULL,
+    email_revision INTEGER,
     expires_at INTEGER NOT NULL,
     claimed_by TEXT REFERENCES sessions(id) ON DELETE CASCADE
   );

@@ -1,5 +1,11 @@
 # Verification record
 
+## Schema 9 account email
+
+The production account screens were exercised in English and French at 1440 × 960, 768 × 1024 and 390 × 844 in both themes, with reduced motion, keyboard and touch emulation. The 142 local screenshots include setup, registration, Steam profile completion, mailbox confirmation, email editing, administrator confirmation, recovery and long French phone states. Captures use synthetic data. A separate Playwright path runs registration, signed-in confirmation and password recovery with a disposable authenticated implicit-TLS relay on loopback. Run `npm run build` and `npm run test:e2e:email` with Node 24, OpenSSL and a Playwright Chromium installation. Run `node .design/EMAIL-SMTP.mjs` after the production build to regenerate the screenshot matrix. [Browser regressions](../frontend/tests/email-account.spec.ts) · [Loopback mail fixture](../frontend/tests/fixtures/run-email-smtp.mjs) · [Capture harness](../.design/EMAIL-VISUAL.mjs)
+
+Backend fixtures cover normalized unique addresses, shared display names, Steam onboarding, grants before and after verification, restricted administrator eligibility, fresh proof for address changes, concurrent target changes and mail recovery with existing MFA. Mail transport fixtures check relay certificate validation, bounded queued work, deterministic refusal and ambiguous delivery. Schema rejection fixtures compare original database, WAL and SHM files before and after startup. Local runs use the actual SQLite store, private test accounts and a test relay. Real mailbox routing, production certificates, deliverability, provider identity and physical mobile or assistive devices require deployment evidence. [Delivery and recovery](../backend/tests/account-mail.test.ts) · [Schema rejection](../backend/tests/database-version.test.ts) · [Admin changes](../backend/tests/admin-accounts.test.ts)
+
 The combined account and provider build uses the shared select for role changes and match filters. Browser coverage drives the visible option list for each flow, including French role selection.
 
 ## Local second-factor policy recovery

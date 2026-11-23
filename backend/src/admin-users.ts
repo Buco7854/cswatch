@@ -7,8 +7,11 @@ import {
   setAdminAuditAction,
 } from './admin-access.js';
 import type { Config } from './config.js';
+import type { AccountMail } from './account-mail.js';
+import { accountEmail } from './credentials.js';
 import { auditOutcomes, now, type Store } from './db.js';
 import { enqueueUserDemoDeletion } from './demo-deletion.js';
+import { changeAccountEmail } from './email-identity.js';
 import { issuePasswordReset } from './recovery.js';
 import { roles } from './roles.js';
 import {
@@ -32,6 +35,7 @@ const accountProjection = 'id, username, display_name, role, created_at';
 const accountScope = 'NOT EXISTS (SELECT 1 FROM guest_sessions g WHERE g.owner_id=u.id)';
 const actions = [
   'change-role',
+  'change-email',
   'sign-out',
   'reset-password',
   'reset-totp',
@@ -42,13 +46,20 @@ const actions = [
   'delete',
 ] as const;
 const actionBody = z
-  .object({ action: z.enum(actions), role: role.optional() })
+  .object({
+    action: z.enum(actions),
+    role: role.optional(),
+    email: accountEmail.optional(),
+    expected_email: accountEmail.nullable().optional(),
+  })
   .strict()
-  .refine((body) => (body.action === 'change-role') === (body.role !== undefined));
+  .refine((body) => (body.action === 'change-role') === (body.role !== undefined))
+  .refine((body) => (body.action === 'change-email') === (body.email !== undefined))
+  .refine((body) => (body.action === 'change-email') === (body.expected_email !== undefined));
 
 function account(db: Store, id: string) {
   const user = db.one(
-    `SELECT ${accountProjection},last_active FROM users u WHERE id=? AND ${accountScope}`,
+    `SELECT ${accountProjection},last_active,email,email_verified_at FROM users u WHERE id=? AND ${accountScope}`,
     id,
   );
   if (!user) throw new HttpError(404, 'This account no longer exists.');
@@ -64,6 +75,18 @@ export function requireSignableAdmin(db: Store, config: Config) {
 function applyAccountAction(db: Store, c: Config, id: string, body: z.infer<typeof actionBody>) {
   const prior = account(db, id);
   if (body.action === 'change-role' && body.role === prior.role) return { ok: true };
+  if (body.action === 'change-email') {
+    if (prior.email !== body.expected_email)
+      throw new HttpError(
+        409,
+        'The account email changed. Review the current address before trying again.',
+        undefined,
+        'email_changed',
+      );
+    const emailChanged = changeAccountEmail(db, id, body.email!);
+    if (emailChanged) revokeUserSessions(db, id);
+    return { ok: true, email_changed: emailChanged };
+  }
 
   let recoveryCode: string | undefined;
   switch (body.action) {
@@ -95,12 +118,12 @@ function applyAccountAction(db: Store, c: Config, id: string, body: z.infer<type
   }
   if (prior.role === 'admin' || body.role === 'admin') requireSignableAdmin(db, c);
   if (body.action !== 'delete') {
-    // Session revocation keeps a valid recovery exchange for an already
-    // stranded account. Explicit reset always replaces the exchange.
-    const keepRecovery = body.action === 'sign-out';
-    if (keepRecovery)
+    // Sign-out keeps a valid operator recovery exchange for a stranded account.
+    const signingOut = body.action === 'sign-out';
+    if (signingOut)
       db.run(
-        'UPDATE password_resets SET generation=generation+1 WHERE user_id=? AND generation=(SELECT auth_generation FROM users WHERE id=?) AND expires_at>?',
+        `UPDATE password_resets SET generation=generation+1 WHERE user_id=? AND email_revision IS NULL
+         AND generation=(SELECT auth_generation FROM users WHERE id=?) AND expires_at>?`,
         id,
         id,
         now(),
@@ -111,7 +134,7 @@ function applyAccountAction(db: Store, c: Config, id: string, body: z.infer<type
       !hasSecondFactor(db, id)
     )
       db.run('DELETE FROM auth_recovery_codes WHERE user_id=?', id);
-    if (body.action === 'reset-password' || (!keepRecovery && !canSignIn(db, c, id)))
+    if (body.action === 'reset-password' || (!signingOut && !canSignIn(db, c, id)))
       recoveryCode = issuePasswordReset(db, id);
   }
   return {
@@ -127,7 +150,7 @@ function applyAccountAction(db: Store, c: Config, id: string, body: z.infer<type
   };
 }
 
-export function adminUserRoutes(app: FastifyInstance, db: Store, c: Config) {
+export function adminUserRoutes(app: FastifyInstance, db: Store, c: Config, mail?: AccountMail) {
   const recordAccountRead = adminAccountReadRecorder(db, c);
 
   app.get('/api/admin/users', (r) => {
@@ -217,6 +240,7 @@ export function adminUserRoutes(app: FastifyInstance, db: Store, c: Config) {
         : null;
       return { result, anonymous };
     });
+    if (result.email_changed) mail?.queueVerification(id, r.headers['accept-language']);
     return anonymous ? { ...result, ...sendSession(c, reply, anonymous) } : result;
   });
 

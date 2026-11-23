@@ -7,12 +7,12 @@ import { defaultMfaRequiredRoles, flagDefaults } from './config.js';
 import { roles, type Role } from './roles.js';
 import { factorsSchema } from './factor-schema.js';
 import { recoverySchema } from './recovery-schema.js';
+import { emailMailSchema } from './email-mail-schema.js';
 export type Row = Record<string, any>;
 export const auditOutcomes = ['success', 'denied', 'authorized', 'unknown'] as const;
 export type AuditOutcome = (typeof auditOutcomes)[number];
 export const adminAccountReadAuditAction = 'admin.user.read';
-// Keep existing schema-8 rows in the applicable retention group. A linked
-// publication outcome belongs with durable changes even when it was denied.
+// A linked publication outcome belongs with durable changes even when denied.
 const accountRead = `action='${adminAccountReadAuditAction}' AND intent_id IS NULL`;
 const auditLimits = [
   ['success', 'operator', 15000, `AND NOT (${accountRead})`],
@@ -30,7 +30,7 @@ const auditLimits = [
   ['authorized', 'public', 0, ''],
   ['unknown', 'public', 0, ''],
 ] as const;
-export const databaseVersion = 8;
+export const databaseVersion = 9;
 export class DatabaseVersionError extends Error {
   constructor() {
     super('Unsupported database schema. Start cswatch with an empty data directory.');
@@ -96,8 +96,13 @@ export class Store {
     id TEXT PRIMARY KEY,username TEXT COLLATE NOCASE UNIQUE NOT NULL,password_hash TEXT,
     role TEXT NOT NULL DEFAULT 'member' CHECK(role IN (${roles.map((role) => `'${role}'`).join(',')})),
     created_at INTEGER NOT NULL,auth_generation INTEGER NOT NULL DEFAULT 0,
-    webauthn_handle TEXT NOT NULL UNIQUE DEFAULT (lower(hex(randomblob(32)))),display_name TEXT,last_active INTEGER
+    webauthn_handle TEXT NOT NULL UNIQUE DEFAULT (lower(hex(randomblob(32)))),display_name TEXT,last_active INTEGER,
+    email TEXT COLLATE NOCASE,email_verified_at INTEGER,email_revision INTEGER NOT NULL DEFAULT 0,
+    profile_required INTEGER NOT NULL DEFAULT 0 CHECK(profile_required IN (0,1)),
+    email_verification_required INTEGER NOT NULL DEFAULT 0 CHECK(email_verification_required IN (0,1)),
+    CHECK(email_verified_at IS NULL OR email IS NOT NULL)
   );
+  CREATE UNIQUE INDEX users_email ON users(email) WHERE email IS NOT NULL;
   CREATE TABLE identities(provider TEXT NOT NULL,subject TEXT NOT NULL,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,PRIMARY KEY(provider,subject),UNIQUE(provider,user_id));
   CREATE TABLE sessions(
     id TEXT NOT NULL UNIQUE,token_hash TEXT PRIMARY KEY,user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
@@ -164,6 +169,7 @@ export class Store {
   CREATE INDEX audit_outcome ON audit(outcome,scope,id);
   ${factorsSchema}
   ${recoverySchema}
+  ${emailMailSchema}
   PRAGMA user_version=${databaseVersion};`);
       });
       this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;');
