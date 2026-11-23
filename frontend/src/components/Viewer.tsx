@@ -86,7 +86,12 @@ import RecordedCrosshair from './RecordedCrosshair';
 import { buildRecordedCrosshairTimeline, recordedCrosshairAt } from '../recorded-crosshair';
 import CombatRecap from './CombatRecap';
 import { combatDamage } from '../combat-recap';
-import { damageFeedbackAt, DeathFollowController, indexSpectatorEvents } from '../spectator-state';
+import {
+  damageFeedbackAt,
+  DeathFollowController,
+  indexSpectatorEvents,
+  killfeedAt,
+} from '../spectator-state';
 import DamageFeedback from './DamageFeedback';
 import FlashFeedback from './FlashFeedback';
 import { flashFeedbackAt } from '../flash-feedback';
@@ -1561,36 +1566,31 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
             inert={!controlsVisible}
             aria-hidden={!controlsVisible}
           >
-            {settings.killfeed && (
+            {settings.killfeed && spectatorEvents && (
               <div className="killfeed">
-                {data.events
-                  .filter(
-                    (e) => e.type === 'player_death' && e.tick <= tick && e.tick > tick - rate * 6,
-                  )
-                  .slice(-4)
-                  .map((e, i) => (
-                    <div key={i} className="killfeed-entry">
-                      <strong>{e.attacker_name || t('World')}</strong>
-                      <span
-                        className="killfeed-weapon"
-                        role="img"
-                        aria-label={
-                          (e.weapon ? equipmentName(e.weapon) : t('eliminated')) +
-                          (e.headshot === true ? ` · ${t('Headshot')}` : '')
-                        }
-                      >
-                        {e.weapon ? (
-                          <EquipmentGlyph item={e.weapon} />
-                        ) : (
-                          <ReviewEventGlyph event={{ type: 'elimination' }} />
-                        )}
-                        {e.headshot === true && (
-                          <ReviewEventGlyph event={{ type: 'kill' }} detail="headshot" size={14} />
-                        )}
-                      </span>
-                      <span className="killfeed-player">{e.user_name || t('Player')}</span>
-                    </div>
-                  ))}
+                {killfeedAt(spectatorEvents, tick, rate).map((e, i) => (
+                  <div key={i} className="killfeed-entry">
+                    <strong>{e.attacker_name || t('World')}</strong>
+                    <span
+                      className="killfeed-weapon"
+                      role="img"
+                      aria-label={
+                        (e.weapon ? equipmentName(e.weapon) : t('eliminated')) +
+                        (e.headshot === true ? ` · ${t('Headshot')}` : '')
+                      }
+                    >
+                      {e.weapon ? (
+                        <EquipmentGlyph item={e.weapon} />
+                      ) : (
+                        <ReviewEventGlyph event={{ type: 'elimination' }} />
+                      )}
+                      {e.headshot === true && (
+                        <ReviewEventGlyph event={{ type: 'kill' }} detail="headshot" size={14} />
+                      )}
+                    </span>
+                    <span className="killfeed-player">{e.user_name || t('Player')}</span>
+                  </div>
+                ))}
               </div>
             )}
             {settings.radar && !using2D && (

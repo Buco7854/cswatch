@@ -1,4 +1,5 @@
 import {
+  memo,
   useEffect,
   useId,
   useMemo,
@@ -6,13 +7,15 @@ import {
   useState,
   type CSSProperties,
   type ReactNode,
+  type RefObject,
 } from 'react';
+import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import { ListVideo, X } from 'lucide-react';
 import { useWorkspaceDialog } from '../context';
 import { t } from '../i18n';
 import type { Playback } from '../types';
-import { roundEvents, type ReviewRound } from '../review-events';
+import { roundEvents, type ReviewEvent, type ReviewRound } from '../review-events';
 import { timelineGroups, timelinePosition, type TimelineWindow } from '../timeline';
 import { ActionMenu, SelectControl, SwitchRow } from './Controls';
 import { eventIcon, eventLabel } from './RoundEvents';
@@ -56,6 +59,118 @@ function TimelineOptionsDialog({ close, children }: { close: () => void; childre
   );
 }
 
+// A moving playhead only changes the slider and clock. Marker menus and their
+// localized labels depend on the event window and the available track width.
+const TimelineEvents = memo(function TimelineEvents({
+  visible,
+  start,
+  end,
+  width,
+  first,
+  rate,
+  onSeek,
+  slider,
+}: {
+  visible: ReviewEvent[];
+  start: number;
+  end: number;
+  width: number;
+  first: number;
+  rate: number;
+  onSeek: (tick: number) => void;
+  slider: RefObject<HTMLInputElement | null>;
+}) {
+  useTranslation();
+  const window = { start, end };
+  const focused = useRef<string | null>(null);
+  const groups = useMemo(
+    () => timelineGroups(visible, { start, end }, width, 32),
+    [visible, start, end, width],
+  );
+  useEffect(() => {
+    if (focused.current && !groups.some((group) => group.id === focused.current)) {
+      focused.current = null;
+      slider.current?.focus({ preventScroll: true });
+    }
+  }, [groups]);
+  return (
+    <>
+      <svg
+        className="timeline-event-stems"
+        viewBox="0 0 1000 44"
+        preserveAspectRatio="none"
+        aria-hidden="true"
+      >
+        {(['kill', 'death', 'objective'] as const).map((type) => (
+          <path
+            key={type}
+            className={'timeline-stem-' + type}
+            d={visible
+              .filter((event) =>
+                type === 'objective'
+                  ? !['kill', 'death'].includes(event.type)
+                  : event.type === type,
+              )
+              .map((event) => `M${timelinePosition(event.tick, window) * 1000},18 V30`)
+              .join(' ')}
+          />
+        ))}
+      </svg>
+      <div className="timeline-event-markers" aria-label={t('Timeline events')}>
+        {groups.map((group) => {
+          const event = group.events[0];
+          const label =
+            group.events.length === 1
+              ? eventLabel(event, first, rate)
+              : t('{{count}} events from {{start}} to {{end}}', {
+                  count: group.events.length,
+                  start: clock((event.tick - first) / rate),
+                  end: clock((group.events.at(-1)!.tick - first) / rate),
+                });
+          const trigger = (
+            <button
+              key={group.id}
+              className={`timeline-event-marker event-${event.type}${group.events.length > 1 ? ' is-cluster' : ''}`}
+              style={{ left: `${group.anchor * 100}%` }}
+              data-tick={event.tick}
+              aria-label={label}
+              title={label}
+              onFocus={() => {
+                focused.current = group.id;
+              }}
+              onBlur={() => {
+                focused.current = null;
+              }}
+              onClick={group.events.length === 1 ? () => onSeek(event.tick) : undefined}
+            >
+              {eventIcon(event, 16)}
+              {group.events.length > 1 && (
+                <span className="timeline-cluster-count">{group.events.length}</span>
+              )}
+            </button>
+          );
+          return group.events.length === 1 ? (
+            trigger
+          ) : (
+            <ActionMenu
+              key={group.id}
+              label={label}
+              heading={t('Recorded events')}
+              trigger={trigger}
+              items={group.events.map((member) => ({
+                id: member.id,
+                label: eventLabel(member, first, rate),
+                icon: eventIcon(member),
+                onSelect: () => onSeek(member.tick),
+              }))}
+            />
+          );
+        })}
+      </div>
+    </>
+  );
+});
+
 export default function ReplayTimeline({
   data,
   tick,
@@ -87,7 +202,6 @@ export default function ReplayTimeline({
   const [dragWindow, setDragWindow] = useState<TimelineWindow | null>(null);
   const plot = useRef<HTMLDivElement>(null);
   const slider = useRef<HTMLInputElement>(null);
-  const focused = useRef<string | null>(null);
   const window =
     dragWindow ??
     (scope === 'round'
@@ -119,24 +233,22 @@ export default function ReplayTimeline({
     () => events.filter((event) => event.tick >= window.start && event.tick <= window.end),
     [events, window.start, window.end],
   );
-  const groups = useMemo(
-    () => timelineGroups(visible, window, width, 32),
-    [visible, window.start, window.end, width],
-  );
   const player = data.players.find((player) => player.id === selected);
   const currentRound = useMemo(
-    () => roundEvents(data, round, selected, 'player'),
-    [data.events, data.players, data.sample, round.start, round.end, selected],
+    () => (optionsOpen ? roundEvents(data, round, selected, 'player') : []),
+    [data.events, data.players, data.sample, round.start, round.end, selected, optionsOpen],
   );
-  const summary = t('{{player}}: {{kills}}, {{deaths}}', {
-    player: player?.name || t('Selected player'),
-    kills: t('review_kill_count', {
-      count: currentRound.filter((event) => event.type === 'kill').length,
-    }),
-    deaths: t('review_death_count', {
-      count: currentRound.filter((event) => event.type === 'death').length,
-    }),
-  });
+  const summary = optionsOpen
+    ? t('{{player}}: {{kills}}, {{deaths}}', {
+        player: player?.name || t('Selected player'),
+        kills: t('review_kill_count', {
+          count: currentRound.filter((event) => event.type === 'kill').length,
+        }),
+        deaths: t('review_death_count', {
+          count: currentRound.filter((event) => event.type === 'death').length,
+        }),
+      })
+    : undefined;
   useEffect(() => {
     const element = plot.current;
     if (!element) return;
@@ -146,12 +258,6 @@ export default function ReplayTimeline({
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
-  useEffect(() => {
-    if (focused.current && !groups.some((group) => group.id === focused.current)) {
-      focused.current = null;
-      slider.current?.focus({ preventScroll: true });
-    }
-  }, [groups]);
   const progress = timelinePosition(tick, window) * 100;
   return (
     <section className="replay-timeline" aria-label={t('Replay timeline')}>
@@ -184,78 +290,16 @@ export default function ReplayTimeline({
         <div className="timeline-track-line" aria-hidden="true">
           <i />
         </div>
-        <svg
-          className="timeline-event-stems"
-          viewBox="0 0 1000 44"
-          preserveAspectRatio="none"
-          aria-hidden="true"
-        >
-          {(['kill', 'death', 'objective'] as const).map((type) => (
-            <path
-              key={type}
-              className={'timeline-stem-' + type}
-              d={visible
-                .filter((event) =>
-                  type === 'objective'
-                    ? !['kill', 'death'].includes(event.type)
-                    : event.type === type,
-                )
-                .map((event) => `M${timelinePosition(event.tick, window) * 1000},18 V30`)
-                .join(' ')}
-            />
-          ))}
-        </svg>
-        <div className="timeline-event-markers" aria-label={t('Timeline events')}>
-          {groups.map((group) => {
-            const event = group.events[0];
-            const label =
-              group.events.length === 1
-                ? eventLabel(event, first, data.tickRate)
-                : t('{{count}} events from {{start}} to {{end}}', {
-                    count: group.events.length,
-                    start: clock((event.tick - first) / data.tickRate),
-                    end: clock((group.events.at(-1)!.tick - first) / data.tickRate),
-                  });
-            const trigger = (
-              <button
-                key={group.id}
-                className={`timeline-event-marker event-${event.type}${group.events.length > 1 ? ' is-cluster' : ''}`}
-                style={{ left: `${group.anchor * 100}%` }}
-                data-tick={event.tick}
-                aria-label={label}
-                title={label}
-                onFocus={() => {
-                  focused.current = group.id;
-                }}
-                onBlur={() => {
-                  focused.current = null;
-                }}
-                onClick={group.events.length === 1 ? () => onSeek(event.tick) : undefined}
-              >
-                {eventIcon(event, 16)}
-                {group.events.length > 1 && (
-                  <span className="timeline-cluster-count">{group.events.length}</span>
-                )}
-              </button>
-            );
-            return group.events.length === 1 ? (
-              trigger
-            ) : (
-              <ActionMenu
-                key={group.id}
-                label={label}
-                heading={t('Recorded events')}
-                trigger={trigger}
-                items={group.events.map((member) => ({
-                  id: member.id,
-                  label: eventLabel(member, first, data.tickRate),
-                  icon: eventIcon(member),
-                  onSelect: () => onSeek(member.tick),
-                }))}
-              />
-            );
-          })}
-        </div>
+        <TimelineEvents
+          visible={visible}
+          start={window.start}
+          end={window.end}
+          width={width}
+          first={first}
+          rate={data.tickRate}
+          onSeek={onSeek}
+          slider={slider}
+        />
         <input
           ref={slider}
           className="timeline-slider"
