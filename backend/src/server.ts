@@ -340,6 +340,7 @@ export async function createApp(
           'Content-Range',
           'Accept-Ranges',
           'Content-Encoding',
+          'X-File-Size',
           'Last-Modified',
         ])
           reply.removeHeader(name);
@@ -829,6 +830,12 @@ export async function createApp(
     await app.register(staticFiles, {
       root: join(c.frontendDir, 'assets'),
       prefix: '/assets/',
+      preCompressed: true,
+      setHeaders(reply, path) {
+        // Only Vite's fingerprinted application files are immutable across deployments.
+        if (/-[A-Za-z0-9_-]{8}\.(?:js|css|woff2?|svg)(?:\.(?:br|gz))?$/.test(path))
+          reply.header('Cache-Control', 'private, max-age=31536000, immutable');
+      },
       decorateReply: false,
       dotfiles: 'deny',
       cacheControl: false,
