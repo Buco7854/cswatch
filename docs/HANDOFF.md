@@ -1,5 +1,7 @@
 # Current handoff
 
+Viewer startup now uses precompressed application bundles and direct bitmap decoding for embedded map textures. Camera and terrain queries share bounded triangle-block indices on static geometry. [Local performance evidence](VERIFICATION.md#viewer-opening-and-playback-2026-11-23)
+
 The web port defaults to `0.0.0.0:8000` for reverse proxies on another host. The Compose deployment requires `APP_URL` and forwards optional settings by service. Parser and transcription workers receive processing settings. Supply bootstrap, SMTP and provider credentials to the web service. [Docker deployment](../README.md#docker-deployment)
 
 The Steam library can import a completed replay from a user-selected CS2 folder and accepts paired BZip2 uploads. FACEIT rows can take their map from player stats before download. Administration appears in workspace navigation for eligible administrators. A network denial identifies an unresolved client address or an excluded client network. [Operator guide](ACCESS-SETUP.md#administrative-networks)
