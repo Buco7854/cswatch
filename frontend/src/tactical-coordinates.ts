@@ -10,3 +10,32 @@ export function overviewPoint(overview: MapOverview, point: { x: number; y: numb
 export function overviewRadius(overview: MapOverview, sourceUnits: number) {
   return sourceUnits / (overview.scale * overview.referenceSize);
 }
+
+/** A square window into the calibrated image. Rotation and image coordinates
+ * stay the same for the raster, players, paths and utility radii. */
+export function radarWindow(
+  overview: MapOverview,
+  bounds: { minX: number; maxX: number; minY: number; maxY: number },
+) {
+  const topLeft = overviewPoint(overview, { x: bounds.minX, y: bounds.maxY });
+  const bottomRight = overviewPoint(overview, { x: bounds.maxX, y: bounds.minY });
+  const width = bottomRight.x - topLeft.x;
+  const height = bottomRight.y - topLeft.y;
+  if (
+    !Number.isFinite(width + height) ||
+    width <= 0 ||
+    height <= 0 ||
+    topLeft.x < 0 ||
+    topLeft.y < 0 ||
+    bottomRight.x > 1 ||
+    bottomRight.y > 1
+  )
+    return;
+  const size = Math.min(1, Math.max(0.5, Math.max(width, height) / 0.9));
+  const start = (a: number, b: number) => Math.max(0, Math.min(1 - size, (a + b - size) / 2));
+  return {
+    x: 10 + start(topLeft.x, bottomRight.x) * 100,
+    y: 10 + start(topLeft.y, bottomRight.y) * 100,
+    size: size * 100,
+  };
+}

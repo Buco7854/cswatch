@@ -15,12 +15,18 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
-import type { ReactNode, RefObject } from 'react';
+import type { ReactNode } from 'react';
 import type { ListenerPose } from '../viewer-audio';
 import { AdaptiveResolution, type RenderQuality } from '../adaptive-resolution';
 import { Canvas, createPortal, useFrame, useThree, type RootState } from '@react-three/fiber';
 import { renderDevice, type RenderDevice } from '../render-device';
-import { Html, OrbitControls } from '@react-three/drei';
+import { OrbitControls } from '@react-three/drei';
+import ActorOverlays, {
+  createActorOverlay,
+  useActorOverlayFrame,
+  type ActorOverlay,
+} from './ActorOverlays';
+import type { ActorOverlayLayout } from '../actor-overlay';
 import * as THREE from 'three';
 import type { Playback, Position } from '../types';
 import TacticalPlot from './TacticalPlot';
@@ -62,7 +68,6 @@ import {
   recordedEyePosition,
   scopedVerticalFov,
 } from '../pov-camera';
-import { smokeHidesLabel } from '../smoke-render-state';
 import type { SmokeSample } from '../smoke-field';
 import Smoke from './Smoke';
 import { mapSurface, type MapUnavailableReason } from '../map-availability';
@@ -416,13 +421,10 @@ function Agent({
   position,
   next,
   alpha,
-  selected,
   xray,
-  name,
   labels,
-  labelSmoke,
+  overlays,
   hideNearCamera,
-  overheadMarker,
   contactTrace,
   contactShadow,
   footPoseAt,
@@ -439,13 +441,10 @@ function Agent({
   position: Position;
   next?: Position;
   alpha: number;
-  selected: boolean;
   xray: boolean;
-  name?: string;
   labels: boolean;
-  labelSmoke: RefObject<SmokeSample[]>;
+  overlays?: ActorOverlay;
   hideNearCamera: boolean;
-  overheadMarker: boolean;
   contactTrace: ReturnType<ReturnType<typeof followObstruction>['fork']> | null;
   contactShadow: boolean;
   footPoseAt?: FootPoseAt;
@@ -471,10 +470,15 @@ function Agent({
     };
   }, []);
   const ref = useRef<THREE.Group>(null);
-  const labelAnchor = useRef<THREE.Group>(null);
-  const labelElement = useRef<HTMLDivElement>(null);
   const headAnchor = useRef<THREE.Bone | null>(null);
-  const headPosition = useMemo(() => new THREE.Vector3(), []);
+  const overlayAnchor = useMemo(() => ({ body: ref, head: headAnchor, height: 0, yaw: 0 }), []);
+  useLayoutEffect(() => {
+    if (!overlays) return;
+    overlays.anchors.set(position.id, overlayAnchor);
+    return () => {
+      overlays.anchors.delete(position.id);
+    };
+  }, [overlays, position.id, overlayAnchor]);
   const registerHeadAnchor = useCallback((bone: THREE.Bone) => {
     headAnchor.current = bone;
     return () => {
@@ -483,46 +487,19 @@ function Agent({
   }, []);
   const { camera } = useThree();
   const eye = useRef(new THREE.Vector3());
-  const [nearCamera, setNearCamera] = useState(false);
-  const priorNearCamera = useRef(false);
   useFrame(() => {
     if (!ref.current) return;
+    if (overlays) {
+      overlayAnchor.height = 2.08 - (pose.duck ?? 0) * 0.65;
+      overlayAnchor.yaw = pose.yaw;
+    }
     ref.current.position.set(pose.x * UNIT, pose.z * UNIT, -pose.y * UNIT);
     ref.current.rotation.y = THREE.MathUtils.degToRad(pose.yaw);
     const near =
       hideNearCamera &&
       camera.position.distanceToSquared(eye.current.fromArray(recordedEyePosition(pose))) < 0.25;
     ref.current.visible = !near;
-    if (near !== priorNearCamera.current) {
-      priorNearCamera.current = near;
-      setNearCamera(near);
-    }
   }, -3);
-  const fallbackLabelHeight = 2.08 - (pose.duck ?? 0) * 0.65;
-  useFrame(() => {
-    const group = ref.current;
-    const anchor = labelAnchor.current;
-    if (!group || !anchor) return;
-    anchor.position.set(0, fallbackLabelHeight, 0);
-    if (headAnchor.current) {
-      // The native locomotion pose is sampled at priority -2. Project the head from that pose.
-      const head = group.worldToLocal(headAnchor.current.getWorldPosition(headPosition));
-      if (head.y >= 0.25 && head.y <= 2.3 && Math.hypot(head.x, head.z) <= 0.8)
-        anchor.position.set(head.x, head.y + 0.24, head.z);
-    }
-    const label = labelElement.current;
-    if (label)
-      label.style.visibility =
-        !xray &&
-        labelSmoke.current.length &&
-        smokeHidesLabel(
-          labelSmoke.current,
-          camera.position.toArray(),
-          anchor.getWorldPosition(headPosition).toArray(),
-        )
-          ? 'hidden'
-          : '';
-  }, -1);
   const color = position.team === 3 ? '#9ec7da' : '#e7ba73';
   if (!position.alive) return null;
   return (
@@ -551,7 +528,7 @@ function Agent({
           duck={pose.duck ?? 0}
           xrayColor={xray ? color : undefined}
           registerWeaponAnchor={registerWeaponAnchor}
-          registerHeadAnchor={labels && name ? registerHeadAnchor : undefined}
+          registerHeadAnchor={labels ? registerHeadAnchor : undefined}
           fallback={
             <GenericAgentBody
               team={position.team}
@@ -566,48 +543,6 @@ function Agent({
       )}
       <HeldEquipment position={pose} anchor={weaponAnchor} released={action?.released} />
       {contactShadow && contactTrace && <PlayerContactShadow body={ref} trace={contactTrace} />}
-      {labels && name && !nearCamera && (
-        <group ref={labelAnchor} position={[0, fallbackLabelHeight, 0]}>
-          <Html
-            key={xray ? 'through-walls' : 'visible-only'}
-            center
-            occlude={!xray}
-            zIndexRange={[2, 0]}
-            style={{ pointerEvents: 'none' }}
-          >
-            <div
-              ref={labelElement}
-              className="actor-label"
-              data-team={position.team}
-              data-player={position.id}
-              role="img"
-              aria-label={t('{{name}}, {{health}} health', { name, health: position.health })}
-            >
-              <span className="actor-label-name">{name}</span>
-              {Number.isFinite(position.health) && position.health >= 0 && (
-                <span className="actor-label-health">
-                  <span className="actor-label-track" aria-hidden="true">
-                    <span style={{ width: Math.min(100, position.health) + '%' }} />
-                  </span>
-                  <span>{position.health}</span>
-                </span>
-              )}
-            </div>
-          </Html>
-        </group>
-      )}
-      {overheadMarker && !labels && (
-        <mesh position={[0, 2, 0]}>
-          <sphereGeometry args={[selected ? 0.15 : 0.09, 8, 8]} />
-          <meshBasicMaterial color={selected ? '#ffffff' : color} />
-        </mesh>
-      )}
-      {overheadMarker && selected && (
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.04, 0]}>
-          <ringGeometry args={[0.5, 0.58, 32]} />
-          <meshBasicMaterial color="#ffffff" />
-        </mesh>
-      )}
     </group>
   );
 }
@@ -637,6 +572,8 @@ function World({
   items,
   onAudioListener,
   onSmokeUnavailable,
+  overlays,
+  overlayLayout,
 }: {
   data: Playback;
   low: boolean;
@@ -669,9 +606,12 @@ function World({
   items: PresentItem[];
   onSmokeUnavailable: (unavailable: boolean) => void;
   onAudioListener?: (pose: ListenerPose | null) => void;
+  overlays?: ActorOverlay;
+  overlayLayout?: ActorOverlayLayout;
 }) {
   const { camera, gl, invalidate } = useThree();
   const labelSmoke = useRef<SmokeSample[]>([]);
+  useActorOverlayFrame(overlays, overlayLayout, selected, settings.xray, labelSmoke);
   const [contextRevision, setContextRevision] = useState(0);
   useLayoutEffect(() => {
     const restored = () => {
@@ -869,15 +809,19 @@ function World({
     roundBoundary: data.rounds.some((round) => round.tick > frame.tick && round.tick <= next.tick),
   };
   const bounds = useMemo(() => {
-    if (data.sample) return { center: new THREE.Vector3(0, 0, 0), extent: 52 };
+    if (data.sample) return { center: new THREE.Vector3(0, 0, 0), extent: 52, height: 0 };
     const b = playbackBounds(data);
     const box = new THREE.Box3(
       new THREE.Vector3(b.minX * UNIT, b.minZ * UNIT, -b.maxY * UNIT),
       new THREE.Vector3(b.maxX * UNIT, b.maxZ * UNIT, -b.minY * UNIT),
     );
-    if (box.isEmpty()) return { center: new THREE.Vector3(), extent: 80 };
+    if (box.isEmpty()) return { center: new THREE.Vector3(), extent: 80, height: 0 };
     const size = box.getSize(new THREE.Vector3());
-    return { center: box.getCenter(new THREE.Vector3()), extent: Math.max(size.x, size.z, 20) };
+    return {
+      center: box.getCenter(new THREE.Vector3()),
+      extent: Math.max(size.x, size.z, 20),
+      height: size.y,
+    };
   }, [data.sample, data.worldBounds, data.worldBounds ? null : data.frames]);
   const focusTrace = focus ? followTrace : null;
   const freeView = useRef<{ position: THREE.Vector3; target: THREE.Vector3 }>(undefined);
@@ -929,7 +873,8 @@ function World({
       };
     };
   }, [mode, bounds, camera, focus?.id, focusTrace, invalidate]);
-  useFrame((_, delta) => {
+  const overheadTarget = useMemo(() => new THREE.Vector3(), []);
+  useFrame(({ size }, delta) => {
     if (mode === 'orbit') {
       if (
         !movement.current.size ||
@@ -960,12 +905,28 @@ function World({
       return;
     }
     if (mode === 'tactical') {
-      const distance =
-        camera instanceof THREE.PerspectiveCamera
-          ? overheadDistance(bounds.extent, camera.fov, camera.aspect)
-          : bounds.extent * 1.15;
-      camera.position.copy(bounds.center).add(new THREE.Vector3(0, distance, 0.01));
-      camera.lookAt(bounds.center);
+      overheadTarget.copy(bounds.center);
+      let distance = bounds.extent * 1.15;
+      if (camera instanceof THREE.PerspectiveCamera) {
+        const top = overlayLayout?.titleBottom ?? 0;
+        const bottom =
+          overlayLayout?.dockTop === undefined ? size.height : overlayLayout.dockTop - 14;
+        const usable = size.height > 0 ? (bottom - top) / size.height : 1;
+        const framed = usable >= 0.35 && usable <= 1;
+        const aspect = framed ? Math.min(camera.aspect, usable) : camera.aspect;
+        const groundDistance = overheadDistance(bounds.extent, camera.fov, aspect);
+        distance = groundDistance + bounds.height / 2;
+        if (framed) {
+          const visibleCenter = (top + bottom) / (2 * size.height);
+          overheadTarget.z +=
+            (0.5 - visibleCenter) *
+            2 *
+            groundDistance *
+            Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+        }
+      }
+      camera.position.set(overheadTarget.x, overheadTarget.y + distance, overheadTarget.z + 0.01);
+      camera.lookAt(overheadTarget);
       return;
     }
     const p = viewedPlayer;
@@ -1083,22 +1044,14 @@ function World({
                 position={p}
                 next={nextPlayers.get(p.id)}
                 alpha={alpha}
-                selected={p.id === selected && !preview}
                 xray={settings.xray && !preview}
-                name={data.players.find((player) => player.id === p.id)?.name}
-                labels={
-                  settings.playerLabels &&
-                  !preview &&
-                  (Boolean(data.sample) || modelReady) &&
-                  !(mode === 'follow' && p.id === selected)
-                }
-                labelSmoke={labelSmoke}
+                labels={settings.playerLabels && !preview && (Boolean(data.sample) || modelReady)}
+                overlays={overlays}
                 hideNearCamera={
                   !preview &&
                   !data.sample &&
                   (mode === 'orbit' || (mode === 'follow' && p.id === selected))
                 }
-                overheadMarker={mode === 'tactical'}
                 contactTrace={floorTraces.get(p.id) ?? null}
                 contactShadow={!shadows}
                 footPoseAt={preview || data.sample ? undefined : footPoseAt}
@@ -1363,6 +1316,7 @@ export default function Scene({
   onMapStatus,
   focus,
   onAudioListener,
+  overlayLayout,
 }: {
   data: Playback;
   tick?: number;
@@ -1377,7 +1331,10 @@ export default function Scene({
   onMapStatus?: (state: MapRenderState) => void;
   focus?: SceneFocus;
   onAudioListener?: (pose: ListenerPose | null) => void;
+  overlayLayout?: ActorOverlayLayout;
 }) {
+  const actorOverlay = useMemo(createActorOverlay, []);
+  const projectActors = !preview && (settings.playerLabels || mode === 'tactical');
   const listenerScope = useMemo(() => ({}), [assetScope, data.map, onAudioListener]);
   const currentListenerScope = useRef(listenerScope);
   currentListenerScope.current = listenerScope;
@@ -1935,6 +1892,8 @@ export default function Scene({
                         tracers={tracers}
                         agents={agents}
                         focus={focus}
+                        overlays={projectActors ? actorOverlay : undefined}
+                        overlayLayout={overlayLayout}
                         utilityState={utilityState}
                         items={liveItems}
                         onAudioListener={reportAudioListener}
@@ -1945,6 +1904,16 @@ export default function Scene({
                 </EquipmentFire>
               )}
             </Canvas>
+            {projectActors && (data.sample || modelStatus === 'ready') && (
+              <ActorOverlays
+                overlay={actorOverlay}
+                players={data.players}
+                positions={currentPlayers}
+                selected={mode === 'pov' ? (viewedAgentId ?? '') : selected}
+                labels={settings.playerLabels}
+                mode={mode}
+              />
+            )}
           </SceneBoundary>
         </>
       )}

@@ -53,6 +53,7 @@ test('a new match opens live in POV with the game FOV and the recorded match HUD
   await expect(observed).toContainText('D 1');
   await expect(observed).toContainText('$3,450');
   await expect(opponent.getByRole('img', { name: 'Carries C4' })).toBeVisible();
+  const livingRow = (await opponent.getByRole('button').boundingBox())!;
 
   const firstRound = page.locator('.timeline-round-segment').first();
   await expect(firstRound).toHaveAttribute('data-winner', '3');
@@ -84,6 +85,7 @@ test('a new match opens live in POV with the game FOV and the recorded match HUD
   await expect(opponent).toHaveClass(/is-out/);
   await expect(opponent.getByRole('img', { name: 'Carries C4' })).toHaveCount(0);
   await expect(opponent).not.toContainText('Weapon unavailable');
+  expect((await opponent.getByRole('button').boundingBox())!.height).toBe(livingRow.height);
   const prompt = page.getByRole('group', { name: 'Moment shortcuts' });
   await expect(prompt.getByRole('button', { name: 'Replay kill' })).toBeVisible();
   await expect(prompt.getByRole('button', { name: 'Replay death' })).toBeVisible();

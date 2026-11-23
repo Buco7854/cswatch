@@ -1,9 +1,25 @@
-import { useLayoutEffect, type RefObject } from 'react';
+import { useLayoutEffect, useRef, type RefObject } from 'react';
+import type { ActorOverlayLayout, ScreenRect } from './actor-overlay';
 
-type Box = { left: number; top: number; right: number; bottom: number };
 const blockerSelector =
-  '.viewer-titlebar,.viewer-dock,.review-feed,.review-inputs-panel,.broadcast-lineup-stack,.viewer-context-actions,.voice-caption,.position-radar,.viewer-match-score,.objective-hud';
-const observedSelector = blockerSelector + ',.killfeed';
+  '.viewer-titlebar,.viewer-dock,.review-feed,.review-inputs-panel,.broadcast-lineup-stack,.viewer-context-actions,.voice-caption,.position-radar,.viewer-match-score,.objective-hud,.replay-buffer';
+const actorBlockerSelector =
+  '.spectator-flash-label,.smoke-unavailable,.viewer-stage :is(.viewer-crosshair,.viewer-recorded-crosshair):not(.is-preview) > g';
+const observedSelector = blockerSelector + ',.killfeed,.viewer-drawer,' + actorBlockerSelector;
+const visibleBox = (element: Element, bounds: DOMRect): ScreenRect[] => {
+  const style = getComputedStyle(element);
+  if (style.display === 'none' || style.visibility !== 'visible') return [];
+  const box = element.getBoundingClientRect();
+  if (!box.width || !box.height) return [];
+  return [
+    {
+      left: box.left - bounds.left,
+      top: box.top - bounds.top,
+      right: box.right - bounds.left,
+      bottom: box.bottom - bounds.top,
+    },
+  ];
+};
 const clearKillfeedPlacement = (root: HTMLElement) => {
   delete root.dataset.killfeedPlaced;
   for (const property of ['left', 'top', 'width'])
@@ -12,14 +28,13 @@ const clearKillfeedPlacement = (root: HTMLElement) => {
 
 /** On a crowded small screen, the passive elimination feed takes a free edge
  * gap. It must not resize the player list or sit on a replay/input control. */
-function placeKillfeed(root: HTMLElement, blockers: HTMLElement[]) {
+function placeKillfeed(root: HTMLElement, boxes: ScreenRect[], bounds: DOMRect) {
   const feed = root.querySelector<HTMLElement>('.killfeed');
   if (!feed) {
     clearKillfeedPlacement(root);
     delete root.dataset.killfeedCrowded;
     return;
   }
-  const bounds = root.getBoundingClientRect();
   const height = feed.getBoundingClientRect().height;
   if (height <= 0) {
     clearKillfeedPlacement(root);
@@ -28,23 +43,6 @@ function placeKillfeed(root: HTMLElement, blockers: HTMLElement[]) {
   }
   const edge = Number.parseFloat(getComputedStyle(root).getPropertyValue('--viewer-edge')) || 8;
   const gap = 8;
-  const boxes: Box[] = blockers.flatMap((element) => {
-    const style = getComputedStyle(element),
-      box = element.getBoundingClientRect();
-    return style.display !== 'none' &&
-      style.visibility === 'visible' &&
-      box.width > 0 &&
-      box.height > 0
-      ? [
-          {
-            left: box.left - bounds.left,
-            top: box.top - bounds.top,
-            right: box.right - bounds.left,
-            bottom: box.bottom - bounds.top,
-          },
-        ]
-      : [];
-  });
   const toolbar = root.querySelector('.viewer-titlebar')!.getBoundingClientRect();
   const score = root.querySelector('.viewer-match-score')?.getBoundingClientRect();
   const minimumY = toolbar.bottom - bounds.top + gap;
@@ -96,6 +94,7 @@ function placeKillfeed(root: HTMLElement, blockers: HTMLElement[]) {
 
 /** Measure only real overlay boxes. CSS composes their occupied lanes per viewport. */
 export function useReviewLayout(frame: RefObject<HTMLElement | null>, ready: boolean) {
+  const layout = useRef<ActorOverlayLayout>({ rectangles: [] });
   useLayoutEffect(() => {
     const root = frame.current;
     if (!root || !ready) return;
@@ -107,15 +106,17 @@ export function useReviewLayout(frame: RefObject<HTMLElement | null>, ready: boo
       const score = root.querySelector<HTMLElement>('.viewer-match-score');
       const candidate = root.querySelector<HTMLElement>('.review-feed');
       const feed = candidate?.closest('.review-feed-dialog') ? null : candidate;
-      const blockers = [...root.querySelectorAll<HTMLElement>(blockerSelector)];
+      const blockers = [...root.querySelectorAll(blockerSelector)];
+      const actorBlockers = [...root.querySelectorAll(actorBlockerSelector)];
       const killfeed = root.querySelector<HTMLElement>('.killfeed');
+      const drawer = root.querySelector<HTMLElement>('.viewer-drawer');
       const wanted = new Set(
-        [objective, score, feed, killfeed, ...blockers].filter(
-          (element): element is HTMLElement => !!element,
+        [objective, score, feed, killfeed, drawer, ...blockers, ...actorBlockers].filter(
+          (element): element is Element => !!element,
         ),
       );
       for (const element of observed)
-        if (!wanted.has(element as HTMLElement)) {
+        if (!wanted.has(element)) {
           observer?.unobserve(element);
           observed.delete(element);
         }
@@ -137,7 +138,35 @@ export function useReviewLayout(frame: RefObject<HTMLElement | null>, ready: boo
         '--review-feed-height',
         `${feed?.getBoundingClientRect().height ?? 0}px`,
       );
-      placeKillfeed(root, blockers);
+      const boxes = blockers.flatMap((element) => visibleBox(element, bounds));
+      placeKillfeed(root, boxes, bounds);
+      for (const element of [killfeed, drawer, ...actorBlockers])
+        if (element) boxes.push(...visibleBox(element, bounds));
+      const dockTop =
+        (root.querySelector('.viewer-dock')?.getBoundingClientRect().top ?? bounds.bottom) -
+        bounds.top;
+      const titleBottom = Math.max(
+        (root.querySelector('.viewer-titlebar')?.getBoundingClientRect().bottom ?? bounds.top) -
+          bounds.top,
+        occupiedBottom(score),
+      );
+      const current = layout.current;
+      if (
+        current.dockTop === dockTop &&
+        current.titleBottom === titleBottom &&
+        current.rectangles.length === boxes.length &&
+        current.rectangles.every(({ left, top, right, bottom }, index) => {
+          const box = boxes[index];
+          return (
+            left === box.left && top === box.top && right === box.right && bottom === box.bottom
+          );
+        })
+      )
+        return;
+      current.rectangles = boxes;
+      current.dockTop = dockTop;
+      current.titleBottom = titleBottom;
+      current.invalidate?.();
     };
     const schedule = () => {
       if (scheduled === undefined) scheduled = requestAnimationFrame(measure);
@@ -147,6 +176,14 @@ export function useReviewLayout(frame: RefObject<HTMLElement | null>, ready: boo
     // for panels entering or leaving so roster and scene updates skip layout work.
     const changes = new MutationObserver((records) => {
       for (const record of records) {
+        if (
+          record.type === 'attributes' &&
+          record.target instanceof Element &&
+          (record.target === root || record.target.matches(observedSelector))
+        ) {
+          schedule();
+          return;
+        }
         for (const node of [...record.addedNodes, ...record.removedNodes]) {
           if (
             node instanceof Element &&
@@ -158,19 +195,33 @@ export function useReviewLayout(frame: RefObject<HTMLElement | null>, ready: boo
         }
       }
     });
-    changes.observe(root, { childList: true, subtree: true });
+    changes.observe(root, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['hidden', 'data-chrome-visible'],
+    });
+    const onTransition = (event: TransitionEvent) => {
+      if (event.target instanceof Element && event.target.matches(observedSelector)) schedule();
+    };
+    root.addEventListener('transitionend', onTransition);
     window.addEventListener('resize', schedule);
     measure();
     return () => {
       changes.disconnect();
       observer?.disconnect();
       window.removeEventListener('resize', schedule);
+      root.removeEventListener('transitionend', onTransition);
       if (scheduled !== undefined) cancelAnimationFrame(scheduled);
       root.style.removeProperty('--review-objective-bottom');
       root.style.removeProperty('--review-score-bottom');
       root.style.removeProperty('--review-feed-height');
       clearKillfeedPlacement(root);
       delete root.dataset.killfeedCrowded;
+      layout.current.rectangles = [];
+      layout.current.dockTop = undefined;
+      layout.current.titleBottom = undefined;
     };
   }, [frame, ready]);
+  return layout.current;
 }

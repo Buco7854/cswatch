@@ -3,7 +3,7 @@ import { t } from '../i18n';
 import { memo, useCallback, useId, useMemo } from 'react';
 import type { Playback } from '../types';
 import type { MapOverview } from '../../../shared/map-assets';
-import { overviewPoint, overviewRadius } from '../tactical-coordinates';
+import { overviewPoint, overviewRadius, radarWindow } from '../tactical-coordinates';
 import { tacticalPalette } from '../tactical-palette';
 import type { AssetStatus } from '../map-assets';
 import { frameAt, playbackBounds, defaultSettings, type ViewerSettings } from '../playback';
@@ -45,6 +45,13 @@ function TacticalPlot({
   useTranslation();
   const clip = useId().replace(/:/g, '');
   const calibrated = overview && overviewStatus !== 'error' ? overview : null;
+  const crop = useMemo(
+    () =>
+      compact && calibrated && data.worldBounds
+        ? radarWindow(calibrated, data.worldBounds)
+        : undefined,
+    [compact, calibrated, data.worldBounds],
+  );
   const bounds = useMemo(() => {
     let { minX, maxX, minY, maxY } = playbackBounds(data);
     for (const event of data.events) {
@@ -100,7 +107,7 @@ function TacticalPlot({
   return (
     <svg
       className={compact ? 'position-radar' : 'tactical-plot'}
-      viewBox="0 0 120 120"
+      viewBox={crop ? `${crop.x} ${crop.y} ${crop.size} ${crop.size}` : '0 0 120 120'}
       style={{ backgroundColor: compact ? 'transparent' : tacticalPalette.ground }}
       role="img"
       aria-label={t(
@@ -124,8 +131,10 @@ function TacticalPlot({
       data-utility-zone-count={zones.length}
     >
       <rect
-        width="120"
-        height="120"
+        x={crop?.x}
+        y={crop?.y}
+        width={crop?.size ?? 120}
+        height={crop?.size ?? 120}
         rx="2"
         fill={compact ? tacticalPalette.radarBackdrop : tacticalPalette.ground}
       />

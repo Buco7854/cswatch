@@ -5,6 +5,7 @@ import { captureFocusReturn, focusMovedSince, type FocusReturnContext } from '..
 import i18n, { t, setLanguage } from '../i18n';
 import {
   lazy,
+  memo,
   Suspense,
   useCallback,
   useEffect,
@@ -100,7 +101,7 @@ import AccountMenu from './AccountMenu';
 import { ActionMenu, SelectControl, type MenuAction } from './Controls';
 import { useConfirm } from './Confirmation';
 const loadScene = () => import('./Scene');
-const Scene = lazy(loadScene);
+const Scene = memo(lazy(loadScene));
 const clock = (seconds: number) =>
   t('{{v0}}:{{v1}}', {
     v0: Math.floor(seconds / 60),
@@ -386,7 +387,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
   const panelTrigger = useRef<HTMLElement | null>(null);
   const panelWasOpen = useRef(false);
   const full = useRef<HTMLDivElement>(null);
-  useReviewLayout(full, Boolean(data));
+  const overlayLayout = useReviewLayout(full, Boolean(data));
   const playbackDock = useRef<HTMLDivElement>(null);
   const stage = useRef<HTMLDivElement>(null);
   const playTrigger = useRef<HTMLButtonElement>(null);
@@ -1500,6 +1501,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
               onMapStatus={reportMap}
               focus={grenadeFocus}
               onAudioListener={cameraAudio}
+              overlayLayout={overlayLayout}
             />
           </Suspense>
           {mode === 'pov' &&

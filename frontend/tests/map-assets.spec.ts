@@ -1,6 +1,7 @@
 import { chooseCameraControl, expectCameraControl } from './fixtures/viewer-transport';
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { manualMapAssets } from './fixtures/map-assets';
+import { installOriginalCameraProbe, originalFloorPixel } from './fixtures/original-camera';
 import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
 import {
   originalMapGLB,
@@ -316,6 +317,49 @@ test('original QA overview aligns players, utility and radar across desktop, tab
         path: info.outputPath(`original-QA-overview-${theme}-${size.width}.png`),
       });
     }
+});
+
+test('the radar crops the playable bounds without changing recorded positions on the image', async ({
+  page,
+}) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE));
+  const playback = originalMapReplay();
+  playback.worldBounds = { minX: -768, maxX: 768, minY: -512, maxY: 512, minZ: 0, maxZ: 300 };
+  await install(
+    page,
+    {
+      model: `/map-assets/${qaMap}/desktop/scene.glb`,
+      mobile: null,
+      overview: qaOverview,
+    },
+    { playback },
+  );
+  await open(page);
+  const readCalibration = async (selector: string) =>
+    page.locator(selector).evaluate((node, id) => {
+      const svg = node as SVGSVGElement;
+      const image = svg.querySelector('image')!;
+      const marker = svg.querySelector<SVGGElement>(`[data-player-id="${id}"]`)!;
+      const pixel = new DOMPoint(0, 0).matrixTransform(marker.getScreenCTM()!);
+      const mapPoint = pixel.matrixTransform(image.getScreenCTM()!.inverse());
+      const bounds = image.getBBox();
+      return {
+        width: svg.viewBox.baseVal.width,
+        east: (mapPoint.x - bounds.x) / bounds.width,
+        south: (mapPoint.y - bounds.y) / bounds.height,
+      };
+    }, qaActor);
+  await expect(page.locator('.position-radar')).toHaveAttribute('data-map-image-state', 'ready');
+  const radar = await readCalibration('.position-radar');
+  expect(75 / radar.width).toBeCloseTo(0.9, 5);
+  await camera(page, '2D tactical · low power');
+  await expect(page.locator('.tactical-plot')).toHaveAttribute('data-map-image-state', 'ready');
+  const overview = await readCalibration('.tactical-plot');
+  expect(overview.width).toBe(120);
+  expect(radar.east).toBeCloseTo(0.25, 6);
+  expect(radar.south).toBeCloseTo(0.5, 6);
+  expect(radar.east).toBeCloseTo(overview.east, 6);
+  expect(radar.south).toBeCloseTo(overview.south, 6);
 });
 
 test('a real 3D map without an overview omits the compact radar and explains unavailable2D in both themes', async ({
@@ -1258,6 +1302,7 @@ test('tagged original landscape stays behind main geometry even when it is physi
 }, info) => {
   test.skip(Boolean(process.env.E2E_PRIVATE));
   let tagged = false;
+  await installOriginalCameraProbe(page);
   await install(
     page,
     { model: `/map-assets/${qaMap}/desktop/scene.glb`, mobile: null, overview: qaOverview },
@@ -1276,7 +1321,7 @@ test('tagged original landscape stays behind main geometry even when it is physi
   await expect
     .poll(
       async () => {
-        const pixel = await centerPixel(page);
+        const pixel = await originalFloorPixel(page);
         return pixel[2] > pixel[1] * 1.8;
       },
       { message: 'Untagged nearer original blue geometry must occlude the green floor' },
@@ -1294,7 +1339,7 @@ test('tagged original landscape stays behind main geometry even when it is physi
   await expect
     .poll(
       async () => {
-        const pixel = await centerPixel(page);
+        const pixel = await originalFloorPixel(page);
         return pixel[1] > pixel[2] + 5;
       },
       {
@@ -1362,6 +1407,13 @@ test('paused viewer stops native rendering and camera, held keys, POV seeks and 
   await expect(cameraNotice).toHaveAttribute('data-camera-changed', 'false');
   await idle();
   const initial = await frames();
+  await expect(page.locator('.viewer-camera-tools')).toHaveAttribute(
+    'data-camera-changed',
+    'false',
+  );
+  expect(await frames(), 'Expiring the camera announcement must leave the scene idle').toBe(
+    initial,
+  );
   await Promise.all(
     ['/api/assets/agents', '/api/assets/equipment-models', '/api/assets/viewmodels'].map((path) =>
       page.waitForResponse((response) => new URL(response.url()).pathname === path),

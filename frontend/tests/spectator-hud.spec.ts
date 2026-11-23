@@ -9,13 +9,15 @@ import { originalAnimatedAgentGLB } from './fixtures/original-agent';
 
 const opponent = '76561198000000002',
   teammate = '76561198000000003';
-function mapWithWall() {
+function mapWithOccluder(roof = false) {
   const source = originalMapGLB();
   const jsonLength = source.readUInt32LE(12),
     offset = 20 + jsonLength;
   const document = JSON.parse(source.subarray(20, offset).toString());
   const sourceBin = source.subarray(offset + 8, offset + 8 + source.readUInt32LE(offset));
-  const points = [-5, 0, 0, 5, 0, 0, 5, 4, 0, -5, 0, 0, 5, 4, 0, -5, 4, 0];
+  const points = roof
+    ? [-60, 4, -60, 60, 4, -60, 60, 4, 60, -60, 4, -60, 60, 4, 60, -60, 4, 60]
+    : [-5, 0, 0, 5, 0, 0, 5, 4, 0, -5, 0, 0, 5, 4, 0, -5, 4, 0];
   const wall = Buffer.alloc(points.length * 4);
   points.forEach((part, index) => wall.writeFloatLE(part, index * 4));
   const bin = Buffer.concat([sourceBin, wall]);
@@ -32,8 +34,8 @@ function mapWithWall() {
     componentType: 5126,
     count: 6,
     type: 'VEC3',
-    min: [-5, 0, 0],
-    max: [5, 4, 0],
+    min: roof ? [-60, 4, -60] : [-5, 0, 0],
+    max: roof ? [60, 4, 60] : [5, 4, 0],
   });
   const material = document.materials.length;
   document.materials.push({
@@ -47,7 +49,7 @@ function mapWithWall() {
   const mesh = document.meshes.length,
     node = document.nodes.length;
   document.meshes.push({ primitives: [{ attributes: { POSITION: accessor }, material }] });
-  document.nodes.push({ name: 'Original QA occluding wall, not CS2 artwork', mesh });
+  document.nodes.push({ name: 'Original QA occluder, not CS2 artwork', mesh });
   document.scenes[0].nodes.push(node);
   document.buffers[0].byteLength = bin.length;
   const raw = Buffer.from(JSON.stringify(document)),
@@ -68,7 +70,14 @@ function mapWithWall() {
 async function fixture(
   page: Page,
   id: string,
-  options: { wall?: boolean; death?: boolean; native?: boolean | 'head'; flash?: boolean } = {},
+  options: {
+    wall?: boolean;
+    death?: boolean;
+    native?: boolean | 'head';
+    flash?: boolean;
+    crowded?: boolean;
+    crosshair?: boolean;
+  } = {},
 ) {
   const data = originalMapReplay();
   data.grenades = [];
@@ -79,8 +88,8 @@ async function fixture(
       {
         ...data.frames[0].players[0],
         x: -200,
-        y: 0,
-        yaw: 0,
+        y: options.crowded && index === 20 ? -1820 : 0,
+        yaw: options.crowded && index === 20 ? 90 : 0,
         health: options.death && index >= 2 ? 0 : 75,
         alive: !(options.death && index >= 2),
         flash: options.flash ? (index === 1 || index === 2 ? 1.03 : 0) : undefined,
@@ -92,7 +101,13 @@ async function fixture(
         health: 37,
         duck: options.native === 'head' && index >= 2 ? 1 : 0,
       },
-      { ...data.frames[0].players[0], id: teammate, x: -200, y: 200, health: 64 },
+      {
+        ...data.frames[0].players[0],
+        id: teammate,
+        x: options.crowded ? 210 : -200,
+        y: options.crowded ? 0 : 200,
+        health: 64,
+      },
     ],
   }));
   data.events = [
@@ -115,7 +130,7 @@ async function fixture(
         ]
       : []),
   ];
-  await page.addInitScript(() => {
+  await page.addInitScript((crosshair) => {
     localStorage.setItem('cswatch.language', 'en');
     for (const key of ['viewer-settings-v2', 'viewer-settings-v2-mobile'])
       localStorage.setItem(
@@ -130,9 +145,10 @@ async function fixture(
           grenadeLanding: false,
           radar: false,
           killfeed: false,
+          crosshair,
         }),
       );
-  });
+  }, options.crosshair ?? true);
   await page.route(`**/api/demos/${id}`, (route) =>
     route.fulfill({
       json: {
@@ -156,7 +172,7 @@ async function fixture(
   await page.route('**' + model, (route) =>
     route.fulfill({
       contentType: 'model/gltf-binary',
-      body: options.wall ? mapWithWall() : originalMapGLB(),
+      body: options.wall || options.crowded ? mapWithOccluder(options.crowded) : originalMapGLB(),
     }),
   );
   if (options.native) {
@@ -186,6 +202,108 @@ async function option(
   await page.getByRole('switch', { name: new RegExp('^' + name) }).setChecked(checked);
   await page.getByRole('button', { name: 'Close viewer options', exact: true }).click();
 }
+
+test('actor labels avoid each other and HUD panels, and Overhead keeps a selected arrow visible over the roof', async ({
+  page,
+}) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE));
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await fixture(page, 'spectator-overlay', { crowded: true });
+  await page.goto('/watch/spectator-overlay?tick=0');
+  const scene = page.locator('.scene');
+  await expect(scene).toHaveAttribute('data-map-model-state', 'ready');
+  const labels = scene.locator('.actor-label:visible');
+  await expect(labels).toHaveCount(2);
+  const pair = await labels.evaluateAll((nodes) =>
+    nodes.map((node) => node.getBoundingClientRect().toJSON()),
+  );
+  expect(pair[0].x).toBeCloseTo(pair[1].x, -2);
+  expect(Math.min(pair[0].bottom, pair[1].bottom)).toBeLessThanOrEqual(
+    Math.max(pair[0].top, pair[1].top) - 3,
+  );
+  const crosshair = await page.locator('.viewer-crosshair > g').boundingBox();
+  expect(crosshair).not.toBeNull();
+  for (const label of pair)
+    expect(
+      label.bottom <= crosshair!.y - 3 || label.top >= crosshair!.y + crosshair!.height + 3,
+    ).toBe(true);
+  await expect(scene.locator('.overhead-player-marker')).toHaveCount(0);
+
+  await page.locator('.viewer-stage').evaluate((stage) => {
+    const label = [...stage.querySelectorAll('.actor-label')]
+      .find((element) => getComputedStyle(element).visibility === 'visible')!
+      .getBoundingClientRect();
+    const bounds = stage.getBoundingClientRect();
+    const uri = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(uri, 'svg');
+    svg.id = 'qa-reticle';
+    svg.classList.add('viewer-recorded-crosshair');
+    svg.setAttribute('viewBox', `0 0 ${bounds.width} ${bounds.height}`);
+    const glyph = document.createElementNS(uri, 'g');
+    const ink = document.createElementNS(uri, 'rect');
+    ink.setAttribute('x', String(label.x - bounds.x + 5));
+    ink.setAttribute('y', String(label.y - bounds.y + 5));
+    ink.setAttribute('width', '10');
+    ink.setAttribute('height', '10');
+    glyph.append(ink);
+    svg.append(glyph);
+    stage.append(svg);
+  });
+  await expect
+    .poll(() =>
+      labels.evaluateAll((nodes) => {
+        const reticle = document.querySelector('#qa-reticle > g')!.getBoundingClientRect();
+        return (
+          nodes.length > 0 &&
+          nodes.every((node) => {
+            const label = node.getBoundingClientRect();
+            return (
+              label.right <= reticle.left ||
+              label.left >= reticle.right ||
+              label.bottom <= reticle.top ||
+              label.top >= reticle.bottom
+            );
+          })
+        );
+      }),
+    )
+    .toBe(true);
+  await page.locator('#qa-reticle').evaluate((reticle) => reticle.remove());
+  await expect(labels).toHaveCount(2);
+
+  await page.locator('.viewer-frame').evaluate((frame) => {
+    const panel = document.createElement('div');
+    panel.className = 'review-inputs-panel';
+    panel.id = 'qa-hud-blocker';
+    Object.assign(panel.style, {
+      top: '35%',
+      left: '40%',
+      width: '20%',
+      height: '30%',
+      bottom: 'auto',
+    });
+    frame.append(panel);
+  });
+  await expect(labels).toHaveCount(0);
+  await page.locator('#qa-hud-blocker').evaluate((panel) => panel.remove());
+  await expect(labels).toHaveCount(2);
+
+  await page.locator('.timeline-slider').fill('640');
+  await option(page, 'Visuals', 'X-ray silhouettes', false);
+  await camera(page, 'Overhead');
+  const observed = scene.locator(`.overhead-player-marker[data-player="${qaActor}"]`);
+  await expect(observed).toHaveAttribute('data-selected', 'true');
+  await expect(observed).toHaveAttribute('data-team', '3');
+  await expect(observed).toBeVisible();
+  await expect(observed).toHaveCSS('--actor-heading', '-90deg');
+  await expect(scene.locator('.overhead-player-marker[data-team="2"]')).toBeVisible();
+  await expect(scene.locator(`.actor-label[data-player="${qaActor}"]`)).toBeHidden();
+  const dock = await page.locator('.viewer-dock').boundingBox();
+  const marker = await observed.boundingBox();
+  expect(marker!.y + marker!.height).toBeLessThan(dock!.y);
+  await camera(page, 'Free camera');
+  await expect(scene.locator('.overhead-player-marker')).toHaveCount(0);
+});
 test('player names and real health render through an actual wall, obey X-ray and remain clear in both themes on desktop and phone', async ({
   page,
 }, info) => {
@@ -267,7 +385,9 @@ test('native labels project the posed head and restore the same placement on bac
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE));
   await page.setViewportSize({ width: 1100, height: 800 });
-  await fixture(page, 'spectator-head-label', { wall: true, native: 'head' });
+  // Measure the projected head's movement, with reticle avoidance covered by
+  // the crowded-label test above.
+  await fixture(page, 'spectator-head-label', { wall: true, native: 'head', crosshair: false });
   await page.goto('/watch/spectator-head-label?tick=0');
   const scene = page.locator('.scene');
   await expect(scene).toHaveAttribute('data-map-model-state', 'ready');

@@ -1,3 +1,18 @@
+.actor-overlays {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+}
+.actor-label,
+.overhead-player-marker {
+  position: absolute;
+  top: 0;
+  left: 0;
+  visibility: hidden;
+  --actor-color: #83c3e5;
+}
 .actor-label {
   width: max-content;
   max-width: 144px;
@@ -9,10 +24,32 @@
   font: 600 12px / 1.2 var(--font-body, Inter, sans-serif);
   user-select: none;
   pointer-events: none;
-  --actor-color: #83c3e5;
 }
-.actor-label[data-team='2'] {
+.actor-label[data-team='2'],
+.overhead-player-marker[data-team='2'] {
   --actor-color: #f0ad71;
+}
+.overhead-player-marker {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  filter: drop-shadow(0 1px 2px #101515);
+}
+.overhead-player-marker[data-selected='true'] {
+  width: 20px;
+  height: 20px;
+  z-index: 1;
+  background: #111516;
+  border: 2px solid #fff;
+  border-radius: 50%;
+}
+.overhead-player-marker > span {
+  width: 13px;
+  height: 13px;
+  background: var(--actor-color);
+  clip-path: polygon(95% 50%, 8% 4%, 25% 50%, 8% 96%);
+  rotate: var(--actor-heading, 0deg);
 }
 .actor-label-name {
   display: block;
@@ -28,6 +65,10 @@
   margin-top: 3px;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
+}
+.actor-label-health > :last-child {
+  min-width: 3ch;
+  text-align: end;
 }
 .actor-label-track {
   width: 55px;
