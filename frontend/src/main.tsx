@@ -44,7 +44,7 @@ import { recoveryReceiptDeadline } from './auth-actions';
 import Library from './components/Library';
 import Viewer from './components/Viewer';
 import WorkspaceShell from './components/WorkspaceShell';
-import { Account, Admin, AdminAccessNotice } from './components/Settings';
+import { Account, Admin } from './components/Settings';
 import AuthPage from './components/AuthPage';
 import { discardVerificationCode, EmailOnboarding, VerifyEmail } from './components/AccountEmail';
 import AuthFrame from './components/AuthFrame';
@@ -867,10 +867,6 @@ function App() {
   const publicSurface = path === '/' && session.stage === 'anonymous';
   const guestPath = path + location.search + (recovery || emailVerification ? '' : location.hash);
   const appearance = { theme, toggleTheme: () => setTheme(theme === 'dark' ? 'light' : 'dark') };
-  const adminDenial =
-    path === '/library' && user && !config.admin_access
-      ? new URLSearchParams(location.search).get('admin')
-      : null;
   const workspaceView = (
     <AppContext.Provider
       value={{
@@ -999,7 +995,6 @@ function App() {
             </div>
           ) : (
             <WorkspaceShell key={user?.id} {...appearance}>
-              {(adminDenial === 'network' || adminDenial === 'role') && <AdminAccessNotice />}
               <Routes>
                 <Route
                   path="/library"

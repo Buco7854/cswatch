@@ -138,7 +138,7 @@ export function Account({
     </>
   );
 }
-export function AdminAccessNotice() {
+function AdminAccessNotice() {
   const { config, user } = useApp();
   const admin = hasPermission(user?.role, 'admin');
   return (
@@ -199,7 +199,12 @@ export function Admin() {
         </div>
       </header>
       {!config.admin_access ? (
-        <AdminAccessNotice />
+        <div className="admin-access-denied">
+          <AdminAccessNotice />
+          <Link className="button" to="/library">
+            {t('Back to library')}
+          </Link>
+        </div>
       ) : !access.checked ? (
         <p role="status">{t('Loading…')}</p>
       ) : access.error ? (

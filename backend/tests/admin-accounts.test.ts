@@ -215,18 +215,23 @@ test('admin network and session boundaries cover every registered route and the 
   const deniedPage = await f.inject({
     url: '/admin',
     remoteAddress: '203.0.113.5',
-    headers: f.admin,
+    headers: { ...f.admin, accept: 'text/html' },
   });
-  assert.equal(deniedPage.headers.location, '/library?admin=network');
+  assert.equal(deniedPage.statusCode, 403);
+  assert.equal(deniedPage.headers.location, undefined);
+  assert.match(deniedPage.headers['content-type'] as string, /^text\/html/);
   assert.equal(deniedPage.headers['cache-control'], 'no-store');
   const page = await f.inject({ url: '/admin', remoteAddress: '2001:db8:c::8', headers: f.admin });
   assert.equal(page.statusCode, 200, page.body);
   const memberPage = await f.inject({
     url: '/admin',
     remoteAddress: '198.51.100.8',
-    headers: member,
+    headers: { ...member, accept: 'text/html' },
   });
-  assert.equal(memberPage.headers.location, '/library?admin=role');
+  assert.equal(memberPage.statusCode, 403);
+  assert.equal(memberPage.headers.location, undefined);
+  assert.equal(memberPage.body, page.body);
+  assert.equal(deniedPage.body, page.body);
   const config = await f.inject({
     url: '/api/config',
     remoteAddress: '203.0.113.5',
