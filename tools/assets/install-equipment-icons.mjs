@@ -37,7 +37,7 @@ if (
   Object.entries(equipmentIconSources).some(
     ([id, row]) =>
       !/^[a-z0-9]{1,40}$/.test(id) ||
-      !/^panorama\/images\/(?:(?:icons\/equipment|icons\/ui|hud\/teamcounter|hud\/deathnotice)\/)[a-z0-9_-]{1,80}\.vsvg_c$/.test(
+      !/^panorama\/images\/(?:(?:icons\/equipment|icons\/ui|hud\/teamcounter|hud\/deathnotice|map_icons)\/)[a-z0-9_-]{1,80}\.vsvg_c$/.test(
         row.resource,
       ),
   )
@@ -211,6 +211,10 @@ export async function installEquipmentIcons(options, adapters = {}) {
       'icon-rasterize',
       true,
     );
+    const proof = join(output, 'equipment', 'provenance.json');
+    await regular(proof, MiB, 2);
+    const prepared = JSON.parse(await readFile(proof, 'utf8'));
+    const ready = Object.keys(prepared.items);
     const provenance = {
       schemaVersion: 1,
       appId: 730,
@@ -218,16 +222,14 @@ export async function installEquipmentIcons(options, adapters = {}) {
       manifest,
       index: plan.files,
       resources,
-      unsupported: Object.keys(equipmentIconSources).filter(
-        (id) => !supported.some(([key]) => key === id),
-      ),
+      unsupported: Object.keys(equipmentIconSources).filter((id) => !ready.includes(id)),
     };
     await writeFile(
       join(output, 'equipment', 'source.provenance.json'),
       JSON.stringify(provenance) + '\n',
       { flag: 'wx', mode: 0o644 },
     );
-    return { count: supported.length, unsupported: provenance.unsupported };
+    return { count: ready.length, unsupported: provenance.unsupported };
   } finally {
     await rm(root, { recursive: true, force: true });
   }

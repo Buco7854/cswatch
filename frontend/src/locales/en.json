@@ -1310,5 +1310,14 @@
   "Checking for a password reset…": "Checking for a password reset…",
   "Use another reset code": "Use another reset code",
   "Working…": "Working…",
-  "Your security session changed. Check your recovery codes before relying on a saved copy.": "Your security session changed. Check your recovery codes before relying on a saved copy."
+  "Your security session changed. Check your recovery codes before relying on a saved copy.": "Your security session changed. Check your recovery codes before relying on a saved copy.",
+  "Unknown map": "Unknown map",
+  "K/D/A": "K/D/A",
+  "Premier": "Premier",
+  "Competitive": "Competitive",
+  "Wingman": "Wingman",
+  "Recorded kills, deaths and assists": "Recorded kills, deaths and assists",
+  "Recorded CT–T score": "Recorded CT–T score",
+  "FACEIT level {{v0}}": "FACEIT level {{v0}}",
+  "CT {{v0}} T": "CT {{v0}} T"
 }

@@ -13,6 +13,7 @@ import {
   token,
 } from './security.js';
 import {
+  linkedSteamId,
   matchDemo,
   matchFilter,
   matchOffset,
@@ -114,13 +115,11 @@ export function steamHistoryRoutes(app: FastifyInstance, db: Store, c: Config, k
         'This instance does not have everything needed for automatic Steam match sync. You can still upload your demos.',
       );
   };
-  const subjectFor = (userId: string): string | undefined =>
-    db.one("SELECT subject FROM identities WHERE user_id=? AND provider='steam'", userId)?.subject;
   const saved = (userId: string) => db.one('SELECT * FROM steam_history WHERE user_id=?', userId);
   function begin(r: FastifyRequest) {
     const user = requireUser(r);
     configured();
-    const subject = subjectFor(user.id);
+    const subject = linkedSteamId(db, user.id);
     if (!subject) throw new HttpError(400, 'Link Steam first.');
     rateLimit(db, r, 'steam-history', 12, 900, user.id);
     if (inFlight.has(user.id)) throw new HttpError(409, 'Steam match sync is already running.');
@@ -137,7 +136,7 @@ export function steamHistoryRoutes(app: FastifyInstance, db: Store, c: Config, k
         if (!live || live.id !== user.id || live.csrf !== user.csrf)
           throw new HttpError(401, 'Session expired. Refresh the page and try again.');
         configured();
-        if (operation.signal.aborted || subjectFor(user.id) !== subject)
+        if (operation.signal.aborted || linkedSteamId(db, user.id) !== subject)
           throw new HttpError(409, 'The Steam connection changed. Try again.');
       },
       end() {
@@ -181,6 +180,7 @@ export function steamHistoryRoutes(app: FastifyInstance, db: Store, c: Config, k
       const { offset, filter } = z
         .object({ offset: matchOffset, filter: matchFilter })
         .parse(r.query);
+      const subject = linkedSteamId(db, user.id);
       const condition =
         filter === 'missing'
           ? 'WHERE id IS NULL'
@@ -215,7 +215,7 @@ export function steamHistoryRoutes(app: FastifyInstance, db: Store, c: Config, k
         items: rows.slice(0, matchPageSize).map((row) => ({
           match_id: row.match_id,
           share_code: row.code,
-          demos: row.id ? [matchDemo(row)] : [],
+          demos: row.id ? [matchDemo(row, subject)] : [],
         })),
       };
     }),

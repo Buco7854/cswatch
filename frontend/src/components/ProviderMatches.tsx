@@ -5,6 +5,7 @@ import { api, ApiError } from '../api';
 import { useApp } from '../context';
 import { locale, t } from '../i18n';
 import type { MatchActivity, MatchActivityRow, MatchDemo } from '../match-activity';
+import { MapThumbnail, MatchDetails, mapName } from './MatchDetails';
 import { useConfirm } from './Confirmation';
 import './provider-matches.css';
 import { Pagination, SelectControl } from './Controls';
@@ -15,6 +16,7 @@ type Match = {
   share_code?: string | null;
   played_at?: number | null;
   competition?: string | null;
+  faceit_level?: number;
   map?: string | null;
   teams?: { name: string | null; score: number | null }[];
   result?: 'win' | 'loss' | null;
@@ -105,37 +107,49 @@ function MatchRow({
   const unavailable = Boolean(state?.unavailable || match.no_demo);
   // A member can always pair their own file, whether or not an automatic download exists.
   const needsDemo = demos.every((demo) => demo.status === 'failed');
-  const recorded = match.demos.find((demo) => demo.status === 'ready');
+  const ready = match.demos.filter((demo) => demo.status === 'ready');
+  const recorded = ready.length === 1 ? ready[0] : undefined;
   const map = match.map ?? recorded?.map;
   const time = match.played_at;
   const title = match.teams?.some((team) => team.name)
     ? match.teams.map((team) => team.name ?? t('Unknown team')).join(t(' vs '))
     : matchLabel(source, id);
-  const scores = match.teams?.every((team) => team.score !== null)
-    ? match.teams.map((team) => team.score)
-    : recorded?.score;
+  const scores =
+    match.teams?.length === 2 && match.teams.every((team) => team.score !== null)
+      ? match.teams.map((team) => team.score)
+      : undefined;
   const upload = new URLSearchParams(returnTo.split('?')[1]);
   upload.set('upload', '1');
   upload.set(source === 'steam' ? 'steamMatch' : 'faceitMatch', id);
 
   return (
-    <li className="provider-match-row">
-      <div className="provider-match-info">
-        <strong>{title}</strong>
-        <div className="provider-match-meta">
-          {scores?.length === 2 && <span className="provider-match-score">{scores.join('–')}</span>}
-          {match.result && (
-            <span className="provider-match-result" data-outcome={match.result}>
-              {t(match.result === 'win' ? 'Win' : 'Loss')}
-            </span>
-          )}
-          {match.competition && <span>{match.competition}</span>}
-          {time != null && (
-            <time dateTime={new Date(time * 1000).toISOString()}>
-              {new Date(time * 1000).toLocaleDateString(locale(), { dateStyle: 'medium' })}
-            </time>
-          )}
-          {map && <span className="match-map">{map.replace(/^de_/, '')}</span>}
+    <li className="provider-match-row" data-outcome={match.result ?? undefined}>
+      <div className="provider-match-identity">
+        <MapThumbnail map={map} />
+        <div className="provider-match-info">
+          <strong>{title}</strong>
+          <div className="provider-match-meta">
+            {scores?.length === 2 && (
+              <span className="provider-match-score">{scores.join('–')}</span>
+            )}
+            {match.result && (
+              <span className="provider-match-result" data-outcome={match.result}>
+                {t(match.result === 'win' ? 'Win' : 'Loss')}
+              </span>
+            )}
+            {match.competition && <span>{match.competition}</span>}
+            {time != null && (
+              <time dateTime={new Date(time * 1000).toISOString()}>
+                {new Date(time * 1000).toLocaleDateString(locale(), { dateStyle: 'medium' })}
+              </time>
+            )}
+            <span className="match-map">{mapName(map) || t('Unknown map')}</span>
+          </div>
+          <MatchDetails
+            performance={recorded?.performance}
+            faceitLevel={match.faceit_level}
+            score={scores ? undefined : recorded?.score}
+          />
         </div>
       </div>
       <div className="provider-match-actions">

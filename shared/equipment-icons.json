@@ -83,6 +83,17 @@
     "roundmarker": "icons/ui/round_hash.svg",
     "teamct": "icons/ui/ct_logo_1c.svg",
     "teamt": "icons/ui/t_logo_1c.svg",
-    "headshot": "hud/deathnotice/icon_headshot.svg"
+    "headshot": "hud/deathnotice/icon_headshot.svg",
+    "mapdemirage": "map_icons/map_icon_de_mirage.svg",
+    "mapdedust2": "map_icons/map_icon_de_dust2.svg",
+    "mapdeinferno": "map_icons/map_icon_de_inferno.svg",
+    "mapdenuke": "map_icons/map_icon_de_nuke.svg",
+    "mapdeoverpass": "map_icons/map_icon_de_overpass.svg",
+    "mapdeancient": "map_icons/map_icon_de_ancient.svg",
+    "mapdeanubis": "map_icons/map_icon_de_anubis.svg",
+    "mapdevertigo": "map_icons/map_icon_de_vertigo.svg",
+    "mapdetrain": "map_icons/map_icon_de_train.svg",
+    "mapdecache": "map_icons/map_icon_de_cache.svg",
+    "mapcsoffice": "map_icons/map_icon_cs_office.svg"
   }
 }

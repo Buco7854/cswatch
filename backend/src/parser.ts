@@ -32,6 +32,7 @@ import {
   removeEventInputExtras,
 } from './throw-input.js';
 import type { EventAvailability } from '../../shared/match-state.js';
+import { performanceFile } from './match-performance.js';
 import { classifyParserFailure } from './parser-failure.js';
 import { recordedRoundWinner } from './rounds.js';
 import { readAimSlices } from './aim-track.js';
@@ -351,6 +352,10 @@ export async function parse(folder: string, maxExpanded: number) {
     throwInputs: throwInputs.snapshots,
   };
   await writeReplay(folder, data, aim);
+  writeFileSync(join(folder, performanceFile), JSON.stringify(media.matchPerformance), {
+    flag: 'wx',
+    mode: 0o600,
+  });
   if (existsSync(expanded)) unlinkSync(expanded);
 }
 if (process.argv[1] === fileURLToPath(import.meta.url) && process.argv[2])
