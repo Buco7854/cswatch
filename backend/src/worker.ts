@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type Store, now, openStoreForStartup } from './db.js';
 import { loadConfig, type Config } from './config.js';
+import { readMatchPerformance } from './match-performance.js';
 import { runParserJob } from './parser-job.js';
 import { validateReplayArtifacts } from './replay.js';
 import { parserFailureMessages, processingFailure } from './parser-failure.js';
@@ -70,6 +71,7 @@ export async function processOne(db: Store, c: Config) {
       (sample) => sample.ctScore !== undefined && sample.tScore !== undefined,
     );
     const summary = {
+      matchPerformance: readMatchPerformance(job, m.players),
       recordedScore:
         score?.ctScore !== undefined && score?.tScore !== undefined
           ? [score.ctScore, score.tScore]

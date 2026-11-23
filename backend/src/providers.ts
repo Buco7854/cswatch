@@ -16,7 +16,14 @@ import {
 } from './security.js';
 import { abandonUpload, reserve, validateMagic } from './ingestion.js';
 import { downloadRemoteDemo, validateRemoteUrl } from './remote-download.js';
-import { faceitId, matchDemo, matchFilter, matchOffset, matchPageSize } from './match-library.js';
+import {
+  faceitId,
+  linkedSteamId,
+  matchDemo,
+  matchFilter,
+  matchOffset,
+  matchPageSize,
+} from './match-library.js';
 import { readUpstreamJson, requestJson } from './upstream.js';
 const faceitProfile = z.object({
   player_id: faceitId,
@@ -30,6 +37,10 @@ const historyCachePages = 6;
 const maxHistoryCalls = 4;
 const maxNoDemoMatches = 256;
 const maxFilesPerMatch = 16;
+const matchParticipant = z.object({
+  player_id: faceitId,
+  game_skill_level: z.number().int().min(1).max(10).nullish().catch(null),
+});
 const historyResults = z.object({
   winner: faceitId.nullish(),
   score: z.record(z.string(), z.number().int().min(0).max(1000)).nullish(),
@@ -48,10 +59,7 @@ const faceitHistory = z.object({
             z.string(),
             z.object({
               nickname: z.string().max(256).nullish(),
-              players: z
-                .array(z.object({ player_id: faceitId }))
-                .max(32)
-                .nullish(),
+              players: z.array(matchParticipant).max(32).nullish(),
             }),
           )
           .nullish(),
@@ -70,9 +78,13 @@ function matchSummary(entry: HistoryEntry, subject: string) {
   const participant = teams.find(([, team]) =>
     team.players?.some((player) => player.player_id === subject),
   )?.[0];
+  const ownLevel = teams
+    .flatMap(([, team]) => team.players ?? [])
+    .find((player) => player.player_id === subject)?.game_skill_level;
   const winner = entry.results?.winner;
   return {
     match_id: entry.match_id,
+    ...(ownLevel ? { faceit_level: ownLevel } : {}),
     played_at: entry.finished_at ?? entry.started_at ?? null,
     competition: entry.competition_name ?? null,
     map: entry.map ?? null,
@@ -107,12 +119,9 @@ const faceitMatch = z.object({
       z.string(),
       z.object({
         nickname: z.string().max(256).nullish(),
-        roster: z
-          .array(z.object({ player_id: faceitId }))
-          .max(32)
-          .nullish(),
+        roster: z.array(matchParticipant).max(32).nullish(),
         substitutes: z
-          .array(z.object({ player_id: faceitId, playing: z.boolean().optional() }))
+          .array(matchParticipant.extend({ playing: z.boolean().optional() }))
           .max(32)
           .nullish(),
       }),
@@ -313,6 +322,7 @@ export async function providerRoutes(
   function demosFor(owner: string, ids: string[]) {
     const grouped = new Map<string, ReturnType<typeof matchDemo>[]>();
     if (!ids.length) return grouped;
+    const steamId = linkedSteamId(db, owner);
     for (const row of db.all(
       `WITH paired AS (
          SELECT id,status,map,faceit_match_id,
@@ -320,13 +330,13 @@ export async function providerRoutes(
          FROM demos WHERE owner_id=? AND status!='uploading'
          AND faceit_match_id IN (${ids.map(() => '?').join(',')})
        )
-       SELECT id,status,map,faceit_match_id FROM paired WHERE rank<=? ORDER BY rank`,
+       SELECT p.id,p.status,p.map,p.faceit_match_id,d.metadata FROM paired p JOIN demos d ON d.id=p.id WHERE rank<=? ORDER BY rank`,
       owner,
       ...ids,
       maxFilesPerMatch,
     )) {
       const group = grouped.get(row.faceit_match_id) ?? [];
-      group.push(matchDemo(row));
+      group.push(matchDemo(row, steamId));
       grouped.set(row.faceit_match_id, group);
     }
     return grouped;
@@ -427,6 +437,7 @@ export async function providerRoutes(
         const rows = db.all(
           `WITH owned AS (
            SELECT faceit_match_id AS match_id,created_at,
+             CASE WHEN json_valid(metadata) THEN json_extract(metadata,'$.faceitSubject') END AS subject,
              CASE WHEN json_valid(metadata) THEN json_extract(metadata,'$.faceitMatch') END AS evidence
            FROM demos WHERE owner_id=? AND faceit_match_id IS NOT NULL AND status!='uploading'
          ), ranked AS (
@@ -447,6 +458,9 @@ export async function providerRoutes(
         return {
           items: page.map((row) => ({
             ...(row.evidence ? JSON.parse(row.evidence) : {}),
+            ...(row.subject === identity.subject
+              ? {}
+              : { faceit_level: undefined, result: undefined }),
             match_id: row.match_id,
             no_demo: noDemo()?.has(row.match_id) ?? false,
             demos: demos.get(row.match_id) ?? [],
@@ -703,7 +717,7 @@ export async function providerRoutes(
           !db.run(
             "UPDATE demos SET status='queued',size=?,metadata=? WHERE id=? AND owner_id=? AND status='uploading'",
             size,
-            JSON.stringify({ faceitMatch: summary }),
+            JSON.stringify({ faceitMatch: summary, faceitSubject: subject }),
             id,
             u.id,
           ).changes

@@ -1310,5 +1310,14 @@
   "Checking for a password reset…": "Recherche d’une réinitialisation de mot de passe…",
   "Use another reset code": "Utiliser un autre code de réinitialisation",
   "Working…": "En cours…",
-  "Your security session changed. Check your recovery codes before relying on a saved copy.": "Votre session de sécurité a changé. Vérifiez vos codes de récupération avant d’utiliser une copie enregistrée."
+  "Your security session changed. Check your recovery codes before relying on a saved copy.": "Votre session de sécurité a changé. Vérifiez vos codes de récupération avant d’utiliser une copie enregistrée.",
+  "Unknown map": "Carte inconnue",
+  "K/D/A": "É/M/A",
+  "Premier": "Premier",
+  "Competitive": "Compétitif",
+  "Wingman": "Wingman",
+  "Recorded kills, deaths and assists": "Éliminations, morts et assistances enregistrées",
+  "Recorded CT–T score": "Score AT–T enregistré",
+  "FACEIT level {{v0}}": "Niveau FACEIT {{v0}}",
+  "CT {{v0}} T": "AT {{v0}} T"
 }

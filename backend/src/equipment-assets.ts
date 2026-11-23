@@ -19,7 +19,9 @@ const registry = z
         z.string().regex(/^[a-z0-9]{1,40}$/),
         z
           .string()
-          .regex(/^(?:(?:icons\/ui|hud\/teamcounter|hud\/deathnotice)\/)?[a-z0-9_-]{1,80}\.svg$/),
+          .regex(
+            /^(?:(?:icons\/ui|hud\/teamcounter|hud\/deathnotice|map_icons)\/)?[a-z0-9_-]{1,80}\.svg$/,
+          ),
       )
       .refine((items) => Object.keys(items).length > 0 && Object.keys(items).length <= 128),
   })

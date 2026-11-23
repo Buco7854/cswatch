@@ -26,7 +26,7 @@ if (
     ([key, filename]) =>
       !/^[a-z0-9]{1,40}$/.test(key) ||
       typeof filename !== 'string' ||
-      !/^(?:(?:icons\/ui|hud\/teamcounter|hud\/deathnotice)\/)?[a-z0-9_-]{1,80}\.svg$/.test(
+      !/^(?:(?:icons\/ui|hud\/teamcounter|hud\/deathnotice|map_icons)\/)?[a-z0-9_-]{1,80}\.svg$/.test(
         filename,
       ),
   )
@@ -36,7 +36,7 @@ const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const MAX_SVG_BYTES = 256 * 1024;
 
 /** Accept only self-contained drawing primitives; the public app never serves SVG. */
-export function equipmentSvg(bytes) {
+export function equipmentSvg(bytes, mapBadge = false) {
   if (!bytes.length || bytes.length > MAX_SVG_BYTES) throw new Error('SVG must be 1–256 KiB.');
   let svg = bytes.toString('utf8');
   if (/<!ENTITY|<!DOCTYPE[^>]*\[/i.test(svg)) throw new Error('SVG entities are not allowed.');
@@ -44,7 +44,11 @@ export function equipmentSvg(bytes) {
     .replace(/<\?xml\s[^?]*\?>/gi, '')
     .replace(/<!--[\s\S]*?-->/g, '')
     .replace(/<!DOCTYPE[^>]*>/gi, '');
-  if (/[&\\]|url\s*\(/i.test(svg))
+  // Native map emblems use local paint and clipping definitions. Remove precisely
+  // these attribute values from the validation copy. No other reference is admitted.
+  const checkReferences = (source) =>
+    mapBadge ? source.replace(/\s(?:fill|clip-path)="url\(#[A-Za-z_][\w-]{0,100}\)"/g, '') : source;
+  if (/[&\\]|url\s*\(/i.test(checkReferences(svg)))
     throw new Error('SVG encoded references and paint URLs are not allowed.');
   // Adobe's native one-color CT emblem uses these presentation declarations.
   // Convert a closed subset, never an arbitrary stylesheet, into SVG attributes.
@@ -82,7 +86,7 @@ export function equipmentSvg(bytes) {
         continue;
       if (
         (['fill-rule', 'clip-rule'].includes(name) && /^(evenodd|nonzero)$/.test(value)) ||
-        (name === 'fill' &&
+        ((name === 'fill' || (mapBadge && name === 'stop-color')) &&
           /^(#[0-9a-f]{3}|#[0-9a-f]{4}|#[0-9a-f]{6}|#[0-9a-f]{8}|none|currentColor|white|black)$/i.test(
             value,
           ))
@@ -93,7 +97,7 @@ export function equipmentSvg(bytes) {
     return attributes.length ? ' ' + attributes.join(' ') : '';
   });
   if (
-    /[&\\]|<\?|<!|\b(?:href|src|on[a-z]+|style)\s*=|url\s*\(/i.test(svg) ||
+    /[&\\]|<\?|<!|\b(?:href|src|on[a-z]+|style)\s*=|url\s*\(/i.test(checkReferences(svg)) ||
     !/^\s*<svg\b/i.test(svg) ||
     !/<\/svg>\s*$/i.test(svg)
   )
@@ -102,6 +106,10 @@ export function equipmentSvg(bytes) {
     if (
       !['svg', 'g', 'path', 'polygon', 'polyline', 'rect', 'circle', 'ellipse', 'line'].includes(
         tag[1],
+      ) &&
+      !(
+        mapBadge &&
+        ['defs', 'linearGradient', 'radialGradient', 'stop', 'clipPath'].includes(tag[1])
       )
     )
       throw new Error(`Unsupported SVG element: ${tag[1]}.`);
@@ -160,8 +168,9 @@ export async function prepareEquipment({ input, output, version, source, confine
       const original = await readFile(path);
       let svg;
       try {
-        svg = equipmentSvg(original);
+        svg = equipmentSvg(original, filename.startsWith('map_icons/'));
       } catch (error) {
+        if (filename.startsWith('map_icons/')) continue;
         throw new Error(`Invalid SVG ${filename}: ${error.message}`);
       }
       const image = await sharp(svg, { density: 144, limitInputPixels: 1024 * 1024 })
@@ -192,6 +201,7 @@ export async function prepareEquipment({ input, output, version, source, confine
       JSON.stringify(
         {
           schema: 1,
+          registryItems: Object.keys(registry.items),
           assetVersion: version,
           source,
           preparedAt: new Date().toISOString(),

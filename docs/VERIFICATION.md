@@ -2,6 +2,14 @@
 
 The combined account and provider build uses the shared select for role changes and match filters. Browser coverage drives the visible option list for each flow, including French role selection.
 
+## Match library evidence, 2026-11-23
+
+The pinned Mirage demo produced 31 chunks and ten roster entries with personal counters and recorded ranks. The runtime smoke linked a member to a recorded Steam player and checked the counters returned for the member’s own demo. Parsing and offline Whisper Tiny ran under required Linux kernel confinement. Backend coverage passed 543 cases. Asset coverage passed 305 cases with one proprietary fixture skipped.
+
+The official Steam depot 2347770 manifest `8225060435969537482` supplied locally cached map badges for Mirage, Inferno, Nuke, Overpass, Train and Cache. S2V decoded these resources and the equipment preparer rasterized the resulting vectors. Vertigo’s vector used an unsupported element. Four other registered map resources were outside the cached sample. Browser fallbacks used the local preview, map initials or translated unknown label according to the available evidence.
+
+The production browser passed 22 library and member-workspace cases using synthetic provider accounts. Chromium with CPU rendering exercised both tabs at 1440, 768 and 390 pixels in English and French in both themes. Screens covered the genuine Mirage badge, recorded Premier rating and change, a FACEIT roster level, missing map data and manual upload. Provider account linking and match requests against live Steam and FACEIT were outside these runs.
+
 ## Local second-factor policy recovery
 
 The browser fixture uses an isolated administrator with an enrolled authenticator app. It holds the save response and the first policy read open, then exercises the bounded read retry with both a committed and an unchanged policy. Its assertions cover session-bound reads, the restored role checkbox, a single save request during reconciliation, and preservation of a neighboring access-setting draft. The unchanged-policy case also covers a new, explicitly confirmed save.

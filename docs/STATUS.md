@@ -2,6 +2,8 @@
 
 Library and administration use the same dropdown and pagination controls. Members can pair a manual upload with a listed match, including when an automatic provider download is offered.
 
+Library rows show native map emblems, local map previews or a map-name fallback. A linked Steam identity can see its recorded counters and rank. FACEIT can supply a match roster level. [Verification](VERIFICATION.md#local-library-match-details)
+
 ## Access and replay
 
 - Public mode offers guest upload and a private temporary viewing capability. Members manage their own demo library, sharing and private notes. Private mode gates viewers and assets independently. Sign-in supports local accounts, configured Steam identity and discoverable passkeys. Enrolled accounts require a second factor after password or Steam sign-in. Optional French and English local speech transcription is available.

@@ -36,7 +36,12 @@ export function matchSources(db: Store, c: Config, member: string) {
   };
 }
 
-export function matchDemo(row: Record<string, any>) {
+export function linkedSteamId(db: Store, member: string): string | undefined {
+  return db.one("SELECT subject FROM identities WHERE user_id=? AND provider='steam'", member)
+    ?.subject;
+}
+
+export function matchEvidence(row: Record<string, any>, steamId?: string, faceitSubject?: string) {
   let metadata;
   if (row.status === 'ready') {
     try {
@@ -46,9 +51,23 @@ export function matchDemo(row: Record<string, any>) {
     }
   }
   return {
+    score: metadata?.recordedScore ?? null,
+    ...(faceitSubject &&
+    faceitSubject === metadata?.faceitSubject &&
+    metadata?.faceitMatch?.faceit_level
+      ? { faceit_level: metadata.faceitMatch.faceit_level }
+      : {}),
+    ...(steamId && metadata?.matchPerformance?.[steamId]
+      ? { performance: metadata.matchPerformance[steamId] }
+      : {}),
+  };
+}
+
+export function matchDemo(row: Record<string, any>, steamId?: string) {
+  return {
     id: String(row.id),
     status: String(row.status),
     map: row.status === 'ready' ? row.map : null,
-    score: metadata?.recordedScore ?? null,
+    ...matchEvidence(row, steamId),
   };
 }

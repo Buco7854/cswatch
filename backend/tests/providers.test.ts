@@ -606,7 +606,10 @@ test('FACEIT library walks the full history with a timestamp cursor and keeps do
       finished_at: newer - Math.floor(index / 30), // repeated seconds cross page boundaries
       competition_name: 'Fixture League',
       teams: {
-        faction1: { nickname: 'North', players: [{ player_id: 'owner-faceit' }] },
+        faction1: {
+          nickname: 'North',
+          players: [{ player_id: 'owner-faceit', game_skill_level: 8 }],
+        },
         faction2: { nickname: 'South', players: [{ player_id: 'other-faceit' }] },
       },
       results: { winner: 'faction1', score: { faction1: 13, faction2: 9 } },
@@ -646,6 +649,7 @@ test('FACEIT library walks the full history with a timestamp cursor and keeps do
       false,
     );
     assert.equal(first.items[0].result, 'win');
+    assert.equal(first.items[0].faceit_level, 8);
     assert.deepEqual(first.items[0].teams, [
       { name: 'North', score: 13 },
       { name: 'South', score: 9 },
