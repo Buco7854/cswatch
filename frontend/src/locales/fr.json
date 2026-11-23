@@ -1343,5 +1343,14 @@
   "Email delivery is unavailable.": "L’envoi d’e-mails est indisponible.",
   "Configure the SMTP relay before enabling email delivery.": "Configurez le relais SMTP avant d’activer l’envoi d’e-mails.",
   "You are signed in with {{email}}, which is already verified. If the link is for another account, switch accounts and open it again.": "Vous êtes connecté avec {{email}}, une adresse déjà vérifiée. Si le lien concerne un autre compte, changez de compte puis rouvrez le lien.",
-  "The account email changed. Review the current address before trying again.": "L’adresse e-mail du compte a changé. Vérifiez l’adresse actuelle avant de réessayer."
+  "The account email changed. Review the current address before trying again.": "L’adresse e-mail du compte a changé. Vérifiez l’adresse actuelle avant de réessayer.",
+  "Unknown map": "Carte inconnue",
+  "K/D/A": "É/M/A",
+  "Premier": "Premier",
+  "Competitive": "Compétitif",
+  "Wingman": "Wingman",
+  "Recorded kills, deaths and assists": "Éliminations, morts et assistances enregistrées",
+  "Recorded CT–T score": "Score AT–T enregistré",
+  "FACEIT level {{v0}}": "Niveau FACEIT {{v0}}",
+  "CT {{v0}} T": "AT {{v0}} T"
 }

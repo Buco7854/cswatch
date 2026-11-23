@@ -1,8 +1,11 @@
+import type { MatchPerformance } from '../../shared/library-match';
+
 export type MatchDemo = {
   id: string;
   status: string;
   map?: string | null;
   score?: number[] | null;
+  performance?: MatchPerformance;
 };
 
 export type MatchActivityRow = {

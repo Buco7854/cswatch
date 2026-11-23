@@ -15,7 +15,7 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -44,6 +44,8 @@ jobs:
       - run: npm audit --prefix backend --omit=dev --audit-level=high && npm audit --prefix frontend --omit=dev --audit-level=high && npm audit --prefix tools/assets --omit=dev --audit-level=high && npm audit --prefix tools/transcription --audit-level=high
       - run: npx --prefix frontend playwright install --with-deps chromium
       - run: npm run test:e2e
+      - name: Verify email signup and password recovery with a loopback SMTP relay
+        run: npm run test:e2e:email
       - name: Private instance, registrations closed
         run: npm run test:e2e
         env:

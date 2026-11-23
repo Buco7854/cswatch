@@ -1,12 +1,13 @@
 import { t, locale } from '../i18n';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
-import { Search, RefreshCw, Lock, Globe, Upload, Play, Film, Trash2, X } from 'lucide-react';
+import { Search, RefreshCw, Lock, Globe, Upload, Play, Trash2, X } from 'lucide-react';
 import { useApp } from '../context';
 import { useDeleteDemo } from '../demo-deletion';
 import { captureFocusReturn, focusMovedSince, type FocusReturnContext } from '../focus-return';
 import type { Demo } from '../types';
 import { useDemoLibrary } from '../useDemoLibrary';
+import { MapThumbnail, MatchDetails, mapName } from './MatchDetails';
 import { ProviderLogo } from './ProviderBrand';
 import ProviderMatches, { type MatchSource } from './ProviderMatches';
 import type { MatchActivity } from '../match-activity';
@@ -278,14 +279,18 @@ function MyDemos() {
               <div className="demo-row-shell" key={demo.id}>
                 <Link className="demo-row" to={'/watch/' + demo.id} state={{ from: '/library' }}>
                   <div className="match-name">
-                    <span className="map-initial" aria-hidden="true">
-                      {demo.map ? demo.map.replace('de_', '').slice(0, 2) : <Film size={17} />}
-                    </span>
+                    <MapThumbnail map={demo.map} />
                     <span>
                       <strong className={demo.map ? 'match-map' : undefined}>
-                        {demo.map ? demo.map.replace('de_', '') : t('Demo processing')}
+                        {mapName(demo.map) ||
+                          t(demo.status === 'ready' ? 'Unknown map' : 'Demo processing')}
                       </strong>
                       <small title={demo.name}>{demo.name}</small>
+                      <MatchDetails
+                        faceitLevel={demo.faceit_level}
+                        performance={demo.performance}
+                        score={demo.score}
+                      />
                     </span>
                   </div>
                   <div className="demo-details">

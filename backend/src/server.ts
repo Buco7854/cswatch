@@ -44,7 +44,7 @@ import {
   token,
   touchSession,
 } from './security.js';
-import { faceitId } from './match-library.js';
+import { faceitId, linkedSteamId, matchEvidence } from './match-library.js';
 import { abandonUpload, accessDemo, reserve, validateMagic } from './ingestion.js';
 import {
   adminAccess,
@@ -495,7 +495,8 @@ export async function createApp(
       })
       .parse(r.query);
     const filter = 'owner_id=?';
-    const args: (string | number)[] = [requireUser(r).id];
+    const member = requireUser(r).id;
+    const args: (string | number)[] = [member];
     const search = q.q
       ? " AND (name LIKE ? ESCAPE '\\' OR coalesce(map,'') LIKE ? ESCAPE '\\')"
       : '';
@@ -514,7 +515,18 @@ export async function createApp(
       q.offset,
     );
     const total = db.one(`SELECT count(*) AS count FROM demos ${where}`, ...args)!.count;
-    return { demos: rows.map((row) => visible(row, r.user?.id)), total };
+    const subject = linkedSteamId(db, member);
+    const faceitSubject = db.one(
+      "SELECT subject FROM identities WHERE user_id=? AND provider='faceit'",
+      member,
+    )?.subject;
+    return {
+      demos: rows.map((row) => ({
+        ...visible(row, member),
+        ...matchEvidence(row, subject, faceitSubject),
+      })),
+      total,
+    };
   });
   app.post('/api/demos', async (r, reply) => {
     const u = r.user || r.guest || requireUser(r);
@@ -625,7 +637,9 @@ export async function createApp(
             steam_match ? 'steam:' + steam_match : null,
             faceit ? 'faceit' : r.user ? 'upload' : 'guest',
             faceit_match ?? null,
-            faceit ? JSON.stringify({ faceitMatch: faceit.summary }) : null,
+            faceit
+              ? JSON.stringify({ faceitMatch: faceit.summary, faceitSubject: faceit.subject })
+              : null,
             id,
             u.id,
           );

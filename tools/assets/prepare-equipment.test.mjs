@@ -153,3 +153,11 @@ test('full Panorama image exports map only fixed nested sources and reject symli
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('registered map insignia support local gradient fills and local clipping', () => {
+  const badge = Buffer.from(
+    '<svg><defs><linearGradient id="shine"><stop offset="0" style="stop-color:#fafafa"/></linearGradient></defs><path fill="url(#shine)" d="M0 0h2v2z"/></svg>',
+  );
+  assert.match(equipmentSvg(badge, true).toString(), /stop-color="#fafafa"/);
+  assert.throws(() => equipmentSvg(badge));
+});

@@ -69,6 +69,23 @@ test('library search spans pages, treats wildcards literally, and respects owner
     );
     const get = (url: string, authenticated = true) =>
       app.inject({ method: 'GET', url, headers: authenticated ? headers : { host: headers.host } });
+    const mine = '76561197960265729';
+    const teammate = '76561197960265730';
+    db.run(
+      'UPDATE demos SET metadata=? WHERE id=?',
+      JSON.stringify({
+        recordedScore: [13, 11],
+        matchPerformance: { [mine]: { kills: 19 }, [teammate]: { kills: 31 } },
+      }),
+      'demo-104',
+    );
+    const detailUrl = '/api/demos?q=' + encodeURIComponent('literal_100%');
+    assert.equal((await get(detailUrl)).json().demos[0].performance, undefined);
+    db.run("INSERT INTO identities VALUES('steam',?,?)", mine, 'owner');
+    const personal = (await get(detailUrl)).json().demos[0];
+    assert.deepEqual(personal.performance, { kills: 19 });
+    assert.deepEqual(personal.score, [13, 11]);
+    assert.equal(personal.matchPerformance, undefined);
     const first = await get('/api/demos');
     assert.equal(first.json().demos.length, 50);
     assert.equal(first.json().total, 105);

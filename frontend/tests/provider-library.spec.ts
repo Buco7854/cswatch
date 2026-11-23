@@ -12,6 +12,7 @@ test.beforeEach(() => {
 const faceitMatch = {
   match_id: 'room-fixture-1',
   competition: 'Fixture League',
+  faceit_level: 8,
   played_at: 1794930000,
   teams: [
     { name: 'North District', score: 13 },
@@ -27,7 +28,21 @@ const steamMatches = [
   {
     match_id: '2811123475613000001',
     share_code: code,
-    demos: [{ id: 'member-design-0', status: 'ready', map: 'de_ancient', score: [13, 11] }],
+    demos: [
+      {
+        id: 'member-design-0',
+        status: 'ready',
+        map: 'de_ancient',
+        score: [13, 11],
+        performance: {
+          kills: 19,
+          deaths: 17,
+          assists: 4,
+          headshotKills: 9,
+          rank: { mode: 'Premier', value: 15280, change: 280 },
+        },
+      },
+    ],
   },
   {
     match_id: '2811123475613000002',
@@ -127,6 +142,10 @@ for (const width of [1440, 768, 390]) {
           await expect(page.locator('html')).toHaveAttribute('lang', lang);
           await expect(page.getByText('North District', { exact: false })).toBeVisible();
           await expect(page.getByRole('tabpanel').locator('li')).toHaveCount(3);
+          if (process.env.CSWATCH_VERIFY_MIRAGE_BADGE)
+            await expect(
+              page.locator('.match-thumbnail img[data-badge="true"]').first(),
+            ).toHaveJSProperty('complete', true);
           await capture(page, `faceit-${width}-${lang}-${theme}`);
           await faceitTab.focus();
           await page.keyboard.press('ArrowRight');
@@ -134,6 +153,8 @@ for (const width of [1440, 768, 390]) {
           await expect(steamTab).toHaveAttribute('aria-selected', 'true');
           await expect(page).toHaveURL(/source=steam/);
           await expect(page.getByText('13–11')).toBeVisible();
+          await expect(page.getByText(/19\/17\/4/)).toBeVisible();
+          await expect(page.getByText('+280', { exact: true })).toBeVisible();
           await expect(page.getByRole('tabpanel').locator('li')).toHaveCount(4);
           await capture(page, `steam-${width}-${lang}-${theme}`);
           expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
@@ -384,7 +405,7 @@ test('Steam pages and filters use local offsets and show recorded match evidence
   });
   await page.goto('/library?source=steam');
   await expect(page.getByText('Steam match ' + steamMatches[0].match_id)).toBeVisible();
-  await expect(page.locator('.provider-match-meta').first()).toBeHidden();
+  await expect(page.locator('.provider-match-meta').first()).toHaveText('Unknown map');
   await page.getByRole('button', { name: 'Next page' }).click();
   await expect(page.getByText('Steam match ' + steamMatches[2].match_id)).toBeVisible();
   await expect(page).toHaveURL(/cursor=25&page=2/);
