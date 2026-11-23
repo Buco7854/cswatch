@@ -177,7 +177,7 @@ for (const compressed of [false, true])
             frames.at(-1)!.tick,
           ),
         );
-        assert.ok(prompts.some((index) => index.kills.length > 0));
+        assert.ok(prompts.some((index) => index.throws.length > 0));
         assert.ok(
           prompts.some((index) =>
             index.landings.some((landing) => landing.source === 'recorded-detonation'),

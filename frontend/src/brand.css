@@ -19,10 +19,6 @@
   --accent: #83e2cd;
   --primary: #83e2cd;
   --control-radius: 6px;
-  --preview-block: #364443;
-  --preview-floor: #222f2e;
-  --preview-guide: #657a73;
-  --preview-ink: #c5d5cc;
   color: var(--text);
   background: var(--ground);
 }
@@ -39,10 +35,6 @@
   --signal: #136b57;
   --accent: #136b57;
   --primary: #136b57;
-  --preview-block: #a7b9af;
-  --preview-floor: #d4e0d8;
-  --preview-guide: #6c8a7a;
-  --preview-ink: #2f5240;
   color: var(--text);
   background: var(--ground);
 }

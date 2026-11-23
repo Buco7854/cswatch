@@ -18,7 +18,7 @@ const origin = (value) =>
 const color = (value) =>
   Array.isArray(value) && value.length === 3 && value.every((channel) => integer(channel, 255));
 
-/** Validate before base64 decoding or allocating a voxel grid. Old replays omit the bank. */
+/** Validate before base64 decoding or allocating a voxel grid. Replays without recorded smoke, or whose smoke exceeds its bounds, omit the bank. */
 export function validSmokeTracks(value, lastTick) {
   if (!Array.isArray(value) || value.length > smokeLimits.tracks) return false;
   const identities = new Set();

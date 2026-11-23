@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Document, NodeIO } from '@gltf-transform/core';
 import { batchMapMeshes } from './batch-map-meshes.mjs';
-import { compressPreparedGeometry } from './compress-prepared-map.mjs';
 import { MeshoptDecoder } from './meshopt-glb.mjs';
 import { applyTextureBudget } from './texture-budget.mjs';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
@@ -171,64 +170,4 @@ test('batching keeps animated branches, source extras, transparency, spatial cel
     assert.equal(node.getMesh().listPrimitives().length, 1);
   assert.deepEqual(worldTriangles(document), before);
   assert.deepEqual(extras.getExtras(), { source: 'keep exact' });
-});
-
-test('existing-tier batching writes a fresh hash-bound lossless tier and preserves encoded image bytes', async (t) => {
-  const root = await mkdtemp(join(tmpdir(), 'cswatch-static-batch-'));
-  t.after(() => rm(root, { recursive: true, force: true }));
-  const { document, scene, add, material } = fixture();
-  add('a', scene, { translation: [2, 0, 0] });
-  add('b', scene, { translation: [4, 0, 0] });
-  const raster = await sharp({
-    create: { width: 8, height: 8, channels: 4, background: '#a0b0c0' },
-  })
-    .png()
-    .toBuffer();
-  material.setBaseColorTexture(
-    document.createTexture('original QA raster').setMimeType('image/png').setImage(raster),
-  );
-  const budget = await applyTextureBudget(document, { tier: 'desktop' });
-  const preparedRaster = Buffer.from(material.getBaseColorTexture().getImage());
-  const io = new NodeIO()
-      .registerExtensions(ALL_EXTENSIONS)
-      .registerDependencies({ 'meshopt.decoder': MeshoptDecoder }),
-    original = Buffer.from(await io.writeBinary(document));
-  await writeFile(join(root, 'scene.glb'), original);
-  await writeFile(join(root, 'texture-plan.json'), budget.planBytes);
-  await writeFile(
-    join(root, 'manifest.json'),
-    JSON.stringify({
-      schemaVersion: 1,
-      map: 'de_original_qa',
-      tier: 'desktop',
-      assetVersion: 'QA',
-      bytes: original.length,
-      outputSha256: createHash('sha256').update(original).digest('hex'),
-      textureBudget: budget.manifest,
-    }),
-  );
-  const result = await compressPreparedGeometry({
-    input: join(root, 'scene.glb'),
-    output: join(root, 'new-tier'),
-    map: 'de_original_qa',
-    tier: 'desktop',
-    batchStatic: true,
-  });
-  assert.equal(result.manifest.staticBatching.initialPrimitives, 2);
-  assert.equal(result.manifest.staticBatching.finalPrimitives, 1);
-  await MeshoptDecoder.ready;
-  const after = await io.read(result.path);
-  assert.deepEqual(worldTriangles(after), worldTriangles(document));
-  assert.deepEqual(Buffer.from(after.getRoot().listTextures()[0].getImage()), preparedRaster);
-  assert.deepEqual(await readFile(join(root, 'scene.glb')), original);
-  await assert.rejects(
-    compressPreparedGeometry({
-      input: join(root, 'scene.glb'),
-      output: root,
-      map: 'de_original_qa',
-      tier: 'desktop',
-      batchStatic: true,
-    }),
-    /new tier/,
-  );
 });

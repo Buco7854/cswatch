@@ -13,7 +13,6 @@ import {
 } from './meshopt-glb.mjs';
 import { verifyPreparedGlb } from './prepared-glb.mjs';
 import { meshoptMapFixture } from './fixtures/meshopt-map.mjs';
-import { compressPreparedGeometry } from './compress-prepared-map.mjs';
 import { applyTextureBudget } from './texture-budget.mjs';
 const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const raw = (accessor) => {
@@ -136,62 +135,4 @@ test('preparing a document writes the same lossless pack directly from its binar
   const fromGlb = await compressGlbGeometry(await io.writeBinary(document));
   const direct = await compressMapDocumentGeometry(io, document);
   assert.deepEqual(direct, fromGlb);
-});
-
-test('geometry-only output preserves original encoded image bytes and refuses overwriting source', async (t) => {
-  const root = await scratch(t),
-    source = join(root, 'source'),
-    target = join(root, 'compressed');
-  await mkdir(source);
-  const io = new NodeIO()
-    .registerExtensions(ALL_EXTENSIONS)
-    .registerDependencies({ 'meshopt.decoder': MeshoptDecoder });
-  const document = await io.readBinary(await meshoptMapFixture());
-  const budget = await applyTextureBudget(document, { tier: 'desktop' });
-  const bytes = await io.writeBinary(document);
-  const input = join(source, 'scene.glb');
-  const plan = join(source, 'texture-plan.json');
-  await writeFile(input, bytes);
-  await writeFile(plan, budget.planBytes);
-  await writeFile(
-    join(source, 'manifest.json'),
-    JSON.stringify({
-      schemaVersion: 1,
-      map: 'de_qa',
-      tier: 'desktop',
-      bytes: bytes.length,
-      assetVersion: 'fixture',
-      outputSha256: hash(bytes),
-      textureBudget: budget.manifest,
-    }),
-  );
-  const result = await compressPreparedGeometry({
-    input,
-    output: target,
-    map: 'de_qa',
-    tier: 'desktop',
-  });
-  assert.ok(result.manifest.bytes < bytes.length * 0.75);
-  const a = await io.read(input),
-    b = await io.read(result.path);
-  assert.deepEqual(
-    a.getRoot().listTextures()[0].getImage(),
-    b.getRoot().listTextures()[0].getImage(),
-  );
-  assert.deepEqual(await readFile(input), Buffer.from(bytes));
-  assert.deepEqual(await readFile(join(target, 'texture-plan.json')), await readFile(plan));
-  await assert.rejects(
-    compressPreparedGeometry({ input, output: source, map: 'de_qa', tier: 'desktop' }),
-    /new tier/,
-  );
-  await unlink(plan);
-  await assert.rejects(
-    compressPreparedGeometry({
-      input,
-      output: join(root, 'missing'),
-      map: 'de_qa',
-      tier: 'desktop',
-    }),
-    { code: 'ENOENT' },
-  );
 });

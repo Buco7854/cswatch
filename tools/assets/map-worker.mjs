@@ -37,7 +37,6 @@ import {
   latestMapResultMatches,
   writeMapJobResult,
   writeMapWorkerStatus,
-  enqueueObsoleteReadyMap,
   finishLinkedMapRequest,
 } from '../../backend/dist/map-jobs.js';
 import {
@@ -149,8 +148,7 @@ async function requests(jobs) {
   return (
     (await withDirectory(jobs, ['requests'], async (directory) => {
       const folder = await opendir(`/proc/self/fd/${directory.fd}`),
-        current = [],
-        obsolete = [];
+        current = [];
       let scanned = 0;
       for await (const entry of folder) {
         if (++scanned > mapJobLimits.scanned) throw Error('Map queue scan limit reached.');
@@ -161,21 +159,9 @@ async function requests(jobs) {
         if (!entry.isFile() || !/^[a-f0-9]{64}\.json$/.test(entry.name))
           throw Error('Unexpected map queue entry.');
         const request = await readMapRequest(jobs, entry.name.slice(0, -5));
-        if (!request) {
-          obsolete.push(entry.name.slice(0, -5));
-          continue;
-        }
+        if (!request) continue;
         if (current.length >= mapJobLimits.retained) throw Error('Map queue limit reached.');
         current.push(request);
-      }
-      for (const id of obsolete) {
-        const next = await enqueueObsoleteReadyMap(jobs, id);
-        if (next?.status === 'queued') {
-          const request = await readMapRequest(jobs, next.packId);
-          if (request) current.push(request);
-          break;
-        }
-        if (next?.status === 'full') break;
       }
       return current.sort((a, b) => a.packId.localeCompare(b.packId));
     })) || []

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildReviewPrompts, reviewPromptsAt } from '../../frontend/src/review-prompts.js';
+import { buildReviewPrompts } from '../../frontend/src/review-prompts.js';
 import type { GameEvent, Playback } from '../../shared/playback.js';
 
 const selected = '76561198000000001',
@@ -54,41 +54,6 @@ const kill = (tick = 900, extra: Partial<GameEvent> = {}): GameEvent => ({
   ...extra,
 });
 
-test('kill replay prompts follow immutable player IDs and clamp their context to global/round bounds', () => {
-  const data = replay([
-    kill(),
-    kill(1980),
-    kill(1100, { attacker_steamid: duplicateName }),
-    kill(1200, { attacker_steamid: undefined }),
-    kill(1300, { user_steamid: selected }),
-  ]);
-  const index = buildReviewPrompts(data, selected, first, last);
-  assert.equal(index.kills.length, 2);
-  assert.deepEqual(
-    index.kills.map((prompt) => [
-      prompt.tick,
-      prompt.startTick,
-      prompt.endTick,
-      prompt.attackerId,
-      prompt.target,
-    ]),
-    [
-      [900, 708, 1028, selected, 'other'],
-      [1980, 1788, 1999, selected, 'other'],
-    ],
-  );
-  assert.equal(reviewPromptsAt(index, 899).kill, null);
-  assert.equal(reviewPromptsAt(index, 900).kill?.tick, 900);
-  assert.equal(reviewPromptsAt(index, 1980).kill?.tick, 1980);
-  assert.equal(reviewPromptsAt(index, 2364).kill, null);
-  assert.equal(
-    reviewPromptsAt(index, 900).kill?.tick,
-    900,
-    'backward seeks do not retain the later kill',
-  );
-  assert.equal(buildReviewPrompts(data, duplicateName, first, last).kills.length, 1);
-});
-
 test('exact entity association keeps recorded landing coordinates and deduplicates native release representations', () => {
   const data = replay([
     release(600, { type: 'weapon_fire', entityid: 81 }),
@@ -123,10 +88,6 @@ test('exact entity association keeps recorded landing coordinates and deduplicat
     },
   );
   assert.equal(prompt.throwerId, selected);
-  assert.equal(reviewPromptsAt(index, 599).landing, null);
-  assert.equal(reviewPromptsAt(index, 600).landing?.id, prompt.id);
-  assert.equal(reviewPromptsAt(index, 983.9).landing?.id, prompt.id);
-  assert.equal(reviewPromptsAt(index, 984).landing, null);
 });
 
 test('unambiguous owner fallback supports sequential flights but never overlapping or contradictory releases', () => {
@@ -212,9 +173,6 @@ test('global event prompt IDs and endpoints remain stable when loaded chunk traj
     last,
   );
   assert.deepEqual(chunk, full);
-  assert.deepEqual(reviewPromptsAt(full, first - 1), { kill: null, landing: null });
-  assert.deepEqual(reviewPromptsAt(full, last + 1), { kill: null, landing: null });
-  assert.deepEqual(reviewPromptsAt(full, NaN), { kill: null, landing: null });
   assert.deepEqual(buildReviewPrompts(data, 'unknown', first, last).landings, []);
 });
 

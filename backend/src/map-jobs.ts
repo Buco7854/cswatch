@@ -41,90 +41,58 @@ const mapJobIdentity = {
   packId: packIdSchema,
   generation: z.string().regex(/^[a-f0-9]{32}$/),
 };
-const jobRequestSchema = <Revision extends number>(revision: Revision) =>
-  z.union([
-    z
-      .object({
-        ...mapJobIdentity,
-        schemaVersion: z.literal(revision),
-        approval: approvedMapEntrySchema,
-      })
-      .strict()
-      .refine((value) => value.packId === mapPackId(value.approval, revision)),
-    z
-      .object({
-        ...mapJobIdentity,
-        schemaVersion: z.literal(revision),
-        kind: z.literal('latest-official'),
-        selection: latestOfficialSelectionSchema,
-      })
-      .strict()
-      .refine((value) => value.packId === latestMapRequestId(value.selection, revision)),
-  ]);
-export const mapJobRequestSchema = jobRequestSchema(mapPreparerRevision);
-const jobResultSchema = <Revision extends number>(revision: Revision) =>
+export const mapJobRequestSchema = z.union([
   z
     .object({
-      schemaVersion: z.literal(revision),
-      packId: packIdSchema,
-      status: z.enum(['processing', 'ready', 'failed']),
-      updatedAt: z.number().int().min(0).max(8640000000000),
-      assetPackId: packIdSchema.optional(),
-      repairing: z.literal(true).optional(),
-      source: officialMapSourceSchema.optional(),
-      sourceCheckedAt: z.number().int().min(0).max(8640000000000).optional(),
-      code: z
-        .enum([
-          'source_unavailable',
-          'source_mismatch',
-          'storage_limit',
-          'preparation_failed',
-          'approval_removed',
-          'worker_interrupted',
-          'removed_by_admin',
-        ])
-        .optional(),
+      ...mapJobIdentity,
+      schemaVersion: z.literal(mapPreparerRevision),
+      approval: approvedMapEntrySchema,
     })
     .strict()
-    .refine((value) =>
-      value.status === 'failed' ? value.code !== undefined : value.code === undefined,
-    )
-    .refine((value) => !value.repairing || value.status === 'processing')
-    .refine((value) => {
-      const supplied = [value.assetPackId, value.source, value.sourceCheckedAt].filter(
-        (v) => v !== undefined,
-      ).length;
-      return supplied === 0 || (supplied === 3 && value.sourceCheckedAt! <= value.updatedAt + 300);
-    });
-export const mapJobResultSchema = jobResultSchema(mapPreparerRevision);
-
-const previousMapRevision = 2;
-const previousRequests = jobRequestSchema(previousMapRevision);
-const previousResults = jobResultSchema(previousMapRevision);
-
-/** Reuse the bounded source intent of a completed earlier job. Its old pack
- * remains outside discovery, and an operator removal never authorizes a rebuild. */
-export async function enqueueObsoleteReadyMap(root: string, id: string) {
-  const request = await readMapJob(root, 'requests', id, previousRequests);
-  if (!request) return;
-  const result = await readMapJob(root, 'results', id, previousResults);
-  if (result?.status !== 'ready') return;
-  if (!('kind' in request))
-    return {
-      status: await enqueueMapRequest(root, request.approval),
-      packId: mapPackId(request.approval),
-    };
-  if (
-    result.source?.manifest !== request.selection.manifest ||
-    result.assetPackId !==
-      latestMapPackId(request.selection.map, result.source, previousMapRevision)
+    .refine((value) => value.packId === mapPackId(value.approval)),
+  z
+    .object({
+      ...mapJobIdentity,
+      schemaVersion: z.literal(mapPreparerRevision),
+      kind: z.literal('latest-official'),
+      selection: latestOfficialSelectionSchema,
+    })
+    .strict()
+    .refine((value) => value.packId === latestMapRequestId(value.selection)),
+]);
+export const mapJobResultSchema = z
+  .object({
+    schemaVersion: z.literal(mapPreparerRevision),
+    packId: packIdSchema,
+    status: z.enum(['processing', 'ready', 'failed']),
+    updatedAt: z.number().int().min(0).max(8640000000000),
+    assetPackId: packIdSchema.optional(),
+    repairing: z.literal(true).optional(),
+    source: officialMapSourceSchema.optional(),
+    sourceCheckedAt: z.number().int().min(0).max(8640000000000).optional(),
+    code: z
+      .enum([
+        'source_unavailable',
+        'source_mismatch',
+        'storage_limit',
+        'preparation_failed',
+        'approval_removed',
+        'worker_interrupted',
+        'removed_by_admin',
+      ])
+      .optional(),
+  })
+  .strict()
+  .refine((value) =>
+    value.status === 'failed' ? value.code !== undefined : value.code === undefined,
   )
-    return;
-  return {
-    status: await enqueueLatestMapRequest(root, request.selection),
-    packId: latestMapRequestId(request.selection),
-  };
-}
+  .refine((value) => !value.repairing || value.status === 'processing')
+  .refine((value) => {
+    const supplied = [value.assetPackId, value.source, value.sourceCheckedAt].filter(
+      (v) => v !== undefined,
+    ).length;
+    return supplied === 0 || (supplied === 3 && value.sourceCheckedAt! <= value.updatedAt + 300);
+  });
 
 /** A crash after the exclusive link can leave its original temporary name.
  * Remove that name only when it already publishes the same owned inode. */

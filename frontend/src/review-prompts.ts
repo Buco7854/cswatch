@@ -1,18 +1,7 @@
 import type { GameEvent, Playback } from './types';
 import { equipmentKey } from './equipment-key';
-import { roundEvents } from './review-events';
 
 type ReviewPoint = { x: number; y: number; z: number };
-type KillPrompt = {
-  kind: 'kill';
-  id: string;
-  tick: number;
-  startTick: number;
-  endTick: number;
-  weapon?: string;
-  target?: string;
-  attackerId: string;
-};
 export type LandingPrompt = {
   kind: 'landing';
   id: string;
@@ -29,12 +18,8 @@ export type LandingPrompt = {
   association: 'entity-id' | 'unambiguous-owner';
 };
 type ReviewPromptIndex = {
-  kills: KillPrompt[];
   landings: LandingPrompt[];
   throws: ThrowPrompt[];
-  first: number;
-  last: number;
-  windowTicks: number;
 };
 export type ThrowPrompt = {
   kind: 'throw';
@@ -144,17 +129,9 @@ export function buildReviewPrompts(
   selected: string,
   first: number,
   last: number,
-  options: { includeKills?: boolean } = {},
 ): ReviewPromptIndex {
   const rate = data.tickRate;
-  const result: ReviewPromptIndex = {
-    kills: [],
-    landings: [],
-    throws: [],
-    first,
-    last,
-    windowTicks: 6 * rate,
-  };
+  const result: ReviewPromptIndex = { landings: [], throws: [] };
   const known = new Set(data.players.map((player) => player.id));
   if (
     !selected ||
@@ -183,30 +160,6 @@ export function buildReviewPrompts(
       end: next < rounds.length ? rounds[next].tick - 1 : last,
     };
   };
-  if (options.includeKills !== false)
-    for (const event of roundEvents(
-      data,
-      { number: 0, start: first, end: last },
-      selected,
-      'player',
-    )) {
-      if (event.type !== 'kill') continue;
-      const round = bounds(event.tick);
-      const startTick = Math.max(first, round.start, Math.floor(event.tick - 3 * rate));
-      const endTick = Math.min(last, round.end, Math.ceil(event.tick + 2 * rate));
-      if (endTick <= startTick) continue;
-      result.kills.push({
-        kind: 'kill',
-        id: 'kill:' + event.id,
-        tick: event.tick,
-        startTick,
-        endTick,
-        weapon: event.weapon,
-        target: event.target,
-        attackerId: selected,
-      });
-    }
-
   const releases: Release[] = [],
     detonations: Detonation[] = [];
   const seenDetonations = new Set<string>();
@@ -407,7 +360,6 @@ export function buildReviewPrompts(
       association: exact.length ? 'entity-id' : 'unambiguous-owner',
     });
   }
-  result.kills.sort(order);
   result.landings.sort(order);
   const landings = new Map(
     result.landings.map((landing) => [landing.id.slice('landing:'.length), landing]),
@@ -424,18 +376,4 @@ export function buildReviewPrompts(
     landing: landings.get(release.id),
   }));
   return result;
-}
-
-/** Stateless clock lookup: backward/forward seeks and player changes leave no stale prompt. */
-export function reviewPromptsAt(
-  index: ReviewPromptIndex,
-  tick: number,
-): { kill: KillPrompt | null; landing: LandingPrompt | null } {
-  if (!Number.isFinite(tick) || tick < index.first || tick > index.last)
-    return { kill: null, landing: null };
-  const latest = <T extends { tick: number }>(items: T[]) => {
-    const value = items[upperBound(items, tick) - 1];
-    return value && tick < value.tick + index.windowTicks ? value : null;
-  };
-  return { kill: latest(index.kills), landing: latest(index.landings) };
 }

@@ -85,9 +85,7 @@ export function buildReviewMoments(data: Playback, first: number, last: number):
   // Reuse the sole conservative throw/detonation association implementation.
   // Its per-player grouping preserves ambiguous/missing endpoints as unavailable.
   for (const player of data.players)
-    result.utilities.push(
-      ...buildReviewPrompts(data, player.id, first, last, { includeKills: false }).throws,
-    );
+    result.utilities.push(...buildReviewPrompts(data, player.id, first, last).throws);
   result.kills.sort(order);
   result.utilities.sort(order);
   for (const player of data.players) result.byPlayer.set(player.id, { kills: [], utilities: [] });
