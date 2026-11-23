@@ -81,15 +81,55 @@ function readValveOverview(data, map) {
   if (!mapName(map) || tokens[0] !== map || tokens[1] !== '{' || tokens.at(-1) !== '}')
     throw new Error('Overview map name or root block does not match.');
   const fields = new Map();
+  let sections;
   for (let index = 2; index < tokens.length - 1; index += 2) {
     const key = tokens[index]?.toLowerCase(),
       value = tokens[index + 1];
+    if (key === 'verticalsections' && value === '{' && !sections) {
+      sections = {};
+      index += 2;
+      for (; tokens[index] !== '}'; index++) {
+        const name = tokens[index];
+        if (
+          !name ||
+          !/^[a-z]{1,24}$/.test(name) ||
+          Object.hasOwn(sections, name) ||
+          Object.keys(sections).length >= 8 ||
+          tokens[++index] !== '{'
+        )
+          throw Error('Invalid layered overview section.');
+        const properties = new Map();
+        for (index++; tokens[index] !== '}'; index += 2) {
+          const property = tokens[index]?.toLowerCase();
+          const raw = tokens[index + 1];
+          if (
+            !['altitudemin', 'altitudemax'].includes(property) ||
+            properties.has(property) ||
+            !/^[+-]?\d+(?:\.\d+)?$/.test(raw ?? '')
+          )
+            throw Error('Invalid layered overview altitude.');
+          properties.set(property, Number(raw));
+        }
+        const min = properties.get('altitudemin'),
+          max = properties.get('altitudemax');
+        if (min < -1e7 || max > 1e7 || !(min < max))
+          throw Error('Invalid layered overview altitude range.');
+        sections[name] = { min, max };
+      }
+      const sorted = Object.values(sections).sort((a, b) => a.min - b.min);
+      if (!sections.default || sorted.some(({ min }, i) => i && min < sorted[i - 1].max))
+        throw Error('Layered overview sections overlap or omit the primary raster.');
+      index--;
+      continue;
+    }
     if (!key || !value || ['{', '}'].includes(key) || ['{', '}'].includes(value))
       throw new Error('Layered or nested overviews are not supported.');
     if (fields.has(key)) throw new Error('Duplicate overview field.');
     if (
       !['pos_x', 'pos_y', 'scale', 'material', 'zoom', 'rotate'].includes(key) &&
-      !/^(?:(?:ctspawn|tspawn|bomba|bombb)_[xy]|inset_(?:left|top|right|bottom))$/.test(key)
+      !/^(?:(?:ctspawn|tspawn|bomba|bombb|hostage[1-9])_[xy]|inset_(?:left|top|right|bottom))$/.test(
+        key,
+      )
     )
       throw new Error('Unsupported overview field. Use explicitly calibrated unrotated artwork.');
     fields.set(key, value);
@@ -110,6 +150,7 @@ function readValveOverview(data, map) {
   return {
     calibration: calibration({ x: number('pos_x'), y: number('pos_y') }, number('scale')),
     displayRotate,
+    sections,
   };
 }
 
@@ -247,6 +288,7 @@ export async function prepareOverview({
           sourceOverview: overview ? basename(overview) : null,
           sourceOverviewSha256: text ? hash(text) : null,
           sourceDisplayRotate: parsedOverview?.displayRotate ?? null,
+          sourceVerticalSections: parsedOverview?.sections ?? null,
           imageSha256: metadata.imageSha256,
           preparedAt: new Date().toISOString(),
           transformation:

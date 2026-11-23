@@ -2,11 +2,12 @@
 import { createHash } from 'node:crypto';
 import { mkdir, rm, statfs, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
+import { batchMapMeshes } from './batch-map-meshes.mjs';
 import { applyTextureBudget } from './texture-budget.mjs';
 import { localDirectory } from './toolchain-security.mjs';
 import { writePreparedModel } from './prepared-model-output.mjs';
 import { steamAssetLimits } from './steam-assets-plan.mjs';
-import { compressGlbGeometry } from './meshopt-glb.mjs';
+import { compressMapDocumentGeometry } from './meshopt-glb.mjs';
 export async function writeTierMetadata(path, bytes) {
   const disk = await statfs(dirname(path), { bigint: true });
   if (disk.bavail * disk.bsize < BigInt(bytes.length + steamAssetLimits.reserveBytes))
@@ -23,8 +24,12 @@ export async function writeMapTier({
   source,
   s2v,
   geometry = 'preserved',
+  batchStatic = false,
   budgetBytes,
   bakedLighting,
+  vertexLighting,
+  lightingFallback,
+  worldMaterials,
 }) {
   if (
     !/^[a-zA-Z0-9_-]{1,80}$/.test(map) ||
@@ -43,16 +48,23 @@ export async function writeMapTier({
   await localDirectory(dirname(output), true);
   await mkdir(output, { mode: 0o755 });
   try {
+    console.error(`${tier}: preparing textures`);
     const budget = await applyTextureBudget(document, {
       tier,
+      preserveCutoutCoverage: Boolean(worldMaterials),
       ...(budgetBytes === undefined ? {} : { budgetBytes }),
     });
+    // Drop oversized texture inputs before joining duplicate geometry arrays.
+    globalThis.gc?.();
+    const batching = batchStatic ? await batchMapMeshes(document, { cellSize: 64 }) : null;
     document
       .getRoot()
       .listExtensionsUsed()
       .find((extension) => extension.extensionName === 'EXT_meshopt_compression')
       ?.dispose();
-    const compression = await compressGlbGeometry(await io.writeBinary(document));
+    globalThis.gc?.();
+    console.error(`${tier}: serializing scene`);
+    const compression = await compressMapDocumentGeometry(io, document);
     const encoded = compression.bytes;
     const bytes = await writePreparedModel(join(output, 'scene.glb'), encoded);
     const manifest = {
@@ -71,6 +83,9 @@ export async function writeMapTier({
       geometryCompression: compression.report,
       textureBudget: budget.manifest,
       ...(bakedLighting ? { bakedLighting } : {}),
+      ...(vertexLighting ? { vertexLighting } : {}),
+      ...(lightingFallback ? { lightingFallback } : {}),
+      ...(worldMaterials ? { worldMaterials } : {}),
       preparedAt: new Date().toISOString(),
     };
     const serialized = Buffer.from(JSON.stringify(manifest, null, 2));
@@ -83,6 +98,7 @@ export async function writeMapTier({
       directory: output,
       manifest,
       texturePlan: budget.plan,
+      batching,
     };
   } catch (error) {
     await rm(output, { recursive: true, force: true });

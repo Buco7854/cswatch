@@ -51,13 +51,24 @@ export function overviewResources(map) {
   selectedMaps([map]);
   return [`resource/overviews/${map}.txt`, `panorama/images/overheadmaps/${map}_radar_psd.vtex_c`];
 }
+const skyPrefabFolders = (map) => [map, map.replace(/^(?:de|cs|ar|dz|gd|tr)_/, '')];
+export function selectedSkyPrefabFile(map, file) {
+  selectedMaps([map]);
+  return (
+    validPrefabFile(file) &&
+    skyPrefabFolders(map).some((folder) => file.startsWith(`game/csgo/maps/prefabs/${folder}/`))
+  );
+}
 /** An enabled skybox_reference from the selected map may name exactly one
  * prefab inside that map's own directory, never another depot path or glob. */
 export function skyPrefabPackage(map, reference) {
   selectedMaps([map]);
-  const prefix = `maps/prefabs/${map}/`;
-  if (typeof reference !== 'string' || !reference.startsWith(prefix))
-    throw new Error('Sky reference must belong to the selected map prefab directory.');
+  const prefix =
+    typeof reference === 'string' &&
+    skyPrefabFolders(map)
+      .map((folder) => `maps/prefabs/${folder}/`)
+      .find((candidate) => reference.startsWith(candidate));
+  if (!prefix) throw new Error('Sky reference must belong to the selected map prefab directory.');
   const leaf = reference.slice(prefix.length);
   if (!/^[a-z0-9_]{1,100}\.vmap$/.test(leaf))
     throw new Error('Sky reference must be one exact compiled map name.');
@@ -117,7 +128,7 @@ export function dependencyBatch(plans, map, { packageFile } = {}) {
   if (
     packageFile !== undefined &&
     packageFile !== topLevel &&
-    (!validPrefabFile(packageFile) || !packageFile.startsWith(`game/csgo/maps/prefabs/${map}/`))
+    !selectedSkyPrefabFile(map, packageFile)
   )
     throw new Error('Dependency package must belong to the selected map.');
   const records = [];
@@ -221,7 +232,7 @@ export function shaderBatch(names, indexes) {
 }
 export function assertExportableUnknowns(names, map, { skyMap } = {}) {
   selectedMaps([map]);
-  const actualSky = skyMap === undefined ? undefined : skyPrefabPackage(map, skyMap).resource;
+  const actualSky = skyMap == null ? undefined : skyPrefabPackage(map, skyMap).resource;
   if (!Array.isArray(names) || names.length > steamAssetLimits.entries)
     throw new Error('Unknown dependency limit exceeded.');
   for (const name of names) {

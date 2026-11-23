@@ -2,6 +2,11 @@ import { z } from 'zod';
 
 const scalar = (min: number, max: number) => z.number().finite().min(min).max(max);
 const exponent = z.number().finite().gt(0).max(16);
+const heightFogSchema = z
+  .object({ start: scalar(-254000, 254000), end: scalar(-254000, 254000), exponent })
+  .strict()
+  .refine((height) => height.start !== height.end)
+  .nullable();
 const component = scalar(-1, 1);
 const tolerance = 1e-4;
 function properRotation(matrix: number[]) {
@@ -31,11 +36,7 @@ export const mapCubeFogSchema = z
     start: scalar(0, 254000),
     end: scalar(0, 254000),
     exponent,
-    height: z
-      .object({ start: scalar(-254000, 254000), end: scalar(-254000, 254000), exponent })
-      .strict()
-      .refine((height) => height.start !== height.end)
-      .nullable(),
+    height: heightFogSchema,
     maxOpacity: scalar(0, 1),
     lodBias: scalar(0, 16),
     brightness: scalar(0, 16),
@@ -55,3 +56,21 @@ export const mapCubeFogSchema = z
   })
   .strict()
   .refine((fog) => fog.end > fog.start);
+
+const gradient = z
+  .object({
+    start: scalar(0, 254000),
+    end: scalar(0, 254000),
+    exponent,
+    height: heightFogSchema,
+    color: z.tuple([scalar(0, 16), scalar(0, 16), scalar(0, 16)]),
+    maxOpacity: scalar(0, 1),
+  })
+  .strict()
+  .refine((fog) => fog.end > fog.start)
+  .nullable();
+
+export const mapGradientFogSchema = z
+  .object({ world: gradient, landscape: gradient })
+  .strict()
+  .refine((fog) => Boolean(fog.world || fog.landscape));

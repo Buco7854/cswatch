@@ -21,6 +21,7 @@
 
 - The separate assets service handles pinned official preparation, pending jobs and operator-authorized removal. Automatic acquisition defaults off. Latest snapshots are disclosed, manual map-name assets remain version-unverified, and publication requires complete validated packs with bound models and texture plans. Invalid worker-owned map packs enter preparation again.
 - Detailed and optional Compact 3D share the replay cameras and calibrated overview. The graded output pass uses authored lighting data where available. One smoke volume pass uses journal or analytic density and reports an unavailable renderer.
-- Local map evidence covers Mirage, Dust2 and Ancient in 3D and Cache in 2D. Native animation graphs, exact Source 2 materials and mixing, Workshop acquisition, and physical-device performance remain outside the verified feature set.
+- Detailed official map packs can use world-verified v8.2 lightmaps, sourced sun channels, supported cubemap and untextured gradient fog, and authored grading. Preparation reports PBR fallback reasons and removes unresolved non-solid effects from the playable world and sky geometry.
+- Local 3D map evidence covers Mirage, Dust2, Inferno, Nuke, Ancient, Anubis, Overpass, Train, Vertigo and Office. Earlier 2D evidence covers Cache. Native animation graphs, exact Source 2 materials and mixing, Workshop acquisition, and physical-device performance remain outside the verified feature set.
 
 See [verification](VERIFICATION.md), [active work](product/WORK.md), [acceptance](product/ACCEPTANCE.md) and [security](../SECURITY.md).

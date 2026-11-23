@@ -1,6 +1,6 @@
-import { validMapGrade } from '../../shared/map-grade.mjs';
+import { mapGradeFile, validMapGrade } from '../../shared/map-grade.mjs';
 import type { MapAssets, MapEnvironment, MapOverview } from '../../shared/map-assets';
-import { validateMapCubeFog } from './map-fog';
+import { validateMapCubeFog, validateMapGradientFog } from './map-fog';
 
 export type AssetStatus = 'pending' | 'ready' | 'missing' | 'error';
 export type MapAssetState = { status: AssetStatus; assets: MapAssets; overviewStatus: AssetStatus };
@@ -73,7 +73,7 @@ export function validateMapAssets(value: unknown, map: string, packId?: string):
     const item = input.environment as Partial<MapEnvironment>;
     const expected = ['px', 'nx', 'py', 'ny', 'pz', 'nz'].map(
       (face) => `${imageRoot}/environment/${face}.png`,
-    ) as MapEnvironment['sky']['faces'];
+    ) as NonNullable<MapEnvironment['sky']>['faces'];
     if (
       typeof item !== 'object' ||
       Array.isArray(item) ||
@@ -81,22 +81,30 @@ export function validateMapAssets(value: unknown, map: string, packId?: string):
       !item.assetVersion.trim() ||
       item.assetVersion.length > 100 ||
       typeof item.landscape !== 'boolean' ||
-      !item.sky ||
-      !Array.isArray(item.sky.faces) ||
-      item.sky.faces.length !== 6 ||
-      item.sky.faces.some((face, index) => face !== expected[index]) ||
-      typeof item.sky.brightness !== 'number' ||
-      !Number.isFinite(item.sky.brightness) ||
-      item.sky.brightness < 0 ||
-      item.sky.brightness > 16
+      (item.gradientFog?.landscape && !item.landscape) ||
+      (item.sky === null
+        ? item.fog !== undefined
+        : !item.sky ||
+          !Array.isArray(item.sky.faces) ||
+          item.sky.faces.length !== 6 ||
+          item.sky.faces.some((face, index) => face !== expected[index]) ||
+          typeof item.sky.brightness !== 'number' ||
+          !Number.isFinite(item.sky.brightness) ||
+          item.sky.brightness < 0 ||
+          item.sky.brightness > 16)
     )
       throw new Error('Invalid map environment');
     environment = {
       assetVersion: item.assetVersion,
       landscape: item.landscape,
-      sky: { faces: expected, brightness: item.sky.brightness },
+      sky: item.sky ? { faces: expected, brightness: item.sky.brightness } : null,
       ...(item.fog !== undefined ? { fog: validateMapCubeFog(item.fog) } : {}),
-      ...(validMapGrade(item.grade) ? { grade: item.grade } : {}),
+      ...(item.gradientFog !== undefined
+        ? { gradientFog: validateMapGradientFog(item.gradientFog) }
+        : {}),
+      ...(validMapGrade(item.grade)
+        ? { grade: item.grade, gradeUrl: `${imageRoot}/environment/${mapGradeFile}` }
+        : {}),
     };
   }
   return {

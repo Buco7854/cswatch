@@ -4,6 +4,7 @@ import { lstat, open, readdir, rename, unlink } from 'node:fs/promises';
 import { createHash, randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';
 import { crc32 } from 'node:zlib';
+import { setTimeout as delay } from 'node:timers/promises';
 import sharp from 'sharp';
 import { localDirectory } from './toolchain-security.mjs';
 import { checkFreeReserve } from './asset-storage.mjs';
@@ -11,6 +12,7 @@ import { checkFreeReserve } from './asset-storage.mjs';
 const sourceImageLimits = Object.freeze({
   bytes: 64 * 1024 ** 2,
   pixels: 64 * 1024 ** 2,
+  chunks: 16384,
   edge: 16384,
   maxEdge: 2048,
   images: 20000,
@@ -32,7 +34,9 @@ export function completePng(bytes) {
   let offset = 8,
     chunks = 0,
     data = false;
-  while (offset + 12 <= bytes.length && ++chunks <= 4096) {
+  while (offset + 12 <= bytes.length) {
+    if (++chunks > sourceImageLimits.chunks)
+      throw Error('Completed PNG exceeds its chunk-count bound.');
     const size = bytes.readUInt32BE(offset),
       end = offset + size + 12;
     if (end > bytes.length) break;
@@ -171,21 +175,36 @@ export async function createSourceImageCompactor({ root, signal, checkStorage } 
     );
     let temporary;
     try {
-      const original = await handle.stat({ bigint: true });
+      let original = await handle.stat({ bigint: true });
+      // A texture event may reach the pipe before a tiny export is fully written.
+      for (
+        let retry = 0;
+        original.isFile() && original.nlink === 1n && original.size < 57n && retry < 6;
+        retry++
+      ) {
+        await delay(25, undefined, { signal });
+        original = await handle.stat({ bigint: true });
+      }
       if (
         !original.isFile() ||
         original.nlink !== 1n ||
         original.size < 57n ||
         original.size > BigInt(sourceImageLimits.bytes)
       )
-        throw Error('Completed source image is not a bounded single-link regular PNG.');
+        throw Error(
+          `Completed source image is not a bounded single-link regular PNG. Source export: ${file} (${original.size} bytes).`,
+        );
       const size = Number(original.size);
       if (readBytes + 2 * size > sourceImageLimits.inputBytes)
         throw Error('Cumulative source image read limit exceeded.');
       const bytes = await readBounded(handle, size);
       inputBytes += size;
       readBytes += size;
-      completePng(bytes);
+      try {
+        completePng(bytes);
+      } catch (error) {
+        throw Error(`${error.message} Source export: ${file}`, { cause: error });
+      }
       const inputHash = sha(bytes);
       const options = {
         limitInputPixels: sourceImageLimits.pixels,

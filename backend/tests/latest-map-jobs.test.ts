@@ -30,6 +30,8 @@ import {
   mapJobRequestSchema,
   mapJobResultSchema,
   latestMapResultMatches,
+  prepareMapJobs,
+  enqueueObsoleteReadyMap,
 } from '../src/map-jobs.js';
 import type { OfficialMapInventory } from '../../shared/map-acquisition.js';
 const at = 1800000000;
@@ -54,6 +56,47 @@ function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'cswatch-latest-jobs-'));
   return { root, close: () => rmSync(root, { recursive: true, force: true }) };
 }
+
+test('an earlier ready or removed job authorizes only the appropriate current-generation action', async () => {
+  const f = fixture();
+  try {
+    await prepareMapJobs(f.root);
+    const id = latestMapRequestId(selection, 2);
+    const prior = {
+      schemaVersion: 2,
+      packId: id,
+      status: 'ready',
+      updatedAt: at,
+      assetPackId: latestMapPackId(selection.map, source, 2),
+      source,
+      sourceCheckedAt: at,
+    };
+    const result = join(f.root, 'results', `${id}.json`);
+    writeFileSync(
+      join(f.root, 'requests', `${id}.json`),
+      JSON.stringify({
+        schemaVersion: 2,
+        kind: 'latest-official',
+        selection,
+        packId: id,
+        generation: 'a'.repeat(32),
+      }),
+    );
+    writeFileSync(result, JSON.stringify({ ...prior, status: 'failed', code: 'removed_by_admin' }));
+    assert.equal(await enqueueObsoleteReadyMap(f.root, id), undefined);
+    assert.equal(await readMapRequest(f.root, queueId), undefined);
+    writeFileSync(result, JSON.stringify(prior));
+    assert.deepEqual(await enqueueObsoleteReadyMap(f.root, id), {
+      status: 'queued',
+      packId: queueId,
+    });
+    assert.deepEqual((await readMapRequest(f.root, queueId))?.selection, selection);
+    assert.equal((await enqueueObsoleteReadyMap(f.root, id))?.status, 'existing');
+    assert.deepEqual(JSON.parse(readFileSync(result, 'utf8')), prior);
+  } finally {
+    f.close();
+  }
+});
 
 test('official inventory accepts newly shipped bare names without code registration and rejects duplicate/unsafe/malformed sources', () => {
   assert.equal(officialMapInventorySchema.safeParse(inventory).success, true);
@@ -132,7 +175,7 @@ test('latest queue deduplicates a pinned selection, preserves string IDs and use
     if (first?.kind !== 'latest-official') throw Error('Missing latest request');
     assert.deepEqual(first.selection, selection);
     await writeMapJobResult(f.root, {
-      schemaVersion: 2,
+      schemaVersion: 3,
       packId: queueId,
       status: 'failed',
       code: 'source_unavailable',
@@ -149,7 +192,7 @@ test('latest queue deduplicates a pinned selection, preserves string IDs and use
 
 test('latest publication identity requires pinned membership selection and complete post-download source proof', () => {
   const request = {
-    schemaVersion: 2 as const,
+    schemaVersion: 3 as const,
     kind: 'latest-official' as const,
     packId: queueId,
     generation: 'a'.repeat(32),
@@ -163,7 +206,7 @@ test('latest publication identity requires pinned membership selection and compl
   );
   assert.equal(mapJobRequestSchema.safeParse({ ...request, approval: {} }).success, false);
   const result = {
-    schemaVersion: 2 as const,
+    schemaVersion: 3 as const,
     packId: queueId,
     status: 'ready' as const,
     updatedAt: at,
@@ -180,7 +223,7 @@ test('latest publication identity requires pinned membership selection and compl
   );
   assert.equal(latestMapResultMatches(request, { ...result, assetPackId: 'f'.repeat(64) }), false);
   const marker = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     kind: 'latest-official',
     packId: assetId,
     requestId: queueId,
@@ -208,7 +251,7 @@ test('explicit latest retry preserves verified content proof after publishing a 
     await enqueueLatestMapRequest(f.root, selection);
     const previous = await readMapRequest(f.root, queueId);
     await writeMapJobResult(f.root, {
-      schemaVersion: 2,
+      schemaVersion: 3,
       packId: queueId,
       status: 'failed',
       code: 'worker_interrupted',

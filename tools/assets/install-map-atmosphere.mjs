@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { resourcePath } from './source2-dependencies.mjs';
 import { exists, fileHash, regular } from './asset-storage.mjs';
 import { verifyPreparedGlb } from './prepared-glb.mjs';
-import { selectedMaps, checkedBatch } from './steam-assets-plan.mjs';
+import { selectedMaps, selectedSkyPrefabFile, checkedBatch } from './steam-assets-plan.mjs';
 
 const wrapper = fileURLToPath(new URL('./prepare-installed-atmosphere.mjs', import.meta.url));
 const maximum = 128 * 1024 ** 2;
@@ -57,7 +57,7 @@ export async function prepareInstalledAtmosphere(context, adapters = {}) {
     throw new Error('Invalid atmosphere package owner list.');
   for (const file of packageFiles) {
     if (typeof file !== 'string') throw new Error('Invalid atmosphere package owner.');
-    const prefab = file.startsWith(`game/csgo/maps/prefabs/${map}/`);
+    const prefab = selectedSkyPrefabFile(map, file);
     if (
       !prefab &&
       !['game/csgo/pak01_dir.vpk', 'game/core/pak01_dir.vpk', `game/csgo/maps/${map}.vpk`].includes(

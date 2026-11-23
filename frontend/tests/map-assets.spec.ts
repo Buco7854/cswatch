@@ -1379,6 +1379,24 @@ test('paused viewer stops native rendering and camera, held keys, POV seeks and 
     await gate;
     await route.fulfill({ contentType: 'image/png', body: originalEnvironmentPNG(face) });
   });
+  const catalogs = {
+    '/api/assets/agents': { ct: null, t: null },
+    '/api/assets/equipment-models': { schemaVersion: 2, items: {}, complete: false },
+    '/api/assets/viewmodels': { items: {}, complete: false },
+  };
+  const initialCatalogs = new Set<string>();
+  const pendingCatalogs = new Set<string>();
+  const refreshes = new Map<string, () => void>();
+  for (const [path, json] of Object.entries(catalogs)) {
+    const refreshGate = new Promise<void>((resolve) => refreshes.set(path, resolve));
+    await page.route(`**${path}`, async (route) => {
+      if (initialCatalogs.has(path)) {
+        pendingCatalogs.add(path);
+        await refreshGate;
+      } else initialCatalogs.add(path);
+      await route.fulfill({ json });
+    });
+  }
   const frames = () =>
     page.evaluate(() => (window as unknown as { qaGLClears: number }).qaGLClears);
   const idle = async () => {
@@ -1405,24 +1423,20 @@ test('paused viewer stops native rendering and camera, held keys, POV seeks and 
   await camera(page, 'Free camera');
   const cameraNotice = page.locator('.viewer-camera-tools');
   await expect(cameraNotice).toHaveAttribute('data-camera-changed', 'false');
+  // Hold the already-issued poll responses while the first render settles.
+  await expect.poll(() => pendingCatalogs.size).toBe(Object.keys(catalogs).length);
   await idle();
   const initial = await frames();
-  await expect(page.locator('.viewer-camera-tools')).toHaveAttribute(
-    'data-camera-changed',
-    'false',
-  );
   expect(await frames(), 'Expiring the camera announcement must leave the scene idle').toBe(
     initial,
   );
-  await Promise.all(
-    ['/api/assets/agents', '/api/assets/equipment-models', '/api/assets/viewmodels'].map((path) =>
-      page.waitForResponse((response) => new URL(response.url()).pathname === path),
-    ),
-  );
-  await page.waitForTimeout(250);
-  expect(await frames(), 'Unchanged asset discovery must leave the paused scene idle').toBe(
-    initial,
-  );
+  for (const [path, releaseRefresh] of refreshes) {
+    const refreshed = page.waitForResponse((response) => new URL(response.url()).pathname === path);
+    releaseRefresh();
+    await refreshed;
+    await page.waitForTimeout(250);
+    expect(await frames(), `Unchanged ${path} must leave the paused scene idle`).toBe(initial);
+  }
   const unfocused = await frames();
   await page.getByRole('button', { name: 'Options', exact: true }).focus();
   await page.keyboard.press('x');

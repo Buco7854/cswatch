@@ -1,4 +1,4 @@
-import { preparerRevision } from './asset-preparer.js';
+import { mapPreparerRevision } from './asset-preparer.js';
 /** Shared disk protocol for administrator-requested deletion. No app/database imports. */
 import { constants } from 'node:fs';
 import { open, opendir, rename, unlink } from 'node:fs/promises';
@@ -195,7 +195,7 @@ export async function inspectManagedPack(
         if (
           !marker ||
           Object.keys(marker).sort().join(',') !== 'approval,packId,preparedAt,schemaVersion' ||
-          marker.schemaVersion !== preparerRevision ||
+          marker.schemaVersion !== mapPreparerRevision ||
           marker.packId !== packId ||
           marker.approval !== canonicalMapApproval(request.approval) ||
           !Number.isSafeInteger(marker.preparedAt) ||

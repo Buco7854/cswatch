@@ -1,7 +1,7 @@
 import { basename, join } from 'node:path';
 import format from '../../shared/map-baked-lighting.json' with { type: 'json' };
-import layerSources from './mirage-layer-textures.json' with { type: 'json' };
 import { regularFile } from './toolchain-security.mjs';
+import { readAtmosphereGlb } from './atmosphere-glb.mjs';
 
 // This subset has ordinary repeating UV0 and uses the R/G modulation-mask combo.
 // Other transforms, blend families and detail stages retain their glTF fallback.
@@ -10,6 +10,26 @@ const sourceRoles = {
   layerBlendTexture: 'g_tBlendModulation',
   layerDetailTexture: 'g_tLayer1Detail',
 };
+const resourceKey = /^materials\/[a-z0-9_./-]{1,240}\.vtex_c$/;
+
+export async function discoverMapLayerSources(input) {
+  const { document } = await readAtmosphereGlb(input);
+  const sources = new Set();
+  for (const material of document.materials) {
+    const vmat = material.extras?.vmat;
+    if (
+      vmat?.ShaderName !== 'csgo_lightmappedgeneric.vfx' ||
+      vmat.IntParams?.F_LAYERS !== 1 ||
+      vmat.IntParams?.F_FANCY_BLENDING !== 1
+    )
+      continue;
+    for (const role of Object.values(sourceRoles)) {
+      const key = vmat.TextureParams?.[role] + '_c';
+      if (resourceKey.test(key) && !key.split('/').includes('..')) sources.add(key);
+    }
+  }
+  return [...sources].sort().slice(0, 24);
+}
 function supportedLayer(primitive, vmat) {
   const blend = primitive.getAttribute(format.layerAttribute);
   const flags = vmat.IntParams ?? {};
@@ -45,13 +65,30 @@ function supportedLayer(primitive, vmat) {
 
 export async function readMapLayerImages(folder) {
   const images = new Map();
-  for (const [key, proof] of Object.entries(layerSources)) {
-    const path = join(folder, basename(key, '.vtex_c') + '.png');
+  const list = await regularFile(join(folder, 'inputs.json'), 8192);
+  let keys;
+  try {
+    keys = JSON.parse(await list.handle.readFile('utf8'));
+  } finally {
+    await list.handle.close();
+  }
+  if (
+    !Array.isArray(keys) ||
+    keys.length > 24 ||
+    new Set(keys).size !== keys.length ||
+    keys.some((key) => !resourceKey.test(key) || key.split('/').includes('..'))
+  )
+    throw Error('Invalid prepared layer source list.');
+  let total = 0;
+  for (const [index, key] of keys.entries()) {
+    const path = join(folder, `${index}.png`);
     const { handle, stat } = await regularFile(path, 12 * 1024 ** 2);
     try {
+      total += stat.size;
+      if (total > 64 * 1024 ** 2) throw Error('Native layer images exceed their aggregate bound.');
       const bytes = await handle.readFile();
       if (bytes.length !== stat.size) throw Error('Native layer image changed.');
-      images.set(key, { bytes, role: proof.role });
+      images.set(key, { bytes });
     } finally {
       await handle.close();
     }
@@ -68,7 +105,7 @@ export function mapLayerBinding(primitive, vmat, images) {
       const key = vmat.TextureParams?.[role] + '_c';
       return { slot, role, key, image: images.get(key) };
     });
-  if (layers.every(({ image, role }) => image?.role === role)) return { layers, parameters };
+  if (layers.every(({ image }) => image)) return { layers, parameters };
 }
 
 export function mapLayerBinder(document) {

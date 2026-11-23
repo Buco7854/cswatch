@@ -169,11 +169,62 @@ async function metadata(image) {
     info.width * info.height > textureBudgetLimits.sourcePixels
   )
     throw new Error('Texture image has unsupported format or bounded dimensions.');
-  return { width: info.width, height: info.height, bytes: image.byteLength, sha256: sha(image) };
+  return {
+    width: info.width,
+    height: info.height,
+    bytes: image.byteLength,
+    sha256: sha(image),
+    hasAlpha: info.hasAlpha,
+  };
+}
+
+function cutoutCutoffs(document) {
+  const uses = new Map();
+  for (const material of document.getRoot().listMaterials()) {
+    const texture = material.getBaseColorTexture();
+    if (!texture) continue;
+    const cutoff =
+      material.getAlphaMode() === 'MASK' ? material.getAlphaCutoff() / material.getAlpha() : 0;
+    const use = Number.isFinite(cutoff) && cutoff > 0 && cutoff < 1 ? cutoff : 0;
+    uses.set(texture, !uses.has(texture) || uses.get(texture) === use ? use : 0);
+  }
+  return uses;
+}
+
+export function preserveAlphaCoverage(source, rgba, cutoff) {
+  const threshold = cutoff * 255;
+  let covered = 0;
+  for (const alpha of source) if (alpha >= threshold) covered++;
+  const area = covered / source.length;
+  if (area === 0 || area === 1) return;
+  const histogram = new Uint32Array(256);
+  for (let index = 3; index < rgba.length; index += 4) histogram[rgba[index]]++;
+  const pixels = rgba.length / 4;
+  let cumulative = 0,
+    closest = pixels,
+    selected = threshold;
+  for (let value = 255; value > 0; value--) {
+    cumulative += histogram[value];
+    const difference = Math.abs(cumulative - pixels * area);
+    if (
+      difference < closest ||
+      (difference === closest && Math.abs(value - threshold) < Math.abs(selected - threshold))
+    ) {
+      closest = difference;
+      selected = value;
+    }
+  }
+  const gain = Math.max(0.67, Math.min(1.5, Math.ceil(threshold) / selected));
+  if (Math.abs(gain - 1) < 0.01) return;
+  for (let index = 3; index < rgba.length; index += 4)
+    rgba[index] = Math.min(255, Math.round(rgba[index] * gain));
 }
 
 /** Serial encodes keep only one image decode live at a time. */
-export async function applyTextureBudget(document, { tier, ...overrides }) {
+export async function applyTextureBudget(
+  document,
+  { tier, preserveCutoutCoverage = false, ...overrides },
+) {
   const textures = document.getRoot().listTextures();
   if (textures.length > textureBudgetLimits.images) throw new Error('Too many map texture images.');
   const sources = [];
@@ -188,35 +239,46 @@ export async function applyTextureBudget(document, { tier, ...overrides }) {
     throw new Error('Encoded texture sources exceed the 4 GiB preparation bound.');
   const planned = planTextureBudget(sources, { tier, ...overrides }),
     targets = new Map(planned.images.map((row) => [row.id, row]));
+  const cutoffs = preserveCutoutCoverage ? cutoutCutoffs(document) : new Map();
   const images = [];
   for (const [index, texture] of textures.entries()) {
     const target = targets.get(String(index)),
       source = sources[index],
       input = texture.getImage();
     const baked = bakedAtlas(target.roles);
+    const cutoff = source.hasAlpha && target.roles.length === 1 && cutoffs.get(texture);
     const alreadyWebP =
       texture.getMimeType() === 'image/webp' &&
       input.byteLength >= 12 &&
       Buffer.from(input.buffer, input.byteOffset, 4).toString('ascii') === 'RIFF' &&
       Buffer.from(input.buffer, input.byteOffset + 8, 4).toString('ascii') === 'WEBP';
-    const encoded =
-      alreadyWebP && source.width === target.width && source.height === target.height
-        ? input
-        : await sharp(Buffer.from(input.buffer, input.byteOffset, input.byteLength), {
-            limitInputPixels: textureBudgetLimits.sourcePixels,
-          })
-            .resize(target.width, target.height, {
-              fit: 'fill',
-              withoutEnlargement: true,
-              kernel: baked ? 'nearest' : 'lanczos3',
-            })
-            .webp(
-              baked || target.roles.includes('layerBlendTexture')
-                ? { lossless: true, effort: 4 }
-                : { quality: 80, effort: 4 },
-            )
-            .toBuffer();
-    const actual = await metadata(encoded);
+    const unchanged = source.width === target.width && source.height === target.height;
+    let encoded = input;
+    if (!alreadyWebP || !unchanged) {
+      const decoder = () =>
+        sharp(Buffer.from(input.buffer, input.byteOffset, input.byteLength), {
+          limitInputPixels: textureBudgetLimits.sourcePixels,
+        });
+      let resized = decoder().resize(target.width, target.height, {
+        fit: 'fill',
+        withoutEnlargement: true,
+        kernel: baked ? 'nearest' : 'lanczos3',
+      });
+      if (cutoff && !unchanged) {
+        const alpha = await decoder().toColourspace('srgb').extractChannel(3).raw().toBuffer();
+        const raw = await resized.toColourspace('srgb').ensureAlpha().raw().toBuffer();
+        preserveAlphaCoverage(alpha, raw, cutoff);
+        resized = sharp(raw, { raw: { width: target.width, height: target.height, channels: 4 } });
+      }
+      encoded = await resized
+        .webp(
+          baked || target.roles.includes('layerBlendTexture')
+            ? { lossless: true, effort: 4 }
+            : { quality: 80, effort: 4 },
+        )
+        .toBuffer();
+    }
+    const { hasAlpha: _hasAlpha, ...actual } = await metadata(encoded);
     if (
       actual.width > target.width ||
       actual.height > target.height ||

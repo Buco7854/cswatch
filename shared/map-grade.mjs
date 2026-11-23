@@ -58,7 +58,7 @@ export function validMapGrade(value) {
   const { exposure, curve, lut } = value;
   if (
     !bounded(exposure.min, 0.01, 16) ||
-    !bounded(exposure.max, exposure.min, 16) ||
+    !bounded(exposure.max, 0.01, 16) ||
     !bounded(exposure.bias, -8, 8) ||
     !bounded(curve.whiteStops, -6, 6) ||
     !bounded(curve.denominator, 0.0001, 16) ||

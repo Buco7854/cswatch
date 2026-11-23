@@ -3,6 +3,7 @@
 import { constants } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { parseArgs } from 'node:util';
+import sharp from 'sharp';
 import { regular } from './asset-storage.mjs';
 import { prepareEnvironment } from './prepare-environment.mjs';
 
@@ -11,6 +12,8 @@ const { values } = parseArgs({
 });
 if (!values.config || !values.result)
   throw new Error('Provide a private environment configuration and result file.');
+sharp.cache(false);
+sharp.concurrency(1);
 await regular(values.config, 34 * 1024 ** 2);
 const config = JSON.parse(
   await readFile(values.config, {

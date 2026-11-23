@@ -3,7 +3,7 @@ import { build } from 'esbuild';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
-test('shared scene lighting renders authored sun changes and restores fallback without duplicate rigs', async ({
+test('shared scene lighting leaves verified maps without a sun ambient-lit and keeps unverified map fill', async ({
   page,
 }, info) => {
   const root = fileURLToPath(new URL('../../', import.meta.url)),
@@ -86,6 +86,7 @@ test('shared scene lighting renders authored sun changes and restores fallback w
         { sun: null, skylight: false },
         { sun: first, skylight: true },
         { sun: first, skylight: false },
+        { sun: null, skylight: false, fallbackSun: true },
       ];
     const sphere = () =>
       el(
@@ -220,6 +221,7 @@ test('shared scene lighting renders authored sun changes and restores fallback w
           : new T.Vector3(-25, 40, 12).normalize().toArray(),
         ambient: phase.skylight ? 0.08 : 0.35,
         hemisphere: phase.skylight ? 0.12 : 0.6,
+        directional: phase.sun || phase.fallbackSun ? 1.8 : 0,
       })),
       authoredPixels: changed(captures[0].pixels[0], captures[1].pixels[0]),
       directionPixels: changed(captures[1].pixels[0], captures[2].pixels[0]),
@@ -227,6 +229,7 @@ test('shared scene lighting renders authored sun changes and restores fallback w
       fallbackResetPixels: changed(captures[0].pixels[0], captures[4].pixels[0]),
       fillPixels: changed(captures[1].pixels[0], captures[5].pixels[0]),
       fillResetPixels: changed(captures[1].pixels[0], captures[6].pixels[0]),
+      unverifiedPixels: changed(captures[0].pixels[0], captures[7].pixels[0]),
       passDifferences: captures.map((capture) => [
         changed(capture.pixels[0], capture.pixels[1]),
         changed(capture.pixels[0], capture.pixels[2]),
@@ -246,13 +249,14 @@ test('shared scene lighting renders authored sun changes and restores fallback w
   expect(report.fallbackResetPixels).toBe(0);
   expect(report.fillPixels).toBeGreaterThan(1000);
   expect(report.fillResetPixels).toBe(0);
+  expect(report.unverifiedPixels).toBeGreaterThan(1000);
   for (const differences of report.passDifferences) expect(differences).toEqual([0, 0]);
   for (const [index, rigs] of report.rigs.entries())
     for (const [pass, rig] of (rigs as any[]).entries()) {
       expect(rig.lights).toBe(3);
       expect(rig.directional).toBe(1);
-      expect(rig.intensity).toBe(1.8);
-      expect(rig.shadows).toBe(pass === 0);
+      expect(rig.intensity).toBe(report.expected[index].directional);
+      expect(rig.shadows).toBe(pass === 0 && report.expected[index].directional > 0);
       expect(rig.ambient).toBe(report.expected[index].ambient);
       expect(rig.hemisphere).toBe(report.expected[index].hemisphere);
       expect(rig.shadowProjectionError).toBeLessThan(1e-10);

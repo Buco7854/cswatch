@@ -14,7 +14,7 @@ import {
 } from './steam-assets-plan.mjs';
 import { exportMapGltf, resolveMapResources } from './install-map-resources.mjs';
 import { createHash } from 'node:crypto';
-import { inspectMapGrade } from './environment-metadata.mjs';
+import { inspectMapGrade, inspectSunShadowChannel } from './environment-metadata.mjs';
 import {
   maxPostProcessBytes,
   maxPostProcessDumpBytes,
@@ -82,7 +82,7 @@ export async function inspectInstalledEnvironment(context, adapters = {}) {
     if (
       !entries.length ||
       entries.length > 64 ||
-      entries.some((entry) => resourcePath(entry) !== entry || !/^[a-z0-9_./-]+$/.test(entry))
+      entries.some((entry) => resourcePath(entry) !== entry || !/^[a-z0-9_./#-]+$/.test(entry))
     )
       throw new Error('Map environment requires a bounded exact entity-lump list.');
     const output = join(stage, `${label}-entity-source`);
@@ -105,17 +105,17 @@ export async function inspectInstalledEnvironment(context, adapters = {}) {
   };
   const mainEntities = await entityTexts(mainPackage, `maps/${map}`, map);
   const configuration = module.inspectMapEnvironment(mainEntities);
-  const prefab = skyPrefabPackage(map, configuration.skyMap);
+  const prefab = configuration.skyMap ? skyPrefabPackage(map, configuration.skyMap) : null;
   const material =
     configuration.skyMaterial == null ? null : compiledPath(configuration.skyMaterial, '.vmat_c');
-  permitPrefab(prefab.file);
+  if (prefab) permitPrefab(prefab.file);
   async function postProcessing() {
     try {
       const authored = inspectMapGrade(mainEntities);
       if (!authored) return;
       for (const file of [
         mainPackage,
-        prefab.file,
+        ...(prefab ? [prefab.file] : []),
         'game/csgo/pak01_dir.vpk',
         'game/core/pak01_dir.vpk',
       ]) {
@@ -155,113 +155,116 @@ export async function inspectInstalledEnvironment(context, adapters = {}) {
     skyMap: configuration.skyMap,
     required: material === null ? [] : [material],
     configuration,
+    sunChannel: inspectSunShadowChannel(mainEntities),
     async prepare(mainGltf, output) {
-      const listed = await execute(
-        downloader,
-        ['ls', STEAM_APP, `${STEAM_DEPOT}:${manifest}`, '--anonymous', '--', prefab.file],
-        `${map}-sky-manifest`,
-        { timeoutMs: 120000 },
-      );
-      const plan = parseSteamListing(listed.stdout, [prefab.file]);
-      if (plan.manifest !== manifest)
-        throw new Error('Sky prefab listing does not match the pinned map manifest.');
-      await download(
-        plan.files.map((entry) => ({ selector: entry.file, bytes: entry.bytes })),
-        `${map}-sky-selected-file`,
-      );
-      if (
-        (await fileHash(join(game, prefab.file), 'sha1', plan.files[0].bytes)) !==
-        plan.files[0].sha1
-      )
-        throw new Error('Sky prefab failed its pinned manifest hash check.');
-      const skyEntities = await entityTexts(
-        prefab.file,
-        prefab.resource.slice(0, -7),
-        `${map}-sky`,
-      );
-      const camera = module.inspectSkyCamera(skyEntities);
-      const effectiveMaterial = compiledPath(
-        camera.skyEnvironment?.skyMaterial ?? configuration.skyMaterial,
-        '.vmat_c',
-      );
-      const closure = await resolveMapResources({
-        map,
-        packageFile: prefab.file,
-        game,
-        skyMap: configuration.skyMap,
-        scan,
-        download,
-        progress,
-        label: `${map}-sky`,
-        required: [effectiveMaterial],
-      });
-      const skyGltf = await exportMapGltf({
-        map,
-        packageFile: prefab.file,
-        resource: prefab.resource,
-        game,
-        stage,
-        label: `${map}-sky`,
-        closure,
-        s2v,
-        execute,
-        download,
-        shaderIndexes,
-        storage,
-        index,
-        onShaderPreflight,
-        onSourceImages,
-      });
-      const owner = async (resource) => {
-        for (const group of ['csgo', 'core']) {
-          const loose = join(game, 'game', group, resource);
-          if (await exists(loose)) {
-            await regular(loose, 128 * 1024 ** 2);
-            return ['-i', loose];
+      let skyEntities, camera, skyGltf, closure;
+      if (prefab) {
+        const listed = await execute(
+          downloader,
+          ['ls', STEAM_APP, `${STEAM_DEPOT}:${manifest}`, '--anonymous', '--', prefab.file],
+          `${map}-sky-manifest`,
+          { timeoutMs: 120000 },
+        );
+        const plan = parseSteamListing(listed.stdout, [prefab.file]);
+        if (plan.manifest !== manifest)
+          throw new Error('Sky prefab listing does not match the pinned map manifest.');
+        await download(
+          plan.files.map((entry) => ({ selector: entry.file, bytes: entry.bytes })),
+          `${map}-sky-selected-file`,
+        );
+        if (
+          (await fileHash(join(game, prefab.file), 'sha1', plan.files[0].bytes)) !==
+          plan.files[0].sha1
+        )
+          throw new Error('Sky prefab failed its pinned manifest hash check.');
+        skyEntities = await entityTexts(prefab.file, prefab.resource.slice(0, -7), `${map}-sky`);
+        camera = module.inspectSkyCamera(skyEntities);
+      }
+      const skyMaterial = camera?.skyEnvironment?.skyMaterial ?? configuration.skyMaterial;
+      const effectiveMaterial = skyMaterial ? compiledPath(skyMaterial, '.vmat_c') : null;
+      if (prefab) {
+        closure = await resolveMapResources({
+          map,
+          packageFile: prefab.file,
+          game,
+          skyMap: configuration.skyMap,
+          scan,
+          download,
+          progress,
+          label: `${map}-sky`,
+          required: effectiveMaterial ? [effectiveMaterial] : [],
+        });
+        skyGltf = await exportMapGltf({
+          map,
+          packageFile: prefab.file,
+          resource: prefab.resource,
+          game,
+          stage,
+          label: `${map}-sky`,
+          closure,
+          s2v,
+          execute,
+          download,
+          shaderIndexes,
+          storage,
+          index,
+          onShaderPreflight,
+          onSourceImages,
+        });
+      }
+      let materialData, skyFaces;
+      if (effectiveMaterial) {
+        const owner = async (resource) => {
+          for (const group of ['csgo', 'core']) {
+            const loose = join(game, 'game', group, resource);
+            if (await exists(loose)) {
+              await regular(loose, 128 * 1024 ** 2);
+              return ['-i', loose];
+            }
           }
-        }
-        for (const file of [
-          mainPackage,
-          prefab.file,
-          'game/csgo/pak01_dir.vpk',
-          'game/core/pak01_dir.vpk',
-        ])
-          if ((await packageIndex(file)).entries.has(resource))
-            return ['-i', join(game, file), '--vpk_filepath', resource];
-        throw new Error('Required sky resource has no verified local package owner.');
-      };
-      const dumped = await execute(
-        s2v,
-        [...(await owner(effectiveMaterial)), '--block', 'DATA'],
-        `${map}-sky-material`,
-      );
-      if (Buffer.byteLength(dumped.stdout) > 1024 * 1024)
-        throw new Error('Sky material metadata exceeds its limit.');
-      const materialData = dumped.stdout;
-      const parsedMaterial = module.inspectSkyMaterial(materialData);
-      const texture = compiledPath(parsedMaterial.texture, '.vtex_c');
-      const faceOutput = join(stage, 'sky-face-source');
-      await mkdir(faceOutput);
-      await execute(
-        s2v,
-        [
-          ...(await owner(texture)),
-          '--decompile',
-          '--texture_decode_flags',
-          'ForceLDR',
-          '--output',
-          faceOutput,
-          '--quiet',
-        ],
-        `${map}-sky-faces`,
-      );
-      // Package extraction preserves the resource directory below --output.
-      // The validated exact VPK key supplies the only permitted face prefix.
-      const stem = texture.slice(0, -'.vtex_c'.length);
-      const skyFaces = Object.fromEntries(
-        faces.map((face) => [face, join(faceOutput, `${stem}_${face}.png`)]),
-      );
-      for (const path of Object.values(skyFaces)) await regular(path, 8 * 1024 ** 2, 57);
+          for (const file of [
+            mainPackage,
+            ...(prefab ? [prefab.file] : []),
+            'game/csgo/pak01_dir.vpk',
+            'game/core/pak01_dir.vpk',
+          ])
+            if ((await packageIndex(file)).entries.has(resource))
+              return ['-i', join(game, file), '--vpk_filepath', resource];
+          throw new Error('Required sky resource has no verified local package owner.');
+        };
+        const dumped = await execute(
+          s2v,
+          [...(await owner(effectiveMaterial)), '--block', 'DATA'],
+          `${map}-sky-material`,
+        );
+        if (Buffer.byteLength(dumped.stdout) > 1024 * 1024)
+          throw new Error('Sky material metadata exceeds its limit.');
+        materialData = dumped.stdout;
+        const parsedMaterial = module.inspectSkyMaterial(materialData);
+        const texture = compiledPath(parsedMaterial.texture, '.vtex_c');
+        const faceOutput = join(stage, 'sky-face-source');
+        await mkdir(faceOutput);
+        await execute(
+          s2v,
+          [
+            ...(await owner(texture)),
+            '--decompile',
+            '--texture_decode_flags',
+            'ForceLDR',
+            '--output',
+            faceOutput,
+            '--quiet',
+          ],
+          `${map}-sky-faces`,
+        );
+        // Package extraction preserves the resource directory below --output.
+        // The validated exact VPK key supplies the only permitted face prefix.
+        const stem = texture.slice(0, -'.vtex_c'.length);
+        skyFaces = Object.fromEntries(
+          faces.map((face) => [face, join(faceOutput, `${stem}_${face}.png`)]),
+        );
+        for (const path of Object.values(skyFaces)) await regular(path, 8 * 1024 ** 2, 57);
+      }
       const gradeInput = await postProcessing();
       const config = {
         map,
@@ -286,7 +289,7 @@ export async function inspectInstalledEnvironment(context, adapters = {}) {
       else
         await execute(
           process.execPath,
-          [prepareScript, '--config', configPath, '--result', resultPath],
+          ['--expose-gc', prepareScript, '--config', configPath, '--result', resultPath],
           `${map}-environment-pack`,
         );
       const result = JSON.parse(await boundedText(resultPath, 1024 * 1024));
@@ -303,16 +306,16 @@ export async function inspectInstalledEnvironment(context, adapters = {}) {
         map,
         assetVersion,
         mergedInput: result.mergedInput,
-        sources: [mainGltf, skyGltf],
+        sources: skyGltf ? [mainGltf, skyGltf] : [mainGltf],
         provenance: join(output, 'environments', map, 'provenance.json'),
       });
       return {
         ...result,
         report: {
           ...result.report,
-          sourceVpks: closure.sources,
-          unknownNonRenderingResources: closure.unknown,
-          selectedPrefab: prefab.file,
+          sourceVpks: closure?.sources ?? [],
+          unknownNonRenderingResources: closure?.unknown ?? [],
+          selectedPrefab: prefab?.file ?? null,
           pinnedManifest: manifest,
           sourceExportsCleaned: cleaned,
         },

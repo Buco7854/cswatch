@@ -1,7 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { HalfFloatType, LinearFilter, Vector2, WebGLRenderTarget } from 'three';
-import { mapGradeFile } from '../../../shared/map-grade.mjs';
 import type { MapEnvironment } from '../../../shared/map-assets';
 import { createGradeOutput, loadGradeLut, MapGradeContext, type AuthoredGrade } from '../map-grade';
 
@@ -25,7 +24,7 @@ export default function SceneGrade({
   const context = gl.getContext() as WebGL2RenderingContext;
   const [loaded, setLoaded] = useState<AuthoredGrade & { url: string }>();
   const grade = environment?.grade;
-  const url = environment?.sky.faces[0].replace(/px\.png$/, mapGradeFile);
+  const url = environment?.gradeUrl;
   const renderableFloat =
     gl.extensions.has('EXT_color_buffer_float') || gl.extensions.has('EXT_color_buffer_half_float');
   useEffect(() => {

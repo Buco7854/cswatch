@@ -7,6 +7,29 @@ const keys = (object, names) =>
 const scalar = (value, min, max) =>
   typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max;
 const exponent = (value) => scalar(value, 0, 16) && value > 0;
+const validRange = (fog) =>
+  scalar(fog.start, 0, 254000) &&
+  scalar(fog.end, 0, 254000) &&
+  fog.end > fog.start &&
+  exponent(fog.exponent) &&
+  scalar(fog.maxOpacity, 0, 1) &&
+  (fog.height === null ||
+    (keys(fog.height, ['start', 'end', 'exponent']) &&
+      scalar(fog.height.start, -254000, 254000) &&
+      scalar(fog.height.end, -254000, 254000) &&
+      fog.height.start !== fog.height.end &&
+      exponent(fog.height.exponent)));
+
+export function validPreparedGradientFog(fog) {
+  return (
+    keys(fog, ['start', 'end', 'exponent', 'height', 'color', 'maxOpacity']) &&
+    validRange(fog) &&
+    Array.isArray(fog.color) &&
+    fog.color.length === 3 &&
+    fog.color.every((value) => scalar(value, 0, 16))
+  );
+}
+
 export function validPreparedFog(fog) {
   if (
     !keys(fog, [
@@ -21,19 +44,9 @@ export function validPreparedFog(fog) {
       'rotation',
     ]) ||
     fog.blend !== 'multiply' ||
-    !scalar(fog.start, 0, 254000) ||
-    !scalar(fog.end, 0, 254000) ||
-    fog.end <= fog.start ||
-    !exponent(fog.exponent) ||
-    !scalar(fog.maxOpacity, 0, 1) ||
+    !validRange(fog) ||
     !scalar(fog.lodBias, 0, 16) ||
     !scalar(fog.brightness, 0, 16) ||
-    (fog.height !== null &&
-      (!keys(fog.height, ['start', 'end', 'exponent']) ||
-        !scalar(fog.height.start, -254000, 254000) ||
-        !scalar(fog.height.end, -254000, 254000) ||
-        fog.height.start === fog.height.end ||
-        !exponent(fog.height.exponent))) ||
     !Array.isArray(fog.rotation) ||
     fog.rotation.length !== 9 ||
     !fog.rotation.every((value) => scalar(value, -1, 1))

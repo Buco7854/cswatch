@@ -54,12 +54,31 @@ test('only the unique enabled master supplies the resource, exposure, curve and 
   });
   assert.deepEqual(result.grade.exposure, { min: 0.8, max: 1, bias: 0 });
   assert.equal(result.grade.curve.whiteStops, 1.5);
+  const inverted = inspectMapGrade(entities.replaceAll('maxexposure 1.0', 'maxexposure 0.75'));
+  assert.deepEqual(prepareMapGrade(inverted, data).grade.exposure, {
+    min: 0.8,
+    max: 0.75,
+    bias: 0,
+  });
+});
+
+test('an authored tone curve with disabled color correction uses an identity volume', () => {
+  const prepared = prepareMapGrade(
+    inspectMapGrade(entities),
+    data.replace('m_bHasColorCorrection = true', 'm_bHasColorCorrection = false'),
+  );
+  assert.equal(prepared.colorCorrection, false);
+  assert.equal(prepared.grade.curve.whiteStops, 1.5);
+  assert.deepEqual(
+    [...prepared.lut.subarray(0, 12)],
+    [0, 0, 0, 255, 255, 0, 0, 255, 0, 255, 0, 255],
+  );
+  assert.deepEqual([...prepared.lut.subarray(28)], [255, 255, 255, 255]);
 });
 
 test('declines unsupported, ambiguous, overlong and incomplete post-processing data', () => {
   const authored = inspectMapGrade(entities);
   for (const invalid of [
-    data.replace('m_bHasColorCorrection = true', 'm_bHasColorCorrection = false'),
     data.replace('m_nColorCorrectionVolumeDim = 2', 'm_nColorCorrectionVolumeDim = 1000'),
     data.replace('1C 1D 1E 1F'.toLowerCase(), ''),
     data.replace('m_flLuminanceSource = 0.0', 'm_flLuminanceSource = 1.0'),

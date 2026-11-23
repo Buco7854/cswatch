@@ -629,7 +629,7 @@ test('environment faces reject links, special files, mixed dimensions, excess ag
   }
 });
 
-test('current packs retain sky discovery when optional grading is missing or invalid', async () => {
+test('current packs can serve authored grading and sky assets independently', async () => {
   const s = await setup();
   try {
     const { environmentPack, environment } = s.installEnvironment();
@@ -669,6 +669,17 @@ test('current packs retain sky discovery when optional grading is missing or inv
     assert.equal((await s.get(base)).body, ungraded);
     writeFileSync(file, JSON.stringify(environment));
     assert.equal((await s.get(base)).body, ungraded);
+    for (const face of environmentFaces) rmSync(join(environmentPack, `${face}.png`));
+    writeFileSync(lutPath, lut);
+    writeFileSync(file, JSON.stringify({ ...environment, landscape: false, sky: null, grade }));
+    assert.deepEqual((await s.get(base)).json().environment, {
+      assetVersion: environment.assetVersion,
+      landscape: false,
+      sky: null,
+      grade,
+    });
+    assert.deepEqual((await s.get(lutUrl)).rawPayload, lut);
+    assert.equal((await s.get(base + '/environment/px.png')).statusCode, 404);
   } finally {
     await s.close();
   }

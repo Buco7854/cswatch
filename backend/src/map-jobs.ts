@@ -1,8 +1,17 @@
-import { preparerRevision } from './asset-preparer.js';
+import { mapPreparerRevision } from './asset-preparer.js';
 /** Filesystem-only map acquisition contract. This module never imports the app,
  * database, accounts, native parser, network or operator conversion tools. */
 import { constants } from 'node:fs';
-import { open, mkdir, opendir, rename, unlink, type FileHandle } from 'node:fs/promises';
+import {
+  link,
+  lstat,
+  open,
+  mkdir,
+  opendir,
+  rename,
+  unlink,
+  type FileHandle,
+} from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
@@ -29,60 +38,118 @@ export const mapJobLimits = { bytes: 8192, jobs: 32, retained: 512, scanned: 102
 export const mapJobTemporaryName = /^\.[a-f0-9]{64}-[a-f0-9]{24}\.tmp$/;
 export const packIdSchema = z.string().regex(/^[a-f0-9]{64}$/);
 const mapJobIdentity = {
-  schemaVersion: z.literal(preparerRevision),
   packId: packIdSchema,
   generation: z.string().regex(/^[a-f0-9]{32}$/),
 };
-export const mapJobRequestSchema = z.union([
+const jobRequestSchema = <Revision extends number>(revision: Revision) =>
+  z.union([
+    z
+      .object({
+        ...mapJobIdentity,
+        schemaVersion: z.literal(revision),
+        approval: approvedMapEntrySchema,
+      })
+      .strict()
+      .refine((value) => value.packId === mapPackId(value.approval, revision)),
+    z
+      .object({
+        ...mapJobIdentity,
+        schemaVersion: z.literal(revision),
+        kind: z.literal('latest-official'),
+        selection: latestOfficialSelectionSchema,
+      })
+      .strict()
+      .refine((value) => value.packId === latestMapRequestId(value.selection, revision)),
+  ]);
+export const mapJobRequestSchema = jobRequestSchema(mapPreparerRevision);
+const jobResultSchema = <Revision extends number>(revision: Revision) =>
   z
     .object({
-      ...mapJobIdentity,
-      approval: approvedMapEntrySchema,
+      schemaVersion: z.literal(revision),
+      packId: packIdSchema,
+      status: z.enum(['processing', 'ready', 'failed']),
+      updatedAt: z.number().int().min(0).max(8640000000000),
+      assetPackId: packIdSchema.optional(),
+      repairing: z.literal(true).optional(),
+      source: officialMapSourceSchema.optional(),
+      sourceCheckedAt: z.number().int().min(0).max(8640000000000).optional(),
+      code: z
+        .enum([
+          'source_unavailable',
+          'source_mismatch',
+          'storage_limit',
+          'preparation_failed',
+          'approval_removed',
+          'worker_interrupted',
+          'removed_by_admin',
+        ])
+        .optional(),
     })
     .strict()
-    .refine((value) => value.packId === mapPackId(value.approval)),
-  z
-    .object({
-      ...mapJobIdentity,
-      kind: z.literal('latest-official'),
-      selection: latestOfficialSelectionSchema,
-    })
-    .strict()
-    .refine((value) => value.packId === latestMapRequestId(value.selection)),
-]);
-export const mapJobResultSchema = z
-  .object({
-    schemaVersion: z.literal(preparerRevision),
-    packId: packIdSchema,
-    status: z.enum(['processing', 'ready', 'failed']),
-    updatedAt: z.number().int().min(0).max(8640000000000),
-    assetPackId: packIdSchema.optional(),
-    repairing: z.literal(true).optional(),
-    source: officialMapSourceSchema.optional(),
-    sourceCheckedAt: z.number().int().min(0).max(8640000000000).optional(),
-    code: z
-      .enum([
-        'source_unavailable',
-        'source_mismatch',
-        'storage_limit',
-        'preparation_failed',
-        'approval_removed',
-        'worker_interrupted',
-        'removed_by_admin',
-      ])
-      .optional(),
-  })
-  .strict()
-  .refine((value) =>
-    value.status === 'failed' ? value.code !== undefined : value.code === undefined,
+    .refine((value) =>
+      value.status === 'failed' ? value.code !== undefined : value.code === undefined,
+    )
+    .refine((value) => !value.repairing || value.status === 'processing')
+    .refine((value) => {
+      const supplied = [value.assetPackId, value.source, value.sourceCheckedAt].filter(
+        (v) => v !== undefined,
+      ).length;
+      return supplied === 0 || (supplied === 3 && value.sourceCheckedAt! <= value.updatedAt + 300);
+    });
+export const mapJobResultSchema = jobResultSchema(mapPreparerRevision);
+
+const previousMapRevision = 2;
+const previousRequests = jobRequestSchema(previousMapRevision);
+const previousResults = jobResultSchema(previousMapRevision);
+
+/** Reuse the bounded source intent of a completed earlier job. Its old pack
+ * remains outside discovery, and an operator removal never authorizes a rebuild. */
+export async function enqueueObsoleteReadyMap(root: string, id: string) {
+  const request = await readMapJob(root, 'requests', id, previousRequests);
+  if (!request) return;
+  const result = await readMapJob(root, 'results', id, previousResults);
+  if (result?.status !== 'ready') return;
+  if (!('kind' in request))
+    return {
+      status: await enqueueMapRequest(root, request.approval),
+      packId: mapPackId(request.approval),
+    };
+  if (
+    result.source?.manifest !== request.selection.manifest ||
+    result.assetPackId !==
+      latestMapPackId(request.selection.map, result.source, previousMapRevision)
   )
-  .refine((value) => !value.repairing || value.status === 'processing')
-  .refine((value) => {
-    const supplied = [value.assetPackId, value.source, value.sourceCheckedAt].filter(
-      (v) => v !== undefined,
-    ).length;
-    return supplied === 0 || (supplied === 3 && value.sourceCheckedAt! <= value.updatedAt + 300);
-  });
+    return;
+  return {
+    status: await enqueueLatestMapRequest(root, request.selection),
+    packId: latestMapRequestId(request.selection),
+  };
+}
+
+/** A crash after the exclusive link can leave its original temporary name.
+ * Remove that name only when it already publishes the same owned inode. */
+export async function finishLinkedMapRequest(directory: FileHandle, name: string) {
+  if (!mapJobTemporaryName.test(name)) return;
+  const folder = `/proc/self/fd/${directory.fd}/`;
+  const target = `${folder}${name.slice(1, 65)}.json`;
+  try {
+    const stage = await lstat(folder + name, { bigint: true });
+    if (
+      !stage.isFile() ||
+      stage.nlink !== 2n ||
+      stage.uid !== BigInt(process.getuid?.() ?? -1) ||
+      stage.mode & 0o022n
+    )
+      return;
+    const final = await lstat(target, { bigint: true });
+    if (!final.isFile() || final.nlink !== 2n || final.dev !== stage.dev || final.ino !== stage.ino)
+      return;
+    await unlink(folder + name);
+    await directory.sync();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+}
 
 export function latestMapResultMatches(request: MapJobRequest, result: MapJobResult): boolean {
   return (
@@ -382,6 +449,7 @@ export async function atomicMapJobWrite(
   folder: 'requests' | 'results',
   packId: string,
   value: MapJobRequest | MapJobResult,
+  createOnly = false,
 ) {
   packIdSchema.parse(packId);
   const checked =
@@ -403,7 +471,18 @@ export async function atomicMapJobWrite(
       await file.sync();
       await file.close();
       file = undefined;
-      await rename(target, `/proc/self/fd/${directory.fd}/${packId}.json`);
+      const final = `/proc/self/fd/${directory.fd}/${packId}.json`;
+      if (createOnly) {
+        try {
+          await link(target, final);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'EEXIST') return false;
+          throw error;
+        }
+        await unlink(target).catch((error) => {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        });
+      } else await rename(target, final);
       await directory.sync();
       return true;
     } finally {
@@ -411,7 +490,8 @@ export async function atomicMapJobWrite(
       await unlink(target).catch(() => undefined);
     }
   });
-  if (!success) throw new Error('Map job storage unavailable');
+  if (success === undefined) throw new Error('Map job storage unavailable');
+  return success;
 }
 export const mapJobRetrySeconds = 300;
 export function canRetryMapResult(result: MapJobResult, at = Math.floor(Date.now() / 1000)) {
@@ -462,15 +542,16 @@ function enqueueMapJob(
     await prepareMapJobs(root);
     if (await readMapRequest(root, packId)) return 'existing' as const;
     if (!(await queueHasRoom(root, true))) return 'full' as const;
-    await atomicMapJobWrite(root, 'requests', packId, request);
-    return 'queued' as const;
+    return (await atomicMapJobWrite(root, 'requests', packId, request, true))
+      ? ('queued' as const)
+      : ('existing' as const);
   });
   enqueueQueue = operation.catch(() => undefined);
   return operation;
 }
 export function enqueueMapRequest(root: string, approval: ApprovedMapEntry) {
   return enqueueMapJob(root, {
-    schemaVersion: preparerRevision,
+    schemaVersion: mapPreparerRevision,
     packId: mapPackId(approval),
     approval,
     generation: randomBytes(16).toString('hex'),
@@ -478,7 +559,7 @@ export function enqueueMapRequest(root: string, approval: ApprovedMapEntry) {
 }
 export function enqueueLatestMapRequest(root: string, selection: LatestOfficialSelection) {
   return enqueueMapJob(root, {
-    schemaVersion: preparerRevision,
+    schemaVersion: mapPreparerRevision,
     packId: latestMapRequestId(selection),
     generation: randomBytes(16).toString('hex'),
     kind: 'latest-official',
@@ -521,7 +602,7 @@ function retryMapJob(
         // write or shutdown. Keep the verified content identity so the worker
         // can recover that immutable pack instead of downloading it again.
         await atomicMapJobWrite(root, 'results', packId, {
-          schemaVersion: preparerRevision,
+          schemaVersion: mapPreparerRevision,
           packId,
           status: 'processing',
           updatedAt: at,

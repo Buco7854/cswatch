@@ -6,7 +6,11 @@ import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
-import { compressGlbGeometry, MeshoptDecoder } from './meshopt-glb.mjs';
+import {
+  compressGlbGeometry,
+  compressMapDocumentGeometry,
+  MeshoptDecoder,
+} from './meshopt-glb.mjs';
 import { verifyPreparedGlb } from './prepared-glb.mjs';
 import { meshoptMapFixture } from './fixtures/meshopt-map.mjs';
 import { compressPreparedGeometry } from './compress-prepared-map.mjs';
@@ -124,6 +128,14 @@ test('required virtual fallback validates real compressed data and rejects bad r
   const path = join(root, 'broken.glb');
   await writeFile(path, broken);
   await assert.rejects(verifyPreparedGlb(path), /decoding/);
+});
+
+test('preparing a document writes the same lossless pack directly from its binary resource', async () => {
+  const io = new NodeIO().registerExtensions(ALL_EXTENSIONS);
+  const document = await io.readBinary(await meshoptMapFixture());
+  const fromGlb = await compressGlbGeometry(await io.writeBinary(document));
+  const direct = await compressMapDocumentGeometry(io, document);
+  assert.deepEqual(direct, fromGlb);
 });
 
 test('geometry-only output preserves original encoded image bytes and refuses overwriting source', async (t) => {

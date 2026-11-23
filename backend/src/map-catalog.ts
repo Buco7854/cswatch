@@ -1,4 +1,4 @@
-import { preparerRevision } from './asset-preparer.js';
+import { mapPreparerRevision } from './asset-preparer.js';
 import { lstat } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { basename, dirname } from 'node:path';
@@ -65,13 +65,16 @@ export const latestOfficialSelectionSchema = officialMapInventoryItemSchema
     manifest: decimal64,
   })
   .strict();
-export function latestMapRequestId(value: LatestOfficialSelection): string {
+export function latestMapRequestId(
+  value: LatestOfficialSelection,
+  revision: number = mapPreparerRevision,
+): string {
   const item = latestOfficialSelectionSchema.parse(value);
   return createHash('sha256')
     .update(
       JSON.stringify({
         kind: 'latest-official',
-        preparerRevision,
+        preparerRevision: revision,
         map: item.map,
         appId: item.appId,
         depotId: item.depotId,
@@ -82,14 +85,18 @@ export function latestMapRequestId(value: LatestOfficialSelection): string {
     )
     .digest('hex');
 }
-export function latestMapPackId(map: string, value: OfficialMapSource): string {
+export function latestMapPackId(
+  map: string,
+  value: OfficialMapSource,
+  revision: number = mapPreparerRevision,
+): string {
   officialMapName.parse(map);
   const source = officialMapSourceSchema.parse(value);
   return createHash('sha256')
     .update(
       JSON.stringify({
         kind: 'latest-official-content',
-        preparerRevision,
+        preparerRevision: revision,
         map,
         appId: source.appId,
         depotId: source.depotId,
@@ -110,7 +117,7 @@ export function latestOfficialSelection(
 }
 export const latestMapPackMarkerSchema = z
   .object({
-    schemaVersion: z.literal(preparerRevision),
+    schemaVersion: z.literal(mapPreparerRevision),
     kind: z.literal('latest-official'),
     packId: z.string().regex(/^[a-f0-9]{64}$/),
     requestId: z.string().regex(/^[a-f0-9]{64}$/),
@@ -157,9 +164,9 @@ export function canonicalMapApproval(value: ApprovedMapEntry): string {
     ...(entry.assetVersion === undefined ? {} : { assetVersion: entry.assetVersion }),
   });
 }
-export const mapPackId = (entry: ApprovedMapEntry) =>
+export const mapPackId = (entry: ApprovedMapEntry, revision: number = mapPreparerRevision) =>
   createHash('sha256')
-    .update(`preparer:${preparerRevision}:`)
+    .update(`preparer:${revision}:`)
     .update(canonicalMapApproval(entry))
     .digest('hex');
 export async function readMapCatalog(filename: string): Promise<MapCatalog | undefined> {

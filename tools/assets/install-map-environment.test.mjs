@@ -77,7 +77,7 @@ async function fixture({
       for (const entry of argument('-f').split(',')) {
         const output = join(argument('-o'), entry.slice(0, -2));
         await mkdir(dirname(output), { recursive: true });
-        await writeFile(output, 'Original bounded synthetic entity metadata');
+        await writeFile(output, '====0====\nclassname "worldspawn"\n');
       }
     } else if (args.includes('--gltf_export_format')) {
       assert.equal(argument('--vpk_filepath'), prefab.resource);

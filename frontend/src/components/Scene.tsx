@@ -111,7 +111,11 @@ import {
   ProjectileFallback,
   type EquipmentInstanceStatus,
 } from './RenderEquipment';
-import { installSourceBlackMaterials, type SourceFogResources } from '../source-black-material';
+import {
+  installSourceBlackMaterials,
+  installSourceWorldFog,
+  type SourceFogResources,
+} from '../source-black-material';
 type SourceFogReference = { current: SourceFogResources };
 import type { MapEnvironment } from '../../../shared/map-assets';
 import { daylightFallback, mapEnvironmentKey, useMapEnvironment } from '../map-environment';
@@ -269,12 +273,16 @@ function Model({
   url,
   loaded,
   fogResources,
+  worldFog,
+  landscapeFog,
   scope,
   registerFollowModel,
   playerLighting,
 }: {
   url: string;
   fogResources: SourceFogReference;
+  worldFog: boolean;
+  landscapeFog: boolean;
   playerLighting: ReturnType<typeof playerShadows> | null;
   scope: ModelScope;
   registerFollowModel: (model: THREE.Group) => () => void;
@@ -302,14 +310,36 @@ function Model({
         landscape = 'error';
       }
     }
-    const compatibility = installSourceBlackMaterials(
-      [result.main, ...(result.sky ? [result.sky] : [])],
-      () => fogResources.current,
-    );
+    const mainFog = () => fogResources.current;
+    const skyFog = () => ({
+      ...fogResources.current,
+      gradient: fogResources.current.landscapeGradient,
+    });
+    const compatibility = installSourceBlackMaterials([result.main], mainFog);
+    const skyCompatibility = result.sky && installSourceBlackMaterials([result.sky], skyFog);
+    const disposeFog = worldFog ? installSourceWorldFog(result.main, mainFog) : undefined;
+    const disposeSkyFog =
+      result.sky && landscapeFog ? installSourceWorldFog(result.sky, skyFog) : undefined;
     const sun = mapSun(result.sun, new THREE.Box3().setFromObject(result.main));
-    return { ...result, sun, landscape, compatibility };
-  }, [gltf, fogResources]);
-  useEffect(() => () => prepared.compatibility.dispose(), [prepared]);
+    return {
+      ...result,
+      sun,
+      landscape,
+      compatibility,
+      skyCompatibility,
+      disposeFog,
+      disposeSkyFog,
+    };
+  }, [gltf, fogResources, worldFog, landscapeFog]);
+  useEffect(
+    () => () => {
+      prepared.compatibility.dispose();
+      prepared.skyCompatibility?.dispose();
+      prepared.disposeFog?.();
+      prepared.disposeSkyFog?.();
+    },
+    [prepared],
+  );
   useLayoutEffect(() => {
     if (prepared.sun) return playerLighting?.receivers(prepared.main);
   }, [prepared, playerLighting]);
@@ -325,10 +355,12 @@ function SkyPass({
   sky,
   sun,
   skylight,
+  fallbackSun,
 }: {
   sky: THREE.Scene;
   sun: MapSun | null;
   skylight: boolean;
+  fallbackSun: boolean;
 }) {
   const camera = useMemo(() => skyCameraFor(sky), [sky]);
   useFrame(({ gl, scene, camera: main }) => {
@@ -336,7 +368,10 @@ function SkyPass({
       main instanceof THREE.PerspectiveCamera ? updateSkyCamera(main, camera) : main;
     renderSkyBehindMap(gl, scene, sky, main, backgroundCamera);
   }, 1);
-  return createPortal(<SceneLighting sample={false} sun={sun} skylight={skylight} />, sky);
+  return createPortal(
+    <SceneLighting sample={false} sun={sun} skylight={skylight} fallbackSun={fallbackSun} />,
+    sky,
+  );
 }
 function EnvironmentBackground({
   environment,
@@ -361,7 +396,7 @@ function EnvironmentBackground({
     scene.environment = lighting;
     // The exported backdrop is clamped LDR artwork, not measured HDR radiance.
     // Keep its broad reflected fill below the normalized directional sunlight.
-    scene.environmentIntensity = lighting ? environment!.sky.brightness * 0.35 : 1;
+    scene.environmentIntensity = lighting ? (environment?.sky?.brightness ?? 1) * 0.35 : 1;
     scene.environmentRotation.copy(scene.backgroundRotation);
     invalidate();
     return () => {
@@ -369,25 +404,30 @@ function EnvironmentBackground({
       scene.environmentIntensity = intensity;
       scene.environmentRotation.copy(rotation);
     };
-  }, [scene, lighting, environment?.sky.brightness, invalidate]);
+  }, [scene, lighting, environment?.sky?.brightness, invalidate]);
   useLayoutEffect(() => {
-    resources.current = { fog: environment?.fog || null, cube: state.texture };
+    resources.current = {
+      fog: environment?.fog || null,
+      cube: state.texture,
+      gradient: environment?.gradientFog?.world,
+      landscapeGradient: environment?.gradientFog?.landscape,
+    };
     invalidate();
     return () => {
       resources.current = { fog: null, cube: null };
     };
-  }, [resources, environment?.fog, state.texture, invalidate]);
+  }, [resources, environment?.fog, environment?.gradientFog, state.texture, invalidate]);
   useLayoutEffect(() => {
     const previous = scene.background,
       intensity = scene.backgroundIntensity;
     scene.background = state.texture || new THREE.Color(sample ? '#aeb6b0' : daylightFallback);
-    scene.backgroundIntensity = state.texture ? environment!.sky.brightness : 1;
+    scene.backgroundIntensity = state.texture ? (environment?.sky?.brightness ?? 1) : 1;
     invalidate();
     return () => {
       scene.background = previous;
       scene.backgroundIntensity = intensity;
     };
-  }, [scene, state.texture, sample, environment?.sky.brightness, invalidate]);
+  }, [scene, state.texture, sample, environment?.sky?.brightness, invalidate]);
   useLayoutEffect(() => {
     report(state.identity, state.status, Boolean(lighting));
     return () => report(state.identity, 'pending');
@@ -560,6 +600,7 @@ function World({
   sky,
   sun,
   skylight,
+  fallbackSun,
   environment,
   gradeEnvironment,
   reportEnvironment,
@@ -593,6 +634,7 @@ function World({
   sky: THREE.Scene | null;
   sun: MapSun | null;
   skylight: boolean;
+  fallbackSun: boolean;
   modelScope: ModelScope | null;
   environment: MapEnvironment | null;
   gradeEnvironment: MapEnvironment | null;
@@ -997,11 +1039,12 @@ function World({
         resources={fogResources}
         low={low}
       />
-      {sky && <SkyPass sky={sky} sun={sun} skylight={skylight} />}
+      {sky && <SkyPass sky={sky} sun={sun} skylight={skylight} fallbackSun={fallbackSun} />}
       <SceneLighting
         sample={Boolean(data.sample)}
         sun={sun}
         skylight={skylight}
+        fallbackSun={fallbackSun}
         shadows={shadows}
       />
       {data.sample ? (
@@ -1016,6 +1059,8 @@ function World({
                   scope={modelScope}
                   loaded={reportModel}
                   fogResources={fogResources}
+                  worldFog={Boolean(environment?.fog || environment?.gradientFog?.world)}
+                  landscapeFog={Boolean(environment?.gradientFog?.landscape)}
                   registerFollowModel={registerFollowModel}
                   playerLighting={low ? null : playerLighting}
                 />
@@ -1879,6 +1924,10 @@ export default function Scene({
                             : null
                         }
                         skylight={Boolean(skylight)}
+                        fallbackSun={
+                          !mapAssets.acquisition ||
+                          mapAssets.acquisition.verification === 'version-unverified'
+                        }
                         sky={
                           modelLoad?.url === model && modelLoad.status === 'ready'
                             ? modelLoad.sky

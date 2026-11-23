@@ -34,7 +34,7 @@ async function overhead(page: Page) {
 async function install(
   page: Page,
   environment: () => MapEnvironment,
-  black: 'exact' | 'name-only' = 'exact',
+  source: 'exact' | 'name-only' | 'vertex-light' = 'exact',
 ) {
   await installOriginalCameraProbe(page);
   await page.addInitScript(() => {
@@ -88,7 +88,13 @@ async function install(
   await page.route(`**/map-assets/${qaMap}/desktop/scene.glb`, (route) =>
     route.fulfill({
       contentType: 'model/gltf-binary',
-      body: originalMapGLB(false, undefined, 'tagged', black),
+      body: originalMapGLB(
+        false,
+        undefined,
+        'tagged',
+        source === 'vertex-light' ? undefined : source,
+        source === 'vertex-light',
+      ),
     }),
   );
   await page.route(`**/api/maps/${qaMap}/environment/*.png`, (route) => {
@@ -200,7 +206,37 @@ test('a matching display name and white PBR color do not classify an unrelated S
   page,
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE));
-  await install(page, () => ({ ...qaEnvironment, fog }), 'name-only');
+  let environment: MapEnvironment = qaEnvironment;
+  await install(page, () => environment, 'name-only');
   await open(page);
-  await expect.poll(async () => (await pixel(page)).every((channel) => channel > 150)).toBe(true);
+  const reference = await pixel(page);
+  expect(Math.max(...reference)).toBeGreaterThan(24);
+  environment = { ...qaEnvironment, fog };
+  await remount(page);
+  await expect
+    .poll(async () =>
+      Math.max(
+        ...(await pixel(page)).map((channel, index) => Math.abs(channel - reference[index])),
+      ),
+    )
+    .toBeLessThan(5);
+});
+
+test('a prepared Source COLOR1 stream supplies indirect light to the real shader', async ({
+  page,
+}) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE));
+  const errors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(message.text());
+  });
+  await install(page, () => qaEnvironment, 'vertex-light');
+  await open(page);
+  await expect
+    .poll(async () => {
+      const [red, green, blue] = await pixel(page);
+      return red - Math.max(green, blue);
+    })
+    .toBeGreaterThan(40);
+  expect(errors).toEqual([]);
 });

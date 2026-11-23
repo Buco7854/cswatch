@@ -5,7 +5,7 @@ import type { AssetStatus } from './map-assets';
 
 export const daylightFallback = '#91a7b3';
 export function mapEnvironmentKey(environment: MapEnvironment | null | undefined): string | null {
-  return environment
+  return environment?.sky
     ? JSON.stringify([
         environment.assetVersion,
         environment.sky.brightness,
@@ -28,7 +28,7 @@ export function useMapEnvironment(
   const request = useMemo(() => Symbol('map environment'), [identity]);
   const [resource, setResource] = useState<EnvironmentResource & { request: symbol }>();
   useEffect(() => {
-    if (!identity || !environment) return;
+    if (!identity || !environment?.sky) return;
     let active = true,
       settled = false,
       texture: CubeTexture | undefined;

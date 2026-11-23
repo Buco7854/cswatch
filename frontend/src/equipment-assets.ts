@@ -75,12 +75,8 @@ function useViewmodelAssets(identity: string, enabled: boolean) {
       read: async (signal) =>
         validateViewmodels(await readAssetJSON('/api/assets/viewmodels', 32768, signal)),
       complete: (catalog) => catalog.complete === true,
-      changed: ({ items }) =>
-        setState((previous) =>
-          sameItems(previous?.identity === identity ? previous.items : emptyRigs, items)
-            ? previous
-            : { identity, items },
-        ),
+      fingerprint: ({ items }) => JSON.stringify(items),
+      changed: ({ items }) => setState({ identity, items }),
     });
   }, [identity, enabled]);
   return enabled && state?.identity === identity ? state.items : emptyRigs;
@@ -173,6 +169,7 @@ export function useEquipmentAssets(identity: string, enabled: boolean) {
       complete: (catalog) =>
         catalog.complete === true ||
         Object.keys(equipment.items).every((id) => Boolean(catalog.items[id])),
+      fingerprint: JSON.stringify,
       changed: (catalog) =>
         setState((previous) => {
           const status = Object.keys(catalog.items).length ? 'ready' : 'missing';

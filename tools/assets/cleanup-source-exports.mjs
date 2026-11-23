@@ -24,8 +24,13 @@ export async function cleanupSourceExports({
   selectedMaps([map]);
   const root = resolve(stage);
   const rootIdentity = await realDirectory(root);
-  if (!Array.isArray(sources) || sources.length !== 2 || new Set(sources).size !== 2)
-    throw new Error('Source cleanup requires the two exports from this map installation.');
+  if (
+    !Array.isArray(sources) ||
+    sources.length < 1 ||
+    sources.length > 2 ||
+    new Set(sources).size !== sources.length
+  )
+    throw new Error('Source cleanup requires the exact main export and optional sky export.');
   const expected = [new RegExp(`^${map}-export-[0-2]$`), new RegExp(`^${map}-sky-export-[0-2]$`)];
   const directories = [];
   for (const [index, source] of sources.entries()) {

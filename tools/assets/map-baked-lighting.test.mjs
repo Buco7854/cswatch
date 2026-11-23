@@ -72,7 +72,11 @@ test('prepared lightmap optics preserve secondary UVs, atlas bytes and optional 
     ['materials/qa/mask.vtex_c', { bytes: await png('#0f0'), role: 'g_tBlendModulation' }],
     ['materials/qa/detail.vtex_c', { bytes: await png('#00f'), role: 'g_tLayer1Detail' }],
   ]);
-  const result = bindBakedLighting(d, { bytes, directionBytes, edge: 16 }, layerImages);
+  const result = bindBakedLighting(
+    d,
+    { bytes, directionBytes, edge: 16, irradianceRange: 128 },
+    layerImages,
+  );
   assert.equal(result.primitives, 1);
   assert.equal(result.layeredPrimitives, 1);
   await d.transform(dedup(), prune({ keepSolidTextures: true }));
@@ -81,6 +85,7 @@ test('prepared lightmap optics preserve secondary UVs, atlas bytes and optional 
   const restored = await io.readBinary(await io.writeBinary(d));
   const surface = restored.getRoot().listMeshes()[0].listPrimitives()[0];
   const baked = surface.getMaterial().getExtension(format.extension);
+  assert.equal(baked.getRange(), 128);
   assert.deepEqual([...surface.getAttribute('TEXCOORD_1').getArray()], [0, 0, 1, 0, 0, 1]);
   assert.deepEqual(Buffer.from(baked.getTexture().getImage()), bytes);
   assert.deepEqual(Buffer.from(baked.getDirection().getImage()), directionBytes);
@@ -107,13 +112,11 @@ test('authored atlas pixels are budgeted without resizing ordinary chart data aw
 test('low extra scratch headroom skips the optional native atlas before touching inputs', async () => {
   const requested = [];
   const result = await prepareInstalledBakedLighting({
-    map: 'de_mirage',
-    manifest: '8225060435969537482',
     hasHeadroom: async (bytes) => {
       requested.push(bytes);
       return false;
     },
   });
-  assert.equal(result, undefined);
-  assert.deepEqual(requested, [448 * 1024 ** 2]);
+  assert.deepEqual(result, { args: [], proof: { path: 'pbr', reason: 'lightmap_storage_budget' } });
+  assert.deepEqual(requested, [672 * 1024 ** 2]);
 });

@@ -408,11 +408,9 @@ export async function demoMapAssetRoutes(
       if (!environmentFaces.includes(request.params.face as (typeof environmentFaces)[number]))
         throw new HttpError(404, 'Map environment not found.');
       const item = await repository.loadEnvironment(request.params.name, location);
-      if (!item) throw new HttpError(404, 'Map environment not found.');
-      return reply
-        .header('Cache-Control', 'private, no-store')
-        .type('image/png')
-        .send(item.images[request.params.face as (typeof environmentFaces)[number]]);
+      const image = item?.images[request.params.face as (typeof environmentFaces)[number]];
+      if (!image) throw new HttpError(404, 'Map environment not found.');
+      return reply.header('Cache-Control', 'private, no-store').type('image/png').send(image);
     },
   );
 }
