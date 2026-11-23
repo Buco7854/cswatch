@@ -168,10 +168,16 @@ function screenBounds(
   if (width > 0 && height > 0) return { x, y, width, height };
 }
 
+function smokeDepthExtent(required: number, current: number, limit: number) {
+  if (required <= current) return Math.min(current, limit);
+  return Math.min(limit, Math.max(Math.ceil(required / 32) * 32, current * 2));
+}
+
 export class SmokeVolumePass {
   private readonly geometry = new PlaneGeometry();
   private readonly surfaces = new Map<string, Surface>();
   private readonly sunlight = new Map<string, number>();
+  private reserveDepthStorage = true;
   private targetStatus = new WeakMap<
     WebGLRenderTarget,
     {
@@ -307,13 +313,26 @@ export class SmokeVolumePass {
         top = Math.max(top, rect.y + rect.height);
       }
       const crop = { x: left, y: bottom, width: right - left, height: top - bottom };
-      const width = Math.ceil(crop.width / 32) * 32;
-      const height = Math.ceil(crop.height / 32) * 32;
+      // Camera motion changes the union of the smoke rectangles every frame.
+      // Keep its storage while the crop fits. Only the exact crop is drawn and
+      // sampled, and a smaller drawing buffer also lowers the capacity ceiling.
+      const width = this.reserveDepthStorage
+        ? smokeDepthExtent(crop.width, this.depth.width, this.size.x)
+        : crop.width;
+      const height = this.reserveDepthStorage
+        ? smokeDepthExtent(crop.height, this.depth.height, this.size.y)
+        : crop.height;
       if (width !== this.depth.width || height !== this.depth.height)
         this.depth.setSize(width, height);
       this.depth.viewport.set(0, 0, crop.width, crop.height);
       cropSmokeCamera(this.depthCamera, camera, crop, this.size.x, this.size.y, far + 0.01);
-      if (!this.bindTarget(gl, this.depth)) return false;
+      if (!this.bindTarget(gl, this.depth)) {
+        if (width === crop.width && height === crop.height) return false;
+        // A tight allocation can still succeed under GPU memory pressure.
+        this.reserveDepthStorage = false;
+        this.depth.setSize(crop.width, crop.height);
+        if (!this.bindTarget(gl, this.depth)) return false;
+      }
       this.depthPass.render(gl, world, this.depthCamera);
       gl.autoClear = false;
       const rendered = [];
@@ -348,6 +367,7 @@ export class SmokeVolumePass {
   }
 
   revalidateTargets() {
+    this.reserveDepthStorage = true;
     this.targetStatus = new WeakMap();
   }
 

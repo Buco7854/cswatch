@@ -39,6 +39,7 @@ export function renderSkyBehindMap(
   sky: Scene,
   mainCamera: Camera,
   skyCamera: Camera,
+  beforeWorld?: () => void,
 ) {
   const autoClear = renderer.autoClear,
     background = main.background,
@@ -56,6 +57,7 @@ export function renderSkyBehindMap(
     withSceneEnvironment(main, sky, () => renderer.render(sky, skyCamera));
     renderer.clearDepth();
     main.background = null;
+    beforeWorld?.();
     renderer.render(main, mainCamera);
   } finally {
     main.background = background;

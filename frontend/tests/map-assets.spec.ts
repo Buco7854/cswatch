@@ -1305,6 +1305,82 @@ test('failed sky stays separate from map readiness and retries a new version wit
   await page.screenshot({ path: info.outputPath('original-QA-sky-recovery.png') });
 });
 
+test('graded sky and world resolve once across POV, follow, free camera and resize', async ({
+  page,
+}) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE));
+  await page.addInitScript(() => {
+    const gl = WebGL2RenderingContext.prototype;
+    // Exercise the standard WebGL2 resolve path even on implementations with implicit resolves.
+    const extension = gl.getExtension;
+    gl.getExtension = function (name: string) {
+      return name === 'WEBGL_multisampled_render_to_texture' ? null : extension.call(this, name);
+    } as typeof extension;
+    const blit = gl.blitFramebuffer;
+    const draw = gl.drawArrays;
+    let count = 0;
+    gl.blitFramebuffer = function (...args) {
+      if (
+        args[0] === 0 &&
+        args[1] === 0 &&
+        args[2] === this.drawingBufferWidth &&
+        args[3] === this.drawingBufferHeight &&
+        args[8] === this.COLOR_BUFFER_BIT
+      )
+        count++;
+      return blit.apply(this, args);
+    };
+    gl.drawArrays = function (mode, start, vertices) {
+      if (
+        mode === this.TRIANGLES &&
+        vertices === 3 &&
+        !this.getParameter(this.DRAW_FRAMEBUFFER_BINDING)
+      ) {
+        if (this.canvas instanceof HTMLCanvasElement) {
+          const scene = this.canvas.closest<HTMLElement>('.scene[data-landscape-state="ready"]');
+          if (scene)
+            this.canvas.dataset.qaGradeFrame = `${scene.dataset.cameraMode}/${this.drawingBufferWidth}x${this.drawingBufferHeight}/${count}`;
+        }
+        count = 0;
+      }
+      return draw.call(this, mode, start, vertices);
+    };
+  });
+  await page.setViewportSize({ width: 800, height: 480 });
+  await install(
+    page,
+    { model: `/map-assets/${qaMap}/desktop/scene.glb`, mobile: null, overview: qaOverview },
+    {
+      model: (route) =>
+        route.fulfill({
+          contentType: 'model/gltf-binary',
+          body: originalMapGLB(false, undefined, 'tagged'),
+        }),
+    },
+  );
+  await open(page);
+  for (const [width, height] of [
+    [800, 480],
+    [860, 500],
+  ]) {
+    await page.setViewportSize({ width, height });
+    await expect(page.locator('.scene canvas')).toHaveAttribute(
+      'data-qa-grade-frame',
+      `pov/${width}x${height}/1`,
+    );
+  }
+  for (const [label, mode] of [
+    ['Third-person follow', 'follow'],
+    ['Free camera', 'orbit'],
+  ]) {
+    await camera(page, label);
+    await expect(page.locator('.scene canvas')).toHaveAttribute(
+      'data-qa-grade-frame',
+      `${mode}/860x500/1`,
+    );
+  }
+});
+
 test('tagged original landscape stays behind main geometry even when it is physically closer to the camera', async ({
   page,
 }, info) => {

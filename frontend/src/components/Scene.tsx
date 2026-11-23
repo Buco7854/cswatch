@@ -75,6 +75,7 @@ import MapUnavailable from './MapUnavailable';
 import { mapAcquisitionMessage, type DemoMapState } from '../demo-map-assets';
 import type { AssetStatus } from '../map-assets';
 import { assertMapBaseColorTextures, prepareMapModel } from '../map-model';
+import { beginFinalGradePass } from '../map-grade-target';
 import { renderSkyBehindMap, skyCameraFor, updateSkyCamera } from '../sky-render';
 import { useMapGLTF, useMapModelScope } from '../map-loader';
 import type { ModelProgressSource, ModelScope } from '../model-cache';
@@ -124,6 +125,7 @@ import PovEquipmentPass from './PovEquipmentPass';
 import PovViewmodel from './PovViewmodel';
 import { useMapShadowCache } from '../useMapShadowCache';
 import SceneGrade from './SceneGrade';
+import { installMapDrawRanges } from '../map-draw-range';
 import SceneLighting from './SceneLighting';
 import { mapSun, type MapSun } from '../map-sun';
 import { useMapSkyLighting } from '../useMapSkyLighting';
@@ -340,6 +342,8 @@ function Model({
     },
     [prepared],
   );
+  const { gl, scene } = useThree();
+  useLayoutEffect(() => installMapDrawRanges(gl, scene, prepared.main), [gl, scene, prepared]);
   useLayoutEffect(() => {
     if (prepared.sun) return playerLighting?.receivers(prepared.main);
   }, [prepared, playerLighting]);
@@ -356,17 +360,26 @@ function SkyPass({
   sun,
   skylight,
   fallbackSun,
+  povFollows,
 }: {
   sky: THREE.Scene;
   sun: MapSun | null;
   skylight: boolean;
   fallbackSun: boolean;
+  povFollows: boolean;
 }) {
   const camera = useMemo(() => skyCameraFor(sky), [sky]);
   useFrame(({ gl, scene, camera: main }) => {
     const backgroundCamera =
       main instanceof THREE.PerspectiveCamera ? updateSkyCamera(main, camera) : main;
-    renderSkyBehindMap(gl, scene, sky, main, backgroundCamera);
+    renderSkyBehindMap(
+      gl,
+      scene,
+      sky,
+      main,
+      backgroundCamera,
+      povFollows ? undefined : () => beginFinalGradePass(gl),
+    );
   }, 1);
   return createPortal(
     <SceneLighting sample={false} sun={sun} skylight={skylight} fallbackSun={fallbackSun} />,
@@ -1039,7 +1052,15 @@ function World({
         resources={fogResources}
         low={low}
       />
-      {sky && <SkyPass sky={sky} sun={sun} skylight={skylight} fallbackSun={fallbackSun} />}
+      {sky && (
+        <SkyPass
+          povFollows={Boolean(showPovEquipment)}
+          sky={sky}
+          sun={sun}
+          skylight={skylight}
+          fallbackSun={fallbackSun}
+        />
+      )}
       <SceneLighting
         sample={Boolean(data.sample)}
         sun={sun}
