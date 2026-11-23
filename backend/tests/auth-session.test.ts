@@ -37,12 +37,12 @@ async function fixture(
   });
   const db = new Store(dir);
   const { app, routes } = await withRouteInventory(() => createApp(c, db), register);
-  const login = async (guestCookie = '') => {
+  const login = async (guestCookie = '', requestHeaders: Record<string, string> = {}) => {
     const headers = await browserBootstrap(app, c);
     return app.inject({
       method: 'POST',
       url: '/api/auth/login',
-      headers: { ...headers, cookie: headers.cookie + guestCookie },
+      headers: { ...headers, ...requestHeaders, cookie: headers.cookie + guestCookie },
       payload: { username: 'operator', password },
     });
   };
@@ -824,19 +824,29 @@ test('a read bound to a previous tab session never returns data for the active s
   }
 });
 
-test('an indeterminate proxy hop stays unknown in account audit and session origin', async () => {
-  const f = await fixture({ MFA_REQUIRED_ROLES: 'none', TRUSTED_PROXY_IPS: '127.0.0.1' });
-  try {
-    const entered = await f.login();
-    assert.equal(entered.statusCode, 200, entered.body);
-    const user = entered.json().user.id;
-    assert.equal(
-      f.db.one("SELECT address FROM audit WHERE action='password.sign_in' AND target=?", user)!
-        .address,
-      null,
-    );
-    assert.equal(f.db.one('SELECT address FROM sessions WHERE user_id=?', user)!.address, null);
-  } finally {
-    await f.close();
+test('account audit and session origin use the direct socket, and leave incomplete forwarding unknown', async (t) => {
+  for (const [name, headers, auditAddress, sessionNetwork] of [
+    ['direct connection', {}, '127.0.0.1', '127.0.0.0/24'],
+    ['incomplete forwarding', { 'x-forwarded-proto': 'https' }, null, null],
+  ] as const) {
+    await t.test(name, async () => {
+      const f = await fixture({ MFA_REQUIRED_ROLES: 'none', TRUSTED_PROXY_IPS: '127.0.0.1' });
+      try {
+        const entered = await f.login('', headers);
+        assert.equal(entered.statusCode, 200, entered.body);
+        const user = entered.json().user.id;
+        assert.equal(
+          f.db.one("SELECT address FROM audit WHERE action='password.sign_in' AND target=?", user)!
+            .address,
+          auditAddress,
+        );
+        assert.equal(
+          f.db.one('SELECT address FROM sessions WHERE user_id=?', user)!.address,
+          sessionNetwork,
+        );
+      } finally {
+        await f.close();
+      }
+    });
   }
 });

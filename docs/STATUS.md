@@ -1,5 +1,7 @@
 # Feature status
 
+A LAN administrator can connect directly or behind a trusted proxy on the same subnet. Server-side Steam import diagnostics record the failed stage and any numeric Steam result. [Operator guide](ACCESS-SETUP.md)
+
 During 3D playback, detailed map batches skip triangle blocks outside the camera view. The graded renderer reuses the same multisampled color buffer for sky, map and first-person equipment. Smoke reuses its depth buffer as its screen coverage changes. Timeline markers update when the recorded events or layout change. [Viewer measurements](VERIFICATION.md)
 
 The viewer decodes supported embedded map images directly and skips disjoint triangle groups during camera and terrain queries. [Matched Mirage measurements](VERIFICATION.md#viewer-opening-and-playback-2026-11-23)

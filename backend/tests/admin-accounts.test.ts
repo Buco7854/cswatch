@@ -300,6 +300,32 @@ test('admin IP restrictions use the socket and a configured proxy chain', async 
   );
 });
 
+test('the admin page and API resolve direct and forwarded LAN clients in the same proxy and admin subnet', async (t) => {
+  const f = await fixture(t, {
+    MFA_REQUIRED_ROLES: 'none',
+    ADMIN_ALLOWED_IPS: '192.168.0.0/16',
+    TRUSTED_PROXY_IPS: '192.168.0.0/16',
+  });
+  for (const [remoteAddress, headers, expected] of [
+    ['192.168.1.151', {}, true],
+    ['192.168.1.10', { 'x-real-ip': '192.168.1.151' }, true],
+    ['192.168.1.10', { 'x-forwarded-for': '192.168.1.151, 192.168.1.11' }, true],
+    ['192.168.1.10', { 'x-real-ip': '203.0.113.42' }, false],
+    ['192.168.1.10', { 'x-forwarded-proto': 'https' }, false],
+    ['192.168.1.10', { 'x-real-ip': 'invalid' }, false],
+    ['203.0.113.42', { 'x-real-ip': '192.168.1.151' }, false],
+  ] as const) {
+    const request = { remoteAddress, headers: { ...f.admin, ...headers } };
+    for (const url of ['/admin', '/api/admin/users']) {
+      assert.equal((await f.inject({ ...request, url })).statusCode, expected ? 200 : 403);
+    }
+    assert.equal(
+      (await f.inject({ ...request, url: '/api/config' })).json().admin_access,
+      expected,
+    );
+  }
+});
+
 test('admin account pages paginate, exclude guests and withhold demo contents and credential materials', async (t) => {
   const f = await fixture(t, { MFA_REQUIRED_ROLES: 'none' });
   const member = f.user('player_with_underscore');

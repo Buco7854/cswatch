@@ -81,7 +81,8 @@ export function adminClientAddress(request: FastifyRequest, config: Config) {
     /^(?:forwarded$|x-forwarded-|x-real-ip$|cf-connecting-ip$|true-client-ip$|x-client-ip$)/i.test(
       name,
     );
-  if (!contains(proxies, peer)) return Object.keys(headers).some(forwardedName) ? null : peer;
+  if (!Object.keys(headers).some(forwardedName)) return peer;
+  if (!contains(proxies, peer)) return null;
   const real = headers['x-real-ip'];
   // A trusted single-hop proxy can overwrite X-Real-IP instead of sending a chain.
   const forwarded = headers['x-forwarded-for'] ?? real;
@@ -105,8 +106,6 @@ export function adminClientAddress(request: FastifyRequest, config: Config) {
   const chain = forwarded.split(',').map((item) => canonicalAddress(item.trim()));
   if (chain.length > 32 || chain.some((item) => !item)) return null;
   for (let i = chain.length - 1; i >= 0 && contains(proxies, peer); i--) peer = chain[i]!;
-  // Every hop is trusted infrastructure: there is no distinct client address.
-  if (contains(proxies, peer)) return null;
   if (real !== undefined && (typeof real !== 'string' || canonicalAddress(real)?.ip !== peer.ip))
     return null;
   return peer;

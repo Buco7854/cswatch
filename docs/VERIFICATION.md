@@ -1,5 +1,9 @@
 # Verification record
 
+## LAN administrator access and Steam error logs
+
+Node 24 passed the 60 focused admin network, account, Steam Coordinator, import and provider request cases. With identical trusted and allowed LAN ranges, the admin page, API and navigation accepted both a direct client and a client reported by a trusted proxy through either address header. Requests carrying a malformed or incomplete forwarding chain or a client outside the allowed range were denied. Synthetic SDK responses and deadline expiry exercised the warning stage, reason and numeric Steam result. The operator’s proxy and a live Steam account were outside these checks.
+
 ## Steam import sign-in diagnostics
 
 On Node 24, the Steam Coordinator, private import and provider request suites passed 33 cases with synthetic Steam responses. They covered disabled imports, account refusal, email and mobile challenges, an unspecified Guard method, repeated attempts during a pause and replay expiry. Two production Chromium cases exercised the Steam import row in English and French, including the French server-account error and the paired upload link after a rejection. Live sign-in and the cause of the reported deployment failure remain unverified.
