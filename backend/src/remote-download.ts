@@ -1,12 +1,13 @@
 import { lookup } from 'node:dns/promises';
 import { BlockList, isIP } from 'node:net';
 import { request as httpsRequest } from 'node:https';
+import { request as httpRequest } from 'node:http';
 import { createWriteStream } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { ClientRequest, IncomingMessage, RequestOptions } from 'node:http';
-import { HttpError } from './security.js';
+import { HttpError } from './errors.js';
 
 const blockedV4 = new BlockList();
 for (const [address, prefix] of [
@@ -69,8 +70,54 @@ export function validateRemoteUrl(value: string, allowedHosts: readonly string[]
   return url;
 }
 
+type SteamReplayFile = { outcome_id: string; token: number };
+
+/** Only the coordinator-supplied, code-bound Valve object may use plain HTTP. */
+export function validateSteamReplayUrl(value: string, expected: SteamReplayFile) {
+  const parts =
+    value.length <= 128 &&
+    /^https?:\/\/replay[0-9]{1,3}\.valve\.net\/730\/([0-9]{21})_([0-9]{10})\.dem\.bz2$/.exec(value);
+  if (
+    !parts ||
+    parts[0] !== value ||
+    parts[1] !== expected.outcome_id.padStart(21, '0') ||
+    Number(parts[2]) > 0xffffffff ||
+    Number(parts[2]) % 65536 !== expected.token
+  )
+    throw new HttpError(502, 'Steam could not confirm the replay for this match.');
+  return new URL(value);
+}
+
 type Address = { address: string; family: number };
 type DownloadLookup = (hostname: string) => Promise<Address[]>;
+class DownloadNetworkFailure extends HttpError {}
+
+const networkErrors = new Set([
+  'EAI_AGAIN',
+  'EAI_FAIL',
+  'ENOTFOUND',
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'EPIPE',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+  'ETIMEDOUT',
+  'EPROTO',
+  'ERR_STREAM_PREMATURE_CLOSE',
+  'CERT_HAS_EXPIRED',
+  'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+  'DEPTH_ZERO_SELF_SIGNED_CERT',
+]);
+function networkError(error: unknown) {
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  return (
+    error instanceof DownloadNetworkFailure ||
+    Boolean(
+      code &&
+      (networkErrors.has(code) || code.startsWith('ERR_TLS_') || code.startsWith('ERR_SSL_')),
+    )
+  );
+}
 
 export async function resolveRemoteAddress(
   url: URL,
@@ -79,8 +126,9 @@ export async function resolveRemoteAddress(
   let addresses: Address[];
   try {
     addresses = await resolver(url.hostname);
-  } catch {
-    throw new HttpError(502, 'The demo source could not be resolved.');
+  } catch (error) {
+    const Failure = networkError(error) ? DownloadNetworkFailure : HttpError;
+    throw new Failure(502, 'The demo source could not be resolved.');
   }
   // Reject mixed public/private answers rather than selecting only the public answer.
   if (
@@ -98,8 +146,10 @@ type Request = (
   options: RequestOptions,
   callback: (response: IncomingMessage) => void,
 ) => Pick<ClientRequest, 'on' | 'end' | 'destroy'>;
-type RemoteDownloadOptions = {
-  allowedHosts: readonly string[];
+type DownloadDependencies = { lookup?: DownloadLookup; request?: Request };
+type TransferOptions = {
+  onResponse?: (status: number, retryAfter?: string | null) => void;
+  onNetworkFailure?: () => void;
   maxBytes: number;
   signal: AbortSignal;
   sha256?: string;
@@ -126,22 +176,62 @@ async function abortable<T>(promise: Promise<T>, signal: AbortSignal) {
 export async function downloadRemoteDemo(
   value: string,
   destination: string,
-  options: RemoteDownloadOptions,
-  dependencies: { lookup?: DownloadLookup; request?: Request } = {},
+  options: TransferOptions & { allowedHosts: readonly string[] },
+  dependencies: DownloadDependencies = {},
 ) {
-  const url = validateRemoteUrl(value, options.allowedHosts);
+  return transfer(
+    validateRemoteUrl(value, options.allowedHosts),
+    destination,
+    options,
+    dependencies,
+    false,
+  );
+}
+
+export async function downloadSteamReplay(
+  value: string,
+  destination: string,
+  options: TransferOptions & { expected: SteamReplayFile },
+  dependencies: DownloadDependencies = {},
+) {
+  return transfer(
+    validateSteamReplayUrl(value, options.expected),
+    destination,
+    options,
+    dependencies,
+    true,
+  );
+}
+
+async function transfer(
+  url: URL,
+  destination: string,
+  options: TransferOptions,
+  dependencies: DownloadDependencies,
+  steam: boolean,
+) {
   if (!Number.isSafeInteger(options.maxBytes) || options.maxBytes <= 0)
     throw new Error('A positive download byte limit is required.');
   if (options.sha256 && !/^[a-f0-9]{64}$/i.test(options.sha256))
     throw new Error('Invalid expected SHA-256 digest.');
-  const signal = AbortSignal.any([options.signal, AbortSignal.timeout(180000)]);
+  const deadline = AbortSignal.timeout(180000);
+  const signal = AbortSignal.any([options.signal, deadline]);
+  function reportFailure(error: unknown): never {
+    if (!options.signal.aborted && (deadline.aborted || networkError(error)))
+      options.onNetworkFailure?.();
+    throw error;
+  }
   signal.throwIfAborted();
-  const address = await abortable(resolveRemoteAddress(url, dependencies.lookup), signal);
+  const address = await abortable(resolveRemoteAddress(url, dependencies.lookup), signal).catch(
+    reportFailure,
+  );
   signal.throwIfAborted();
   let bytes = 0;
   const hash = createHash('sha256');
   const response = await new Promise<IncomingMessage>((resolve, reject) => {
-    const request = (dependencies.request ?? httpsRequest)(
+    const request = (
+      dependencies.request ?? (url.protocol === 'https:' ? httpsRequest : httpRequest)
+    )(
       url,
       {
         agent: false,
@@ -155,14 +245,40 @@ export async function downloadRemoteDemo(
     );
     request.on('error', reject);
     request.end();
-  });
+  }).catch(reportFailure);
+  try {
+    if (steam) {
+      const peer = response.socket?.remoteAddress;
+      const pinned = new BlockList();
+      const family = address.family === 6 ? 'ipv6' : 'ipv4';
+      pinned.addAddress(address.address, family);
+      if (
+        !peer ||
+        !isPublicDownloadAddress(peer) ||
+        isIP(peer) !== address.family ||
+        !pinned.check(peer, family)
+      )
+        throw new HttpError(502, 'The demo source resolved to a restricted network address.');
+    }
+    options.onResponse?.(response.statusCode ?? 0, response.headers['retry-after']);
+  } catch (error) {
+    response.destroy();
+    throw error;
+  }
   if (response.statusCode !== 200) {
     const unavailable = [401, 403, 404, 410].includes(response.statusCode ?? 0);
     response.destroy();
+    if (steam && (response.statusCode === 429 || response.statusCode === 503))
+      throw new HttpError(
+        response.statusCode,
+        'Steam is temporarily unavailable or limiting requests. Try again later.',
+      );
     if (unavailable)
       throw new HttpError(
-        502,
+        steam ? 404 : 502,
         'The demo download is unavailable or has expired. Try again or upload manually.',
+        undefined,
+        steam ? 'steam_no_demo' : undefined,
       );
     throw new HttpError(502, 'The demo source did not return a downloadable file.');
   }
@@ -188,9 +304,10 @@ export async function downloadRemoteDemo(
   });
   await pipeline(response, limiter, createWriteStream(destination, { flags: 'wx', mode: 0o600 }), {
     signal,
-  });
-  if (!bytes || (length && bytes !== Number(length)))
-    throw new HttpError(502, 'The demo download was incomplete.');
+  }).catch(reportFailure);
+  if (length && bytes !== Number(length))
+    reportFailure(new DownloadNetworkFailure(502, 'The demo download was incomplete.'));
+  if (!bytes) throw new HttpError(502, 'The demo download was incomplete.');
   if (options.sha256 && hash.digest('hex') !== options.sha256.toLowerCase())
     throw new HttpError(502, 'The demo did not match the expected checksum.');
   return { bytes };

@@ -73,6 +73,10 @@ import {
 } from './auth-routes.js';
 import { registerFactorRoutes } from './factors.js';
 import { recoveryRoutes } from './recovery.js';
+import { ProviderRequests } from './provider-requests.js';
+import { createSteamCoordinator } from './steam-coordinator.js';
+import { steamImportRoutes } from './steam-import.js';
+import { prepareSteamImports, SteamAutoImporter } from './steam-auto-import.js';
 import { steamHistoryRoutes } from './steam-history.js';
 import { openEncryptionKey, openEncryptionKeyForStartup } from './encryption-key.js';
 import { providerRoutes } from './providers.js';
@@ -102,7 +106,11 @@ import { requestLogger } from './request-logger.js';
 export async function createApp(
   c: Config,
   db = new Store(c.dataDir),
-  providerDownload?: Parameters<typeof providerRoutes>[3],
+  providerDownload?: Parameters<typeof providerRoutes>[4],
+  steam: {
+    steamCoordinator?: Parameters<typeof steamImportRoutes>[3];
+    steamDownload?: Parameters<typeof steamImportRoutes>[5];
+  } = {},
 ) {
   process.umask(0o077);
   const key = openEncryptionKey(c, db);
@@ -405,7 +413,10 @@ export async function createApp(
     if (status === 403 && r.user && isRead(r) && adminPage(r.url) && acceptsHtml(r))
       return sendAppShell(reply.code(403));
     if (status >= 500) r.log.error({ err: { code, statusCode: status } }, 'Request failed');
-    if (status === 429 && !reply.hasHeader('retry-after'))
+    if (
+      (status === 429 || (status === 503 && e instanceof HttpError && e.retryAfter)) &&
+      !reply.hasHeader('retry-after')
+    )
       reply.header('Retry-After', String(e instanceof HttpError ? (e.retryAfter ?? 60) : 60));
     return reply.code(status).send({
       ...(e instanceof HttpError && e.code ? { code: e.code } : {}),
@@ -417,14 +428,24 @@ export async function createApp(
             : 'The request could not be completed. Try again later.',
     });
   });
-  const providers = await providerRoutes(app, db, c, providerDownload);
-  await authRoutes(app, db, c, providers.invalidate, mail);
+  const requests = new ProviderRequests(db, c.providerLimits);
+  const providers = await providerRoutes(app, db, c, requests, providerDownload);
+  await authRoutes(app, db, c, requests, providers.invalidate, mail);
   await registerFactorRoutes(app, db, c, key);
   await recoveryRoutes(app, db, c);
   accountMailRoutes(app, db, c, mail);
   await setupRoutes(app, db, c, mail);
   await guestRoutes(app, db, c);
-  steamHistoryRoutes(app, db, c, key);
+  prepareSteamImports(db);
+  const coordinator = steam.steamCoordinator ?? createSteamCoordinator(c, requests);
+  const imports = steamImportRoutes(app, db, c, coordinator, requests, steam.steamDownload);
+  const sync = steamHistoryRoutes(app, db, c, key, requests, (userId) =>
+    autoImports.cancel(userId),
+  );
+  const autoImports = new SteamAutoImporter(db, c, sync, imports.importAutomatic);
+  app.addHook('onReady', async () => {
+    autoImports.start(() => app.log.error('Steam automatic import queue could not be checked'));
+  });
   await equipmentAssetRoutes(app, db.root, c.mapAssetsDir, c.mapJobsDir);
   await gameplaySoundAssetRoutes(app, db.root, c.mapAssetsDir);
   await equipmentModelAssetRoutes(app, db.root, c.mapAssetsDir, c.mapJobsDir);
@@ -582,26 +603,31 @@ export async function createApp(
       checkUploadOwner();
       const uploadMb = r.user ? c.maxUploadMb : Math.min(c.maxUploadMb, c.guestStorageMb),
         file = await r.file({ limits: { fileSize: uploadMb * 1024 ** 2 } });
-      if (!file)
-        throw new HttpError(
-          400,
-          steam_match
-            ? 'Choose a .dem, .dem.zst or .dem.bz2 file.'
-            : 'Choose a .dem or .dem.zst file.',
-        );
+      const formats = steam_match
+        ? {
+            extensions: ['.dem', '.dem.zst', '.dem.bz2'],
+            choose: 'Choose a .dem, .dem.zst or .dem.bz2 file.',
+            unsupported: 'Only .dem, .dem.zst and .dem.bz2 files are supported for Steam matches.',
+          }
+        : faceit
+          ? {
+              extensions: ['.dem', '.dem.zst', '.dem.gz'],
+              choose: 'Choose a .dem, .dem.zst or .dem.gz file.',
+              unsupported:
+                'Only .dem, .dem.zst and .dem.gz files are supported for FACEIT matches.',
+            }
+          : {
+              extensions: ['.dem', '.dem.zst'],
+              choose: 'Choose a .dem or .dem.zst file.',
+              unsupported: 'Only .dem and .dem.zst files are supported.',
+            };
+      if (!file) throw new HttpError(400, formats.choose);
       const filename = basename(file.filename),
         lower = filename.toLowerCase(),
-        suffix = (steam_match ? ['.dem', '.dem.zst', '.dem.bz2'] : ['.dem', '.dem.zst']).find(
-          (candidate) => lower.endsWith(candidate),
-        );
+        suffix = formats.extensions.find((candidate) => lower.endsWith(candidate));
       if (!suffix) {
         file.file.resume();
-        throw new HttpError(
-          400,
-          steam_match
-            ? 'Only .dem, .dem.zst and .dem.bz2 files are supported for Steam matches.'
-            : 'Only .dem and .dem.zst files are supported.',
-        );
+        throw new HttpError(400, formats.unsupported);
       }
       const ext = suffix.slice(suffix.lastIndexOf('.'));
       const name =
@@ -624,7 +650,7 @@ export async function createApp(
         name,
         r.user ? 'upload' : 'guest',
         null,
-        null,
+        steam_match ? 'steam:' + steam_match : null,
         (deadline) => {
           checkUploadOwner();
           if (r.user) return;
@@ -852,6 +878,8 @@ export async function createApp(
     return sendAppShell(reply);
   });
   app.addHook('onClose', async () => {
+    await autoImports.close();
+    await coordinator.close();
     await mail.close();
     db.close();
   });

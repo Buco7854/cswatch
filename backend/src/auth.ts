@@ -9,7 +9,8 @@ import { emailDeliveryEnabled, type Config } from './config.js';
 import { changeAccountEmail, requireAvailableEmail } from './email-identity.js';
 import { acceptsHtml } from './request-security.js';
 import { fetchSteamName } from './steam-name.js';
-import { readUpstreamText } from './upstream.js';
+import type { ProviderRequests } from './provider-requests.js';
+import { requestProvider, readUpstreamText } from './upstream.js';
 import {
   activeUserSessions,
   canSignIn,
@@ -93,6 +94,7 @@ export async function authRoutes(
   app: FastifyInstance,
   db: Store,
   c: Config,
+  requests: ProviderRequests,
   invalidateProviderCache: (userId: string) => void,
   mail?: AccountMail,
 ) {
@@ -577,7 +579,7 @@ export async function authRoutes(
         let steamName: string | null = null;
         steamVerifications++;
         try {
-          await verifySteam(q);
+          await verifySteam(q, requests);
           if (
             initial.stored.purpose === 'login' &&
             !identity &&
@@ -585,7 +587,7 @@ export async function authRoutes(
           ) {
             requireSteam();
             checkState();
-            steamName = await fetchSteamName(subject, c.steamApiKey);
+            steamName = await fetchSteamName(subject, c.steamApiKey, requests);
           }
         } finally {
           steamVerifications--;
@@ -722,32 +724,41 @@ export async function authRoutes(
   );
 }
 
-async function verifySteam(q: Record<string, string>) {
+async function verifySteam(q: Record<string, string>, requests: ProviderRequests) {
   const verification = new URLSearchParams(
     Object.entries(q).filter(([key]) => key.startsWith('openid.')),
   );
   verification.set('openid.mode', 'check_authentication');
   try {
-    const result = await fetch(steamEndpoint, {
-      method: 'POST',
-      body: verification,
-      signal: AbortSignal.timeout(15000),
-      redirect: 'error',
-    });
-    if (!result.ok) {
-      await result.body?.cancel();
-      throw new Error();
-    }
-    const fields = new Map<string, string>();
-    for (const line of (await readUpstreamText(result, 16384)).split(/\r?\n/)) {
-      if (!line) continue;
-      const colon = line.indexOf(':');
-      const key = line.slice(0, colon);
-      if (colon < 1 || fields.has(key)) throw new Error();
-      fields.set(key, line.slice(colon + 1));
-    }
-    if (fields.get('ns') !== steamNamespace || fields.get('is_valid') !== 'true') throw new Error();
-  } catch {
+    await requestProvider(
+      requests,
+      'steamOpenId',
+      steamEndpoint,
+      {
+        method: 'POST',
+        body: verification,
+        signal: AbortSignal.timeout(15000),
+      },
+      'Steam could not verify this sign-in. Try again.',
+      async (result) => {
+        if (!result.ok) {
+          await result.body?.cancel();
+          throw new Error();
+        }
+        const fields = new Map<string, string>();
+        for (const line of (await readUpstreamText(result, 16384)).split(/\r?\n/)) {
+          if (!line) continue;
+          const colon = line.indexOf(':');
+          const key = line.slice(0, colon);
+          if (colon < 1 || fields.has(key)) throw new Error();
+          fields.set(key, line.slice(colon + 1));
+        }
+        if (fields.get('ns') !== steamNamespace || fields.get('is_valid') !== 'true')
+          throw new Error();
+      },
+    );
+  } catch (error) {
+    if (error instanceof HttpError && error.statusCode === 429) throw error;
     throw new HttpError(400, 'Steam could not verify this sign-in. Try again.');
   }
 }

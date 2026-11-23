@@ -24,7 +24,8 @@ import {
   matchOffset,
   matchPageSize,
 } from './match-library.js';
-import { readUpstreamJson, requestJson } from './upstream.js';
+import type { ProviderRequests } from './provider-requests.js';
+import { readUpstreamJson, requestProvider } from './upstream.js';
 const faceitProfile = z.object({
   player_id: faceitId,
   games: z.object({ cs2: z.object({ game_player_id: z.string().regex(/^\d{17}$/) }) }),
@@ -109,18 +110,12 @@ const playerMapStat = z.object({
   }),
 });
 const playerMapStats = z.object({ items: z.array(z.unknown()).max(historyBatch) });
-function retryAt(response: Response) {
-  const header = response.headers.get('retry-after') ?? '';
-  const delay = /^\d+$/.test(header) ? Number(header) * 1000 : Date.parse(header) - Date.now();
-  return Date.now() + Math.min(3600_000, Math.max(1000, Number.isFinite(delay) ? delay : 60_000));
-}
-
 async function fillHistoryMaps(
   c: Config,
+  requests: ProviderRequests,
   subject: string,
   entries: HistoryEntry[],
   signal: AbortSignal,
-  onResponse: (response: Response) => void,
 ) {
   const times = entries.flatMap((entry) => {
     const time = historyTime(entry);
@@ -129,6 +124,7 @@ async function fillHistoryMaps(
   if (!times.length) return;
   const raw = await faceit(
     c,
+    requests,
     `players/${subject}/games/cs2/stats`,
     'FACEIT could not find the linked player.',
     {
@@ -136,8 +132,8 @@ async function fillHistoryMaps(
       to: String(Math.max(...times) * 1000 + 999),
       limit: String(historyBatch),
     },
-    onResponse,
     AbortSignal.any([signal, AbortSignal.timeout(3000)]),
+    'faceitStats',
   );
   const parsed = playerMapStats.safeParse(raw);
   if (!parsed.success) return;
@@ -191,13 +187,16 @@ const faceitDownloadHosts = [
 
 async function faceit(
   c: Config,
+  requests: ProviderRequests,
   path: string,
   missing: string,
   params: Record<string, string> = {},
-  onResponse?: (response: Response) => void,
   signal = AbortSignal.timeout(20000),
+  service: 'faceitData' | 'faceitStats' = 'faceitData',
 ) {
-  return requestJson(
+  return requestProvider(
+    requests,
+    service,
     'https://open.faceit.com/data/v4/' + path + '?' + new URLSearchParams(params),
     {
       headers: { Authorization: 'Bearer ' + c.faceitApiKey },
@@ -205,7 +204,6 @@ async function faceit(
     },
     'FACEIT returned an invalid response. Try again later.',
     async (response) => {
-      onResponse?.(response);
       switch (response.status) {
         case 200:
           return readUpstreamJson(response);
@@ -232,6 +230,7 @@ export async function providerRoutes(
   app: FastifyInstance,
   db: Store,
   c: Config,
+  requests: ProviderRequests,
   download = downloadRemoteDemo,
 ) {
   const historyCache = new Map<
@@ -243,8 +242,6 @@ export async function providerRoutes(
     }
   >();
   const activeOperations = new Map<string, Set<AbortController>>();
-  let historyRetryAt = 0;
-  let mapStatsRetryAt = 0;
   function existingCache(user: SessionUser, subject: string) {
     const member = historyCache.get(user.id);
     return member?.binding === user.csrf + ':' + subject ? member : undefined;
@@ -316,6 +313,7 @@ export async function providerRoutes(
     try {
       const result = await faceit(
         c,
+        requests,
         'players',
         'No FACEIT CS2 profile was found for this Steam account.',
         {
@@ -408,13 +406,12 @@ export async function providerRoutes(
     const key = first ? 'recent' : to + ':' + offset;
     const cached = existingCache(user, subject)?.pages.get(key);
     if (cached && cached.expires > Date.now()) return cached;
-    if (historyRetryAt > Date.now())
-      throw new HttpError(429, 'FACEIT is rate limiting requests. Try again later.');
     rateLimit(db, r, 'faceit-history', 80, 900, user.id);
     const operation = operationFor(user.id);
     try {
       const raw = await faceit(
         c,
+        requests,
         `players/${subject}/history`,
         'FACEIT could not find the linked player.',
         {
@@ -424,9 +421,7 @@ export async function providerRoutes(
           from: '0',
           to: String(to),
         },
-        (response) => {
-          if (response.status === 429) historyRetryAt = retryAt(response);
-        },
+        AbortSignal.any([operation.signal, AbortSignal.timeout(20000)]),
       ).catch((error: unknown) => {
         revalidateFaceit(r, user, subject);
         throw error;
@@ -448,16 +443,14 @@ export async function providerRoutes(
       }
 
       // Optional enrichment must not hide the member's history on a provider outage.
-      if (mapStatsRetryAt <= Date.now()) {
-        await fillHistoryMaps(c, subject, entries, operation.signal, (response) => {
-          if (response.status === 429) mapStatsRetryAt = retryAt(response);
-        }).catch((error: unknown) => {
+      await fillHistoryMaps(c, requests, subject, entries, operation.signal).catch(
+        (error: unknown) => {
           if (!(error instanceof HttpError)) throw error;
-        });
-        revalidateFaceit(r, user, subject);
-        if (operation.signal.aborted)
-          throw new HttpError(409, 'The FACEIT connection changed. Try again.');
-      }
+        },
+      );
+      revalidateFaceit(r, user, subject);
+      if (operation.signal.aborted)
+        throw new HttpError(409, 'The FACEIT connection changed. Try again.');
       const items = entries.map((entry) => ({
         ...matchSummary(entry, subject),
         cursorTime: historyTime(entry),
@@ -586,7 +579,7 @@ export async function providerRoutes(
     const operation = operationFor(u.id);
     try {
       const match = faceitMatch.safeParse(
-        await faceit(c, 'matches/' + matchId, 'FACEIT could not find this match.'),
+        await faceit(c, requests, 'matches/' + matchId, 'FACEIT could not find this match.'),
       );
       if (!match.success || match.data.match_id !== matchId)
         throw new HttpError(502, 'FACEIT returned an invalid response. Try again later.');
@@ -732,7 +725,9 @@ export async function providerRoutes(
         operation.signal,
       ]);
       revalidateFaceit(r, u, subject);
-      const url = await requestJson(
+      const url = await requestProvider(
+        requests,
+        'faceitSigner',
         'https://api.faceit.com/download/v2/demos/download',
         {
           method: 'POST',
@@ -760,11 +755,15 @@ export async function providerRoutes(
       validateRemoteUrl(url, downloadHosts);
       if (operation.signal.aborted)
         throw new HttpError(409, 'The FACEIT connection changed. Try again.');
-      const { bytes: size } = await download(url, join(folder, 'input' + suffix), {
-        allowedHosts: downloadHosts,
-        maxBytes: c.maxUploadMb * 1024 ** 2,
-        signal,
-      });
+      const { bytes: size } = await requests.run('faceitFiles', (report) =>
+        download(url, join(folder, 'input' + suffix), {
+          onResponse: report,
+          onNetworkFailure: () => report(503),
+          allowedHosts: downloadHosts,
+          maxBytes: c.maxUploadMb * 1024 ** 2,
+          signal,
+        }),
+      );
       validateMagic(join(folder, 'input' + suffix), suffix);
       db.transaction(() => {
         revalidateFaceit(r, u, subject);

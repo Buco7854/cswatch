@@ -21,6 +21,23 @@
   line-height: 1.3;
   letter-spacing: -0.4px;
 }
+.upload-panel .paired-upload-guide {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  margin-bottom: 16px;
+  overflow-wrap: anywhere;
+}
+.paired-upload-guide strong {
+  font-size: 14px;
+}
+.paired-upload-guide p {
+  margin: 0;
+  font-size: 14px;
+}
+.paired-upload-guide .button {
+  margin-top: 4px;
+}
 .upload-panel .demo-drop-target {
   position: relative;
   width: 100%;

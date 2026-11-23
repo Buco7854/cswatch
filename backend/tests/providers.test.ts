@@ -3,6 +3,8 @@ import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { gzipSync } from 'node:zlib';
+import { guestCookieName } from '../src/guest.js';
 import { loadConfig } from '../src/config.js';
 import { Store } from '../src/db.js';
 import { COOKIE, digest, HttpError } from '../src/security.js';
@@ -19,6 +21,7 @@ test('FACEIT verification, history and download lookup use current verified iden
     COOKIE_SECURE: 'false',
     DATA_DIR: root,
     FACEIT_ENABLED: 'true',
+    FACEIT_REQUESTS_PER_MINUTE: '600',
     FACEIT_API_KEY: 'fixture-faceit-key',
     FACEIT_DOWNLOAD_TOKEN: 'fixture-faceit-download-token',
     LOG_LEVEL: 'silent',
@@ -209,6 +212,10 @@ test('FACEIT verification, history and download lookup use current verified iden
       const response = await details();
       assert.equal(response.statusCode, mapped);
       assert.doesNotMatch(response.body, /upstream fixture detail/);
+      if ([429, 503].includes(upstream)) {
+        assert.equal((await details()).statusCode, 429);
+        db.run("DELETE FROM settings WHERE key='provider_retry_faceitData'");
+      }
     }
     lookupStatus = 200;
     demoUrls = resources;
@@ -549,6 +556,8 @@ test('Steam match sync verifies before saving, resumes and protects user credent
     db.run('DELETE FROM rate_limits');
     upstream = () => new Response(null, { status: 504 });
     assert.match((await sync()).body, /timed out/);
+    assert.equal((await sync()).statusCode, 429);
+    db.run("DELETE FROM settings WHERE key='steam_history_retry_at'");
     upstream = () => new Response(null, { status: 500 });
     assert.equal((await sync()).statusCode, 502);
     upstream = () => new Response(null, { status: 503 });
@@ -590,6 +599,7 @@ test('FACEIT library walks the full history with a timestamp cursor and keeps do
     DATA_DIR: root,
     COOKIE_SECURE: 'false',
     FACEIT_ENABLED: 'true',
+    FACEIT_REQUESTS_PER_MINUTE: '600',
     FACEIT_API_KEY: 'synthetic-key',
     LOG_LEVEL: 'silent',
   });
@@ -784,29 +794,71 @@ test('FACEIT library walks the full history with a timestamp cursor and keeps do
     assert.equal(notDownloaded.items.length, 25);
     assert.equal(notDownloaded.items[0].match_id, 'match-28');
     assert.deepEqual(notDownloaded.items[0].demos, []);
-    const file =
-      '--pair\r\nContent-Disposition: form-data; name="file"; filename="fixture.dem"\r\n\r\nPBDEMS2\0synthetic\r\n--pair--\r\n';
-    const upload = (headers: typeof owner.headers) =>
+    const plain = Buffer.from('PBDEMS2\0synthetic');
+    const archive = gzipSync(plain);
+    const upload = (
+      headers: Record<string, string>,
+      filename = 'fixture.dem.gz',
+      bytes = archive,
+      paired = true,
+    ) =>
       app.inject({
         method: 'POST',
-        url: '/api/demos?faceit_match=match-28',
+        url: '/api/demos' + (paired ? '?faceit_match=match-28' : ''),
         headers: { ...headers, 'content-type': 'multipart/form-data; boundary=pair' },
-        payload: file,
+        payload: Buffer.concat([
+          Buffer.from(
+            '--pair\r\nContent-Disposition: form-data; name="file"; filename="' +
+              filename +
+              '"\r\n\r\n',
+          ),
+          bytes,
+          Buffer.from('\r\n--pair--\r\n'),
+        ]),
       });
+    // A valid gzip archive is accepted only for a verified roster member's pairing.
     assert.equal((await upload(other.headers)).statusCode, 403);
-    const paired = await upload(owner.headers);
+    assert.equal((await upload(owner.headers, 'fixture.dem.gz', archive, false)).statusCode, 400);
+    const browser = await browserBootstrap(app, config);
+    const guest = await app.inject({
+      method: 'POST',
+      url: '/api/guest/session',
+      headers: browser,
+      payload: {},
+    });
+    assert.equal(guest.statusCode, 201, guest.body);
+    const grant = guest.cookies.find(({ name }) => name === guestCookieName(config))!;
+    const guestHeaders = {
+      ...browser,
+      cookie: browser.cookie + '; ' + grant.name + '=' + grant.value,
+      'x-csrf-token': guest.json().csrf,
+    };
+    assert.equal((await upload(guestHeaders)).statusCode, 401);
+    assert.equal((await upload(guestHeaders, 'fixture.dem.gz', archive, false)).statusCode, 400);
+    assert.equal((await upload(owner.headers, 'fixture.gz')).statusCode, 400);
+    assert.equal((await upload(owner.headers, 'fixture.dem.gz', plain)).statusCode, 400);
+    const original = await upload(owner.headers, 'fixture.dem', plain);
+    assert.equal(original.statusCode, 202, original.body);
+    const paired = await upload(owner.headers, 'fixture.DEM.GZ');
     assert.equal(paired.statusCode, 202, paired.body);
-    assert.equal(
-      db.one('SELECT faceit_match_id FROM demos WHERE id=?', paired.json().id)?.faceit_match_id,
-      'match-28',
-    );
+    const demo = db.one('SELECT * FROM demos WHERE id=?', paired.json().id)!;
+    assert.equal(demo.owner_id, owner.id);
+    assert.equal(demo.public, 0);
+    assert.equal(demo.status, 'queued');
+    assert.equal(demo.source, 'faceit');
+    assert.equal(demo.faceit_match_id, 'match-28');
+    assert.equal(demo.size, archive.length);
+    assert.deepEqual(readFileSync(join(root, 'demos', demo.id, 'input.gz')), archive);
 
     respond = () => new Response('upstream private data', { status: 503 });
     const offline = calls;
     const downloaded = (await read('?filter=downloaded')).json();
     assert.equal(downloaded.items.length, 25);
     assert.equal(downloaded.next, '25');
-    assert.equal(downloaded.items[0].demos[0].id, paired.json().id);
+    assert.deepEqual(
+      new Set(downloaded.items[0].demos.map((d: { id: string }) => d.id)),
+      new Set([original.json().id, paired.json().id]),
+    );
     assert.equal((await read('?filter=downloaded&offset=25')).json().items.length, 4);
     assert.deepEqual(
       (await read('?filter=downloaded', other.headers))
@@ -833,6 +885,7 @@ test('FACEIT library walks the full history with a timestamp cursor and keeps do
       const reply = await read('?cursor=' + (newer - 120) + '.0', other.headers);
       assert.equal(reply.statusCode, expected, reply.body);
       assert.doesNotMatch(reply.body, /private data/);
+      if (upstream === 503) db.run("DELETE FROM settings WHERE key='provider_retry_faceitData'");
     }
     const backoff = calls;
     assert.equal((await read('?cursor=' + (newer - 121) + '.0', other.headers)).statusCode, 429);

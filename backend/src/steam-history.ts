@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { Config } from './config.js';
-import { now, type Store } from './db.js';
+import type { Store } from './db.js';
 import { seal, steamCodeBinding, unseal } from './encryption-key.js';
 import {
   chargeBudgets,
@@ -21,7 +21,14 @@ import {
   matchSources,
 } from './match-library.js';
 import { decodeSteamShareCode } from './steam-share-code.js';
-import { readUpstreamJson, requestJson } from './upstream.js';
+import type { ProviderRequests } from './provider-requests.js';
+import {
+  activeSteamImportGrant,
+  queueSteamMatches,
+  setSteamAutoImport,
+  type SteamImportBinding,
+} from './steam-auto-import.js';
+import { readUpstreamJson, requestProvider } from './upstream.js';
 
 const gameCode = z
   .string()
@@ -34,25 +41,17 @@ const knownCode = z
   .refine((code) => decodeSteamShareCode(code) !== null);
 const matchLimit = 500;
 const syncSteps = 5;
-const backoffKey = 'steam_history_retry_at';
-
-function retryAt(db: Store) {
-  return Number(db.one('SELECT value FROM settings WHERE key=?', backoffKey)?.value ?? 0);
-}
-
 async function nextCode(
   c: Config,
-  db: Store,
-  request: FastifyRequest,
+  requests: ProviderRequests,
   subject: string,
   authCode: string,
   cursor: string,
   signal: AbortSignal,
 ) {
-  if (retryAt(db) > now())
-    throw new HttpError(429, 'Steam match discovery is cooling down. Try again later.');
-  rateLimit(db, request, 'steam-api-budget', 90000, 86400, 'instance');
-  return requestJson(
+  return requestProvider(
+    requests,
+    'steamHistory',
     'https://api.steampowered.com/ICSGOPlayers_730/GetNextMatchSharingCode/v1/?' +
       new URLSearchParams({
         key: c.steamApiKey,
@@ -64,15 +63,6 @@ async function nextCode(
     'Steam returned an invalid response or could not be reached. Try again later.',
     async (response) => {
       if (response.status === 429 || response.status === 503) {
-        const header = response.headers.get('retry-after') || '';
-        const delay = /^\d+$/.test(header) ? Number(header) : Date.parse(header) / 1000 - now();
-        const retry =
-          now() + Math.ceil(Math.min(3600, Math.max(60, Number.isFinite(delay) ? delay : 60)));
-        db.run(
-          'INSERT INTO settings VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=max(value,excluded.value)',
-          backoffKey,
-          retry,
-        );
         throw response.status === 429
           ? new HttpError(429, 'Steam is rate limiting requests. Try again later.')
           : new HttpError(
@@ -106,7 +96,14 @@ async function nextCode(
   );
 }
 
-export function steamHistoryRoutes(app: FastifyInstance, db: Store, c: Config, key: Buffer) {
+export function steamHistoryRoutes(
+  app: FastifyInstance,
+  db: Store,
+  c: Config,
+  key: Buffer,
+  requests: ProviderRequests,
+  cancelAuto: (userId: string) => void,
+) {
   const inFlight = new Map<string, AbortController>();
   const configured = () => {
     if (!db.flag(c, 'steam_enabled') || !c.steamApiKey)
@@ -132,6 +129,7 @@ export function steamHistoryRoutes(app: FastifyInstance, db: Store, c: Config, k
       binding: steamCodeBinding(user.id, subject),
       signal,
       revalidate() {
+        signal.throwIfAborted();
         const live = currentUser(db, r, c);
         if (!live || live.id !== user.id || live.csrf !== user.csrf)
           throw new HttpError(401, 'Session expired. Refresh the page and try again.');
@@ -152,6 +150,7 @@ export function steamHistoryRoutes(app: FastifyInstance, db: Store, c: Config, k
       decoded.match_id,
       code,
     );
+    queueSteamMatches(db, userId, decoded.match_id);
     db.run(
       'DELETE FROM steam_matches WHERE user_id=? AND seq <= coalesce((SELECT seq FROM steam_matches WHERE user_id=? ORDER BY seq DESC LIMIT 1 OFFSET ?),0)',
       userId,
@@ -165,7 +164,7 @@ export function steamHistoryRoutes(app: FastifyInstance, db: Store, c: Config, k
       available: Boolean(c.steamApiKey && db.flag(c, 'steam_enabled')),
       configured: Boolean(row),
       needs_codes: Boolean(row?.needs_codes),
-      retry_at: retryAt(db),
+      retry_at: requests.retryAt('steamHistory'),
     };
   }
   app.get('/api/connections/steam/history', async (r) => connection(requireUser(r).id));
@@ -190,7 +189,7 @@ export function steamHistoryRoutes(app: FastifyInstance, db: Store, c: Config, k
       const rows = db.all(
         `WITH paired AS (
          SELECT substr(source_ref,7) AS match_id,id,status,map,metadata,created_at,
-           row_number() OVER (PARTITION BY source_ref ORDER BY status='ready' DESC,created_at DESC,id DESC) AS rank
+           row_number() OVER (PARTITION BY source_ref ORDER BY status='ready' DESC,status!='failed' DESC,created_at DESC,id DESC) AS rank
          FROM demos WHERE owner_id=? AND source_ref LIKE 'steam:%' AND status!='uploading'
        ), synced AS (
          SELECT match_id,code,seq FROM steam_matches WHERE user_id=?
@@ -207,7 +206,14 @@ export function steamHistoryRoutes(app: FastifyInstance, db: Store, c: Config, k
       );
       return {
         needs_codes: Boolean(saved(user.id)?.needs_codes),
-        retry_at: retryAt(db),
+        retry_at: requests.retryAt('steamHistory'),
+        server_import_available: c.steamCoordinatorEnabled && !saved(user.id)?.needs_codes,
+        auto_import: Boolean(
+          db.one(
+            'SELECT 1 FROM steam_auto_imports a JOIN steam_history h ON h.user_id=a.user_id AND h.generation=a.generation AND h.steam_id=a.steam_id WHERE a.user_id=?',
+            user.id,
+          ),
+        ),
         had_matches: Boolean(
           db.one('SELECT 1 FROM steam_matches WHERE user_id=? LIMIT 1', user.id),
         ),
@@ -226,8 +232,7 @@ export function steamHistoryRoutes(app: FastifyInstance, db: Store, c: Config, k
     try {
       const next = await nextCode(
         c,
-        db,
-        r,
+        requests,
         operation.subject,
         body.auth_code,
         body.share_code,
@@ -237,6 +242,7 @@ export function steamHistoryRoutes(app: FastifyInstance, db: Store, c: Config, k
       db.transaction(() => {
         operation.revalidate();
         const prior = saved(operation.userId);
+        db.run('DELETE FROM steam_auto_imports WHERE user_id=?', operation.userId);
         if (prior && prior.steam_id !== operation.subject)
           db.run('DELETE FROM steam_matches WHERE user_id=?', operation.userId);
         db.run(
@@ -252,73 +258,100 @@ export function steamHistoryRoutes(app: FastifyInstance, db: Store, c: Config, k
         addMatch(operation.userId, body.share_code);
         if (next) addMatch(operation.userId, next);
       });
+      cancelAuto(operation.userId);
       return { up_to_date: next === null };
     } finally {
       operation.end();
     }
   });
+  async function syncSaved(operation: {
+    userId: string;
+    subject: string;
+    binding: string;
+    signal: AbortSignal;
+    revalidate(): void;
+  }) {
+    operation.revalidate();
+    const row = saved(operation.userId);
+    if (!row || row.steam_id !== operation.subject)
+      throw new HttpError(400, 'Verify and save your Steam sync codes first.');
+    if (row.needs_codes) throw new HttpError(409, 'Replace your Steam sync codes to resume sync.');
+    let authCode: string;
+    try {
+      authCode = gameCode.parse(unseal(key, operation.binding, row.encrypted_code));
+    } catch {
+      throw new HttpError(409, 'The saved Steam code cannot be read. Verify and save it again.');
+    }
+    let cursor = row.cursor as string;
+    const seen = new Set([cursor]);
+    for (let step = 0; step < syncSteps; step++) {
+      const next = await nextCode(
+        c,
+        requests,
+        operation.subject,
+        authCode,
+        cursor,
+        operation.signal,
+      ).catch((error: unknown) => {
+        if (error instanceof HttpError && (error.statusCode === 400 || error.statusCode === 403)) {
+          db.transaction(() => {
+            operation.revalidate();
+            db.run(
+              'UPDATE steam_history SET needs_codes=1 WHERE user_id=? AND generation=?',
+              operation.userId,
+              row.generation,
+            );
+          });
+        }
+        throw error;
+      });
+      db.transaction(() => {
+        operation.revalidate();
+        if (saved(operation.userId)?.generation !== row.generation)
+          throw new HttpError(409, 'The Steam connection changed. Try again.');
+        if (!next) return;
+        if (seen.has(next))
+          throw new HttpError(
+            502,
+            'Steam returned a repeated match sharing code. Verify a newer starting match sharing code.',
+          );
+        addMatch(operation.userId, next);
+        db.run('UPDATE steam_history SET cursor=? WHERE user_id=?', next, operation.userId);
+      });
+      if (!next) return { up_to_date: true };
+      seen.add(next);
+      cursor = next;
+    }
+    return { up_to_date: false };
+  }
   app.post('/api/connections/steam/history/sync', async (r) => {
     const operation = begin(r);
     try {
-      const row = saved(operation.userId);
-      if (!row || row.steam_id !== operation.subject)
-        throw new HttpError(400, 'Verify and save your Steam sync codes first.');
-      if (row.needs_codes)
-        throw new HttpError(409, 'Replace your Steam sync codes to resume sync.');
-      let authCode: string;
-      try {
-        authCode = gameCode.parse(unseal(key, operation.binding, row.encrypted_code));
-      } catch {
-        throw new HttpError(409, 'The saved Steam code cannot be read. Verify and save it again.');
-      }
-      let cursor = row.cursor as string;
-      const seen = new Set([cursor]);
-      for (let step = 0; step < syncSteps; step++) {
-        const next = await nextCode(
-          c,
-          db,
-          r,
-          operation.subject,
-          authCode,
-          cursor,
-          operation.signal,
-        ).catch((error: unknown) => {
-          if (
-            error instanceof HttpError &&
-            (error.statusCode === 400 || error.statusCode === 403)
-          ) {
-            db.transaction(() => {
-              operation.revalidate();
-              db.run(
-                'UPDATE steam_history SET needs_codes=1 WHERE user_id=? AND generation=?',
-                operation.userId,
-                row.generation,
-              );
-            });
-          }
-          throw error;
-        });
-        db.transaction(() => {
-          operation.revalidate();
-          if (saved(operation.userId)?.generation !== row.generation)
-            throw new HttpError(409, 'The Steam connection changed. Try again.');
-          if (!next) return;
-          if (seen.has(next))
-            throw new HttpError(
-              502,
-              'Steam returned a repeated match sharing code. Verify a newer starting match sharing code.',
-            );
-          addMatch(operation.userId, next);
-          db.run('UPDATE steam_history SET cursor=? WHERE user_id=?', next, operation.userId);
-        });
-        if (!next) return { up_to_date: true };
-        seen.add(next);
-        cursor = next;
-      }
-      return { up_to_date: false };
+      return await syncSaved(operation);
     } finally {
       operation.end();
     }
+  });
+  app.put('/api/connections/steam/history/auto-import', async (r) => {
+    const { enabled } = z.object({ enabled: z.boolean() }).strict().parse(r.body);
+    const user = requireUser(r);
+    db.transaction(() => {
+      requireSession(db, r, c, ['full']);
+      chargeBudgets(db, r, [['steam-auto-consent', 20, 900, user.id]]);
+      const h = saved(user.id);
+      if (
+        enabled &&
+        (!c.steamCoordinatorEnabled ||
+          !db.flag(c, 'steam_enabled') ||
+          !h ||
+          h.needs_codes ||
+          linkedSteamId(db, user.id) !== h.steam_id)
+      )
+        throw new HttpError(403, 'Verify and save your Steam sync codes first.');
+      setSteamAutoImport(db, user.id, h?.steam_id ?? '', h?.generation ?? '', enabled);
+    });
+    if (!enabled) cancelAuto(user.id);
+    return { enabled };
   });
   app.delete('/api/connections/steam/history', async (r) => {
     const user = requireUser(r);
@@ -328,7 +361,32 @@ export function steamHistoryRoutes(app: FastifyInstance, db: Store, c: Config, k
       db.run('DELETE FROM steam_history WHERE user_id=?', user.id);
       db.run('DELETE FROM steam_matches WHERE user_id=?', user.id);
     });
+    cancelAuto(user.id);
     inFlight.get(user.id)?.abort();
     return { ok: true };
   });
+
+  return async (userId: string, binding: SteamImportBinding, signal: AbortSignal) => {
+    if (inFlight.has(userId)) throw new HttpError(409, 'Steam match sync is already running.');
+    const controller = new AbortController();
+    inFlight.set(userId, controller);
+    const deadline = AbortSignal.any([controller.signal, signal, AbortSignal.timeout(25000)]);
+    try {
+      const subject = binding.steamId;
+      return await syncSaved({
+        userId,
+        subject,
+        binding: steamCodeBinding(userId, subject),
+        signal: deadline,
+        revalidate() {
+          deadline.throwIfAborted();
+          configured();
+          if (!activeSteamImportGrant(db, c, userId, binding))
+            throw new HttpError(409, 'The Steam connection changed. Try again.');
+        },
+      });
+    } finally {
+      inFlight.delete(userId);
+    }
+  };
 }

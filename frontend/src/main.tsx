@@ -210,7 +210,15 @@ function App() {
   const faceitIdentity = auth?.user?.identities?.find(
     (identity) => identity.provider === 'faceit',
   )?.subject;
-  const libraryContext = JSON.stringify([auth?.user?.id, auth?.user?.csrf, faceitIdentity]);
+  const steamIdentity = auth?.user?.identities?.find(
+    (identity) => identity.provider === 'steam',
+  )?.subject;
+  const libraryContext = JSON.stringify([
+    auth?.user?.id,
+    auth?.user?.csrf,
+    faceitIdentity,
+    steamIdentity,
+  ]);
   const activity = useMemo(() => new MatchActivity(), [libraryContext]);
   const location = useLocation();
   const routeKey = useRef(location.key);
