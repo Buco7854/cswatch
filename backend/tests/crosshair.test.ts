@@ -3,11 +3,9 @@ import assert from 'node:assert/strict';
 import {
   CROSSHAIR_LIMITS,
   crosshairGeometry,
-  crosshairPresets,
   defaultCrosshairStyle,
   formatCrosshairPreset,
   normalizeCrosshairStyle,
-  parseCrosshairPreset,
 } from '../../frontend/src/crosshair.js';
 
 test('crosshair preferences bound and quantize finite values while rejecting unsafe colors and coercion', () => {
@@ -91,30 +89,14 @@ test('outlines expand each drawn shape uniformly and all allowed geometry stays 
     assert.ok(outline.x + outline.width <= values.size);
     assert.ok(outline.y + outline.height <= values.size);
   }
-  for (const preset of Object.values(crosshairPresets)) {
-    assert.deepEqual(normalizeCrosshairStyle(preset), preset);
-    assert.deepEqual(parseCrosshairPreset(formatCrosshairPreset(preset)), preset);
-  }
 });
 
-test('portable presets round-trip known fields and reject excessive, malformed, injected or incompatible imports', () => {
-  const style = { ...crosshairPresets.precision, color: '#a123ef', centerDot: true };
-  const text = formatCrosshairPreset(style);
-  assert.equal(JSON.parse(text).format, 'cswatch-crosshair');
-  assert.equal(JSON.parse(text).version, 1);
-  assert.deepEqual(parseCrosshairPreset(text), style);
-  assert.equal(parseCrosshairPreset(' '.repeat(2049)), null);
-  assert.equal(parseCrosshairPreset('not JSON'), null);
-  for (const change of [
-    { version: 2 },
-    { format: 'CSGO-share-code' },
-    { extra: true },
-    { style: { ...style, color: 'url(file:///tmp/art.svg)' } },
-    { style: { ...style, length: 25 } },
-    { style: { ...style, opacity: -0.1 } },
-    { style: { ...style, outline: 1 } },
-    { style: { ...style, remoteAsset: 'https://invalid.test/art.svg' } },
-    { style: { color: '#ffffff' } },
-  ])
-    assert.equal(parseCrosshairPreset(JSON.stringify({ ...JSON.parse(text), ...change })), null);
+test('copied presets carry the normalized style in a versioned envelope', () => {
+  const style = { ...defaultCrosshairStyle, color: '#a123ef', centerDot: true, length: 5 };
+  const copied = JSON.parse(formatCrosshairPreset(style));
+  assert.deepEqual(copied, { format: 'cswatch-crosshair', version: 1, style });
+  assert.deepEqual(
+    JSON.parse(formatCrosshairPreset({ ...style, length: 99, remoteAsset: 'x' })).style,
+    normalizeCrosshairStyle({ ...style, length: 99 }),
+  );
 });

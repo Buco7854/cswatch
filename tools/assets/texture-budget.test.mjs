@@ -16,7 +16,6 @@ import {
   rgbaMipBytes,
   textureBudgetPolicies,
 } from './texture-budget.mjs';
-import { retierPreparedMap } from './retier-map.mjs';
 
 test('global decoded budget halves largest effective contributor and preserves color above auxiliary maps', () => {
   const images = [
@@ -201,96 +200,6 @@ test('actual post-compression metadata stays under plan, retains alpha, shared i
   for (const [index, texture] of document.getRoot().listTextures().entries())
     assert.deepEqual(Buffer.from(texture.getImage()), encodedBefore[index]);
   assert.equal(second.manifest.sourceEncodedImageBytes, second.manifest.encodedImageBytes);
-});
-
-test('retiering creates a new verified tier with geometry/tag/alpha intact and refuses live overwrite or relabeling', async (t) => {
-  const root = await mkdtemp(join(tmpdir(), 'cswatch-retier-'));
-  t.after(() => rm(root, { recursive: true, force: true }));
-  const inputDir = join(root, 'input'),
-    output = join(root, 'new-mobile');
-  await mkdir(inputDir);
-  const input = join(inputDir, 'scene.glb');
-  const io = new NodeIO().registerExtensions(ALL_EXTENSIONS),
-    original = await model();
-  await io.write(input, original);
-  const before = await readFile(input),
-    sourceHash = createHash('sha256').update(before).digest('hex');
-  await writeFile(
-    join(inputDir, 'manifest.json'),
-    JSON.stringify({
-      schemaVersion: 1,
-      map: 'de_qa',
-      tier: 'mobile',
-      bytes: before.length,
-      outputSha256: sourceHash,
-      assetVersion: 'texture-fixture',
-      s2v: 'original-fixture',
-    }),
-  );
-  const result = await retierPreparedMap({
-    input,
-    output,
-    map: 'de_qa',
-    tier: 'mobile',
-    budgetBytes: 64,
-  });
-  assert.equal(result.manifest.sourceSha256, sourceHash);
-  assert.equal(result.manifest.sourceBytes, before.length);
-  assert.equal(result.manifest.assetVersion, 'texture-fixture');
-  assert.ok(result.manifest.textureBudget.decodedRGBABytes <= 64);
-  assert.equal(
-    result.manifest.outputSha256,
-    createHash('sha256')
-      .update(await readFile(result.path))
-      .digest('hex'),
-  );
-  const after = await io.read(result.path);
-  assert.deepEqual(
-    Array.from(after.getRoot().listAccessors()[0].getArray()),
-    Array.from(original.getRoot().listAccessors()[0].getArray()),
-  );
-  const sky = after
-    .getRoot()
-    .listNodes()
-    .find((node) => node.getName() === 'cswatch_skybox');
-  assert.deepEqual(sky.getExtras(), { cswatch: { kind: 'skybox', schemaVersion: 1 } });
-  assert.deepEqual(sky.getScale(), [16, 16, 16]);
-  assert.deepEqual(sky.getTranslation(), [1, 2, 3]);
-  assert.deepEqual(
-    after
-      .getRoot()
-      .listMaterials()[0]
-      .getBaseColorTextureInfo()
-      .getExtension('KHR_texture_transform')
-      .getScale(),
-    [0.25, 0.125],
-  );
-  const plan = await readFile(join(output, 'texture-plan.json'));
-  assert.equal(
-    createHash('sha256').update(plan).digest('hex'),
-    result.manifest.textureBudget.planSha256,
-  );
-  await assert.rejects(
-    retierPreparedMap({ input, output, map: 'de_qa', tier: 'mobile', budgetBytes: 64 }),
-    /EEXIST/,
-  );
-  await assert.rejects(
-    retierPreparedMap({ input, output: inputDir, map: 'de_qa', tier: 'mobile' }),
-    /new output/,
-  );
-  await assert.rejects(
-    retierPreparedMap({ input, output: join(root, 'wrong'), map: 'de_other', tier: 'mobile' }),
-    /does not match/,
-  );
-  const manifest = join(inputDir, 'manifest.json');
-  const unbound = JSON.parse(await readFile(manifest, 'utf8'));
-  delete unbound.outputSha256;
-  await writeFile(manifest, JSON.stringify(unbound));
-  await assert.rejects(
-    retierPreparedMap({ input, output: join(root, 'unbound'), map: 'de_qa', tier: 'mobile' }),
-    /does not match/,
-  );
-  assert.deepEqual(await readFile(input), before);
 });
 
 test('ordinary map packing applies both default decoded budgets and binds complete texture plans', async (t) => {

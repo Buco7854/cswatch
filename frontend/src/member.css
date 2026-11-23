@@ -680,13 +680,6 @@
 .app-shell details form {
   margin-top: 18px;
 }
-.app-shell .code-result {
-  background: var(--raised);
-  color: var(--text);
-  font-size: 13px;
-  padding: 12px;
-  overflow-wrap: anywhere;
-}
 .app-shell .admin-grid {
   gap: 20px;
   align-items: start;

@@ -115,7 +115,7 @@ export async function readPresentationStatus(
   });
 }
 
-/** A legacy worker marker suppresses the old bank. Unmarked operator banks stay readable. */
+/** A worker-marked bank outside the current revision directory is never served. Unmarked operator banks stay readable. */
 export async function presentationParts(root: string, kind: PresentationKind): Promise<string[]> {
   if (await withDirectory(root, [presentationDirectory, kind], async () => true))
     return [presentationDirectory, kind];

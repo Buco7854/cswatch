@@ -314,25 +314,6 @@ small {
 .health small {
   font-size: 11px;
 }
-.round-strip {
-  gap: 6px;
-  margin-top: 14px;
-}
-[data-theme] .round-strip button {
-  background: var(--surface);
-  color: var(--muted);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  min-width: 36px;
-  min-height: 44px;
-}
-[data-theme] .round-strip button.active {
-  background: var(--border);
-  color: var(--text);
-}
-[data-theme] .round-strip .active i {
-  background: var(--accent);
-}
 .event-panel {
   margin-top: 22px;
 }
@@ -402,10 +383,6 @@ details {
   border-color: var(--border);
 }
 summary {
-  color: var(--text);
-}
-[data-theme] .code-result {
-  background: var(--border);
   color: var(--text);
 }
 .toggle-row {
@@ -745,10 +722,6 @@ summary {
   }
   .health small {
     font-size: 10px;
-  }
-  .round-strip button {
-    min-height: 44px !important;
-    min-width: 36px !important;
   }
   .event-row {
     font-size: 12px;

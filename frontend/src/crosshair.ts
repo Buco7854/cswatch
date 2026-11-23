@@ -31,30 +31,11 @@ export const defaultCrosshairStyle: Readonly<CrosshairStyle> = Object.freeze({
   tStyle: false,
 });
 
-export const crosshairPresets = Object.freeze({
-  classic: defaultCrosshairStyle,
-  precision: Object.freeze({
-    ...defaultCrosshairStyle,
-    length: 5,
-    thickness: 1.5,
-    gap: 3,
-    outline: true,
-  }),
-  tStyle: Object.freeze({
-    ...defaultCrosshairStyle,
-    length: 6,
-    gap: 3,
-    outline: true,
-    tStyle: true,
-  }),
-}) satisfies Readonly<Record<string, Readonly<CrosshairStyle>>>;
-
 const colorPattern = /^#[\da-f]{6}$/i;
 const safeColor = (value: unknown): value is string =>
   typeof value === 'string' && value.length === 7 && colorPattern.test(value);
 const booleanKeys = ['outline', 'centerDot', 'tStyle'] as const;
 const numericKeys = Object.keys(CROSSHAIR_LIMITS) as (keyof typeof CROSSHAIR_LIMITS)[];
-const styleKeys = new Set(['color', ...booleanKeys, ...numericKeys]);
 const record = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 const own = (value: Record<string, unknown>, key: string): unknown =>
@@ -81,20 +62,6 @@ export function normalizeCrosshairStyle(value: unknown): CrosshairStyle {
   return result;
 }
 
-function validStyle(value: unknown): value is CrosshairStyle {
-  if (!record(value) || Object.keys(value).some((key) => !styleKeys.has(key))) return false;
-  const color = own(value, 'color');
-  return (
-    safeColor(color) &&
-    booleanKeys.every((key) => typeof own(value, key) === 'boolean') &&
-    numericKeys.every((key) => {
-      const field = own(value, key);
-      const { min, max } = CROSSHAIR_LIMITS[key];
-      return typeof field === 'number' && Number.isFinite(field) && field >= min && field <= max;
-    })
-  );
-}
-
 /** Portable cswatch JSON, deliberately not a game share code or console command. */
 export function formatCrosshairPreset(value: unknown): string {
   return JSON.stringify(
@@ -102,25 +69,6 @@ export function formatCrosshairPreset(value: unknown): string {
     null,
     2,
   );
-}
-
-/** A strict import boundary for copied presets; invalid imports never become settings. */
-export function parseCrosshairPreset(text: string): CrosshairStyle | null {
-  if (typeof text !== 'string' || text.length > 2048) return null;
-  try {
-    const value: unknown = JSON.parse(text);
-    if (
-      !record(value) ||
-      Object.keys(value).some((key) => !['format', 'version', 'style'].includes(key)) ||
-      own(value, 'format') !== 'cswatch-crosshair' ||
-      own(value, 'version') !== 1 ||
-      !validStyle(own(value, 'style'))
-    )
-      return null;
-    return normalizeCrosshairStyle(own(value, 'style'));
-  } catch {
-    return null;
-  }
 }
 
 type CrosshairRect = {

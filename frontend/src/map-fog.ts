@@ -108,30 +108,3 @@ export function validateMapCubeFog(value: unknown): MapCubeFog {
   if (Math.abs(determinant - 1) > tolerance) throw new Error('Invalid cube fog rotation');
   return { ...fog, height: fog.height ? { ...fog.height } : null, rotation: [...matrix] };
 }
-type Point = { x: number; y: number; z: number };
-const clamp = (value: number) => Math.max(0, Math.min(1, value));
-export function cubeFogAmount(fog: MapCubeFog, world: Point, camera: Point): number {
-  const distance = Math.hypot(world.x - camera.x, world.y - camera.y, world.z - camera.z),
-    range = clamp(
-      Math.pow(Math.max((distance - fog.start) / (fog.end - fog.start), 0), fog.exponent),
-    ),
-    height = fog.height
-      ? clamp(
-          Math.pow(
-            Math.max((fog.height.end - world.y) / (fog.height.end - fog.height.start), 0),
-            fog.height.exponent,
-          ),
-        )
-      : 1;
-  return range * height * fog.maxOpacity;
-}
-/** Prepared Three cube slots use the standard loaded-cube X flip after authored rotation. */
-export function cubeFogDirection(fog: MapCubeFog, ray: Point): Point {
-  const m = fog.rotation,
-    length = Math.hypot(ray.x, ray.y, ray.z) || 1;
-  return {
-    x: -(m[0] * ray.x + m[3] * ray.y + m[6] * ray.z) / length,
-    y: (m[1] * ray.x + m[4] * ray.y + m[7] * ray.z) / length,
-    z: (m[2] * ray.x + m[5] * ray.y + m[8] * ray.z) / length,
-  };
-}

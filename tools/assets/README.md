@@ -32,17 +32,7 @@ The landscape merge applies the desktop decoded texture budget before building i
 
 Geometry uses local lossless Meshopt transport compression. Every compressed buffer view is decoded and compared with its original bytes; position, normal, UV, vertex-alpha and index order are preserved. No quantization is applied. The runtime loads a bundled decoder, never a CDN. Encoded and decoded bounds remain 2 GiB per model/geometry allocation. Compression reduces downloads and source-buffer retention; it does not remove decoded vertex memory or draw calls.
 
-Map preparation automatically batches compatible opaque static siblings only in the desktop tier, using 64 m spatial cells. Mobile remains unbatched by default after browser-rendering regressions in the experimental batched variant. This separately reduces draw submissions while keeping material identities/extras, named hierarchy, source transforms and image bytes. Animated/skinned/morphed geometry, blended materials and incompatible vertex layouts or rotation/scale bases remain separate. It does not remove texture memory or promise FPS. Explicit `--batch-static` remains available for operator experiments. For example, `node tools/assets/compress-prepared-map.mjs --batch-static --input OLD/de_mirage/mobile/scene.glb --output NEW/de_mirage/mobile --map de_mirage --tier mobile` opts into experimental 16 m mobile cells. Validate actual rendering before installing such a variant. It is not the supported mobile default. The existing tier stays untouched; its original asset version, image bytes and validated texture plan remain bound in the derived manifest. Stop viewers before installing a complete verified variant, preserve provenance/backups and reload tabs.
-
-Previously prepared tiers can be updated without another Steam download or S2V export:
-
-```sh
-node tools/assets/retier-map.mjs \
-  --input /OLD/de_dust2/desktop/scene.glb \
-  --output /NEW/de_dust2/desktop --map de_dust2 --tier desktop
-```
-
-Repeat with `--tier mobile` and matching mobile paths. Retiering preserves geometry and the source asset version, applies current image budgets and compresses geometry. An already WebP image with unchanged target dimensions keeps its encoded bytes. Both commands require the source GLB hash and length from its tier manifest. Use `compress-prepared-map.mjs` for lossless geometry compression. It validates the bound texture plan and preserves the plan and encoded image bytes. Both commands require fresh output directories. Validate the complete map/overview/environment version, stop viewers, install the new pack and reload their tabs. Never replace an active pack in place.
+Map preparation automatically batches compatible opaque static siblings only in the desktop tier, using 64 m spatial cells. Mobile remains unbatched by default after browser-rendering regressions in the experimental batched variant. This separately reduces draw submissions while keeping material identities/extras, named hierarchy, source transforms and image bytes. Animated/skinned/morphed geometry, blended materials and incompatible vertex layouts or rotation/scale bases remain separate. It does not remove texture memory or promise FPS.
 
 Before each real scene export, shader preflight derives families from CRC-checked material resources rather than asynchronous exporter progress messages. Bounded private DATA batches inspect only those materials, select the actual native shader model and check its declared indexed programs. Only missing exact programs are fetched and CRC-verified. Complete shaders do not authorize a speculative retry of a failing export. This remains an operator-only operation, separate from demo parsing.
 

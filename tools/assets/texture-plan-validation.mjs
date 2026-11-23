@@ -1,4 +1,4 @@
-/** Publication/retiering validation for the SHA-bound decoded texture plan. */
+/** Publication validation for the SHA-bound decoded texture plan. */
 import { createHash } from 'node:crypto';
 import { rgbaMipBytes, textureBudgetLimits, textureBudgetPolicies } from './texture-budget.mjs';
 const keys = (value, names) =>
