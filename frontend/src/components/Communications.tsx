@@ -140,22 +140,26 @@ export default function Communications({
   ]);
   const frame = frameAt(data, tick).frame;
   const selectedTeam = frame.players.find((player) => player.id === selected)?.team;
+  const allSpeakers = useMemo(
+    () => [
+      ...new Set([
+        ...data.players.map((player) => player.id),
+        ...(data.voice || []).map((packet) => packet.speaker),
+      ]),
+    ],
+    [data.players, data.voice],
+  );
   const speakers = useMemo(() => {
     const available =
       settings.voiceScope === 'all'
-        ? [
-            ...new Set([
-              ...data.players.map((player) => player.id),
-              ...(data.voice || []).map((packet) => packet.speaker),
-            ]),
-          ]
+        ? allSpeakers
         : settings.voiceScope === 'team' && selectedTeam !== undefined
           ? frame.players
               .filter((player) => player.team === selectedTeam)
               .map((player) => player.id)
           : [selected];
     return available.filter((speaker) => !muted.includes(speaker)).sort();
-  }, [data.players, data.voice, frame.players, selected, selectedTeam, settings.voiceScope, muted]);
+  }, [allSpeakers, frame.players, selected, selectedTeam, settings.voiceScope, muted]);
   const speakerKey = speakers.join(',');
   useEffect(() => {
     if (
@@ -236,24 +240,24 @@ export default function Communications({
     onSeek(cue.startTick);
     close();
   };
-  const visibleCaptions = cues
-    .filter(
-      (cue) =>
-        cue.startTick <= tick && cue.endTick > tick && (isSampleCue(cue) || permitted(cue.speaker)),
-    )
-    .slice(-3);
+  const visibleCaptions = settings.subtitles
+    ? cues
+        .filter(
+          (cue) =>
+            cue.startTick <= tick &&
+            cue.endTick > tick &&
+            (isSampleCue(cue) || permitted(cue.speaker)),
+        )
+        .slice(-3)
+    : [];
   const chat = data.chat || [];
-  const visibleChat = chat
-    .filter((message) => message.tick <= tick && message.tick > tick - data.tickRate * 8)
-    .slice(-3);
+  const visibleChat = settings.chat
+    ? chat
+        .filter((message) => message.tick <= tick && message.tick > tick - data.tickRate * 8)
+        .slice(-3)
+    : [];
   const recordedVoice =
     data.communications?.voice === 'available' || data.communications?.voice === 'partial';
-  const allSpeakers = [
-    ...new Set([
-      ...data.players.map((player) => player.id),
-      ...(data.voice || []).map((packet) => packet.speaker),
-    ]),
-  ];
   const toggle = (
     key: 'voice' | 'subtitles' | 'chat',
     label: string,
