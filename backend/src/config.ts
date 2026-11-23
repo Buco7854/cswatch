@@ -28,6 +28,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     appUrl.hash
   )
     throw new Error('APP_URL must be an HTTP(S) origin');
+  const proxies = (env.TRUSTED_PROXY_IPS ?? '')
+    .split(',')
+    .map((address) => address.trim())
+    .filter(Boolean);
   const cookieSecure = boolean(env.COOKIE_SECURE) ?? true;
   if (cookieSecure && appUrl.protocol !== 'https:')
     throw new Error('HTTPS APP_URL required. Set COOKIE_SECURE=false only for local development.');
@@ -41,10 +45,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     mapJobsDir: resolve(env.MAP_JOBS_DIR || `${env.DATA_DIR || '../var'}/map-jobs`),
     frontendDir: resolve(env.FRONTEND_DIR || '../frontend/dist'),
     port: integer(env.PORT, 8000),
-    trustProxy:
-      env.TRUSTED_PROXY_IPS?.split(',')
-        .map((x) => x.trim())
-        .filter(Boolean) ?? false,
+    trustProxy: proxies.length ? proxies : false,
     flags: {
       public_access: boolean(env.PUBLIC_ACCESS),
       auto_official_maps_enabled: boolean(env.AUTO_OFFICIAL_MAPS_ENABLED),

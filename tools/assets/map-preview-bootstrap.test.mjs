@@ -29,7 +29,7 @@ async function fixture(t) {
   await prepareMapJobs(options.jobs);
   return options;
 }
-test('artwork, actors, HUD icons and sounds precede alternating static and first-person models, which yield to queued maps', async (t) => {
+test('actors, HUD icons, artwork and sounds precede alternating static and first-person models, which yield to queued maps', async (t) => {
   const options = await fixture(t),
     controller = new AbortController(),
     sequence = [];
@@ -71,11 +71,11 @@ test('artwork, actors, HUD icons and sounds precede alternating static and first
   );
   assert.deepEqual(sequence, [
     'map',
-    'preview',
-    'map',
     'agents',
     'map',
     'equipment',
+    'map',
+    'preview',
     'map',
     'sounds',
     'map',
