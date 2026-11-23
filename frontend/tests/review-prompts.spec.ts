@@ -221,7 +221,11 @@ test('recorded moment actions seek into ordinary playback without changing speed
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE));
   await page.setViewportSize({ width: 1440, height: 900 });
+  await page.clock.install();
   await openFixture(page, recordedReplay);
+  // Inspect the committed seek before playback spends any demo time, even if
+  // the renderer or the browser round trips are slow.
+  const holdClock = async () => page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
   const scene = page.locator('.scene');
   const slider = page.getByRole('slider', { name: 'Playback position', exact: true });
   const speed = page
@@ -236,13 +240,14 @@ test('recorded moment actions seek into ordinary playback without changing speed
   await speed.click();
   await seek(page, 800);
   await opaqueSharedCard(page);
+  await holdClock();
   await page.getByRole('button', { name: 'Replay kill', exact: true }).click();
   await expect(scene).toHaveAttribute('data-camera-mode', 'pov');
   await expect(speed).toHaveAttribute('aria-pressed', 'true');
   await expect(observed).toHaveAttribute('aria-pressed', 'true');
-  expect(Number(await slider.inputValue())).toBeGreaterThanOrEqual(576);
-  expect(Number(await slider.inputValue())).toBeLessThan(704);
+  await expect(slider).toHaveValue('576');
   await expect(noReturn).toHaveCount(0);
+  await page.clock.resume();
   await expect
     .poll(async () => Number(await slider.inputValue()), { timeout: 7000 })
     .toBeGreaterThan(896);
@@ -252,6 +257,7 @@ test('recorded moment actions seek into ordinary playback without changing speed
   const landing = page.getByRole('button', { name: 'View grenade landing', exact: true });
   await page.locator('.viewer-stage').press('h');
   await expect(landing).toBeVisible();
+  await holdClock();
   await landing.click();
   await expect(scene).toHaveAttribute('data-camera-mode', 'orbit');
   await expect(scene).toHaveAttribute('data-focus-x', '320');
@@ -259,9 +265,9 @@ test('recorded moment actions seek into ordinary playback without changing speed
   await expect(scene).toHaveAttribute('data-focus-z', '0');
   await expect(speed).toHaveAttribute('aria-pressed', 'true');
   await expect(observed).toHaveAttribute('aria-pressed', 'true');
-  expect(Number(await slider.inputValue())).toBeGreaterThanOrEqual(496);
-  expect(Number(await slider.inputValue())).toBeLessThan(640);
+  await expect(slider).toHaveValue('496');
   await expect(noReturn).toHaveCount(0);
+  await page.clock.resume();
   await expect
     .poll(async () => Number(await slider.inputValue()), { timeout: 7000 })
     .toBeGreaterThan(640);
@@ -280,7 +286,9 @@ test('recorded moment actions seek into ordinary playback without changing speed
   await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Pause', exact: true }).click();
   await seek(page, 320);
+  await holdClock();
   await landing.click();
+  await expect(slider).toHaveValue('496');
   await expectCameraControl(page, '2D tactical · low power');
   await expect(speed).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('.viewer-stage canvas')).toHaveCount(0);
@@ -290,6 +298,7 @@ test('recorded moment actions seek into ordinary playback without changing speed
   // Recorded landing(320,0) projects to10+(1344/2048)*100,10+(1024/2048)*100.
   await expect(recordedTarget).toHaveAttribute('cx', '75.625');
   await expect(recordedTarget).toHaveAttribute('cy', '60');
+  await page.clock.resume();
   await expect
     .poll(async () => Number(await slider.inputValue()), { timeout: 7000 })
     .toBeGreaterThan(640);
