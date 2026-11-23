@@ -240,5 +240,8 @@ export function useDemoMapAssets(
   const refreshAvailability = useCallback(() => {
     if (lease.current?.identity === current.current) lease.current.check();
   }, []);
-  return { ...state, reportOverview, retryAcquisition, refreshAvailability };
+  return useMemo(
+    () => ({ ...state, reportOverview, retryAcquisition, refreshAvailability }),
+    [state, reportOverview, retryAcquisition, refreshAvailability],
+  );
 }

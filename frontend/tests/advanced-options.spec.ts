@@ -331,6 +331,11 @@ test('vertical FOV changes real 3D camera pixels reversibly rather than only sav
   await openPractice(page);
   await expect(page.locator('.viewer-stage canvas')).toBeVisible();
   await expect(page.locator('.scene')).toHaveAttribute('data-camera-mode', 'orbit');
+  // The canvas screenshot includes composited DOM. Isolate the world lens
+  // from text settling and the label layout, which have separate checks.
+  await openOptions(page);
+  await page.getByRole('switch', { name: /^Player names and health/ }).uncheck();
+  await closeOptions(page);
   const narrow = await fovPixels(page, info, 40, 'original-practice-camera-40');
   const wide = await fovPixels(page, info, 110, 'original-practice-camera-110');
   const narrowAgain = await fovPixels(page, info, 40, 'original-practice-camera-40-restored');

@@ -1,6 +1,10 @@
 import { chooseCameraControl } from './fixtures/viewer-transport';
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { manualMapAssets } from './fixtures/map-assets';
+import {
+  installOriginalCameraProbe,
+  originalFloorPixel as pixel,
+} from './fixtures/original-camera';
 import { expect, test, type Page } from '@playwright/test';
 import {
   originalMapGLB,
@@ -24,26 +28,6 @@ const fog: MapCubeFog = {
   brightness: 1,
   rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1],
 };
-async function pixel(page: Page) {
-  const bytes = await page.locator('.scene canvas').screenshot();
-  return page.evaluate(
-    async (bytes) => {
-      const bitmap = await createImageBitmap(
-          new Blob([new Uint8Array(bytes)], { type: 'image/png' }),
-        ),
-        surface = new OffscreenCanvas(bitmap.width, bitmap.height),
-        context = surface.getContext('2d')!;
-      context.drawImage(bitmap, 0, 0);
-      const color = Array.from(
-        context.getImageData(Math.floor(bitmap.width / 2), Math.floor(bitmap.height / 2), 1, 1)
-          .data,
-      ).slice(0, 3);
-      bitmap.close();
-      return color;
-    },
-    [...bytes],
-  );
-}
 async function overhead(page: Page) {
   await chooseCameraControl(page, 'Overhead');
 }
@@ -52,6 +36,7 @@ async function install(
   environment: () => MapEnvironment,
   black: 'exact' | 'name-only' = 'exact',
 ) {
+  await installOriginalCameraProbe(page);
   await page.addInitScript(() => {
     localStorage.setItem('theme', 'dark');
     localStorage.setItem('cswatch.language', 'en');

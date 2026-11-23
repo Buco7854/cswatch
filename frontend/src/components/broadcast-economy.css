@@ -371,8 +371,6 @@
 .broadcast-player.is-out .broadcast-player-select {
   grid-template-rows: auto;
   align-items: center;
-  min-height: 44px;
-  height: 44px;
   border-inline-start-color: var(--broadcast-faint);
 }
 .broadcast-unavailable {
