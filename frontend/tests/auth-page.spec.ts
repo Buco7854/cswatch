@@ -1,12 +1,13 @@
+import { memberConfig } from './fixtures/member-workspace';
+import { accountStatus } from './fixtures/account-status';
 import { expect, test, type Page } from '@playwright/test';
 
 async function policy(page: Page, registrations = true, steam = true) {
-  await page.route('**/api/auth/me', (route) => route.fulfill({ json: { user: null } }));
+  await page.route('**/api/auth/me', (route) => route.fulfill({ json: accountStatus(null) }));
   await page.route('**/api/config', async (route) => {
-    const config = await (await route.fetch()).json();
     return route.fulfill({
       json: {
-        ...config,
+        ...memberConfig,
         public_access: true,
         registrations_enabled: registrations,
         steam_enabled: steam,
@@ -26,11 +27,20 @@ test('dedicated auth routes preserve review intent, share local controls and kee
   await expect(page.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(
-    page.getByRole('link', { name: 'Continue with Steam', exact: true }),
-  ).toHaveAttribute('href', '/api/auth/steam?returnTo=%2Fwatch%2Fprivate-demo%3Ft%3D128');
+    page.getByRole('button', { name: 'Continue with Steam', exact: true }),
+  ).toBeVisible();
+  await page.route('**/api/auth/steam', (route) =>
+    route.fulfill({ status: 403, json: { detail: 'Steam sign-in is disabled.' } }),
+  );
+  const steamRequest = page.waitForRequest('**/api/auth/steam');
+  await page.getByRole('button', { name: 'Continue with Steam', exact: true }).click();
+  const startSteam = await steamRequest;
+  expect(startSteam.method()).toBe('POST');
+  expect(startSteam.postDataJSON().return_to).toBe('/watch/private-demo?t=128');
+
   await page.getByRole('link', { name: 'New here? Create an account', exact: true }).click();
   await expect(page).toHaveURL(/\/register\?returnTo=%2Fwatch%2Fprivate-demo%3Ft%3D128$/);
-  await page.getByLabel('Username', { exact: true }).fill('original_auth_fixture');
+  await page.getByLabel('Display name', { exact: true }).fill('original_auth_fixture');
   const password = page.getByLabel('Password', { exact: true });
   await password.fill('Synthetic-password-2026');
   await expect(password).toHaveAttribute('type', 'password');
@@ -67,9 +77,20 @@ test('direct registration follows instance policy and disallowed return destinat
     ),
   ).toBeVisible();
   await expect(
-    page.getByRole('link', { name: 'Continue with Steam', exact: true }),
-  ).toHaveAttribute('href', '/api/auth/steam?returnTo=%2Flibrary');
+    page.getByRole('button', { name: 'Continue with Steam', exact: true }),
+  ).toBeVisible();
+  await page.route('**/api/auth/steam', (route) =>
+    route.fulfill({ status: 403, json: { detail: 'Steam sign-in is disabled.' } }),
+  );
+  const steamRequest = page.waitForRequest('**/api/auth/steam');
+  await page.getByRole('button', { name: 'Continue with Steam', exact: true }).click();
+  const startSteam = await steamRequest;
+  expect(startSteam.method()).toBe('POST');
+  expect(startSteam.postDataJSON().return_to).toBe('/library');
+
   await policy(page, false, false);
   await page.reload();
-  await expect(page.getByRole('link', { name: 'Continue with Steam', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Continue with Steam', exact: true })).toHaveCount(
+    0,
+  );
 });

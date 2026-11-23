@@ -1,151 +1,374 @@
+import { accountPassword, newCredentials } from './credentials.js';
+import { accountEntry } from './auth-routes.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { Store } from './db.js';
-import { matchSources } from './match-library.js';
 import { now } from './db.js';
 import type { Config } from './config.js';
+import { acceptsHtml } from './request-security.js';
 import { fetchSteamName } from './steam-name.js';
 import { readUpstreamText } from './upstream.js';
 import {
-  HttpError,
-  currentUser,
+  activeUserSessions,
+  canSignIn,
+  confirmAnonymousSignOut,
+  unlinkSteamIdentity,
   digest,
   equal,
+  firstFactorStage,
+  hasSecondFactor,
   hashPassword,
-  newSession,
+  HttpError,
   rateLimit,
-  requireUser,
+  admitRequest,
+  chargeBudgets,
+  rateAddress,
+  readSessionStatus,
+  requireFreshSession,
+  requireSession,
+  retryAnonymousDelivery,
+  revokeUserSessions,
+  renewAfterIdentityChange,
+  rotateSession,
+  safeReturnPath,
+  sendSession,
+  steamStateCookie,
   token,
   verifyPassword,
-  safeReturnPath,
-  sessionCookieName,
-  steamStateCookie,
 } from './security.js';
+
 const steamNamespace = 'http://specs.openid.net/auth/2.0';
 const steamEndpoint = 'https://steamcommunity.com/openid/login';
 const steamStateLifetime = 600;
-const credentials = z.object({
-  username: z.string().regex(/^[A-Za-z0-9_-]{3,32}$/),
-  password: z.string().min(12).max(128),
-});
-/** Steam-created accounts use their Steam name, which can contain any script. */
-const login = credentials.extend({ username: z.string().trim().min(1).max(64) });
+const badCredentials = 'Username or password is incorrect.';
+const changed = 'Session expired. Refresh the page and try again.';
+const steamExpired = 'Sign-in expired. Start again.';
+const login = newCredentials.extend({ username: z.string().trim().min(1).max(64) });
+const empty = z.object({}).strict();
+
+type SteamPurpose = 'login' | 'link' | 'step-up';
+type SteamCallbackResult =
+  | 'cancelled'
+  | 'verification-cancelled'
+  | 'verification-failed'
+  | 'link-verification-failed'
+  | 'registration-closed'
+  | 'link-conflict';
+
+class SteamCallbackError extends HttpError {
+  constructor(
+    status: number,
+    message: string,
+    readonly result: 'registration-closed' | 'link-conflict',
+  ) {
+    super(status, message);
+  }
+}
+
 export async function authRoutes(
   app: FastifyInstance,
   db: Store,
   c: Config,
   invalidateProviderCache: (userId: string) => void,
 ) {
-  app.get('/api/auth/me', async (r) => ({
-    user: r.user
-      ? {
-          ...r.user,
-          match_sources: matchSources(db, c, r.user.id),
-          identities: db.all('SELECT provider,subject FROM identities WHERE user_id=?', r.user.id),
-        }
-      : null,
-    guest_session: r.guest ? { csrf: r.guest.csrf, expires_at: r.guest.expires_at } : null,
-  }));
-  app.post('/api/auth/register', async (r, reply) => {
+  const policy = () => db.mfaRequiredRoles(c).join(',');
+  app.get('/api/auth/me', accountEntry('status'), async (r, reply) => {
+    if (r.authSession || r.method === 'HEAD') return readSessionStatus(db, c, r);
+    if (['same-site', 'cross-site'].includes(r.headers['sec-fetch-site'] ?? ''))
+      throw new HttpError(403, 'Request origin was rejected.');
+    if (r.headers['x-browser-session-probe'] === '1') {
+      return reply.code(204).header('X-Browser-Bootstrap-Required', '1').send();
+    }
+    admitRequest(db, r, [
+      ['browser-bootstrap', 120, 60],
+      ['browser-bootstrap-budget', 12000, 900, 'instance'],
+    ]);
+    const grant = db.transaction(
+      () =>
+        retryAnonymousDelivery(db, c, r) ??
+        rotateSession(db, c, r, { userId: null, stage: 'anonymous' }),
+    );
+    return sendSession(c, reply, grant);
+  });
+  let registering = 0;
+  app.post('/api/auth/register', accountEntry('anonymous'), async (r, reply) => {
+    requireSession(db, r, c, ['anonymous']);
     if (!db.flag(c, 'registrations_enabled'))
       throw new HttpError(403, 'New registrations are disabled.');
-    rateLimit(db, r, 'register', 5, 3600);
-    const body = credentials.parse(r.body),
-      id = token().slice(0, 32),
-      hash = await hashPassword(body.password);
+    const body = newCredentials.parse(r.body);
+    if (registering >= 2) throw new HttpError(429, 'Too many requests. Try again later.', 1);
+    admitRequest(db, r, [
+      ['register', 5, 3600],
+      ['registration-instance', 30, 60, 'instance'],
+    ]);
+    let hash: string;
+    registering++;
     try {
-      db.run('INSERT INTO users VALUES(?,?,?,?,?)', id, body.username, hash, 0, now());
-    } catch (e) {
-      if (String(e).includes('UNIQUE')) throw new HttpError(409, 'That username is unavailable.');
-      throw e;
+      hash = await hashPassword(body.password);
+    } finally {
+      registering--;
     }
-    const csrf = newSession(db, c, r, reply, id);
-    db.audit(id, 'account.created');
-    reply.code(201);
-    return { user: { id, username: body.username, is_admin: false, csrf } };
-  });
-  app.post('/api/auth/login', async (r, reply) => {
-    const b = login.parse(r.body);
-    rateLimit(db, r, 'login-ip', 20);
-    rateLimit(db, r, 'login-user', 10, 900, b.username.toLowerCase());
-    const u = db.one(
-      'SELECT * FROM users u WHERE username=? COLLATE NOCASE AND NOT EXISTS(SELECT 1 FROM guest_sessions g WHERE g.owner_id=u.id)',
-      b.username,
-    );
-    if (!(await verifyPassword(u?.password_hash, b.password)))
-      throw new HttpError(401, 'Username or password is incorrect.');
-    // Password verification yields. Revoked credentials cannot issue a session
-    // afterward, and account details must come from the current immutable user.
-    const current = db.one(
-      'SELECT id,username,password_hash,is_admin FROM users u WHERE id=? AND NOT EXISTS(SELECT 1 FROM guest_sessions g WHERE g.owner_id=u.id)',
-      u!.id,
-    );
-    if (!current || current.password_hash !== u!.password_hash)
-      throw new HttpError(401, 'Username or password is incorrect.');
-    const csrf = newSession(db, c, r, reply, current.id);
-    return {
-      user: {
-        id: current.id,
-        username: current.username,
-        is_admin: Boolean(current.is_admin),
-        csrf,
-      },
-    };
-  });
-  app.post('/api/auth/logout', async (r, reply) => {
-    if (r.user) invalidateProviderCache(r.user.id);
-    const cookie = sessionCookieName(c);
-    db.run('DELETE FROM sessions WHERE token_hash=?', digest(r.cookies[cookie] || ''));
-    reply.clearCookie(cookie, {
-      path: '/',
-      secure: c.cookieSecure,
-      httpOnly: true,
-      sameSite: 'lax',
+    const grant = db.transaction(() => {
+      requireSession(db, r, c, ['anonymous']);
+      if (!db.flag(c, 'registrations_enabled'))
+        throw new HttpError(403, 'New registrations are disabled.');
+      const id = token().slice(0, 32);
+      // All public registrations get a random handle suffix. A caller never
+      // tests whether any specific account name exists by trying to register it.
+      const username = body.username + '-' + token().slice(0, 16);
+      db.run(
+        'INSERT INTO users(id,username,password_hash,role,created_at,display_name) VALUES(?,?,?,?,?,?)',
+        id,
+        username,
+        hash,
+        'member',
+        now(),
+        body.username,
+      );
+      db.audit(id, 'account.created', { target: id, address: r.clientAddress });
+      return rotateSession(db, c, r, {
+        userId: id,
+        stage: firstFactorStage(db, c, id),
+        proof: { kind: 'password' },
+      });
     });
-    return { ok: true };
+    reply.code(201);
+    return sendSession(c, reply, grant);
+  });
+  const passwordUser = (name: string) =>
+    db.one(
+      `SELECT id,username,role,password_hash,auth_generation FROM users u
+     WHERE username=? COLLATE NOCASE AND NOT EXISTS(SELECT 1 FROM guest_sessions WHERE owner_id=u.id)`,
+      name,
+    );
+  app.post('/api/auth/login', accountEntry('anonymous'), async (r, reply) => {
+    requireSession(db, r, c, ['anonymous']);
+    const b = login.parse(r.body);
+    const admitLogin = () =>
+      admitRequest(db, r, [
+        ['login-ip', 20, 900],
+        [
+          'login-user-address',
+          10,
+          900,
+          digest(rateAddress(r.ip) + '\0' + b.username.toLowerCase()),
+        ],
+        ['login-username', 8, 5, digest(b.username.toLowerCase())],
+        ['login-budget', 300, 60, 'instance'],
+      ]);
+    const before = passwordUser(b.username);
+    const oldPolicy = policy();
+    if (!(await verifyPassword(before?.password_hash, b.password, admitLogin))) {
+      db.audit(null, 'password.sign_in', { address: r.clientAddress, outcome: 'denied' });
+      throw new HttpError(401, badCredentials);
+    }
+    const grant = db.transaction(() => {
+      requireSession(db, r, c, ['anonymous']);
+      const current = passwordUser(b.username);
+      if (
+        !before ||
+        !current ||
+        current.id !== before.id ||
+        current.role !== before.role ||
+        current.password_hash !== before.password_hash ||
+        current.auth_generation !== before.auth_generation ||
+        policy() !== oldPolicy
+      )
+        throw new HttpError(401, badCredentials);
+      db.audit(current.id, 'password.sign_in', { target: current.id, address: r.clientAddress });
+      return rotateSession(db, c, r, {
+        userId: current.id,
+        stage: firstFactorStage(db, c, current.id),
+        proof: { kind: 'password' },
+      });
+    });
+    return sendSession(c, reply, grant);
+  });
+  app.post('/api/auth/logout', accountEntry('logout'), async (r, reply) => {
+    const { preserve_anonymous_operations } = empty
+      .extend({ preserve_anonymous_operations: z.literal(true).optional() })
+      .parse(r.body);
+    const grant = db.transaction(() => {
+      const current = requireSession(db, r, c, ['anonymous', 'challenge', 'enroll', 'full']);
+      if (preserve_anonymous_operations) {
+        if (current.stage !== 'anonymous') throw new HttpError(401, changed);
+        return confirmAnonymousSignOut(db, c, current);
+      }
+      if (current.user_id)
+        db.audit(current.user_id, 'session.signed_out', {
+          target: current.user_id,
+          address: r.clientAddress,
+        });
+      return rotateSession(db, c, r, { userId: null, stage: 'anonymous' });
+    });
+    if (r.user) invalidateProviderCache(r.user.id);
+    return sendSession(c, reply, grant);
+  });
+  app.post('/api/auth/step-up/password', async (r, reply) => {
+    const active = requireSession(db, r, c, ['full']);
+    if (hasSecondFactor(db, active.user_id))
+      throw new HttpError(403, 'Confirm using a second factor.');
+    const body = z
+      .object({ password: z.string().max(128) })
+      .strict()
+      .parse(r.body);
+    admitRequest(db, r, [
+      ['password-step-up-ip', 15, 900],
+      ['password-step-up', 5, 900, active.user_id],
+    ]);
+    const old = db.one('SELECT password_hash FROM users WHERE id=?', active.user_id)?.password_hash;
+    const previousPolicy = policy();
+    if (!(await verifyPassword(old, body.password))) {
+      db.audit(active.user_id, 'password.step_up', {
+        target: active.user_id,
+        address: r.clientAddress,
+        outcome: 'denied',
+      });
+      throw new HttpError(401, 'Current password is incorrect.');
+    }
+    const grant = db.transaction(() => {
+      const live = requireSession(db, r, c, ['full']);
+      if (
+        live.role !== active.role ||
+        policy() !== previousPolicy ||
+        hasSecondFactor(db, live.user_id) ||
+        db.one('SELECT password_hash FROM users WHERE id=?', live.user_id)?.password_hash !== old
+      )
+        throw new HttpError(401, changed);
+      db.audit(live.user_id, 'password.step_up', {
+        target: live.user_id,
+        address: r.clientAddress,
+      });
+      return rotateSession(db, c, r, {
+        userId: live.user_id,
+        stage: 'full',
+        proof: { kind: 'password' },
+      });
+    });
+    return sendSession(c, reply, grant);
   });
   app.post('/api/auth/password', async (r, reply) => {
-    const u = requireUser(r);
-    rateLimit(db, r, 'password', 5, 900, u.id);
-    const b = z
-      .object({ current_password: z.string().max(128), new_password: z.string().min(12).max(128) })
-      .parse(r.body);
-    const old = db.one('SELECT password_hash FROM users WHERE id=?', u.id)!;
-    if (old.password_hash && !(await verifyPassword(old.password_hash, b.current_password)))
-      throw new HttpError(400, 'Current password is incorrect.');
-    const hash = await hashPassword(b.new_password);
-    db.transaction(() => {
-      // Hashing yields to other requests. A logout, account switch or another
-      // password change must revoke this captured mutation before it can
-      // replace credentials or create a fresh session.
-      const active = currentUser(db, r, c);
-      if (!active || active.id !== u.id || active.csrf !== u.csrf)
-        throw new HttpError(401, 'Session expired. Refresh the page and try again.');
+    const active = requireFreshSession(db, r, c);
+    rateLimit(db, r, 'password', 5, 900, active.user_id);
+    const body = z.object({ new_password: accountPassword }).strict().parse(r.body);
+    const old = db.one('SELECT password_hash FROM users WHERE id=?', active.user_id)?.password_hash;
+    const previousPolicy = policy();
+    const hash = await hashPassword(body.new_password);
+    const grant = db.transaction(() => {
+      const live = requireFreshSession(db, r, c);
       if (
-        db.one('SELECT password_hash FROM users WHERE id=?', u.id)?.password_hash !==
-        old.password_hash
+        live.role !== active.role ||
+        policy() !== previousPolicy ||
+        db.one('SELECT password_hash FROM users WHERE id=?', live.user_id)?.password_hash !== old
       )
-        throw new HttpError(409, 'Session expired. Refresh the page and try again.');
-      db.run('UPDATE users SET password_hash=? WHERE id=?', hash, u.id);
-      db.run('DELETE FROM sessions WHERE user_id=?', u.id);
+        throw new HttpError(409, changed);
+      db.run('UPDATE users SET password_hash=? WHERE id=?', hash, live.user_id);
+      revokeUserSessions(db, live.user_id);
+      db.audit(live.user_id, 'password.changed', {
+        target: live.user_id,
+        address: r.clientAddress,
+      });
+      return rotateSession(db, c, r, {
+        userId: live.user_id,
+        stage: 'full',
+        proof: { kind: live.proof_kind!, at: live.proof_at! },
+      });
     });
-    const csrf = newSession(db, c, r, reply, u.id);
-    db.audit(u.id, 'password.changed');
-    return { csrf };
+    return sendSession(c, reply, grant);
   });
-  function startSteam(r: FastifyRequest, reply: FastifyReply, returnTo: unknown) {
-    if (!db.flag(c, 'steam_enabled')) throw new HttpError(403, 'Steam sign-in is disabled.');
-    rateLimit(db, r, 'steam', 20);
-    const state = token();
-    db.run('DELETE FROM auth_states WHERE expires_at<?', now());
-    db.run(
-      'INSERT INTO auth_states(token_hash,user_id,session_hash,expires_at,return_to) VALUES(?,?,?,?,?)',
-      digest(state),
-      r.user?.id ?? null,
-      r.user ? digest(r.cookies[sessionCookieName(c)]!) : null,
-      now() + steamStateLifetime,
-      safeReturnPath(returnTo, '/library'),
+
+  app.get('/api/auth/sessions', async (r) => {
+    const active = requireSession(db, r, c, ['full']);
+    return {
+      sessions: activeUserSessions(db, active.user_id).map((row) => ({
+        ...row,
+        current: row.id === active.id,
+      })),
+    };
+  });
+  app.delete('/api/auth/sessions/:id', async (r, reply) => {
+    const id = z
+      .string()
+      .regex(/^[a-f0-9]{32}$/)
+      .parse((r.params as { id: string }).id);
+    const grant = db.transaction(() => {
+      const live = requireSession(db, r, c, ['full']);
+      if (id !== live.id) requireFreshSession(db, r, c);
+      if (!db.run('DELETE FROM sessions WHERE id=? AND user_id=?', id, live.user_id).changes)
+        throw new HttpError(404, 'Session not found.');
+      db.audit(live.user_id, 'session.revoked', { target: live.user_id, address: r.clientAddress });
+      return id === live.id ? rotateSession(db, c, r, { userId: null, stage: 'anonymous' }) : null;
+    });
+    return grant ? sendSession(c, reply, grant) : { ok: true };
+  });
+  app.post('/api/auth/sessions/revoke-all', async (r, reply) => {
+    empty.parse(r.body);
+    const grant = db.transaction(() => {
+      const live = requireFreshSession(db, r, c);
+      revokeUserSessions(db, live.user_id);
+      db.audit(live.user_id, 'session.revoked_all', {
+        target: live.user_id,
+        address: r.clientAddress,
+      });
+      return rotateSession(db, c, r, { userId: null, stage: 'anonymous' });
+    });
+    return sendSession(c, reply, grant);
+  });
+
+  const steamSubject = (userId: string) =>
+    db.one("SELECT subject FROM identities WHERE provider='steam' AND user_id=?", userId)
+      ?.subject ?? null;
+  const steamAccount = (subject: string) =>
+    db.one(
+      `SELECT u.id,u.role,u.password_hash,u.auth_generation FROM identities i JOIN users u ON u.id=i.user_id
+      WHERE i.provider='steam' AND i.subject=?
+      AND NOT EXISTS (SELECT 1 FROM guest_sessions WHERE owner_id=u.id)`,
+      subject,
     );
+  function requireSteam() {
+    if (!db.flag(c, 'steam_enabled')) throw new HttpError(403, 'Steam sign-in is disabled.');
+  }
+  let steamVerifications = 0;
+  function startSteam(
+    r: FastifyRequest,
+    reply: FastifyReply,
+    purpose: SteamPurpose,
+    returnTo: unknown,
+  ) {
+    const state = token();
+    db.transaction(() => {
+      requireSteam();
+      const session =
+        purpose === 'link'
+          ? requireFreshSession(db, r, c)
+          : purpose === 'step-up'
+            ? requireSession(db, r, c, ['full'])
+            : requireSession(db, r, c, ['anonymous']);
+      const subject = session.user_id ? steamSubject(session.user_id) : null;
+      if (purpose === 'step-up' && (!subject || hasSecondFactor(db, session.user_id!)))
+        throw new HttpError(403, 'Confirm your identity with another sign-in method.');
+      chargeBudgets(db, r, [
+        ['steam', 20, 900],
+        ['steam-browser-start', 12, steamStateLifetime, session.id],
+        ['steam-instance', 150, 60, 'instance'],
+      ]);
+      db.run(
+        'DELETE FROM auth_states WHERE expires_at<=? OR session_hash=?',
+        now(),
+        session.token_hash,
+      );
+      db.run(
+        'INSERT INTO auth_states(token_hash,user_id,session_hash,expires_at,return_to,purpose,subject,policy) VALUES(?,?,?,?,?,?,?,?)',
+        digest(state),
+        session.user_id,
+        session.token_hash,
+        now() + steamStateLifetime,
+        safeReturnPath(returnTo),
+        purpose,
+        subject,
+        policy(),
+      );
+    });
     const params = new URLSearchParams({
       'openid.ns': steamNamespace,
       'openid.mode': 'checkid_setup',
@@ -154,7 +377,7 @@ export async function authRoutes(
       'openid.identity': 'http://specs.openid.net/auth/2.0/identifier_select',
       'openid.claimed_id': 'http://specs.openid.net/auth/2.0/identifier_select',
     });
-    const stateCookie = steamStateCookie(c);
+    const stateCookie = steamStateCookie(c, state);
     reply.setCookie(stateCookie.name, state, {
       httpOnly: true,
       secure: c.cookieSecure,
@@ -162,175 +385,308 @@ export async function authRoutes(
       path: stateCookie.path,
       maxAge: steamStateLifetime,
     });
-    return steamEndpoint + '?' + params;
+    return { location: steamEndpoint + '?' + params };
   }
-  app.get('/api/auth/steam', async (r, reply) => {
-    if (r.user) throw new HttpError(409, 'Link Steam from Connected accounts.');
-    return reply.redirect(startSteam(r, reply, (r.query as { returnTo?: string }).returnTo), 303);
+
+  app.post('/api/auth/steam', accountEntry('anonymous'), async (r, reply) => {
+    const body = z
+      .object({ return_to: z.string().max(1024).optional() })
+      .strict()
+      .parse(r.body);
+    return startSteam(r, reply, 'login', body.return_to);
   });
   app.post('/api/auth/steam/link', async (r, reply) => {
-    requireUser(r);
-    return { location: startSteam(r, reply, '/account/connections') };
+    empty.parse(r.body);
+    return startSteam(r, reply, 'link', '/account/connections');
   });
-  app.get('/api/auth/steam/callback', async (r, reply) => {
-    if (!db.flag(c, 'steam_enabled')) throw new HttpError(403, 'Steam sign-in is disabled.');
-    const q = z.record(z.string(), z.string()).parse(r.query),
-      state = q.state || '';
-    if (!state || !equal(state, r.cookies[steamStateCookie(c).name] || ''))
-      throw new HttpError(400, 'Invalid sign-in state. Start again.');
-    const stored = db.transaction(() => {
-      const s = db.one(
-        'SELECT * FROM auth_states WHERE token_hash=? AND expires_at>?',
-        digest(state),
-        now(),
-      );
-      db.run('DELETE FROM auth_states WHERE token_hash=?', digest(state));
-      return s;
-    });
-    if (!stored) throw new HttpError(400, 'Sign-in expired. Start again.');
-    const stateCookie = steamStateCookie(c);
-    reply.clearCookie(stateCookie.name, {
-      path: stateCookie.path,
-      secure: c.cookieSecure,
-      httpOnly: true,
-      sameSite: 'lax',
-    });
-    const checkSession = () => {
-      const user = currentUser(db, r, c);
-      if (
-        (user?.id ?? null) !== stored.user_id ||
-        (user && digest(r.cookies[sessionCookieName(c)]!) !== stored.session_hash)
-      )
-        throw new HttpError(400, 'The linking session changed. Start again.');
-    };
-    checkSession();
-    if (q['openid.mode'] === 'cancel') {
-      const destination = stored.user_id
-        ? '/account/connections?steam=cancelled'
-        : '/login?' +
-          new URLSearchParams({
-            steam: 'cancelled',
-            returnTo: safeReturnPath(stored.return_to),
-          });
-      return reply.redirect(destination, 303);
-    }
-    const claimed = q['openid.claimed_id'] || '';
-    const subject = /^https?:\/\/steamcommunity\.com\/openid\/id\/(\d{17})$/.exec(claimed)?.[1];
-    const signed = new Set((q['openid.signed'] || '').split(','));
-    const responseNonce = q['openid.response_nonce'] || '';
-    const timestamp = responseNonce.slice(0, 20);
-    const nonce = Date.parse(timestamp);
-    const nonceHash = digest(responseNonce);
-    if (
-      q['openid.mode'] !== 'id_res' ||
-      q['openid.ns'] !== steamNamespace ||
-      q['openid.op_endpoint'] !== steamEndpoint ||
-      q['openid.return_to'] !== `${c.appUrl}/api/auth/steam/callback?state=${state}` ||
-      q['openid.identity'] !== claimed ||
-      !subject ||
-      !q['openid.assoc_handle'] ||
-      !q['openid.sig'] ||
-      ![
-        'op_endpoint',
-        'return_to',
-        'response_nonce',
-        'assoc_handle',
-        'claimed_id',
-        'identity',
-      ].every((k) => signed.has(k)) ||
-      !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ[!-~]{0,235}$/.test(responseNonce) ||
-      !Number.isFinite(nonce) ||
-      new Date(nonce).toISOString().replace('.000Z', 'Z') !== timestamp ||
-      Math.abs(Date.now() - nonce) >= steamStateLifetime * 1000 ||
-      db.one('SELECT 1 FROM steam_nonces WHERE nonce_hash=? AND expires_at>?', nonceHash, now())
-    )
-      throw new HttpError(400, 'Steam returned an invalid identity.');
-    const verification = new URLSearchParams(
-      Object.entries(q).filter(([k]) => k.startsWith('openid.')),
-    );
-    verification.set('openid.mode', 'check_authentication');
-    try {
-      const result = await fetch(steamEndpoint, {
-        method: 'POST',
-        body: verification,
-        signal: AbortSignal.timeout(15000),
-        redirect: 'error',
+  app.post('/api/auth/step-up/steam', async (r, reply) => {
+    const body = z
+      .object({ return_to: z.string().max(1024).optional() })
+      .strict()
+      .parse(r.body);
+    return startSteam(r, reply, 'step-up', body.return_to ?? '/account');
+  });
+  app.delete('/api/auth/steam/link', async (r, reply) => {
+    const grant = db.transaction(() => {
+      const live = requireFreshSession(db, r, c);
+      unlinkSteamIdentity(db, live.user_id);
+      if (!canSignIn(db, c, live.user_id))
+        throw new HttpError(409, 'Add a password or passkey before disconnecting Steam.');
+      db.audit(live.user_id, 'steam.unlinked', { target: live.user_id, address: r.clientAddress });
+      revokeUserSessions(db, live.user_id);
+      return rotateSession(db, c, r, {
+        userId: live.user_id,
+        stage: 'full',
+        proof:
+          live.proof_kind === 'steam' ? undefined : { kind: live.proof_kind!, at: live.proof_at! },
       });
-      if (!result.ok) {
-        await result.body?.cancel();
-        throw new Error();
-      }
-      const fields = new Map<string, string>();
-      for (const line of (await readUpstreamText(result, 16384)).split(/\r?\n/)) {
-        if (!line) continue;
-        const colon = line.indexOf(':');
-        const key = line.slice(0, colon);
-        if (colon < 1 || fields.has(key)) throw new Error();
-        fields.set(key, line.slice(colon + 1));
-      }
-      if (fields.get('ns') !== steamNamespace || fields.get('is_valid') !== 'true')
-        throw new Error();
-    } catch {
-      throw new HttpError(400, 'Steam could not verify this sign-in. Try again.');
-    }
-    // A password fixes the name its owner types. Accounts that only use Steam follow their Steam name.
-    const named = db.one(
-      stored.user_id
-        ? 'SELECT password_hash FROM users WHERE id=?'
-        : "SELECT u.password_hash FROM identities i JOIN users u ON u.id=i.user_id WHERE i.provider='steam' AND i.subject=?",
-      stored.user_id ?? subject,
-    );
-    const steamName = named?.password_hash ? null : await fetchSteamName(subject, c.steamApiKey);
-    const uid = db.transaction(() => {
-      checkSession();
-      if (!db.flag(c, 'steam_enabled')) throw new HttpError(403, 'Steam sign-in is disabled.');
-      if (stored.expires_at <= now() || Math.abs(Date.now() - nonce) >= steamStateLifetime * 1000)
-        throw new HttpError(400, 'Sign-in expired. Start again.');
-      db.run('DELETE FROM steam_nonces WHERE expires_at<=?', now());
-      if (
-        !db.run(
-          'INSERT OR IGNORE INTO steam_nonces VALUES(?,?)',
-          nonceHash,
-          nonce / 1000 + steamStateLifetime,
-        ).changes
-      )
-        throw new HttpError(400, 'Steam returned an invalid identity.');
-      const identity = db.one(
-        "SELECT user_id FROM identities WHERE provider='steam' AND subject=?",
-        subject,
-      );
-      if (identity && stored.user_id && identity.user_id !== stored.user_id)
-        throw new HttpError(409, 'This Steam account is already linked to another account.');
-      let id = stored.user_id || identity?.user_id;
-      if (!id) {
-        if (!db.flag(c, 'registrations_enabled'))
-          throw new HttpError(403, 'New registrations are disabled.');
-        id = token().slice(0, 32);
-        const base = 'steam_' + subject;
-        const username = db.one('SELECT id FROM users WHERE username=? COLLATE NOCASE', base)
-          ? `${base}_${token().slice(0, 8)}`
-          : base;
-        db.run('INSERT INTO users VALUES(?,?,?,?,?)', id, username, null, 0, now());
-      }
-      const linked = db.one(
-        "SELECT subject FROM identities WHERE provider='steam' AND user_id=?",
-        id,
-      );
-      if (linked && linked.subject !== subject)
-        throw new HttpError(409, 'Your account has a different Steam identity.');
-      db.run("INSERT OR IGNORE INTO identities VALUES('steam',?,?)", subject, id);
-      const username = steamName
-        ? [steamName, `${steamName} (${subject.slice(-4)})`].find(
-            (name) =>
-              !db.one('SELECT 1 FROM users WHERE username=? COLLATE NOCASE AND id<>?', name, id),
-          )
-        : undefined;
-      if (username)
-        db.run('UPDATE users SET username=? WHERE id=? AND password_hash IS NULL', username, id);
-      return id as string;
     });
-    newSession(db, c, r, reply, uid);
-    db.audit(uid, 'steam.authenticated');
-    return reply.redirect(safeReturnPath(stored.return_to), 303);
+    return sendSession(c, reply, grant);
   });
+  app.get(
+    '/api/auth/steam/callback',
+    { ...accountEntry('anonymous'), exposeHeadRoute: false },
+    async (r, reply) => {
+      requireSteam();
+      const q = z.record(z.string(), z.string()).parse(r.query),
+        state = q.state || '';
+      const stateCookie = steamStateCookie(c, state);
+      if (!/^[a-f0-9]{64}$/.test(state) || !equal(state, r.cookies[stateCookie.name] || ''))
+        throw new HttpError(400, 'Invalid sign-in state. Start again.');
+      const stateHash = digest(state);
+      const checkState = () => {
+        const stored = db.one(
+          'SELECT * FROM auth_states WHERE token_hash=? AND expires_at>?',
+          stateHash,
+          now(),
+        );
+        if (!stored || stored.policy !== policy()) throw new HttpError(400, steamExpired);
+        const live =
+          stored.purpose === 'link'
+            ? requireFreshSession(db, r, c)
+            : stored.purpose === 'step-up'
+              ? requireSession(db, r, c, ['full'])
+              : requireSession(db, r, c, ['anonymous']);
+        if (
+          live.token_hash !== stored.session_hash ||
+          live.user_id !== stored.user_id ||
+          (live.user_id && stored.subject !== steamSubject(live.user_id)) ||
+          (stored.purpose === 'step-up' && hasSecondFactor(db, live.user_id!))
+        )
+          throw new HttpError(400, steamExpired);
+        return { stored, live };
+      };
+      const initial = db.transaction(() => {
+        const checked = checkState();
+        if (
+          !db.run('UPDATE auth_states SET claimed=1 WHERE token_hash=? AND claimed=0', stateHash)
+            .changes
+        )
+          throw new HttpError(400, steamExpired);
+        if (q['openid.mode'] === 'cancel')
+          db.run('DELETE FROM auth_states WHERE token_hash=?', stateHash);
+        return checked;
+      });
+      const resultPath = (result: SteamCallbackResult) => {
+        const returnTo = safeReturnPath(initial.stored.return_to);
+        if (initial.stored.purpose === 'login')
+          return '/login?' + new URLSearchParams({ steam: result, returnTo });
+        const url = new URL(returnTo, c.appUrl);
+        url.searchParams.set('steam', result);
+        return url.pathname + url.search + url.hash;
+      };
+      // The claim has already spent the state. Let the cookie expire so this
+      // callback's response cannot clear a newer attempt's cookie.
+      if (q['openid.mode'] === 'cancel') {
+        const result =
+          initial.stored.purpose === 'step-up' ? 'verification-cancelled' : 'cancelled';
+        return reply.redirect(resultPath(result), 303);
+      }
+
+      try {
+        const claimed = q['openid.claimed_id'] || '';
+        const subject = /^https?:\/\/steamcommunity\.com\/openid\/id\/(\d{17})$/.exec(claimed)?.[1];
+        const signed = new Set((q['openid.signed'] || '').split(','));
+        const responseNonce = q['openid.response_nonce'] || '';
+        const timestamp = responseNonce.slice(0, 20);
+        const nonce = Date.parse(timestamp);
+        const nonceHash = digest(responseNonce);
+        if (
+          q['openid.mode'] !== 'id_res' ||
+          q['openid.ns'] !== steamNamespace ||
+          q['openid.op_endpoint'] !== steamEndpoint ||
+          q['openid.return_to'] !== `${c.appUrl}/api/auth/steam/callback?state=${state}` ||
+          q['openid.identity'] !== claimed ||
+          !subject ||
+          !q['openid.assoc_handle'] ||
+          !q['openid.sig'] ||
+          ![
+            'op_endpoint',
+            'return_to',
+            'response_nonce',
+            'assoc_handle',
+            'claimed_id',
+            'identity',
+          ].every((key) => signed.has(key)) ||
+          !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ[!-~]{0,235}$/.test(responseNonce) ||
+          !Number.isFinite(nonce) ||
+          new Date(nonce).toISOString().replace('.000Z', 'Z') !== timestamp ||
+          Math.abs(Date.now() - nonce) >= steamStateLifetime * 1000 ||
+          db.one('SELECT 1 FROM steam_nonces WHERE nonce_hash=? AND expires_at>?', nonceHash, now())
+        )
+          throw new HttpError(400, 'Steam returned an invalid identity.');
+
+        const identity = steamAccount(subject);
+        if (steamVerifications >= 8)
+          throw new HttpError(429, 'Too many requests. Try again later.', 5);
+        let steamName: string | null = null;
+        steamVerifications++;
+        try {
+          await verifySteam(q);
+          if (initial.stored.purpose === 'login' && !identity?.password_hash) {
+            requireSteam();
+            checkState();
+            steamName = await fetchSteamName(subject, c.steamApiKey);
+          }
+        } finally {
+          steamVerifications--;
+        }
+        const grant = db.transaction(() => {
+          requireSteam();
+          const { stored, live } = checkState();
+          if (Math.abs(Date.now() - nonce) >= steamStateLifetime * 1000)
+            throw new HttpError(400, steamExpired);
+          const current = steamAccount(subject);
+          if (
+            identity?.id !== current?.id ||
+            identity?.role !== current?.role ||
+            identity?.auth_generation !== current?.auth_generation ||
+            identity?.password_hash !== current?.password_hash
+          )
+            throw new HttpError(400, steamExpired);
+          db.run('DELETE FROM auth_states WHERE token_hash=?', stateHash);
+          db.run('DELETE FROM steam_nonces WHERE expires_at<=?', now());
+          if (
+            !db.run(
+              'INSERT OR IGNORE INTO steam_nonces VALUES(?,?)',
+              nonceHash,
+              nonce / 1000 + steamStateLifetime,
+            ).changes
+          )
+            throw new HttpError(400, 'Steam returned an invalid identity.');
+          if (stored.purpose === 'step-up') {
+            if (stored.subject !== subject || current?.id !== live.user_id) {
+              db.audit(live.user_id, 'steam.step_up', {
+                target: live.user_id,
+                address: r.clientAddress,
+                outcome: 'denied',
+              });
+              return null;
+            }
+            db.audit(live.user_id, 'steam.step_up', {
+              target: live.user_id,
+              address: r.clientAddress,
+            });
+            return rotateSession(db, c, r, {
+              userId: live.user_id!,
+              stage: 'full',
+              proof: { kind: 'steam' },
+            });
+          }
+          if (stored.purpose === 'link') {
+            if (current && current.id !== live.user_id)
+              throw new SteamCallbackError(
+                409,
+                'This Steam account is already linked to another account.',
+                'link-conflict',
+              );
+            if (stored.subject && stored.subject !== subject)
+              throw new SteamCallbackError(
+                409,
+                'Your account has a different Steam identity.',
+                'link-conflict',
+              );
+            db.run("INSERT OR IGNORE INTO identities VALUES('steam',?,?)", subject, live.user_id);
+            db.audit(live.user_id, 'steam.linked', {
+              target: live.user_id,
+              address: r.clientAddress,
+            });
+            return renewAfterIdentityChange(db, c, r, requireFreshSession(db, r, c));
+          }
+          const id = current?.id ?? token().slice(0, 32);
+          if (!current) {
+            if (!db.flag(c, 'registrations_enabled'))
+              throw new SteamCallbackError(
+                403,
+                'New registrations are disabled.',
+                'registration-closed',
+              );
+            db.run(
+              'INSERT INTO users(id,username,role,created_at,display_name) VALUES(?,?,?,?,?)',
+              id,
+              'steam_' + subject + '-' + token().slice(0, 16),
+              'member',
+              now(),
+              steamName,
+            );
+            db.run("INSERT INTO identities VALUES('steam',?,?)", subject, id);
+          } else if (steamName && !current.password_hash) {
+            db.run('UPDATE users SET display_name=? WHERE id=?', steamName, id);
+          }
+          db.audit(id, 'steam.authenticated', { target: id, address: r.clientAddress });
+          return rotateSession(db, c, r, {
+            userId: id,
+            stage: firstFactorStage(db, c, id),
+            proof: { kind: 'steam' },
+          });
+        });
+        const returnTo = safeReturnPath(initial.stored.return_to);
+        if (!grant) return reply.redirect(resultPath('verification-failed'), 303);
+        const status = sendSession(c, reply, grant);
+        return reply.redirect(
+          status.session.stage === 'challenge'
+            ? '/login?' + new URLSearchParams({ returnTo })
+            : status.session.stage === 'enroll'
+              ? '/account?' + new URLSearchParams({ returnTo })
+              : returnTo,
+          303,
+        );
+      } catch (error) {
+        if (
+          !(error instanceof HttpError) ||
+          (initial.stored.purpose !== 'step-up' && !acceptsHtml(r))
+        )
+          throw error;
+        const result = db.transaction(() => {
+          // An upstream reply can arrive after the browser replaced this attempt.
+          requireSteam();
+          const { stored, live } = checkState();
+          db.run('DELETE FROM auth_states WHERE token_hash=?', stateHash);
+          if (stored.purpose === 'step-up') {
+            db.audit(live.user_id, 'steam.step_up', {
+              target: live.user_id,
+              address: r.clientAddress,
+              outcome: 'denied',
+            });
+          }
+          return error instanceof SteamCallbackError
+            ? error.result
+            : stored.purpose === 'link'
+              ? 'link-verification-failed'
+              : 'verification-failed';
+        });
+        return reply.redirect(resultPath(result), 303);
+      }
+    },
+  );
+}
+
+async function verifySteam(q: Record<string, string>) {
+  const verification = new URLSearchParams(
+    Object.entries(q).filter(([key]) => key.startsWith('openid.')),
+  );
+  verification.set('openid.mode', 'check_authentication');
+  try {
+    const result = await fetch(steamEndpoint, {
+      method: 'POST',
+      body: verification,
+      signal: AbortSignal.timeout(15000),
+      redirect: 'error',
+    });
+    if (!result.ok) {
+      await result.body?.cancel();
+      throw new Error();
+    }
+    const fields = new Map<string, string>();
+    for (const line of (await readUpstreamText(result, 16384)).split(/\r?\n/)) {
+      if (!line) continue;
+      const colon = line.indexOf(':');
+      const key = line.slice(0, colon);
+      if (colon < 1 || fields.has(key)) throw new Error();
+      fields.set(key, line.slice(colon + 1));
+    }
+    if (fields.get('ns') !== steamNamespace || fields.get('is_valid') !== 'true') throw new Error();
+  } catch {
+    throw new HttpError(400, 'Steam could not verify this sign-in. Try again.');
+  }
 }

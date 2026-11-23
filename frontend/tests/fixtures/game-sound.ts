@@ -1,3 +1,4 @@
+import { accountStatus, configForSyntheticAccount } from './account-status';
 import { fulfillReplayFixture } from './streamed-replay';
 import { createHash } from 'node:crypto';
 import type { Page } from '@playwright/test';
@@ -106,10 +107,11 @@ export async function installGameSoundFixture(page: Page) {
       }),
     );
   });
+  await configForSyntheticAccount(page);
   await page.route('**/api/auth/me', (route) =>
     route.fulfill({
       json: {
-        user: null,
+        ...accountStatus(null),
         guest_session: { csrf: 'original-audio-capability', expires_at: 2000000000 },
       },
     }),

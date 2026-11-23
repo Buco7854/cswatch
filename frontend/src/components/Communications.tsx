@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MessageSquareText, Play, Volume2, X } from 'lucide-react';
 import { api } from '../api';
-import { useApp } from '../context';
+import { useApp, useWorkspaceDialog } from '../context';
 import { t } from '../i18n';
 import type { Playback } from '../types';
 import type { CaptionCue } from '../../../shared/communications';
 import { frameAt, type ViewerSettings } from '../playback';
 import { VoicePlayback } from '../voice-playback';
 import { ViewerAudio, useViewerAudioState } from '../viewer-audio';
-import { SelectControl } from './Controls';
+import { SelectControl, SwitchRow } from './Controls';
 import './communications.css';
 
 type Captions = {
@@ -118,10 +118,7 @@ export default function Communications({
       engine.current = null;
     };
   }, [id, audio]);
-  useEffect(() => {
-    if (open) dialog.current?.showModal();
-    else dialog.current?.close();
-  }, [open]);
+  useWorkspaceDialog(dialog, open);
   useEffect(() => {
     if (
       !settings.voice ||
@@ -263,22 +260,16 @@ export default function Communications({
     description: string,
     disabled = false,
   ) => (
-    <label className="toggle-row">
-      <span>
-        {label}
-        <small>{description}</small>
-      </span>
-      <input
-        role="switch"
-        type="checkbox"
-        checked={settings[key]}
-        disabled={disabled}
-        onChange={(event) => {
-          if (key === 'voice' && event.target.checked) void engine.current?.unlock();
-          onChange({ ...settings, [key]: event.target.checked });
-        }}
-      />
-    </label>
+    <SwitchRow
+      label={label}
+      description={description}
+      checked={settings[key]}
+      disabled={disabled}
+      onChange={(checked) => {
+        if (key === 'voice' && checked) void engine.current?.unlock();
+        onChange({ ...settings, [key]: checked });
+      }}
+    />
   );
   const captionStatus = () => {
     if (sampleExample)

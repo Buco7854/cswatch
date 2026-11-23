@@ -4,8 +4,7 @@ body {
   color: var(--text);
 }
 button,
-input,
-select {
+input {
   font-family: inherit;
 }
 h1 {
@@ -139,8 +138,7 @@ small {
   padding: 3px 7px;
   min-height: 22px;
 }
-[data-theme] input:not([type='checkbox'], [type='range']),
-[data-theme] select {
+[data-theme] input:not([type='checkbox'], [type='range']) {
   background: var(--surface);
   color: var(--text);
   border-color: var(--control);
@@ -298,13 +296,6 @@ small {
 .transport {
   gap: 7px;
 }
-[data-theme] .transport select {
-  background: transparent;
-  border: 0;
-  min-height: 32px;
-  font-size: 12px;
-  padding: 5px 4px;
-}
 .transport .button {
   font-size: 12px;
 }
@@ -403,9 +394,6 @@ summary {
 }
 .kv-row > span:last-child {
   color: var(--faint);
-}
-.audit-panel {
-  margin-top: 28px;
 }
 [data-theme] .options-dialog {
   background: var(--surface);
@@ -706,10 +694,6 @@ summary {
     min-width: 34px;
     min-height: 40px;
     padding: 7px;
-  }
-  .transport select {
-    padding: 5px 2px !important;
-    font-size: 12px !important;
   }
   .transport .button {
     font-size: 11px;

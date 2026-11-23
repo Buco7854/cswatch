@@ -1,7 +1,11 @@
+import type { Role } from '../../shared/roles.mjs';
+
 export type User = {
   id: string;
   username: string;
-  is_admin: boolean;
+  display_name: string;
+  role: Role;
+  has_password: boolean;
   csrf: string;
   match_sources?: {
     steam: boolean;
@@ -12,6 +16,7 @@ export type User = {
   identities?: { provider: string; subject: string }[];
 };
 export type Config = {
+  admin_access: boolean;
   build?: { revision: string | null; builtAt: string | null };
   setup_required: boolean;
   guest_uploads_enabled: boolean;
@@ -26,6 +31,23 @@ export type Config = {
   steam_discovery?: boolean;
   transcription_enabled: boolean;
   transcription_configured: boolean;
+};
+export type AuthSession = {
+  stage: 'anonymous' | 'challenge' | 'enroll' | 'full';
+  anonymous_id: string | null;
+  csrf: string;
+  expires_at: number;
+  proof_fresh: boolean;
+  proof_at: number | null;
+  proof_kind: 'password' | 'steam' | 'passkey' | 'totp' | null;
+  factors: { passkey: boolean; totp: boolean; recovery: boolean } | null;
+  username: string | null;
+  display_name: string | null;
+};
+export type AuthStatus = {
+  user: User | null;
+  session: AuthSession;
+  guest_session: { csrf: string; expires_at: number } | null;
 };
 export type Demo = {
   id: string;

@@ -1,3 +1,4 @@
+import { accountStatus, configForSyntheticAccount } from './fixtures/account-status';
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { test, expect, type Page } from '@playwright/test';
 import {
@@ -90,10 +91,11 @@ async function install(page: Page) {
       }),
     );
   });
+  await configForSyntheticAccount(page);
   await page.route('**/api/auth/me', (route) =>
     route.fulfill({
       json: {
-        user: null,
+        ...accountStatus(null),
         guest_session: { csrf: 'original-guest-capability', expires_at: 2000000000 },
       },
     }),

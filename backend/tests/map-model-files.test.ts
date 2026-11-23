@@ -1,3 +1,4 @@
+import { fixtureCookie, insertFixtureSession } from './fixtures/member-session.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -21,7 +22,6 @@ import Fastify from 'fastify';
 import { createApp } from '../src/server.js';
 import { loadConfig } from '../src/config.js';
 import { Store, now } from '../src/db.js';
-import { COOKIE, digest } from '../src/security.js';
 import { mapModelBytes, mapModelFileRoutes } from '../src/map-model-files.js';
 import { fileDigest } from '../src/asset-content.js';
 import { initializeFixture } from './fixtures/initialized.js';
@@ -42,14 +42,15 @@ async function fixture() {
     root = join(folder, 'data');
   const db = new Store(root);
   initializeFixture(db);
-  db.run('INSERT INTO users VALUES(?,?,?,?,?)', 'member', 'member', null, 0, now());
   db.run(
-    'INSERT INTO sessions VALUES(?,?,?,?)',
-    digest('model-file-session'),
+    'INSERT INTO users(id,username,password_hash,role,created_at) VALUES(?,?,?,?,?)',
     'member',
-    'csrf',
-    now() + 120,
+    'member',
+    null,
+    'member',
+    now(),
   );
+  insertFixtureSession(db, 'model-file-session', 'member', 'csrf', now() + 120);
   db.run('INSERT INTO settings VALUES(?,?)', 'public_access', 0);
   const app = await createApp(
     loadConfig({ DATA_DIR: root, APP_URL: 'http://localhost:8000', COOKIE_SECURE: 'false' }),
@@ -71,7 +72,7 @@ async function fixture() {
       url,
       headers: {
         host: 'localhost:8000',
-        ...(member ? { cookie: `${COOKIE}=model-file-session` } : {}),
+        ...(member ? { cookie: fixtureCookie('model-file-session') } : {}),
         ...headers,
       },
     });

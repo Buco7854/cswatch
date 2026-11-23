@@ -8,10 +8,13 @@ import {
   digest,
   HttpError,
   requireUser,
+  requireFreshSession,
+  renewAfterIdentityChange,
+  sendSession,
   rateLimit,
   type SessionUser,
 } from './security.js';
-import { abandon, reserve, validateMagic } from './ingestion.js';
+import { abandonUpload, reserve, validateMagic } from './ingestion.js';
 import { downloadRemoteDemo, validateRemoteUrl } from './remote-download.js';
 import { faceitId, matchDemo, matchFilter, matchOffset, matchPageSize } from './match-library.js';
 import { readUpstreamJson, requestJson } from './upstream.js';
@@ -145,7 +148,10 @@ async function faceit(
           return readUpstreamJson(response);
         case 401:
         case 403:
-          throw new HttpError(502, 'FACEIT denied access. Try again later.');
+          throw new HttpError(
+            502,
+            'This instance cannot read FACEIT match data. You can still upload a demo file.',
+          );
         case 404:
           throw new HttpError(404, missing);
         case 429:
@@ -231,8 +237,10 @@ export async function providerRoutes(
     if (linkedFaceit(user.id)?.subject !== subject)
       throw new HttpError(409, 'The FACEIT connection changed. Try again.');
   }
-  app.post('/api/connections/faceit/link', async (r) => {
+  app.post('/api/connections/faceit/link', async (r, reply) => {
+    z.strictObject({}).parse(r.body);
     const u = requireUser(r);
+    requireFreshSession(db, r, c);
     enabled();
     rateLimit(db, r, 'faceit-link', 10, 900, u.id);
     const steam = db.one(
@@ -255,9 +263,9 @@ export async function providerRoutes(
       if (!profile.success || profile.data.games.cs2.game_player_id !== steam.subject)
         throw new HttpError(400, 'FACEIT did not confirm a matching Steam account.');
       const subject = profile.data.player_id;
-      const linkedBefore = linkedFaceit(u.id)?.subject;
-      db.transaction(() => {
+      const grant = db.transaction(() => {
         revalidate(r, u);
+        const live = requireFreshSession(db, r, c);
         if (operation.signal.aborted)
           throw new HttpError(409, 'The FACEIT connection changed. Try again.');
         if (
@@ -276,22 +284,32 @@ export async function providerRoutes(
           subject,
           u.id,
         );
+        db.audit(u.id, 'faceit.linked', { target: u.id, address: r.clientAddress });
+        return renewAfterIdentityChange(db, c, r, live);
       });
-      if (linkedBefore !== subject) invalidate(u.id);
-      db.audit(u.id, 'faceit.linked');
-      return { subject };
+      invalidate(u.id);
+      return { subject, ...sendSession(c, reply, grant) };
     } finally {
       operation.finish();
     }
   });
-  app.delete('/api/connections/faceit/link', async (r) => {
+  app.delete('/api/connections/faceit/link', async (r, reply) => {
+    z.strictObject({}).parse(r.body);
     const user = requireUser(r);
     rateLimit(db, r, 'faceit-unlink', 8, 900, user.id);
-    db.run("DELETE FROM identities WHERE user_id=? AND provider='faceit'", user.id);
+    const grant = db.transaction(() => {
+      const live = requireFreshSession(db, r, c);
+      if (
+        !db.run("DELETE FROM identities WHERE provider='faceit' AND user_id=?", live.user_id)
+          .changes
+      )
+        throw new HttpError(404, 'The FACEIT connection has already been removed.');
+      db.audit(live.user_id, 'faceit.unlinked', { target: live.user_id, address: r.clientAddress });
+      return renewAfterIdentityChange(db, c, r, live);
+    });
     invalidate(user.id);
-    return { ok: true };
+    return sendSession(c, reply, grant);
   });
-
   function demosFor(owner: string, ids: string[]) {
     const grouped = new Map<string, ReturnType<typeof matchDemo>[]>();
     if (!ids.length) return grouped;
@@ -404,8 +422,10 @@ export async function providerRoutes(
       .parse(r.query);
     const noDemo = () => existingCache(user, identity.subject)?.noDemo;
     if (filter === 'downloaded') {
-      const rows = db.all(
-        `WITH owned AS (
+      return db.transaction(() => {
+        revalidateFaceit(r, user, identity.subject);
+        const rows = db.all(
+          `WITH owned AS (
            SELECT faceit_match_id AS match_id,created_at,
              CASE WHEN json_valid(metadata) THEN json_extract(metadata,'$.faceitMatch') END AS evidence
            FROM demos WHERE owner_id=? AND faceit_match_id IS NOT NULL AND status!='uploading'
@@ -415,24 +435,25 @@ export async function providerRoutes(
          )
          SELECT * FROM ranked WHERE rank=1
          ORDER BY coalesce(json_extract(evidence,'$.played_at'),created_at) DESC,match_id DESC LIMIT ? OFFSET ?`,
-        user.id,
-        matchPageSize + 1,
-        offset,
-      );
-      const page = rows.slice(0, matchPageSize);
-      const demos = demosFor(
-        user.id,
-        page.map((row) => row.match_id),
-      );
-      return {
-        items: page.map((row) => ({
-          ...(row.evidence ? JSON.parse(row.evidence) : {}),
-          match_id: row.match_id,
-          no_demo: noDemo()?.has(row.match_id) ?? false,
-          demos: demos.get(row.match_id) ?? [],
-        })),
-        next: rows.length > matchPageSize ? String(offset + matchPageSize) : null,
-      };
+          user.id,
+          matchPageSize + 1,
+          offset,
+        );
+        const page = rows.slice(0, matchPageSize);
+        const demos = demosFor(
+          user.id,
+          page.map((row) => row.match_id),
+        );
+        return {
+          items: page.map((row) => ({
+            ...(row.evidence ? JSON.parse(row.evidence) : {}),
+            match_id: row.match_id,
+            no_demo: noDemo()?.has(row.match_id) ?? false,
+            demos: demos.get(row.match_id) ?? [],
+          })),
+          next: rows.length > matchPageSize ? String(offset + matchPageSize) : null,
+        };
+      });
     }
 
     const through = Math.floor(Date.now() / 1000) - 1;
@@ -539,6 +560,7 @@ export async function providerRoutes(
     new HttpError(
       404,
       'FACEIT has no demo for this match. It may be pending or expired.',
+      undefined,
       'faceit_no_demo',
     );
   async function matchDemos(r: FastifyRequest, u: SessionUser, matchId: string) {
@@ -620,7 +642,7 @@ export async function providerRoutes(
         : undefined;
     if (!selected) throw new HttpError(409, 'Select a demo file from the current FACEIT match.');
     const { resource, suffix } = selected;
-    const { id, folder } = reserve(
+    const { id, folder, writeExpiresAt } = reserve(
       db,
       c,
       u.id,
@@ -628,10 +650,15 @@ export async function providerRoutes(
       'faceit',
       match_id,
       'faceit:' + selected.id,
+      () => revalidateFaceit(r, u, subject),
     );
     const operation = operationFor(u.id);
     try {
-      const signal = AbortSignal.any([AbortSignal.timeout(180000), operation.signal]);
+      const signal = AbortSignal.any([
+        AbortSignal.timeout(Math.max(1, Math.min(180000, writeExpiresAt - Date.now()))),
+        operation.signal,
+      ]);
+      revalidateFaceit(r, u, subject);
       const url = await requestJson(
         'https://api.faceit.com/download/v2/demos/download',
         {
@@ -646,7 +673,10 @@ export async function providerRoutes(
         'FACEIT could not sign the demo download. Try again or upload manually.',
         async (response) => {
           if (response.status === 401 || response.status === 403)
-            throw new HttpError(502, 'FACEIT denied the download. Try again or upload manually.');
+            throw new HttpError(
+              502,
+              'This instance cannot download FACEIT demos. Upload the demo file from your device.',
+            );
           if (response.status === 429)
             throw new HttpError(429, 'FACEIT is rate limiting requests. Try again later.');
           if (!response.ok) throw new Error();
@@ -667,6 +697,8 @@ export async function providerRoutes(
         revalidateFaceit(r, u, subject);
         if (operation.signal.aborted)
           throw new HttpError(409, 'The FACEIT connection changed. Try again.');
+        if (Date.now() >= writeExpiresAt)
+          throw new HttpError(408, 'The demo import could not be completed. Try again.');
         if (
           !db.run(
             "UPDATE demos SET status='queued',size=?,metadata=? WHERE id=? AND owner_id=? AND status='uploading'",
@@ -681,7 +713,7 @@ export async function providerRoutes(
       reply.code(202);
       return { id };
     } catch (e) {
-      abandon(db, id);
+      abandonUpload(db, id);
       if (e instanceof HttpError) throw e;
       throw new HttpError(502, 'FACEIT download failed. Try again or upload manually.');
     } finally {

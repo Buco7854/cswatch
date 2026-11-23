@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import type { Store } from './db.js';
 import { now } from './db.js';
 import type { Config } from './config.js';
+import { demoWriteTimeoutMs, globalDemoStorage, removeDemoFiles } from './demo-deletion.js';
 import { HttpError, token } from './security.js';
 export { validateMagic } from './demo-format.js';
 export function reserve(
@@ -13,54 +14,80 @@ export function reserve(
   source: string,
   matchId: string | null = null,
   sourceRef: string | null = null,
+  authorize?: (writeExpiresAt: number) => string | void,
 ) {
   const id = token().slice(0, 32),
     size = c.maxUploadMb * 1024 ** 2;
-  db.transaction(() => {
-    if (
-      sourceRef &&
-      db.one('SELECT id FROM demos WHERE owner_id=? AND source_ref=?', owner, sourceRef)
-    )
-      throw new HttpError(409, 'This FACEIT demo has already been added.');
-
-    const u = db.one(
-      'SELECT count(*) AS n,coalesce(sum(size),0) AS size FROM demos WHERE owner_id=?',
-      owner,
-    )!;
-    const total = db.one('SELECT coalesce(sum(size),0) AS size FROM demos')!;
-    if (u.n >= c.userDemoLimit || u.size + size > c.userStorageMb * 1024 ** 2)
-      throw new HttpError(
-        413,
-        'Your storage limit has been reached. Delete a demo before uploading.',
-      );
-    if (total.size + size > c.globalStorageMb * 1024 ** 2)
-      throw new HttpError(503, 'Demo storage is full. Contact the administrator.');
-    db.run(
-      'INSERT INTO demos(id,owner_id,name,source,status,size,created_at,faceit_match_id,source_ref) VALUES(?,?,?,?,?,?,?,?,?)',
-      id,
-      owner,
-      name,
-      source,
-      'uploading',
-      size,
-      now(),
-      matchId,
-      sourceRef,
-    );
-  });
   const folder = join(db.root, 'demos', id);
+  const writeExpiresAt = Date.now() + demoWriteTimeoutMs;
+  let created = false;
   try {
-    mkdirSync(folder, { mode: 0o700 });
-  } catch {
-    db.run('DELETE FROM demos WHERE id=?', id);
-    throw new HttpError(503, 'Demo storage is unavailable.');
+    db.transaction(() => {
+      const anonymousGrantHash = authorize?.(writeExpiresAt);
+      if (db.one('SELECT 1 FROM pending_demo_deletions WHERE id=?', id))
+        throw new HttpError(503, 'Demo storage is unavailable.');
+      if (
+        sourceRef &&
+        db.one('SELECT id FROM demos WHERE owner_id=? AND source_ref=?', owner, sourceRef)
+      )
+        throw new HttpError(409, 'This FACEIT demo has already been added.');
+
+      const u = db.one(
+        'SELECT count(*) AS n,coalesce(sum(size),0) AS size FROM demos WHERE owner_id=?',
+        owner,
+      )!;
+      if (u.n >= c.userDemoLimit || u.size + size > c.userStorageMb * 1024 ** 2)
+        throw new HttpError(
+          413,
+          'Your storage limit has been reached. Delete a demo before uploading.',
+        );
+      if (globalDemoStorage(db) + size > c.globalStorageMb * 1024 ** 2)
+        throw new HttpError(503, 'Demo storage is full. Delete an older demo or try again later.');
+      db.run(
+        'INSERT INTO demos(id,owner_id,name,source,status,size,created_at,faceit_match_id,source_ref) VALUES(?,?,?,?,?,?,?,?,?)',
+        id,
+        owner,
+        name,
+        source,
+        'uploading',
+        size,
+        now(),
+        matchId,
+        sourceRef,
+      );
+      if (anonymousGrantHash)
+        db.run(
+          'INSERT INTO guest_upload_grants(demo_id,original_hash,session_hash,expires_at_ms) VALUES(?,?,?,?)',
+          id,
+          anonymousGrantHash,
+          anonymousGrantHash,
+          writeExpiresAt,
+        );
+      try {
+        mkdirSync(folder, { mode: 0o700 });
+        created = true;
+      } catch {
+        throw new HttpError(503, 'Demo storage is unavailable.');
+      }
+    });
+  } catch (error) {
+    if (created) rmSync(folder, { recursive: true, force: true });
+    throw error;
   }
-  return { id, folder };
+  return { id, folder, writeExpiresAt };
 }
-export function abandon(db: Store, id: string) {
-  db.run('DELETE FROM demos WHERE id=?', id);
-  rmSync(join(db.root, 'demos', id), { recursive: true, force: true });
+/** Upload and provider pipelines call this only after their file descriptor
+ * closes, or when no file was opened. Keep the reservation on storage failure. */
+export function abandonUpload(db: Store, id: string) {
+  db.transaction(() => {
+    const demo = db.one('SELECT status FROM demos WHERE id=?', id);
+    if (demo && demo.status !== 'uploading') return;
+    removeDemoFiles(db, id);
+    db.run('DELETE FROM demos WHERE id=?', id);
+    db.run('DELETE FROM pending_demo_deletions WHERE id=?', id);
+  });
 }
+
 export function accessDemo(
   db: Store,
   id: string,

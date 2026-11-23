@@ -1,3 +1,4 @@
+import { fixtureCookie, insertFixtureSession } from './fixtures/member-session.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -16,7 +17,6 @@ import { spawnSync } from 'node:child_process';
 import { createApp } from '../src/server.js';
 import { loadConfig } from '../src/config.js';
 import { Store, now } from '../src/db.js';
-import { COOKIE, digest } from '../src/security.js';
 import { equipmentModelManifestSchema, validEquipmentGlb } from '../src/equipment-model-assets.js';
 import { initializeFixture } from './fixtures/initialized.js';
 
@@ -48,14 +48,15 @@ async function fixture() {
     root = join(directory, 'data');
   const db = new Store(root);
   initializeFixture(db);
-  db.run('INSERT INTO users VALUES(?,?,?,?,?)', 'member', 'member', null, 0, now());
   db.run(
-    'INSERT INTO sessions VALUES(?,?,?,?)',
-    digest('models-session'),
+    'INSERT INTO users(id,username,password_hash,role,created_at) VALUES(?,?,?,?,?)',
     'member',
-    'csrf',
-    now() + 120,
+    'member',
+    null,
+    'member',
+    now(),
   );
+  insertFixtureSession(db, 'models-session', 'member', 'csrf', now() + 120);
   db.run('INSERT INTO settings VALUES(?,?)', 'public_access', 0);
   const app = await createApp(
     loadConfig({
@@ -71,7 +72,7 @@ async function fixture() {
   const data = glb();
   writeFileSync(join(pack, 'model.glb'), data);
   writeFileSync(join(pack, 'manifest.json'), JSON.stringify(manifest(data)));
-  const headers = { host: 'localhost:8000', cookie: `${COOKIE}=models-session` };
+  const headers = { host: 'localhost:8000', cookie: fixtureCookie('models-session') };
   return {
     app,
     pack,

@@ -1,3 +1,4 @@
+import { accountStatus, configForSyntheticAccount } from './fixtures/account-status';
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { installDemoMapDescriptor } from './fixtures/map-assets';
 import { test, expect } from '@playwright/test';
@@ -37,8 +38,9 @@ test('the library deletes an owned upload from its row without opening the viewe
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE) || process.env.E2E_REGISTRATIONS === 'false');
   await page.goto('/');
+  const status = await (await page.request.get('/api/auth/me')).json();
   const account = await page.request.post('/api/auth/register', {
-    headers: { origin: new URL(page.url()).origin },
+    headers: { origin: new URL(page.url()).origin, 'x-csrf-token': status.session.csrf },
     data: {
       username: `delete_${Date.now().toString(36)}`,
       password: 'Disposable-Delete-Browser-2026!',
@@ -64,17 +66,16 @@ test('demo deletion uses an accessible reusable modal with safe cancellation and
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE));
   await page.setViewportSize({ width: 1440, height: 900 });
+  await configForSyntheticAccount(page);
   await page.route('**/api/auth/me', (route) =>
     route.fulfill({
-      json: {
-        user: {
-          id: 'confirm-fixture',
-          username: 'fixture',
-          is_admin: false,
-          csrf: 'synthetic-csrf',
-          identities: [],
-        },
-      },
+      json: accountStatus({
+        id: 'confirm-fixture',
+        username: 'fixture',
+        role: 'member',
+        csrf: 'synthetic-csrf',
+        identities: [],
+      }),
     }),
   );
   let deletes = 0;
@@ -165,17 +166,16 @@ test('a late rename cannot overwrite a different demo after its manager closes',
   page,
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE));
+  await configForSyntheticAccount(page);
   await page.route('**/api/auth/me', (route) =>
     route.fulfill({
-      json: {
-        user: {
-          id: 'confirm-fixture',
-          username: 'fixture',
-          is_admin: false,
-          csrf: 'synthetic-csrf',
-          identities: [],
-        },
-      },
+      json: accountStatus({
+        id: 'confirm-fixture',
+        username: 'fixture',
+        role: 'member',
+        csrf: 'synthetic-csrf',
+        identities: [],
+      }),
     }),
   );
   let release!: () => void;

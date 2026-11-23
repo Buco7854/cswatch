@@ -3,6 +3,7 @@ export class HttpError extends Error {
   constructor(
     readonly statusCode: number,
     message: string,
+    readonly retryAfter?: number,
     readonly code?: string,
   ) {
     super(message);

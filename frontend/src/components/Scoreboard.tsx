@@ -1,5 +1,6 @@
-import { useEffect, useId, useMemo, useRef } from 'react';
+import { useId, useMemo, useRef } from 'react';
 import { X } from 'lucide-react';
+import { useWorkspaceDialog } from '../context';
 import type { Frame, Playback } from '../types';
 import {
   buildMatchStats,
@@ -157,9 +158,7 @@ export default function Scoreboard({
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const headingId = useId();
-  useEffect(() => {
-    dialog.current?.showModal();
-  }, []);
+  useWorkspaceDialog(dialog);
   const index = useMemo(() => buildMatchStats(data), [data.players]);
   const timeline = useMemo(() => buildMatchTimeline(data), [data.matchState, data.tickRate]);
   const match = matchAt(timeline, tick);

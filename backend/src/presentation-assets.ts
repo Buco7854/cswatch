@@ -1,5 +1,5 @@
 /** Fixed, bounded worker-owned shared artwork status. No paths or native output. */
-import { constants } from 'node:fs';
+import { constants, fsyncSync, renameSync } from 'node:fs';
 import { lstat, open, rename, unlink, opendir } from 'node:fs/promises';
 import { randomBytes, createHash } from 'node:crypto';
 import { z } from 'zod';
@@ -182,7 +182,7 @@ function failureSnapshot(category: PresentationCategory) {
 export function enqueuePresentationRetry(
   jobs: string,
   kind: PresentationKind,
-  authorize: () => void = () => {},
+  publish: (write: () => void) => void = (write) => write(),
   { beforeRevalidate }: { beforeRevalidate?: () => Promise<void> } = {},
 ) {
   const operation = retryQueue.then(async (): Promise<'queued' | 'pending' | 'stale'> => {
@@ -214,6 +214,7 @@ export function enqueuePresentationRetry(
           } finally {
             await pending.close();
           }
+          publish(() => {});
           return 'pending' as const;
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
@@ -243,10 +244,12 @@ export function enqueuePresentationRetry(
           failureSnapshot(current) !== expectedFailure
         )
           return 'stale' as const;
-        authorize();
-        await rename(temporary, target);
-        temporary = undefined;
-        await directory.sync();
+        const staged = temporary;
+        publish(() => {
+          renameSync(staged, target);
+          temporary = undefined;
+          fsyncSync(directory.fd);
+        });
         return 'queued' as const;
       } catch (error) {
         failure = error;

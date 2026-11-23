@@ -12,13 +12,43 @@ The operator can read the code with:
 docker compose exec web cat /data/setup-token
 ```
 
-Submit username, password and that code through the setup page. The server requires exact Origin, rate limits failed attempts, validates the code before expensive hashing, then atomically rechecks that no administrator exists and consumes the verifier while creating the account. Competing enrollment requests cannot create two first administrators. Successful enrollment issues a normal authenticated session and removes the code file. The code is never returned by an API or logged.
+Submit username, password and that code through the setup page. The server requires exact Origin, rate limits failed attempts, validates the code before expensive hashing, then atomically rechecks that no administrator exists and consumes the verifier while creating the account. Competing enrollment requests cannot create two first administrators. Successful setup removes the code file and issues an enrollment-only session when the administrator role requires a second factor. Complete factor enrollment to enter the workspace. The code is never returned by an API or logged.
+
+## Account sign-in and recovery
+
+Public registration asks for a display name and assigns a unique sign-in name. Save the full sign-in name in your password manager. Existing display names remain available to other people. Password and Steam sign-in prompt for a second factor whenever the account has one. A discoverable passkey with user verification can sign in directly. Passwords, TOTP and stored recovery codes depend on the user recognizing the correct site. WebAuthn binds passkeys to the configured origin and relying-party ID.
+
+Once the instance has enrolled passkeys, startup checks the configured hostname against its stored relying-party ID. Restore that hostname if it was changed by mistake. For a planned hostname change, verify alternative sign-in methods, retire existing passkeys on the old hostname and enroll on the new one. The local factor-reset command is available during an outage. Startup similarly refuses a configuration that disables the sole administrator’s last primary method.
+
+If passkey setup is interrupted, retry in the same tab. A retry can resume an attempt after reloading the page when the browser keeps tab data. If the tab is gone or that data is unavailable after reload, wait for the attempt to expire before starting again. If setup stops after your device creates a passkey, your device or password manager may still list it. Check your account’s passkey list before removing the unused entry from the device or password manager.
+
+Correct any name error before creating or renaming a passkey. A name with hidden formatting or control characters may come from pasted text or joined emoji.
+
+To finish setup for a passkey you already created, leave the name blank and choose **Continue setup**. If your device selects an existing passkey, choose **Continue setup** again and select the passkey you just created before the attempt expires. The passkey keeps its original name, and you can rename it once setup is complete.
+
+Set `MFA_REQUIRED_ROLES=admin,member` to require enrollment for both roles, `admin` for administrators, or `none` for voluntary enrollment. An explicit value locks the instance setting. Leaving the variable unset permits a change in Administration and defaults to `admin`. Keep an independent working sign-in method before removing a credential. Save single-use recovery codes offline. A code can complete an account's second step, while changing security settings still requires a qualifying fresh proof.
+
+A full session ends after 24 hours of inactivity or its configured absolute lifetime (`SESSION_DAYS`, default seven days), whichever comes first. Account settings list active browsers using a coarse address and a device label derived from the browser's user agent. Step-up lasts five minutes. A Steam reauthentication returns a new verified assertion and may use an existing Steam session.
+
+Privileged API reads require same-origin browser metadata, the exact application Origin, or the session-bound read header used by the UI. An explicitly cross-site request is refused. Direct browser navigation to the admin page still uses the role and network checks.
+
+An operator with local access can run `node dist/cli.js list-admins`, `create-admin USERNAME`, `reset-password USERNAME` or `reset-factors USERNAME`. Use an interactive terminal for credentials. A password reset deactivates the old password and signs out existing sessions. Deliver the ten-minute recovery code privately to the verified account owner. Open the recovery form in a signed-out browser, choose a password, then sign in with any surviving factors. Generate another code if the original expires or its browser is lost. If the connection drops while saving a password, reopen recovery in the same browser to check the completed reset. If two forms used the same claim, use the password from the request that completed. Where resetting the only admin would remove the last working sign-in, create a second admin first. A party that obtains a recovery code can claim it, so verify the recipient independently before delivering it. Encrypted backups and logging sinks need their own retention and access policies.
+
+## Administrative networks
+
+`ADMIN_ALLOWED_IPS` accepts comma-separated IPv4 or IPv6 addresses and CIDRs. An empty setting permits administrators on any network. A denial applies to administration while ordinary account and demo access follows the member rules. IPv4-mapped IPv6 addresses resolve to their IPv4 equivalents. Invalid configuration stops startup.
+
+At the edge, remove incoming client-supplied forwarding headers and set a canonical `X-Forwarded-For` chain. Put only actual proxy socket addresses or their dedicated subnets in `TRUSTED_PROXY_IPS`. The app walks the chain from the nearest trusted peer toward the client. A restricted admin request from an untrusted peer carrying forwarding headers is denied even when its socket address belongs to an allowed range. A trusted proxy must supply a distinct valid client address. The resolver recognizes `Forwarded`, `X-Forwarded-*`, `X-Real-IP`, `CF-Connecting-IP`, `True-Client-IP` and `X-Client-IP`. It requires one canonical XFF chain from trusted infrastructure. A provided X-Real-IP must agree. Duplicate fields, incompatible address headers, missing addresses and chains consisting entirely of trusted proxies are denied. For a direct deployment, leave trusted proxies empty and supply the allowed direct client networks.
 
 ## Guest upload policy
 
 `GUEST_UPLOADS_ENABLED` overrides the matching admin policy when set. Its default is true, but anonymous uploading is effective only on an initialized public instance. Disabling public access or guest uploads revokes guest replay reads as well as new uploads. Explicit shared-ID member demos remain independent of this guest feature. No public demo catalog exists.
 
 `POST /api/guest/session` creates an opaque capability cookie and returns its CSRF token and expiry. It does not create a login, password, provider identity or authenticated account session. Internally a temporary owner principal reuses the same private demo foreign keys and quota pipeline. These principals cannot authenticate and are excluded from the administrator's account list. The capability cookie is HttpOnly, SameSite Lax, host-only and Secure with the `__Host-` prefix on HTTPS deployments. Only its SHA-256 digest is stored.
+
+If a browser never receives a new guest cookie, retry the upload after 15 seconds. The same anonymous browser permits one fresh capability after that delay if the original cookie has yet to be confirmed and the temporary owner has no demo or upload reservation. Existing guest demos still require their original capability. Browser tabs serialize guest setup with anonymous bootstrap using IndexedDB. Guest setup reserves time for the full upload window, renewing the anonymous grant when its current lifetime runs short.
+
+An upload that already reserved storage can finish through anonymous grant renewal within its original stream deadline. Sign-in, sign-out, guest expiry and disabling guest access can cancel the upload.
 
 Guest uploads use the ordinary streamed `.dem` / `.dem.zst` route with exact Origin and guest CSRF. Missing or mismatched capability cookies cannot access their metadata, manifests, chunks or captions. Guest files stay private and cannot be published, renamed or used for personal account notes. Demo URLs alone are insufficient authorization. A visitor can delete their own completed guest demo with the same capability and CSRF checks.
 
@@ -49,13 +79,19 @@ The Steam game authentication code is encrypted with AES-256-GCM and bound to th
 
 Exclude callback query strings, request bodies, cookies and outbound Steam query strings from proxy logs and APM captures. Keep the encryption key, API keys and approved token outside source control and browser bundles.
 
+### Disabling Steam
+
+Keep Steam sign-in enabled while members who rely on it add and verify a password or passkey. An authenticator app or recovery code completes a second step and still requires a first factor. If a member needs help, open their account under **Administration → Users**, choose **Reset password**, and deliver the one-time link privately to the verified account holder. Wait for them to set a password and verify sign-in. Administration refuses to disable Steam while any linked account still relies on it as its sole first factor.
+
+To lock Steam off with `STEAM_ENABLED=false`, first complete the same transition and verify an independent administrator sign-in. If possible, turn Steam off in Administration before applying the environment lock so the settings check can confirm the change. The environment lock takes precedence and startup logs a warning if accounts still rely on Steam. When an administrator can still sign in, use the individual recovery flow or restore the previous Steam setting temporarily. If startup reports that no administrator can sign in, restore the previous setting or use the local account CLI to create an administrator before bringing the service back up.
+
 ## Encryption key
 
-One key per instance encrypts saved credentials, currently the members' Steam game authentication codes. `ENCRYPTION_KEY` supplies it as 64 hexadecimal characters, for example from `openssl rand -hex 32`. Without that variable, the web service creates `encryption.key` with mode 0600 in the data directory at its first start. Back the key up with the same care as the database.
+One key per instance encrypts saved credentials, including Steam game authentication codes and pending or confirmed authenticator-app secrets. `ENCRYPTION_KEY` supplies it as 64 hexadecimal characters, for example from `openssl rand -hex 32`. Without that variable, the web service creates `encryption.key` with mode 0600 in the data directory at its first start. Back the key up with the same care as the database.
 
 At every start the web service checks the key against all saved data. If any saved secret does not open, or if the key file is missing while secrets exist, it stops with an explanation before changing anything, so two keys are never mixed. Two commands change that deliberately. Stop the web service first.
 
-- Change the key, for example after setting or replacing `ENCRYPTION_KEY`. The command asks for the previous key. Leave it empty when the previous key is `encryption.key`. Everything is re-encrypted in one transaction or nothing is. A replaced `encryption.key` is removed.
+- Change the key, for example after setting or replacing `ENCRYPTION_KEY`. The command asks for the previous key. Leave it empty when the previous key is `encryption.key`. Everything is re-encrypted in one transaction or nothing is. After the database commit, the command removes the replaced `encryption.key` and syncs the directory. If the host stops between commit and removal, rerun the change command with the verified new environment key to finish retirement. Protect historical database backups together with any retained old key.
 
   ```sh
   docker compose stop web

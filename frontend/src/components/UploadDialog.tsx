@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import { X } from 'lucide-react';
+import { useWorkspaceDialog } from '../context';
 import { t } from '../i18n';
 import DemoConnectionsLink from './DemoConnectionsLink';
 import Upload from './Upload';
@@ -13,9 +14,7 @@ export default function UploadDialog({
   returnTo?: string;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    dialog.current?.showModal();
-  }, []);
+  useWorkspaceDialog(dialog);
   return (
     <dialog
       ref={dialog}

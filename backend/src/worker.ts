@@ -18,6 +18,12 @@ import { validateReplayArtifacts } from './replay.js';
 import { parserFailureMessages, processingFailure } from './parser-failure.js';
 import { cleanupExpiredGuests } from './guest.js';
 import {
+  cleanupDeletedDemos,
+  createDemoScratch,
+  enqueueUserDemoDeletion,
+  globalDemoStorage,
+} from './demo-deletion.js';
+import {
   initialTranscriptionStatus,
   maintainTranscriptions,
   processTranscriptionOne,
@@ -31,7 +37,8 @@ export async function processOne(db: Store, c: Config) {
   });
   if (!row) return false;
   const folder = join(db.root, 'demos', row.id);
-  const jobs = join(db.root, 'jobs');
+  const stillOwned = () =>
+    db.one('SELECT status FROM demos WHERE id=?', row.id)?.status === 'processing';
   let job = '',
     pending = '',
     complete = false,
@@ -39,8 +46,7 @@ export async function processOne(db: Store, c: Config) {
     manifestPromoted = false;
   let stage = 'input';
   try {
-    mkdirSync(jobs, { recursive: true, mode: 0o700 });
-    job = mkdtempSync(join(jobs, `${row.id}-`));
+    job = createDemoScratch(db, row.id, 'jobs', stillOwned);
     const inputs = ['input.dem', 'input.zst', 'input.gz'].filter((name) => {
       try {
         return lstatSync(join(folder, name)).isFile();
@@ -55,11 +61,7 @@ export async function processOne(db: Store, c: Config) {
     copyFileSync(join(folder, inputs[0]), join(job, inputs[0]), constants.COPYFILE_EXCL);
     chmodSync(join(job, inputs[0]), 0o600);
     stage = 'sandbox';
-    await runParserJob(
-      job,
-      c,
-      () => db.one('SELECT status FROM demos WHERE id=?', row.id)?.status !== 'processing',
-    );
+    await runParserJob(job, c, () => !stillOwned());
     stage = 'validation';
     const output = validateReplayArtifacts(job);
     const m = output.manifest;
@@ -92,20 +94,18 @@ export async function processOne(db: Store, c: Config) {
       chmodSync(join(pending, file), 0o600);
     }
     db.transaction(() => {
-      if (db.one('SELECT status FROM demos WHERE id=?', row.id)?.status !== 'processing')
-        throw new Error('Job cancelled before publication');
+      if (!stillOwned()) throw new Error('Job cancelled before publication');
       const user = db.one(
         'SELECT coalesce(sum(size),0) AS bytes FROM demos WHERE owner_id=?',
         row.owner_id,
       )!;
-      const global = db.one('SELECT coalesce(sum(size),0) AS bytes FROM demos')!;
       if (
         user.bytes + output.bytes >
           (db.one('SELECT owner_id FROM guest_sessions WHERE owner_id=?', row.owner_id)
             ? c.guestStorageMb
             : c.userStorageMb) *
             1024 ** 2 ||
-        global.bytes + output.bytes > c.globalStorageMb * 1024 ** 2
+        globalDemoStorage(db) + output.bytes > c.globalStorageMb * 1024 ** 2
       )
         throw new Error('Prepared output exceeds storage quota');
       renameSync(join(pending, 'chunks'), join(folder, 'chunks'));
@@ -152,23 +152,26 @@ export async function processOne(db: Store, c: Config) {
   return true;
 }
 export function housekeeping(db: Store, c: Config) {
-  cleanupExpiredGuests(db);
+  cleanupExpiredGuests(db, c);
   maintainTranscriptions(db, c);
   // Mark interrupted work failed, rather than retrying a malicious crash input forever.
   db.run(
     "UPDATE demos SET status='failed',error='Processing was interrupted. Upload the demo again.' WHERE status='processing' AND started_at<?",
     now() - c.parserTimeoutSeconds - 60,
   );
-  const stale = db.all(
-    "SELECT id FROM demos WHERE (status='uploading' AND created_at<?) OR (created_at<? AND ?>0)",
-    now() - 3600,
-    now() - c.retentionDays * 86400,
-    c.retentionDays,
-  );
-  for (const r of stale) {
-    db.run('DELETE FROM demos WHERE id=?', r.id);
-    rmSync(join(db.root, 'demos', r.id), { recursive: true, force: true });
-  }
+  db.transaction(() => {
+    const stale = db.all(
+      "SELECT id,owner_id FROM demos WHERE (status='uploading' AND created_at<?) OR (created_at<? AND ?>0) ORDER BY created_at,id LIMIT 100",
+      now() - 3600,
+      now() - c.retentionDays * 86400,
+      c.retentionDays,
+    );
+    for (const row of stale) {
+      enqueueUserDemoDeletion(db, c, row.owner_id, row.id);
+      db.run('DELETE FROM demos WHERE id=?', row.id);
+    }
+  });
+  cleanupDeletedDemos(db);
   // Jobs use independent copies. Recover scratch left by a killed worker without
   // following symlinks or touching another worker's live, bounded job.
   const jobs = join(db.root, 'jobs');

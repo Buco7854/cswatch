@@ -1,3 +1,4 @@
+import { fixtureCookie, insertFixtureSession } from './fixtures/member-session.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readdirSync, symlinkSync } from 'node:fs';
@@ -6,7 +7,6 @@ import { join } from 'node:path';
 import { createApp } from '../src/server.js';
 import { loadConfig } from '../src/config.js';
 import { Store, now } from '../src/db.js';
-import { COOKIE, digest } from '../src/security.js';
 import { initializeFixture } from './fixtures/initialized.js';
 import {
   prepareMapJobs,
@@ -28,14 +28,15 @@ async function fixture(enabled?: boolean) {
   initializeFixture(db);
   for (const id of ['member', 'other', 'fixture-instance-admin']) {
     if (id !== 'fixture-instance-admin')
-      db.run('INSERT INTO users VALUES(?,?,?,?,?)', id, id, null, 0, now());
-    db.run(
-      'INSERT INTO sessions VALUES(?,?,?,?)',
-      digest(id + '-session'),
-      id,
-      id + '-csrf',
-      now() + 300,
-    );
+      db.run(
+        'INSERT INTO users(id,username,password_hash,role,created_at) VALUES(?,?,?,?,?)',
+        id,
+        id,
+        null,
+        'member',
+        now(),
+      );
+    insertFixtureSession(db, id + '-session', id, id + '-csrf', now() + 300);
   }
   db.run(
     'INSERT INTO demos(id,owner_id,name,source,status,size,created_at,map,metadata) VALUES(?,?,?,?,?,?,?,?,?)',
@@ -57,6 +58,7 @@ async function fixture(enabled?: boolean) {
     MAP_CATALOG_FILE: catalog,
     APP_URL: 'http://localhost:8000',
     COOKIE_SECURE: 'false',
+    MFA_REQUIRED_ROLES: 'none',
     ...(enabled === undefined ? {} : { AUTO_OFFICIAL_MAPS_ENABLED: String(enabled) }),
   });
   const app = await createApp(config, db);
@@ -69,14 +71,19 @@ async function fixture(enabled?: boolean) {
       url,
       method,
       headers: {
-        host: 'localhost:8000',
-        ...(user ? { cookie: `${COOKIE}=${user}-session` } : {}),
+        host: config.host,
+        ...(user ? { cookie: fixtureCookie(`${user}-session`) } : {}),
         ...(method === 'POST'
-          ? { origin: 'http://localhost:8000', 'x-csrf-token': user + '-csrf' }
-          : {}),
+          ? { origin: config.appUrl, 'x-csrf-token': user + '-csrf' }
+          : { 'sec-fetch-site': 'same-origin' }),
       },
       ...(method === 'POST' ? { payload: {} } : {}),
     });
+  const admin = async () => {
+    const response = await request('/api/admin', 'fixture-instance-admin');
+    assert.equal(response.statusCode, 200, response.body);
+    return response.json();
+  };
   const inventory = (updatedAt = now(), map = 'de_ancient') => ({
     schemaVersion: 1 as const,
     appId: 730 as const,
@@ -94,6 +101,7 @@ async function fixture(enabled?: boolean) {
     db,
     app,
     request,
+    admin,
     inventory,
     heartbeat: () =>
       writeMapWorkerStatus(jobs, { schemaVersion: 1, status: 'idle', updatedAt: now() }),
@@ -111,7 +119,7 @@ test('fresh default deployment reports disabled policy and admin diagnostics wit
     assert.equal(response.acquisition, 'disabled');
     assert.equal(response.readinessReason, 'automatic_disabled');
     assert.equal(response.canAcquire, false);
-    const admin = (await s.request('/api/admin', 'fixture-instance-admin')).json();
+    const admin = await s.admin();
     assert.deepEqual(admin.mapReadiness, {
       enabled: false,
       worker: { available: false },
@@ -145,7 +153,7 @@ test('Ancient bootstrap distinguishes worker absence, missing/stale inventory an
       [],
       'Discovery never enqueues a source.',
     );
-    const admin = (await s.request('/api/admin', 'fixture-instance-admin')).json();
+    const admin = await s.admin();
     assert.equal(admin.mapReadiness.inventory.status, 'fresh');
     assert.equal(admin.mapReadiness.inventory.mapCount, 1);
     assert.equal(admin.mapReadiness.inventory.manifest, '239443625111074552');
@@ -208,7 +216,7 @@ test('invalid or linked local metadata stays unavailable and admin diagnostics r
     response = (await s.request()).json();
     assert.equal(response.canAcquire, false);
     assert.equal(response.readinessReason, 'inventory_unavailable');
-    const data = (await s.request('/api/admin', 'fixture-instance-admin')).json().mapReadiness;
+    const { mapReadiness: data } = await s.admin();
     assert.equal(data.inventory.status, 'unavailable');
     assert.equal(JSON.stringify(data).includes(s.directory), false);
     assert.deepEqual(readdirSync(join(s.jobs, 'requests')), []);
@@ -227,13 +235,13 @@ test('administrator diagnostics follow saved policy while environment overrides 
         headers: {
           host: 'localhost:8000',
           origin: 'http://localhost:8000',
-          cookie: `${COOKIE}=fixture-instance-admin-session`,
+          cookie: fixtureCookie('fixture-instance-admin-session'),
           'x-csrf-token': 'fixture-instance-admin-csrf',
         },
         payload: { auto_official_maps_enabled: true },
       });
       assert.equal(saved.statusCode, 200);
-      const info = (await s.request('/api/admin', 'fixture-instance-admin')).json();
+      const info = await s.admin();
       assert.equal(info.flags.auto_official_maps_enabled.locked, locked);
       assert.equal(info.mapReadiness.enabled, !locked);
       assert.equal(
@@ -264,7 +272,7 @@ test('inventory failure details are strict, admin-only, retained for stopped wor
       updatedAt: at,
       inventoryFailure,
     });
-    let diagnostics = (await s.request('/api/admin', 'fixture-instance-admin')).json().mapReadiness;
+    let { mapReadiness: diagnostics } = await s.admin();
     assert.deepEqual(diagnostics.worker, { available: true, inventoryFailure });
     assert.equal((await s.request('/api/admin', 'member')).statusCode, 403);
     const publicDescriptor = (await s.request()).json();
@@ -277,7 +285,7 @@ test('inventory failure details are strict, admin-only, retained for stopped wor
       updatedAt: 0,
       inventoryFailure,
     });
-    diagnostics = (await s.request('/api/admin', 'fixture-instance-admin')).json().mapReadiness;
+    diagnostics = (await s.admin()).mapReadiness;
     assert.deepEqual(diagnostics.worker, { available: false, inventoryFailure });
     for (const invalid of [
       { ...inventoryFailure, code: '/private/raw/error' },
@@ -296,12 +304,12 @@ test('inventory failure details are strict, admin-only, retained for stopped wor
         }),
         { mode: 0o640 },
       );
-      diagnostics = (await s.request('/api/admin', 'fixture-instance-admin')).json().mapReadiness;
+      diagnostics = (await s.admin()).mapReadiness;
       assert.deepEqual(diagnostics.worker, { available: false });
     }
     await writeOfficialMapInventory(s.jobs, s.inventory());
     await s.heartbeat();
-    diagnostics = (await s.request('/api/admin', 'fixture-instance-admin')).json().mapReadiness;
+    diagnostics = (await s.admin()).mapReadiness;
     assert.deepEqual(diagnostics.worker, { available: true });
     assert.equal(diagnostics.inventory.status, 'fresh');
     assert.equal((await s.request()).json().canAcquire, true);

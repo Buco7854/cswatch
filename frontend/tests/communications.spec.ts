@@ -118,9 +118,33 @@ test('recorded voice decodes under the production CSP, subtitles/chat follow see
   await expect
     .poll(() => page.evaluate(() => (window as any).__voiceStarts), { timeout: 15000 })
     .toBeGreaterThan(0);
+  await page.route('**/api/auth/me', (route) => route.abort('failed'));
+  await page.evaluate(() =>
+    window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })),
+  );
+  const retry = page.getByRole('button', { name: 'Retry', exact: true });
+  await expect(retry).toBeVisible();
+  const starts = await page.evaluate(() => (window as any).__voiceStarts);
+  await expect(page.getByRole('heading', { name: 'Connection unavailable' })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(retry).toBeFocused();
+  // The viewer stays mounted behind the connection error, with its audio queue stopped.
+  await page.waitForTimeout(150);
+  expect(await page.evaluate(() => (window as any).__voiceStarts)).toBe(starts);
+  await page.unroute('**/api/auth/me');
+  await retry.click();
+  await expect(slider).toBeVisible();
   if ((await page.locator('.viewer-frame').getAttribute('data-chrome-visible')) === 'false')
     await page.locator('.viewer-stage').press('h');
   await page.getByRole('button', { name: 'Pause', exact: true }).click();
+  await page.route('**/api/demos/voice-fixture', (route) =>
+    route.fulfill({ status: 404, json: { detail: 'Demo not found.' } }),
+  );
+  await page.evaluate(() =>
+    window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })),
+  );
+  await expect(page.getByRole('heading', { name: 'Demo unavailable' })).toBeVisible();
+  await expect(slider).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 

@@ -9,11 +9,12 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { ListVideo, X } from 'lucide-react';
+import { useWorkspaceDialog } from '../context';
 import { t } from '../i18n';
 import type { Playback } from '../types';
 import { roundEvents, type ReviewRound } from '../review-events';
 import { timelineGroups, timelinePosition, type TimelineWindow } from '../timeline';
-import { ActionMenu, SelectControl } from './Controls';
+import { ActionMenu, SelectControl, SwitchRow } from './Controls';
 import { eventIcon, eventLabel } from './RoundEvents';
 import './replay-timeline.css';
 
@@ -25,11 +26,7 @@ const clock = (seconds: number) => {
 function TimelineOptionsDialog({ close, children }: { close: () => void; children: ReactNode }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
-  useEffect(() => {
-    const modal = dialog.current;
-    modal?.showModal();
-    return () => modal?.close();
-  }, []);
+  useWorkspaceDialog(dialog);
   return (
     <dialog
       ref={dialog}
@@ -323,15 +320,11 @@ export default function ReplayTimeline({
                   ]}
                 />
               </label>
-              <label className="toggle-row">
-                <span>{t('Show utility throws')}</span>
-                <input
-                  type="checkbox"
-                  role="switch"
-                  checked={utilities}
-                  onChange={(event) => setUtilities(event.target.checked)}
-                />
-              </label>
+              <SwitchRow
+                label={t('Show utility throws')}
+                checked={utilities}
+                onChange={setUtilities}
+              />
             </div>
             <p>{t('Bomb objectives remain visible for every player.')}</p>
             <button

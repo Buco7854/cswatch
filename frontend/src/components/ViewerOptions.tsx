@@ -1,4 +1,5 @@
 import { locale, t } from '../i18n';
+import { useWorkspaceDialog } from '../context';
 import {
   useEffect,
   useLayoutEffect,
@@ -91,9 +92,7 @@ export default function ViewerOptions({
   const leadInOptions = (values: number[]) =>
     values.map((value) => ({ value: String(value), label: seconds.format(value) }));
   const style = settings.crosshairStyle;
-  useEffect(() => {
-    dialog.current?.showModal();
-  }, []);
+  useWorkspaceDialog(dialog);
   useEffect(() => setColorDraft(style.color), [style.color]);
   useLayoutEffect(() => {
     // Invalidate before another interaction with the committed style. A delayed
@@ -143,18 +142,11 @@ export default function ViewerOptions({
     />
   );
   const crosshairToggle = (key: 'outline' | 'centerDot' | 'tStyle', label: string) => (
-    <label className="viewer-option-toggle">
-      <span className="viewer-option-copy">{label}</span>
-      <span className="viewer-option-switch">
-        <input
-          type="checkbox"
-          role="switch"
-          checked={style[key]}
-          onChange={(event) => updateCrosshair(key, event.target.checked)}
-        />
-        <span className="viewer-option-switch-track" aria-hidden="true" />
-      </span>
-    </label>
+    <ToggleSetting
+      label={label}
+      checked={style[key]}
+      onChange={(checked) => updateCrosshair(key, checked)}
+    />
   );
   const panel = (id: Category, children: ReactNode) => (
     <div

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react';
-import { ArrowUpRight, ChevronLeft, ChevronRight, Download, RefreshCw } from 'lucide-react';
+import { ArrowUpRight, Download, RefreshCw } from 'lucide-react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { api, ApiError } from '../api';
 import { useApp } from '../context';
@@ -7,6 +7,7 @@ import { locale, t } from '../i18n';
 import type { MatchActivity, MatchActivityRow, MatchDemo } from '../match-activity';
 import { useConfirm } from './Confirmation';
 import './provider-matches.css';
+import { Pagination, SelectControl } from './Controls';
 
 export type MatchSource = 'steam' | 'faceit';
 type Match = {
@@ -234,7 +235,7 @@ export default function ProviderMatches({
 }) {
   const [params, setParams] = useSearchParams();
   const location = useLocation();
-  const { user, refresh } = useApp();
+  const { user, config, refresh } = useApp();
   const canDownload = Boolean(user?.match_sources?.faceit_download);
   const confirm = useConfirm();
   const [loaded, setLoaded] = useState<{ path: string; page?: Page; error?: string }>();
@@ -431,46 +432,39 @@ export default function ProviderMatches({
       ? previousCursors.at(-1)
       : String(Math.max(0, Number(token) - 25));
   const cooldown = (data?.retry_at ?? 0) > now;
+  const nextCursor = data?.next;
   return (
     <div className="library-section provider-matches">
       <div className="provider-match-toolbar">
         <h2 className="visually-hidden" ref={listHeading} tabIndex={-1}>
           {t(source === 'steam' ? 'Steam matches' : 'FACEIT matches')}
         </h2>
-        <label>
-          {t('Show matches')}
-          <select value={filter} onChange={(event) => setFilter(event.target.value)}>
-            <option value="all">{t('All')}</option>
-            <option value="downloaded">{t('Downloaded')}</option>
-            <option value="missing">{t('Not downloaded')}</option>
-          </select>
-        </label>
-        <div className="provider-match-pagination">
-          <button
-            className="icon-button"
-            title={t('Previous page')}
-            aria-label={t('Previous page')}
-            disabled={page <= 1}
-            onClick={() =>
-              go(
-                page === 2 || prior === undefined ? '' : prior,
-                prior === undefined ? 1 : Math.max(1, page - 1),
-              )
-            }
-          >
-            <ChevronLeft size={18} aria-hidden="true" />
-          </button>
-          <span>{t('Page {{v0}}', { v0: page })}</span>
-          <button
-            className="icon-button"
-            title={t('Next page')}
-            aria-label={t('Next page')}
-            disabled={!data?.next || sync.busy}
-            onClick={() => data?.next && go(data.next, page + 1)}
-          >
-            <ChevronRight size={18} aria-hidden="true" />
-          </button>
+        <div className="provider-match-filter">
+          <span aria-hidden="true">{t('Show matches')}</span>
+          <SelectControl
+            label={t('Show matches')}
+            value={filter}
+            onValueChange={setFilter}
+            options={[
+              { value: 'all', label: t('All') },
+              { value: 'downloaded', label: t('Downloaded') },
+              { value: 'missing', label: t('Not downloaded') },
+            ]}
+          />
         </div>
+        <Pagination
+          status={t('Page {{v0}}', { v0: page })}
+          previous={
+            page > 1
+              ? () =>
+                  go(
+                    page === 2 || prior === undefined ? '' : prior,
+                    prior === undefined ? 1 : Math.max(1, page - 1),
+                  )
+              : undefined
+          }
+          next={nextCursor && !sync.busy ? () => go(nextCursor, page + 1) : undefined}
+        />
         {source === 'steam' && (
           <button
             className="button"
@@ -508,7 +502,7 @@ export default function ProviderMatches({
               'This instance does not have everything needed to download FACEIT demos. You can still upload them yourself.',
             )}
           </p>
-          {user?.is_admin && (
+          {config.admin_access && (
             <p>
               {t(
                 'Set an approved FACEIT Downloads API token as FACEIT_DOWNLOAD_TOKEN, then restart the web service.',

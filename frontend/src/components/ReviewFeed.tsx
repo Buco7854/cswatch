@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
-import { memo, useEffect, useId, useLayoutEffect, useRef, type ReactNode } from 'react';
+import { memo, useEffect, useId, useRef, type ReactNode } from 'react';
 import { Crosshair, Eye, Keyboard, MapPin, Skull, X } from 'lucide-react';
+import { useWorkspaceDialog } from '../context';
 import { t } from '../i18n';
 import { equipmentName } from '../equipment-display';
 import EquipmentGlyph from './EquipmentGlyph';
@@ -68,22 +69,8 @@ function ReviewFeed({
   useTranslation();
   const id = useId();
   const dialog = useRef<HTMLDialogElement>(null);
-  const rememberedFocus = useRef<HTMLElement | null>(null);
   const tabs = useRef<(HTMLButtonElement | null)[]>([]);
-  useLayoutEffect(() => {
-    const element = dialog.current;
-    if (!element) return;
-    element.showModal();
-    if (rememberedFocus.current?.isConnected)
-      rememberedFocus.current.focus({ preventScroll: true });
-    rememberedFocus.current = null;
-    return () => {
-      const active = document.activeElement;
-      rememberedFocus.current =
-        active instanceof HTMLElement && element.contains(active) ? active : null;
-      element.close();
-    };
-  }, [modal]);
+  useWorkspaceDialog(dialog, modal);
   useEffect(() => {
     if (focusOnOpen) tabs.current[activeTab === 'kills' ? 0 : 1]?.focus();
   }, [focusOnOpen]);

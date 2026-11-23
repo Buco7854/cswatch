@@ -13,7 +13,7 @@ export function safeAuthReturnPath(value, fallback = '/library') {
     const url = new URL(value, 'https://cswatch.invalid');
     if (
       url.origin !== 'https://cswatch.invalid' ||
-      !/^\/(?:library|account(?:\/connections)?|admin|watch\/[A-Za-z0-9_-]+)?\/?$/.test(
+      !/^\/(?:library|account(?:\/(?:connections|sessions))?|admin|watch\/[A-Za-z0-9_-]+)?\/?$/.test(
         url.pathname,
       )
     )

@@ -1,3 +1,4 @@
+import { fixtureCookie, insertFixtureSession } from './fixtures/member-session.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -19,7 +20,6 @@ import { spawnSync } from 'node:child_process';
 import { createApp } from '../src/server.js';
 import { loadConfig } from '../src/config.js';
 import { Store, now } from '../src/db.js';
-import { COOKIE, digest } from '../src/security.js';
 import { overviewLimits, validOverviewPng } from '../src/map-assets.js';
 import {
   environmentFaces,
@@ -79,14 +79,15 @@ async function setup() {
     pack = join(root, 'maps', 'overviews', 'de_fixture');
   const db = new Store(root);
   initializeFixture(db);
-  db.run('INSERT INTO users VALUES(?,?,?,?,?)', 'member', 'member', null, 0, now());
   db.run(
-    'INSERT INTO sessions VALUES(?,?,?,?)',
-    digest('map-assets-session'),
+    'INSERT INTO users(id,username,password_hash,role,created_at) VALUES(?,?,?,?,?)',
     'member',
-    'csrf-test',
-    now() + 120,
+    'member',
+    null,
+    'member',
+    now(),
   );
+  insertFixtureSession(db, 'map-assets-session', 'member', 'csrf-test', now() + 120);
   db.run('INSERT INTO settings VALUES(?,?)', 'public_access', 0);
   const app = await createApp(
     loadConfig({
@@ -103,7 +104,7 @@ async function setup() {
       url: path,
       headers: {
         host: 'localhost:8000',
-        ...(member ? { cookie: `${COOKIE}=map-assets-session` } : {}),
+        ...(member ? { cookie: fixtureCookie('map-assets-session') } : {}),
       },
     });
   const install = (image = png()) => {
@@ -170,6 +171,28 @@ async function setup() {
   };
 }
 
+test('manual artwork is withheld when access changes before the response is sent', async () => {
+  const s = await setup();
+  try {
+    s.install();
+    const flag = s.db.flag.bind(s.db);
+    let reads = 0;
+    s.db.flag = (config, key) => {
+      if (key === 'public_access') return ++reads === 1;
+      return flag(config, key);
+    };
+    for (const path of ['/api/maps/de_fixture/overview.png', '/api/map-preview']) {
+      reads = 0;
+      const response = await s.get(path, false);
+      assert.equal(response.statusCode, 401, response.body);
+      assert.equal(response.headers.etag, undefined);
+      assert.match(response.headers['content-type'] as string, /json/);
+    }
+  } finally {
+    await s.close();
+  }
+});
+
 test('overview PNG validation rejects non-raster, animation, corrupt, non-square and oversized files', () => {
   assert.equal(validOverviewPng(png()), true);
   assert.equal(validOverviewPng(png(2048)), true);
@@ -232,7 +255,7 @@ test('local map discovery and overview images share private policy, fixed paths 
           headers: {
             host: 'localhost:8000',
             origin: 'http://localhost:8000',
-            cookie: `${COOKIE}=map-assets-session`,
+            cookie: fixtureCookie('map-assets-session'),
             'x-csrf-token': 'csrf-test',
           },
           payload: { image: 'Not an upload endpoint.' },
@@ -429,7 +452,7 @@ test('environment discovery exposes only paired fixed cube faces with private po
           headers: {
             host: 'localhost:8000',
             origin: 'http://localhost:8000',
-            cookie: `${COOKIE}=map-assets-session`,
+            cookie: fixtureCookie('map-assets-session'),
             'x-csrf-token': 'csrf-test',
           },
           payload: { image: 'No public preparation endpoint' },

@@ -298,7 +298,14 @@ test(
     });
     const db = new Store(dir);
     try {
-      db.run('INSERT INTO users VALUES(?,?,?,?,?)', 'sandbox-user', 'sandbox-user', null, 0, now());
+      db.run(
+        'INSERT INTO users(id,username,password_hash,role,created_at) VALUES(?,?,?,?,?)',
+        'sandbox-user',
+        'sandbox-user',
+        null,
+        'member',
+        now(),
+      );
       const demo = reserve(db, config, 'sandbox-user', 'fixture.dem', 'upload');
       copyFileSync(fixture, join(demo.folder, 'input.dem'));
       db.run("UPDATE demos SET status='queued' WHERE id=?", demo.id);
@@ -328,7 +335,14 @@ test('required sandbox mode fails a queued job safely when the launcher is missi
   });
   const db = new Store(dir);
   try {
-    db.run('INSERT INTO users VALUES(?,?,?,?,?)', 'safe-user', 'safe-user', null, 0, now());
+    db.run(
+      'INSERT INTO users(id,username,password_hash,role,created_at) VALUES(?,?,?,?,?)',
+      'safe-user',
+      'safe-user',
+      null,
+      'member',
+      now(),
+    );
     const demo = reserve(db, config, 'safe-user', 'fixture.dem', 'upload');
     writeFileSync(join(demo.folder, 'input.dem'), Buffer.from('PBDEMS2\0'));
     db.run("UPDATE demos SET status='queued' WHERE id=?", demo.id);
@@ -361,7 +375,14 @@ function workerState(
     ...overrides,
   });
   const db = new Store(dir);
-  db.run('INSERT INTO users VALUES(?,?,?,?,?)', 'queue-user', 'queue-user', null, 0, now());
+  db.run(
+    'INSERT INTO users(id,username,password_hash,role,created_at) VALUES(?,?,?,?,?)',
+    'queue-user',
+    'queue-user',
+    null,
+    'member',
+    now(),
+  );
   const demo = reserve(db, config, 'queue-user', 'fixture.dem', 'upload');
   writeFileSync(join(demo.folder, 'input.dem'), Buffer.from('PBDEMS2\0'));
   db.run("UPDATE demos SET status='queued',size=8 WHERE id=?", demo.id);

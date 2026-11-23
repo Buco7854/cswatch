@@ -221,7 +221,7 @@ test('explicit latest retry preserves verified content proof after publishing a 
     let removed = false;
     assert.equal(
       await retryLatestMapRequest(f.root, selection, at + 300, {
-        removeResult: async () => {
+        removeResult: () => {
           removed = true;
           throw Error('Verified recovery proof must not be deleted');
         },

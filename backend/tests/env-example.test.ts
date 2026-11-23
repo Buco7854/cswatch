@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { flagDefaults, loadConfig, type Flag } from '../src/config.js';
+import { defaultMfaRequiredRoles, flagDefaults, loadConfig, type Flag } from '../src/config.js';
 
 const root = join(import.meta.dirname, '../..');
 const example = readFileSync(join(root, '.env.example'), 'utf8');
@@ -35,7 +35,13 @@ test('every commented value in .env.example is the real default', () => {
   for (const { name, value } of optional) {
     const flag = name.toLowerCase() as Flag;
     if (Object.hasOwn(flagDefaults, flag)) assert.equal(value, String(flagDefaults[flag]), name);
-    else if (compose.includes('${' + name + ':-'))
+    else if (name === 'MFA_REQUIRED_ROLES') {
+      assert.deepEqual(
+        loadConfig({ ...base, [name]: value }).mfaRequiredRoles,
+        defaultMfaRequiredRoles,
+      );
+      assert.equal(defaults.mfaRequiredRoles, undefined);
+    } else if (compose.includes('${' + name + ':-'))
       assert.ok(compose.includes('${' + name + ':-' + value + '}'), name);
     else assert.deepEqual(loadConfig({ ...base, [name]: value }), defaults, name);
   }

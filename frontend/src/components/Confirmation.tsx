@@ -9,6 +9,8 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
+import { currentFocus, focusReturn } from '../focus-restore';
+import { useWorkspaceConcealed, useWorkspaceDialog } from '../context';
 import { t } from '../i18n';
 import './confirmation.css';
 
@@ -20,7 +22,7 @@ type Confirmation = {
 };
 type Pending = Confirmation & {
   resolve: (confirmed: boolean) => void;
-  trigger: HTMLElement | null;
+  restoreFocus: () => void;
   viewerUI: boolean;
 };
 const ConfirmationContext = createContext<(request: Confirmation) => Promise<boolean>>(() =>
@@ -37,16 +39,8 @@ function ConfirmDialog({
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const cancel = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    const element = dialog.current;
-    element?.showModal();
-    cancel.current?.focus();
-    return () => {
-      element?.close();
-      if (request.trigger?.isConnected && !request.trigger.closest('[inert]'))
-        request.trigger.focus({ preventScroll: true });
-    };
-  }, [request]);
+  useWorkspaceDialog(dialog, true, cancel);
+  useEffect(() => request.restoreFocus, [request]);
   return createPortal(
     <dialog
       ref={dialog}
@@ -79,10 +73,17 @@ function ConfirmDialog({
 }
 
 /** One promise owns one modal. Navigation and provider teardown cancel it. */
-export function ConfirmationProvider({ children }: { children: ReactNode }) {
+export function ConfirmationProvider({
+  children,
+  identity,
+}: {
+  children: ReactNode;
+  identity?: string;
+}) {
   const [request, setRequest] = useState<Pending | null>(null);
   const pending = useRef<Pending | null>(null);
   const location = useLocation();
+  const concealed = useWorkspaceConcealed();
   const finish = useCallback((value: boolean) => {
     const current = pending.current;
     pending.current = null;
@@ -91,7 +92,15 @@ export function ConfirmationProvider({ children }: { children: ReactNode }) {
   }, []);
   useEffect(() => {
     finish(false);
-  }, [location.key, location.pathname, location.search, location.hash, finish]);
+  }, [
+    location.key,
+    location.pathname,
+    location.search,
+    location.hash,
+    identity,
+    concealed,
+    finish,
+  ]);
   useEffect(
     () => () => {
       pending.current?.resolve(false);
@@ -102,12 +111,11 @@ export function ConfirmationProvider({ children }: { children: ReactNode }) {
   const confirm = useCallback(
     (options: Confirmation) =>
       new Promise<boolean>((resolve) => {
-        if (pending.current) {
+        if (concealed || pending.current) {
           resolve(false);
           return;
         }
-        const trigger =
-          document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        const trigger = currentFocus();
         // Capture the initiating context before another modal or navigation can
         // change focus. Touch browsers may focus the native dialog instead of
         // the tapped button, so retain that dialog's viewer ancestry as well.
@@ -118,18 +126,18 @@ export function ConfirmationProvider({ children }: { children: ReactNode }) {
         const value = {
           ...options,
           resolve,
-          trigger,
+          restoreFocus: focusReturn(trigger),
           viewerUI,
         };
         pending.current = value;
         setRequest(value);
       }),
-    [],
+    [concealed],
   );
   return (
     <ConfirmationContext.Provider value={confirm}>
       {children}
-      {request && <ConfirmDialog request={request} finish={finish} />}
+      {!concealed && request && <ConfirmDialog request={request} finish={finish} />}
     </ConfirmationContext.Provider>
   );
 }

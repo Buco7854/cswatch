@@ -70,6 +70,7 @@
     600 clamp(27px, 3vw, 34px) / 1.2 'IBM Plex Sans',
     sans-serif;
   letter-spacing: -0.5px;
+  overflow-wrap: anywhere;
 }
 .auth-intro p {
   margin-top: 10px;
@@ -112,9 +113,6 @@
   font-size: 12px;
   color: var(--faint);
 }
-.auth-password-label {
-  margin-top: 22px !important;
-}
 .auth-password {
   position: relative;
 }
@@ -126,22 +124,28 @@
   top: 1px;
   right: 1px;
 }
+/* Every auth action is an outlined control; the primary one is filled. */
 .auth-page .button {
   min-height: 46px;
   padding: 10px 16px;
-  border: 0;
+  border: 1px solid var(--control);
   border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
   clip-path: none;
   font-size: 14px;
   font-weight: 500;
   transform: none;
 }
+.auth-page .button:hover {
+  background: var(--raised);
+}
 .auth-page .button.primary {
   margin-top: 24px;
   width: 100%;
+  border-color: transparent;
   background: var(--primary);
   color: var(--primary-ink);
-  clip-path: none;
 }
 .auth-page .button.primary:hover {
   filter: brightness(0.92);
@@ -154,16 +158,9 @@
 .auth-page .button.primary:disabled svg {
   opacity: 0;
 }
-.auth-page .auth-steam {
+.auth-page .auth-method-button {
   width: 100%;
-  border: 1px solid var(--control);
-  background: var(--surface);
-  color: var(--text);
   justify-content: center;
-  min-height: 46px;
-}
-.auth-page .auth-steam:hover {
-  background: var(--raised);
 }
 .auth-alternative {
   display: flex;
@@ -197,16 +194,12 @@
   color: var(--muted);
   cursor: default;
 }
-.auth-recovery,
 .auth-policy {
   font-size: 12px;
   line-height: 1.7;
   color: var(--faint);
-  margin-top: 28px;
-  max-width: 38ch;
-}
-.auth-policy {
   margin-top: 24px;
+  max-width: 38ch;
 }
 .auth-page .auth-error {
   font-size: 13px;
@@ -251,4 +244,8 @@
   .auth-intro h1 {
     font-size: 26px;
   }
+}
+
+.auth-page .auth-sign-in-methods:empty {
+  display: none;
 }

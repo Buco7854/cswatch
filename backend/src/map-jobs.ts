@@ -1,17 +1,8 @@
 import { mapPreparerRevision } from './asset-preparer.js';
 /** Filesystem-only map acquisition contract. This module never imports the app,
  * database, accounts, native parser, network or operator conversion tools. */
-import { constants } from 'node:fs';
-import {
-  link,
-  lstat,
-  open,
-  mkdir,
-  opendir,
-  rename,
-  unlink,
-  type FileHandle,
-} from 'node:fs/promises';
+import { constants, fsyncSync, linkSync, renameSync, unlinkSync } from 'node:fs';
+import { lstat, open, mkdir, opendir, rename, unlink, type FileHandle } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
@@ -412,11 +403,25 @@ export async function writeMapJobResult(root: string, value: MapJobResult) {
   const result = mapJobResultSchema.parse(value);
   await atomicMapJobWrite(root, 'results', result.packId, result);
 }
+type WriteMapJob = (commit: () => void) => void;
+const publishMapJob: WriteMapJob = (commit) => commit();
+
 export async function atomicMapJobWrite(
   root: string,
   folder: 'requests' | 'results',
   packId: string,
   value: MapJobRequest | MapJobResult,
+  createOnly = false,
+) {
+  return stageMapJobWrite(root, folder, packId, value, publishMapJob, createOnly);
+}
+
+async function stageMapJobWrite(
+  root: string,
+  folder: 'requests' | 'results',
+  packId: string,
+  value: MapJobRequest | MapJobResult,
+  publish: (commit: () => void) => void | Promise<void>,
   createOnly = false,
 ) {
   packIdSchema.parse(packId);
@@ -425,39 +430,50 @@ export async function atomicMapJobWrite(
   if (checked.packId !== packId) throw new Error('Invalid map job identity');
   const data = Buffer.from(JSON.stringify(checked));
   if (data.length > mapJobLimits.bytes) throw new Error('Map job limit');
-  const success = await withDirectory(root, [folder], async (directory) => {
-    const temporary = `.${packId}-${randomBytes(12).toString('hex')}.tmp`;
-    const target = `/proc/self/fd/${directory.fd}/${temporary}`;
-    let file;
-    try {
-      file = await open(
-        target,
-        constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW,
-        0o640,
-      );
-      await file.writeFile(data);
-      await file.sync();
-      await file.close();
-      file = undefined;
-      const final = `/proc/self/fd/${directory.fd}/${packId}.json`;
-      if (createOnly) {
-        try {
-          await link(target, final);
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code === 'EEXIST') return false;
-          throw error;
-        }
-        await unlink(target).catch((error) => {
-          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  const success = await withDirectory(
+    root,
+    [folder],
+    async (directory) => {
+      const temporary = `.${packId}-${randomBytes(12).toString('hex')}.tmp`;
+      const target = `/proc/self/fd/${directory.fd}/${temporary}`;
+      let file;
+      try {
+        file = await open(
+          target,
+          constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW,
+          0o640,
+        );
+        await file.writeFile(data);
+        await file.sync();
+        await file.close();
+        file = undefined;
+        let written = false;
+        await publish(() => {
+          const final = `/proc/self/fd/${directory.fd}/${packId}.json`;
+          if (createOnly) {
+            try {
+              linkSync(target, final);
+            } catch (error) {
+              if ((error as NodeJS.ErrnoException).code === 'EEXIST') return;
+              throw error;
+            }
+            try {
+              unlinkSync(target);
+            } catch (error) {
+              if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+            }
+          } else renameSync(target, final);
+          fsyncSync(directory.fd);
+          written = true;
         });
-      } else await rename(target, final);
-      await directory.sync();
-      return true;
-    } finally {
-      await file?.close();
-      await unlink(target).catch(() => undefined);
-    }
-  });
+        return written;
+      } finally {
+        await file?.close();
+        await unlink(target).catch(() => undefined);
+      }
+    },
+    { propagateReadError: true },
+  );
   if (success === undefined) throw new Error('Map job storage unavailable');
   return success;
 }
@@ -503,6 +519,7 @@ let enqueueQueue: Promise<unknown> = Promise.resolve();
 function enqueueMapJob(
   root: string,
   value: MapJobRequest,
+  publish: WriteMapJob,
 ): Promise<'queued' | 'existing' | 'full'> {
   const request = mapJobRequestSchema.parse(value);
   const operation = enqueueQueue.then(async () => {
@@ -510,30 +527,48 @@ function enqueueMapJob(
     await prepareMapJobs(root);
     if (await readMapRequest(root, packId)) return 'existing' as const;
     if (!(await queueHasRoom(root, true))) return 'full' as const;
-    return (await atomicMapJobWrite(root, 'requests', packId, request, true))
+    return (await stageMapJobWrite(root, 'requests', packId, request, publish, true))
       ? ('queued' as const)
       : ('existing' as const);
   });
   enqueueQueue = operation.catch(() => undefined);
   return operation;
 }
-export function enqueueMapRequest(root: string, approval: ApprovedMapEntry) {
-  return enqueueMapJob(root, {
-    schemaVersion: mapPreparerRevision,
-    packId: mapPackId(approval),
-    approval,
-    generation: randomBytes(16).toString('hex'),
-  });
+export function enqueueMapRequest(
+  root: string,
+  approval: ApprovedMapEntry,
+  publish = publishMapJob,
+) {
+  return enqueueMapJob(
+    root,
+    {
+      schemaVersion: mapPreparerRevision,
+      packId: mapPackId(approval),
+      approval,
+      generation: randomBytes(16).toString('hex'),
+    },
+    publish,
+  );
 }
-export function enqueueLatestMapRequest(root: string, selection: LatestOfficialSelection) {
-  return enqueueMapJob(root, {
-    schemaVersion: mapPreparerRevision,
-    packId: latestMapRequestId(selection),
-    generation: randomBytes(16).toString('hex'),
-    kind: 'latest-official',
-    selection,
-  });
+export function enqueueLatestMapRequest(
+  root: string,
+  selection: LatestOfficialSelection,
+  publish = publishMapJob,
+) {
+  return enqueueMapJob(
+    root,
+    {
+      schemaVersion: mapPreparerRevision,
+      packId: latestMapRequestId(selection),
+      generation: randomBytes(16).toString('hex'),
+      kind: 'latest-official',
+      selection,
+    },
+    publish,
+  );
 }
+
+type RetryOptions = { removeResult?: (path: string) => void; publish?: WriteMapJob };
 /** Failed results are terminal for the worker. Only an explicitly authorized
  * HTTP request can remove an eligible terminal result after the cooldown.
  * Serializing with enqueues also preserves the global pending-job reservation. */
@@ -541,47 +576,73 @@ function retryMapJob(
   root: string,
   packId: string,
   at: number,
-  { removeResult = unlink }: { removeResult?: (path: string) => Promise<void> } = {},
+  { removeResult = unlinkSync, publish = publishMapJob }: RetryOptions = {},
 ): Promise<'queued' | 'ineligible' | 'full'> {
   const operation = enqueueQueue.then(async () => {
     const request = await readMapRequest(root, packId),
       result = await readMapResult(root, packId);
     if (!request || !result || !canRetryMapResult(result, at)) return 'ineligible' as const;
     if (!(await queueHasRoom(root, false))) return 'full' as const;
-    const removed = await withDirectory(root, ['results'], async (directory) => {
-      // Recheck after the bounded queue scan. The worker does not rewrite a
-      // failed result; a concurrent retry in this process holds the same queue.
-      const current = await readMapResult(root, packId);
-      if (
-        !current ||
-        current.updatedAt !== result.updatedAt ||
-        current.code !== result.code ||
-        !canRetryMapResult(current, at)
-      )
-        return false;
-      // A fresh generation unlocks a bounded worker attempt group. Publish it
-      // before removing the failure so a worker never consumes the old group.
-      await atomicMapJobWrite(root, 'requests', packId, {
-        ...request,
-        generation: randomBytes(16).toString('hex'),
-      });
-      if (request.kind === 'latest-official' && latestMapResultMatches(request, current)) {
-        // Publication may have completed just before a failed final status
-        // write or shutdown. Keep the verified content identity so the worker
-        // can recover that immutable pack instead of downloading it again.
-        await atomicMapJobWrite(root, 'results', packId, {
-          schemaVersion: mapPreparerRevision,
-          packId,
-          status: 'processing',
-          updatedAt: at,
-          assetPackId: current.assetPackId,
-          source: current.source,
-          sourceCheckedAt: current.sourceCheckedAt,
+    const removed = await withDirectory(
+      root,
+      ['results'],
+      async (directory) => {
+        // Recheck after the bounded queue scan. The worker does not rewrite a
+        // failed result; a concurrent retry in this process holds the same queue.
+        const current = await readMapResult(root, packId);
+        if (
+          !current ||
+          current.updatedAt !== result.updatedAt ||
+          current.code !== result.code ||
+          !canRetryMapResult(current, at)
+        )
+          return false;
+        // Stage both writes first. Only then spend authorization on a fresh
+        // generation followed by the result change, with no await between them.
+        const next = { ...request, generation: randomBytes(16).toString('hex') };
+        let cleared = false;
+        await stageMapJobWrite(root, 'requests', packId, next, async (commitRequest) => {
+          if (request.kind === 'latest-official' && latestMapResultMatches(request, current)) {
+            // Retain the verified identity so the worker can recover an immutable
+            // pack published just before an interrupted final status write.
+            await stageMapJobWrite(
+              root,
+              'results',
+              packId,
+              {
+                schemaVersion: mapPreparerRevision,
+                packId,
+                status: 'processing',
+                updatedAt: at,
+                assetPackId: current.assetPackId,
+                source: current.source,
+                sourceCheckedAt: current.sourceCheckedAt,
+              },
+              (commitResult) =>
+                publish(() => {
+                  commitRequest();
+                  commitResult();
+                  cleared = true;
+                }),
+            );
+            return;
+          }
+          publish(() => {
+            commitRequest();
+            try {
+              removeResult(`/proc/self/fd/${directory.fd}/${packId}.json`);
+            } catch {
+              // The worker keeps respecting the terminal result if unlink failed.
+              return;
+            }
+            fsyncSync(directory.fd);
+            cleared = true;
+          });
         });
-      } else await removeResult(`/proc/self/fd/${directory.fd}/${packId}.json`);
-      await directory.sync();
-      return true;
-    });
+        return cleared;
+      },
+      { propagateReadError: true },
+    );
     return removed ? ('queued' as const) : ('ineligible' as const);
   });
   enqueueQueue = operation.catch(() => undefined);
@@ -591,7 +652,7 @@ export function retryMapRequest(
   root: string,
   approval: ApprovedMapEntry,
   at = Math.floor(Date.now() / 1000),
-  options?: { removeResult?: (path: string) => Promise<void> },
+  options?: RetryOptions,
 ) {
   return retryMapJob(root, mapPackId(approval), at, options);
 }
@@ -599,7 +660,7 @@ export function retryLatestMapRequest(
   root: string,
   selection: LatestOfficialSelection,
   at = Math.floor(Date.now() / 1000),
-  options?: { removeResult?: (path: string) => Promise<void> },
+  options?: RetryOptions,
 ) {
   return retryMapJob(root, latestMapRequestId(selection), at, options);
 }

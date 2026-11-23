@@ -55,7 +55,14 @@ async function state(body = outputRunner, env: Record<string, string> = {}) {
     ...env,
   });
   const db = new Store(dir);
-  db.run('INSERT INTO users VALUES(?,?,?,?,?)', 'caption-user', 'caption-user', null, 0, now());
+  db.run(
+    'INSERT INTO users(id,username,password_hash,role,created_at) VALUES(?,?,?,?,?)',
+    'caption-user',
+    'caption-user',
+    null,
+    'member',
+    now(),
+  );
   const demo = reserve(db, config, 'caption-user', 'fixture.dem', 'upload');
   await writeReplay(demo.folder, {
     map: 'training',
@@ -263,12 +270,15 @@ test('a readonly model grant cannot include private application data', async () 
 test('caption retries preserve live leases, respect policy/model/voice requirements and recover failed jobs', async () => {
   const s = await state();
   try {
+    const previousStart = now();
     s.db.run(
-      "UPDATE demos SET transcription_status='failed',transcription_job_id='old' WHERE id=?",
+      "UPDATE demos SET transcription_status='failed',transcription_job_id='old',transcription_started_at=? WHERE id=?",
+      previousStart,
       s.demo.id,
     );
     assert.deepEqual(requeueTranscription(s.db, s.config, s.row()!), { status: 'queued' });
     assert.equal(s.row()!.transcription_job_id, null);
+    assert.equal(s.row()!.transcription_started_at, previousStart);
     s.db.run(
       "UPDATE demos SET transcription_status='processing',transcription_job_id='current' WHERE id=?",
       s.demo.id,

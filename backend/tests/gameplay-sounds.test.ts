@@ -1,3 +1,4 @@
+import { fixtureCookie, insertFixtureSession } from './fixtures/member-session.js';
 import { test } from 'node:test';
 process.env.LOG_LEVEL = 'silent';
 import assert from 'node:assert/strict';
@@ -379,7 +380,6 @@ test('gameplay sound discovery and bytes obey first-setup and private-instance a
   const { createApp } = await import('../src/server.js');
   const { Store, now } = await import('../src/db.js');
   const { loadConfig } = await import('../src/config.js');
-  const { COOKIE, digest } = await import('../src/security.js');
   const { initializeFixture } = await import('./fixtures/initialized.js');
   const root = mkdtempSync(join(tmpdir(), 'sound-access-'));
   try {
@@ -391,6 +391,7 @@ test('gameplay sound discovery and bytes obey first-setup and private-instance a
         DATA_DIR: directory,
         APP_URL: 'http://localhost:8000',
         COOKIE_SECURE: 'false',
+        MFA_REQUIRED_ROLES: 'none',
         PUBLIC_ACCESS: 'false',
       });
       prepared(join(directory, 'maps'));
@@ -402,16 +403,16 @@ test('gameplay sound discovery and bytes obey first-setup and private-instance a
             initialized ? 401 : 503,
           );
         if (initialized) {
-          db.run(
-            'INSERT INTO sessions VALUES(?,?,?,?)',
-            digest('sound-fixture-session'),
+          insertFixtureSession(
+            db,
+            'sound-fixture-session',
             'fixture-instance-admin',
             'csrf',
             now() + 60,
           );
           const response = await app.inject({
             url: '/api/sound-assets/ak47-fire.wav',
-            headers: { host: 'localhost:8000', cookie: `${COOKIE}=sound-fixture-session` },
+            headers: { host: 'localhost:8000', cookie: fixtureCookie('sound-fixture-session') },
           });
           assert.equal(response.statusCode, 200);
         }
@@ -438,6 +439,7 @@ test('payload admission remains bounded until responses finish, then releases sl
       MAP_ASSETS_DIR: root,
       APP_URL: 'http://localhost:8000',
       COOKIE_SECURE: 'false',
+      MFA_REQUIRED_ROLES: 'none',
       PUBLIC_ACCESS: 'true',
     }),
     db,

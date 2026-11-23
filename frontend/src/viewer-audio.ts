@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useSyncExternalStore } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useSyncExternalStore } from 'react';
 
 export type ListenerPose = {
   position: [number, number, number];
@@ -19,6 +19,8 @@ export class ViewerAudio {
   private resets = new Set<() => void>();
   private state: ViewerAudioState = 'locked';
   private closed = false;
+  private concealed = false;
+  private resumeAfterValidation = false;
   private pending: Promise<boolean> | null = null;
   private masterVolume = 1;
   private muted = false;
@@ -57,7 +59,7 @@ export class ViewerAudio {
     for (const listener of this.listeners) listener();
   }
   unlock(): Promise<boolean> {
-    if (this.closed) return Promise.resolve(false);
+    if (this.closed || this.concealed) return Promise.resolve(false);
     if (this.pending) return this.pending;
     if (typeof AudioContext === 'undefined') {
       this.publish('unavailable');
@@ -72,7 +74,10 @@ export class ViewerAudio {
         this.master.gain.value = this.muted ? 0 : this.masterVolume;
         this.master.connect(this.context.destination);
         this.context.onstatechange = () => {
-          if (!this.closed) this.publish(this.context?.state === 'running' ? 'running' : 'locked');
+          if (!this.closed)
+            this.publish(
+              !this.concealed && this.context?.state === 'running' ? 'running' : 'locked',
+            );
         };
       } catch {
         void this.context?.close().catch(() => {});
@@ -86,7 +91,7 @@ export class ViewerAudio {
     this.pending = context
       .resume()
       .then(() => {
-        if (this.closed) return false;
+        if (this.closed || this.concealed) return false;
         const running = context.state === 'running';
         this.publish(running ? 'running' : 'locked');
         return running;
@@ -103,7 +108,17 @@ export class ViewerAudio {
   setMaster(value: number, muted: boolean) {
     this.masterVolume = volume(value);
     this.muted = muted;
-    if (this.master) this.master.gain.value = muted ? 0 : this.masterVolume;
+    if (this.master) this.master.gain.value = muted || this.concealed ? 0 : this.masterVolume;
+  }
+  setConcealed(concealed: boolean) {
+    if (this.concealed === concealed) return;
+    this.concealed = concealed;
+    this.setMaster(this.masterVolume, this.muted);
+    if (concealed) this.resumeAfterValidation = this.suspend();
+    else if (this.resumeAfterValidation) {
+      this.resumeAfterValidation = false;
+      void this.unlock();
+    }
   }
   channel(): GainNode | null {
     if (this.closed || !this.context || !this.master || this.channels.size >= 4) return null;
@@ -118,7 +133,8 @@ export class ViewerAudio {
   }
   /** Returns a private stop lease, or rejects admission without retaining nodes. */
   track(source: AudioBufferSourceNode, ended: () => void): (() => void) | null {
-    if (this.closed || this.state !== 'running' || this.sources.size >= 256) return null;
+    if (this.closed || this.concealed || this.state !== 'running' || this.sources.size >= 256)
+      return null;
     let finished = false;
     const finish = () => {
       if (finished) return;
@@ -183,24 +199,10 @@ export class ViewerAudio {
     this.listeners.clear();
   }
 }
-export function useViewerAudio(identity: string) {
+export function useViewerAudio(identity: string, concealed = false) {
   const audio = useMemo(() => new ViewerAudio(), [identity]);
-  useEffect(() => {
-    const release = audio.retain();
-    let resume = false;
-    const visibility = () => {
-      if (document.hidden) resume = audio.suspend();
-      else if (resume) {
-        resume = false;
-        void audio.unlock();
-      }
-    };
-    document.addEventListener('visibilitychange', visibility);
-    return () => {
-      document.removeEventListener('visibilitychange', visibility);
-      release();
-    };
-  }, [audio]);
+  useLayoutEffect(() => audio.setConcealed(concealed), [audio, concealed]);
+  useEffect(() => audio.retain(), [audio]);
   return audio;
 }
 export function useViewerAudioState(audio: ViewerAudio) {

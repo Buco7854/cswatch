@@ -5,11 +5,11 @@ import { now } from '../../src/db.js';
  * their boundary. First-run enrollment itself has a separate adversarial suite. */
 export function initializeFixture(db: Store) {
   db.run(
-    'INSERT INTO users VALUES(?,?,?,?,?)',
+    'INSERT INTO users(id,username,password_hash,role,created_at) VALUES(?,?,?,?,?)',
     'fixture-instance-admin',
     'fixture_instance_admin',
-    null,
-    1,
+    'isolated-fixture-password-marker',
+    'admin',
     now(),
   );
 }

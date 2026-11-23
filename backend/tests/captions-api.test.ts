@@ -1,3 +1,4 @@
+import { fixtureCookie, insertFixtureSession } from './fixtures/member-session.js';
 import { initializeFixture } from './fixtures/initialized.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -8,7 +9,6 @@ import { gzipSync, gunzipSync } from 'node:zlib';
 import { createApp } from '../src/server.js';
 import { Store, now } from '../src/db.js';
 import { loadConfig } from '../src/config.js';
-import { digest, COOKIE } from '../src/security.js';
 
 test('captions and retries enforce demo access, owner mutation, Origin/CSRF, status and safe artifact paths', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'cswatch-caption-api-'));
@@ -23,14 +23,15 @@ test('captions and retries enforce demo access, owner mutation, Origin/CSRF, sta
     TRANSCRIPTION_MODEL_DIR: join(dir, 'models'),
   });
   for (const id of ['owner', 'other']) {
-    db.run('INSERT INTO users VALUES(?,?,?,?,?)', id, id, null, 0, now());
     db.run(
-      'INSERT INTO sessions VALUES(?,?,?,?)',
-      digest('caption-session-' + id),
+      'INSERT INTO users(id,username,password_hash,role,created_at) VALUES(?,?,?,?,?)',
       id,
-      'csrf-' + id,
-      now() + 120,
+      id,
+      null,
+      'member',
+      now(),
     );
+    insertFixtureSession(db, 'caption-session-' + id, id, 'csrf-' + id, now() + 120);
   }
   db.run(
     'INSERT INTO demos(id,owner_id,name,source,status,size,created_at,metadata,transcription_status) VALUES(?,?,?,?,?,?,?,?,?)',
@@ -47,7 +48,7 @@ test('captions and retries enforce demo access, owner mutation, Origin/CSRF, sta
   const app = await createApp(config, db);
   const headers = (id?: string) => ({
     host: 'localhost:8000',
-    ...(id ? { cookie: `${COOKIE}=caption-session-${id}` } : {}),
+    ...(id ? { cookie: fixtureCookie(`caption-session-${id}`) } : {}),
   });
   const get = (id?: string) =>
     app.inject({ method: 'GET', url: '/api/demos/demo/captions', headers: headers(id) });

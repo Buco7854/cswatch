@@ -1,5 +1,19 @@
+import { accountName, accountPassword } from './credentials.js';
+import { configuredNetworks } from './admin-network.js';
 import { resolve } from 'node:path';
 import { z } from 'zod';
+import { roles, type Role } from './roles.js';
+
+export const defaultMfaRequiredRoles: readonly Role[] = ['admin'];
+
+function configuredMfaRoles(value: string | undefined): Role[] | undefined {
+  if (value === undefined) return undefined;
+  if (value === 'none') return [];
+  const parsed = z.array(z.enum(roles)).parse(value.split(',').map((role) => role.trim()));
+  if (new Set(parsed).size !== parsed.length)
+    throw new Error('MFA_REQUIRED_ROLES must list distinct roles, or none.');
+  return roles.filter((role) => parsed.includes(role));
+}
 const boolean = (v: string | undefined): boolean | undefined => {
   if (v === undefined || v === '') return undefined;
   if (!['true', 'false'].includes(v))
@@ -28,10 +42,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     appUrl.hash
   )
     throw new Error('APP_URL must be an HTTP(S) origin');
-  const proxies = (env.TRUSTED_PROXY_IPS ?? '')
-    .split(',')
-    .map((address) => address.trim())
-    .filter(Boolean);
+  const proxies = configuredNetworks(env.TRUSTED_PROXY_IPS, 'TRUSTED_PROXY_IPS');
   const cookieSecure = boolean(env.COOKIE_SECURE) ?? true;
   if (cookieSecure && appUrl.protocol !== 'https:')
     throw new Error('HTTPS APP_URL required. Set COOKIE_SECURE=false only for local development.');
@@ -45,7 +56,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     mapJobsDir: resolve(env.MAP_JOBS_DIR || `${env.DATA_DIR || '../var'}/map-jobs`),
     frontendDir: resolve(env.FRONTEND_DIR || '../frontend/dist'),
     port: integer(env.PORT, 8000),
+    adminAllowedIps: configuredNetworks(env.ADMIN_ALLOWED_IPS, 'ADMIN_ALLOWED_IPS'),
     trustProxy: proxies.length ? proxies : false,
+    mfaRequiredRoles: configuredMfaRoles(env.MFA_REQUIRED_ROLES),
     flags: {
       public_access: boolean(env.PUBLIC_ACCESS),
       auto_official_maps_enabled: boolean(env.AUTO_OFFICIAL_MAPS_ENABLED),
@@ -60,19 +73,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
       .regex(/^(?:[a-fA-F0-9]{64})?$/, 'ENCRYPTION_KEY must be 64 hexadecimal characters.')
       .parse(env.ENCRYPTION_KEY || ''),
     steamApiKey: env.STEAM_API_KEY || '',
-    adminUsername:
-      z
-        .string()
-        .regex(/^[A-Za-z0-9_-]{3,32}$/)
-        .optional()
-        .parse(env.ADMIN_USERNAME || undefined) || '',
-    adminPassword:
-      z
-        .string()
-        .min(12)
-        .max(128)
-        .optional()
-        .parse(env.ADMIN_PASSWORD || undefined) || '',
+    adminUsername: accountName.optional().parse(env.ADMIN_USERNAME || undefined) || '',
+    adminPassword: accountPassword.optional().parse(env.ADMIN_PASSWORD || undefined) || '',
     guestRetentionHours: z.coerce
       .number()
       .int()
@@ -111,7 +113,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     transcriptionLanguage: z
       .union([z.literal('auto'), z.string().regex(/^[a-z]{2,3}$/)])
       .parse(env.TRANSCRIPTION_LANGUAGE || 'auto'),
-    sessionDays: integer(env.SESSION_DAYS, 7),
+    sessionDays: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(365)
+      .parse(env.SESSION_DAYS || 7),
     retentionDays: integer(env.RETENTION_DAYS, 30, 0),
   };
 }

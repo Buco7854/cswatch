@@ -6,20 +6,16 @@ import { t } from '../i18n';
 import { useConfirm } from './Confirmation';
 
 type History = {
+  available: boolean;
   configured: boolean;
   needs_codes: boolean;
 };
 
-export default function SteamSyncSettings({
-  enabled,
-  admin,
-}: {
-  enabled: boolean;
-  admin: boolean;
-}) {
+export default function SteamSyncSettings({ admin }: { admin: boolean }) {
   const confirm = useConfirm();
   const { refresh } = useApp();
   const [history, setHistory] = useState<History>();
+  const enabled = history?.available;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
@@ -83,7 +79,7 @@ export default function SteamSyncSettings({
       <p className="muted">
         {t('Save codes to sync your Premier and Competitive matches in the library.')}
       </p>
-      {!enabled && (
+      {enabled === false && (
         <>
           <p role="status">
             {t(

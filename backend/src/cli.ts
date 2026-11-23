@@ -1,11 +1,21 @@
+import { accountName, accountPassword } from './credentials.js';
 import { stdin, stdout } from 'node:process';
 import { loadConfig } from './config.js';
 import { Store, now } from './db.js';
 import { changeEncryptionKey, forgetUnreadableSecrets } from './encryption-key.js';
-import { hashPassword, token } from './security.js';
+import {
+  canSignIn,
+  signableAdminExists,
+  hashPassword,
+  revokeUserSessions,
+  token,
+} from './security.js';
+
+import { issuePasswordReset } from './recovery.js';
 
 const usage = `Usage:
-  node dist/cli.js create-admin|reset-password USERNAME
+  node dist/cli.js create-admin|reset-password|reset-factors USERNAME
+  node dist/cli.js list-admins
   node dist/cli.js encryption-key change          re-encrypt saved data with the current key
   node dist/cli.js encryption-key forget [--yes]  remove saved data the current key cannot open`;
 const [command, argument, option] = process.argv.slice(2);
@@ -45,30 +55,69 @@ async function secret(prompt: string): Promise<string> {
 }
 
 async function account(username: string) {
-  // Accounts created through Steam carry their Steam name.
-  if (!(command === 'create-admin' ? /^[A-Za-z0-9_-]{3,32}$/ : /^.{1,64}$/u).test(username))
+  // Assigned sign-in names can exceed the input length for a new account.
+  if (
+    !(command === 'create-admin'
+      ? accountName.safeParse(username).success
+      : /^.{1,64}$/u.test(username))
+  )
     throw new Error(usage);
-  const password = await secret('New password (12+ characters): '),
-    confirmation = await secret('Confirm password: ');
-  if (password.length < 12 || password.length > 128 || password !== confirmation)
-    throw new Error('Passwords must match and contain 12–128 characters.');
-  const c = loadConfig(),
-    db = new Store(c.dataDir),
-    hash = await hashPassword(password);
-  db.transaction(() => {
-    const u = db.one('SELECT id FROM users WHERE username=? COLLATE NOCASE', username);
+  const c = loadConfig();
+  const db = new Store(c.dataDir);
+  try {
+    let hash: string | null = null;
     if (command === 'create-admin') {
-      if (u) throw new Error('User exists; refusing to change privileges.');
-      db.run('INSERT INTO users VALUES(?,?,?,?,?)', token().slice(0, 32), username, hash, 1, now());
-    } else {
-      if (!u) throw new Error('User not found.');
-      db.run('UPDATE users SET password_hash=? WHERE id=?', hash, u.id);
-      db.run('DELETE FROM sessions WHERE user_id=?', u.id);
+      const password = await secret('New password (12+ characters): ');
+      const confirmation = await secret('Confirm password: ');
+      if (!accountPassword.safeParse(password).success || password !== confirmation)
+        throw new Error('Passwords must match and contain 12–128 characters.');
+      hash = await hashPassword(password);
+    } else if (!stdout.isTTY) {
+      throw new Error('Use an interactive terminal for account recovery.');
     }
-  });
-  db.audit(null, command);
-  db.close();
-  console.log('Account updated.');
+    const recovery = db.transaction(() => {
+      let code: string | undefined;
+      let id: string;
+      if (command === 'create-admin') {
+        if (db.one('SELECT id FROM users WHERE username=?', username))
+          throw new Error('This username is already in use.');
+        id = token().slice(0, 32);
+        db.run(
+          "INSERT INTO users(id,username,password_hash,role,created_at) VALUES(?,?,?,'admin',?)",
+          id,
+          username,
+          hash,
+          now(),
+        );
+      } else {
+        const user = db.one(
+          'SELECT id FROM users u WHERE username=? AND NOT EXISTS(SELECT 1 FROM guest_sessions g WHERE g.owner_id=u.id)',
+          username,
+        );
+        if (!user) throw new Error('User not found.');
+        id = user.id;
+        revokeUserSessions(db, id);
+        if (command === 'reset-password')
+          db.run('UPDATE users SET password_hash=NULL WHERE id=?', id);
+        if (command === 'reset-factors') {
+          db.run('DELETE FROM auth_passkeys WHERE user_id=?', id);
+          db.run('DELETE FROM auth_totp WHERE user_id=?', id);
+          db.run('DELETE FROM auth_recovery_codes WHERE user_id=?', id);
+        }
+        if (!signableAdminExists(db, c))
+          throw new Error('Create another admin with a working sign-in before this reset.');
+        if (command === 'reset-password' || !canSignIn(db, c, id))
+          code = issuePasswordReset(db, id);
+      }
+      db.audit(null, 'cli.' + command, { target: id });
+      return code;
+    });
+    if (recovery)
+      console.log('Single-use password recovery code (expires in 10 minutes):', recovery);
+    else console.log('Account updated.');
+  } finally {
+    db.close();
+  }
 }
 
 async function encryption() {
@@ -82,14 +131,12 @@ async function encryption() {
       if (entered && !/^[a-fA-F0-9]{64}$/.test(entered))
         throw new Error('A key has 64 hexadecimal characters.');
       const changed = changeEncryptionKey(c, db, entered ? Buffer.from(entered, 'hex') : undefined);
-      if (changed) db.audit(null, 'encryption-key.changed');
       console.log(`Re-encrypted ${changed} saved secrets.`);
     } else {
       const count = forgetUnreadableSecrets(c, db, option === '--yes');
-      if (option === '--yes' && count) db.audit(null, 'encryption-key.forgot');
       console.log(
         option === '--yes'
-          ? `Removed ${count} saved secrets. Their members save their codes again.`
+          ? `Removed ${count} unreadable secrets. Affected members can reconnect Steam or enrol an authenticator app again.`
           : `${count} saved secrets cannot be opened with the current key. Add --yes to remove them.`,
       );
     }
@@ -98,7 +145,20 @@ async function encryption() {
   }
 }
 
-if (['create-admin', 'reset-password'].includes(command) && argument) await account(argument);
+if (command === 'list-admins' && !argument) {
+  const db = new Store(loadConfig().dataDir);
+  try {
+    for (const user of db.all("SELECT username FROM users WHERE role='admin' ORDER BY username"))
+      console.log(JSON.stringify(user.username));
+  } finally {
+    db.close();
+  }
+} else if (
+  ['create-admin', 'reset-password', 'reset-factors'].includes(command) &&
+  argument &&
+  !option
+)
+  await account(argument);
 else if (
   command === 'encryption-key' &&
   ((argument === 'change' && option === undefined) ||

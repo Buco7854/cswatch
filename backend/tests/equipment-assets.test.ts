@@ -1,3 +1,4 @@
+import { fixtureCookie, insertFixtureSession } from './fixtures/member-session.js';
 import { initializeFixture } from './fixtures/initialized.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -17,7 +18,6 @@ import { crc32, deflateSync } from 'node:zlib';
 import { createApp } from '../src/server.js';
 import { Store, now } from '../src/db.js';
 import { loadConfig } from '../src/config.js';
-import { COOKIE, digest } from '../src/security.js';
 import {
   equipmentIconKeys,
   equipmentIconLimits,
@@ -82,14 +82,15 @@ async function setup() {
   });
   const db = new Store(root);
   initializeFixture(db);
-  db.run('INSERT INTO users VALUES(?,?,?,?,?)', 'member', 'member', null, 0, now());
   db.run(
-    'INSERT INTO sessions VALUES(?,?,?,?)',
-    digest('equipment-test-session'),
+    'INSERT INTO users(id,username,password_hash,role,created_at) VALUES(?,?,?,?,?)',
     'member',
-    'csrf-test',
-    now() + 120,
+    'member',
+    null,
+    'member',
+    now(),
   );
+  insertFixtureSession(db, 'equipment-test-session', 'member', 'csrf-test', now() + 120);
   db.run('INSERT INTO settings VALUES(?,?)', 'public_access', 0);
   const app = await createApp(config, db);
   const get = (url: string, signedIn = true, method: 'GET' | 'HEAD' = 'GET') =>
@@ -98,7 +99,7 @@ async function setup() {
       url,
       headers: {
         host: 'localhost:8000',
-        ...(signedIn ? { cookie: `${COOKIE}=equipment-test-session` } : {}),
+        ...(signedIn ? { cookie: fixtureCookie('equipment-test-session') } : {}),
       },
     });
   return {
@@ -175,7 +176,7 @@ test('equipment discovery and images honor private/public policy and expose only
           headers: {
             host: 'localhost:8000',
             origin: 'http://localhost:8000',
-            cookie: `${COOKIE}=equipment-test-session`,
+            cookie: fixtureCookie('equipment-test-session'),
             'x-csrf-token': 'csrf-test',
           },
           payload: { artwork: 'Cannot upload through a discovery route.' },

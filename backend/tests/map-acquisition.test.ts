@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { mapPreparerRevision } from '../src/asset-preparer.js';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import {
@@ -403,6 +404,37 @@ test('explicit transient retries require cooldown, preserve immutable requests a
   }
 });
 
+test('a retry whose caller revokes publication leaves the request generation and failure intact', async () => {
+  const f = directory();
+  try {
+    const id = mapPackId(approval);
+    await enqueueMapRequest(f.root, approval);
+    const request = await readMapRequest(f.root, id);
+    const at = 10000;
+    const failure = {
+      schemaVersion: mapPreparerRevision,
+      packId: id,
+      status: 'failed' as const,
+      updatedAt: at - 301,
+      code: 'worker_interrupted' as const,
+    };
+    await writeMapJobResult(f.root, failure);
+    const changed = Error('The caller withdrew its authorization');
+    await assert.rejects(
+      retryMapRequest(f.root, approval, at, {
+        publish: () => {
+          throw changed;
+        },
+      }),
+      changed,
+    );
+    assert.deepEqual(await readMapRequest(f.root, id), request);
+    assert.deepEqual(await readMapResult(f.root, id), failure);
+  } finally {
+    f.close();
+  }
+});
+
 test('failed retry removal preserves the terminal result after safely publishing a fresh immutable request generation', async () => {
   const f = directory();
   try {
@@ -420,14 +452,14 @@ test('failed retry removal preserves the terminal result after safely publishing
     await writeMapJobResult(f.root, failure);
     let removals = 0;
     const status = await retryMapRequest(f.root, approval, at, {
-      removeResult: async (path) => {
+      removeResult: (path) => {
         removals++;
         assert.ok(path.endsWith('/' + id + '.json'));
-        const current = await readMapRequest(f.root, id);
-        assert.notEqual(current?.generation, previous?.generation);
-        assert.deepEqual(current?.approval, approval);
-        assert.equal(current?.packId, id);
-        assert.deepEqual(await readMapResult(f.root, id), failure);
+        const current = JSON.parse(readFileSync(join(f.root, 'requests', id + '.json'), 'utf8'));
+        assert.notEqual(current.generation, previous?.generation);
+        assert.deepEqual(current.approval, approval);
+        assert.equal(current.packId, id);
+        assert.deepEqual(JSON.parse(readFileSync(path, 'utf8')), failure);
         throw Object.assign(new Error('Synthetic removal denied'), { code: 'EACCES' });
       },
     });

@@ -6,7 +6,8 @@ import { tmpdir } from 'node:os';
 import { createApp } from '../src/server.js';
 import { loadConfig } from '../src/config.js';
 import { Store } from '../src/db.js';
-import { hashPassword, sessionCookieName } from '../src/security.js';
+import { digest, hashPassword, sessionCookieName } from '../src/security.js';
+import { browserBootstrap } from './fixtures/browser-bootstrap.js';
 
 test('password hashing cannot revive a revoked session or overwrite newer credentials', async (t) => {
   for (const state of ['session-revoked', 'password-replaced'] as const)
@@ -18,6 +19,7 @@ test('password hashing cannot revive a revoked session or overwrite newer creden
         DATA_DIR: root,
         ADMIN_USERNAME: 'password_fixture_admin',
         ADMIN_PASSWORD: 'Original-fixture-password-2026',
+        MFA_REQUIRED_ROLES: 'none',
       });
       const db = new Store(root),
         app = await createApp(config, db);
@@ -26,7 +28,7 @@ test('password hashing cannot revive a revoked session or overwrite newer creden
         const login = await app.inject({
           method: 'POST',
           url: '/api/auth/login',
-          headers,
+          headers: await browserBootstrap(app, config),
           payload: {
             username: 'password_fixture_admin',
             password: 'Original-fixture-password-2026',
@@ -66,12 +68,16 @@ test('password hashing cannot revive a revoked session or overwrite newer creden
             'x-csrf-token': user.csrf,
           },
           payload: {
-            current_password: 'Original-fixture-password-2026',
             new_password: 'Stale-attempt-fixture-password',
           },
         });
         db.one = originalOne;
         assert.equal(invalidated, true);
+        assert.equal(
+          db.one('SELECT count FROM rate_limits WHERE key=?', digest('password:' + user.id))?.count,
+          1,
+          'a credential change uses the same account-wide allowance across sessions',
+        );
         assert.equal(response.statusCode, state === 'session-revoked' ? 401 : 409);
         assert.equal(response.headers['set-cookie'], undefined);
         assert.equal(

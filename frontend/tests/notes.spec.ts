@@ -1,3 +1,4 @@
+import { accountStatus, configForSyntheticAccount } from './fixtures/account-status';
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { installDemoMapDescriptor } from './fixtures/map-assets';
 import { test, expect } from '@playwright/test';
@@ -13,17 +14,16 @@ test('a late private note response cannot reopen review after leaving and revisi
       localStorage.setItem(key, JSON.stringify({ quality: 'low' })),
     ),
   );
+  await configForSyntheticAccount(page);
   await page.route('**/api/auth/me', (route) =>
     route.fulfill({
-      json: {
-        user: {
-          id: 'note-fixture-user',
-          username: 'note_fixture',
-          is_admin: false,
-          csrf: 'synthetic-note-csrf',
-          identities: [],
-        },
-      },
+      json: accountStatus({
+        id: 'note-fixture-user',
+        username: 'note_fixture',
+        role: 'member',
+        csrf: 'synthetic-note-csrf',
+        identities: [],
+      }),
     }),
   );
   let release!: () => void;

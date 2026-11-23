@@ -35,6 +35,9 @@ export default defineConfig({
           ADMIN_USERNAME: process.env.E2E_SETUP ? '' : 'e2e_instance_admin',
           ADMIN_PASSWORD: process.env.E2E_SETUP ? '' : 'synthetic-instance-password-2026',
           LOG_LEVEL: 'warn',
+          MFA_REQUIRED_ROLES: 'admin',
+          // Local browser suites represent several independent test clients.
+          TRUSTED_PROXY_IPS: '127.0.0.1,::1',
           PUBLIC_ACCESS: process.env.E2E_PRIVATE ? 'false' : 'true',
           REGISTRATIONS_ENABLED: process.env.E2E_REGISTRATIONS || 'true',
         },

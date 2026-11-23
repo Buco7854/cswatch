@@ -334,7 +334,7 @@
   max-width: 100%;
 }
 :is(.app-shell, .viewer-shell, .member-dialog)
-  :where(input:not([type='checkbox'], [type='range']), select) {
+  :where(input:not([type='checkbox'], [type='range'])) {
   min-width: 0;
   max-width: 100%;
   min-height: 42px;
@@ -820,12 +820,6 @@
   text-decoration: underline;
   text-underline-offset: 3px;
 }
-.app-shell .audit-panel {
-  margin-top: 30px;
-}
-.app-shell .audit-panel > h2 {
-  margin-bottom: 15px;
-}
 /* Dialogs scroll as a unit, including expanded French descriptions. */
 .member-dialog.options-dialog {
   background: var(--surface);
@@ -951,10 +945,6 @@
 .member-dialog section > label:not(.toggle-row) {
   margin-top: 18px;
   gap: 9px;
-}
-.member-dialog section > label select {
-  width: 100%;
-  text-overflow: ellipsis;
 }
 .member-dialog section > p {
   font-size: 12px;
@@ -1248,14 +1238,6 @@
   .app-shell .kv-row {
     gap: 16px;
     font-size: 13px;
-  }
-  .app-shell .audit-panel .kv-row {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 4px;
-  }
-  .app-shell .audit-panel .kv-row time {
-    text-align: left;
   }
   .member-dialog.options-dialog {
     padding: 24px !important;

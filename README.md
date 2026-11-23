@@ -62,13 +62,15 @@ For FACEIT, enable `FACEIT_ENABLED` and configure a server-side `FACEIT_API_KEY`
 
 Obtain Premier, Competitive and Wingman replays in CS2, or download other replays from their FACEIT or HLTV match pages. Extract `.bz2`, `.gz` or archives on your device when necessary, then use Add a demo to upload `.dem` or `.dem.zst`. Use Connected accounts for Steam match history and configured FACEIT imports. Steam OpenID alone does not download demos. There is no HLTV scraper, match catalog or proxy wrapper.
 
-Accounts use usernames, not email addresses. There is no email verification or email password reset flow. Operators can reset a password through a terminal:
+Accounts use usernames, not email addresses. There is no email verification or email password reset flow. An operator can issue a one-time password recovery code from an interactive terminal.
 
 ```sh
+docker compose exec web node dist/cli.js list-admins
 docker compose exec web node dist/cli.js reset-password USERNAME
+docker compose exec web node dist/cli.js reset-factors USERNAME
 ```
 
-Resetting invalidates existing sessions. Signed-in users can change/set their own passwords in Account settings. Login rechecks credentials after password verification, and password changes recheck the initiating session and credentials after hashing, so a concurrent reset or logout cannot revive stale authority. The identity table supports multiple provider identities per user without merging accounts by display name or email. See [architecture](docs/ARCHITECTURE.md#accounts-and-providers) for provider identity rules.
+Deliver the ten-minute code privately to the account owner. The owner chooses a password and signs in again with any remaining factors. Issuing recovery from the CLI invalidates existing sessions. Signed-in users can change/set their own passwords in Account settings. Login rechecks credentials after password verification, and password changes recheck the initiating session and credentials after hashing, so a concurrent reset or logout cannot revive stale authority. The identity table supports multiple provider identities per user without merging accounts by display name or email. See [architecture](docs/ARCHITECTURE.md#accounts-and-providers) for provider identity rules.
 
 ### Recorded inputs, economy and communications
 
