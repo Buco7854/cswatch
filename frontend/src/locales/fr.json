@@ -1069,6 +1069,5 @@
   "Not set up on this instance": "Non configuré sur cette instance",
   "Steam is not enabled on this instance.": "Steam n’est pas activé sur cette instance.",
   "FACEIT demos can be downloaded here while FACEIT still has them.": "Les démos FACEIT peuvent être téléchargées ici tant que FACEIT les conserve.",
-  "Set an approved FACEIT Downloads API token as FACEIT_DOWNLOAD_TOKEN, then restart the web service.": "Définissez un jeton FACEIT Downloads API approuvé dans FACEIT_DOWNLOAD_TOKEN, puis redémarrez le service web.",
-  "This instance cannot protect saved codes right now.": "Cette instance ne peut pas protéger les codes enregistrés pour le moment."
+  "Set an approved FACEIT Downloads API token as FACEIT_DOWNLOAD_TOKEN, then restart the web service.": "Définissez un jeton FACEIT Downloads API approuvé dans FACEIT_DOWNLOAD_TOKEN, puis redémarrez le service web."
 }

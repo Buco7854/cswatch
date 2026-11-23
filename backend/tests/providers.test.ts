@@ -1,14 +1,5 @@
 import assert from 'node:assert/strict';
-import {
-  chmodSync,
-  existsSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -254,7 +245,7 @@ test('Steam share-code vector preserves unsigned IDs and token', async () => {
   assert.equal(decodeSteamShareCode('CSGO-99999-99999-99999-99999-99999'), null);
 });
 
-test('Steam match sync needs only the operator API key and creates one private key file', async () => {
+test('Steam match sync needs only the operator API key', async () => {
   const root = mkdtempSync(join(tmpdir(), 'cswatch-steam-key-'));
   const origin = 'http://localhost:8000';
   const config = loadConfig({
@@ -289,38 +280,22 @@ test('Steam match sync needs only the operator API key and creates one private k
     });
     assert.equal(configured.json().steam_discovery, true);
     const path = join(root, 'encryption.key');
-    assert.equal(existsSync(path), false, 'The key appears only when a member saves codes.');
-    globalThis.fetch = async () => Response.json({ result: { nextcode: 'n/a' } }, { status: 202 });
-    const save = () =>
-      app.inject({
-        method: 'PUT',
-        url: '/api/connections/steam/history',
-        headers,
-        payload: { auth_code: 'ABCD-EFGHI-JKLM', share_code: 'CSGO-GADqf-jjyJ8-cSP2r-smZRo-TO2xK' },
-      });
-    assert.equal((await save()).statusCode, 200);
-    const key = readFileSync(path, 'utf8');
-    assert.match(key, /^[a-f0-9]{64}\n$/);
+    assert.match(readFileSync(path, 'utf8'), /^[a-f0-9]{64}\n$/);
     assert.equal(statSync(path).mode & 0o777, 0o600);
-    assert.equal((await save()).statusCode, 200);
-    assert.equal(readFileSync(path, 'utf8'), key, 'An existing key is never replaced.');
-    assert.equal(
-      readdirSync(root).filter((file) => file.startsWith('encryption.key')).length,
-      1,
-      'No staged key remains.',
-    );
-    const sync = () =>
-      app.inject({ method: 'POST', url: '/api/connections/steam/history/sync', headers });
-    assert.deepEqual((await sync()).json(), { up_to_date: true });
-    rmSync(path);
-    assert.equal((await sync()).statusCode, 409, 'A lost key asks the member to save codes again.');
-    chmodSync(path, 0o644);
-    assert.equal((await sync()).statusCode, 503, 'A readable key file is refused.');
-    config.encryptionKey = 'ab'.repeat(32);
-    assert.equal((await save()).statusCode, 200, 'ENCRYPTION_KEY takes the place of the file.');
-    assert.throws(() =>
-      loadConfig({ APP_URL: origin, COOKIE_SECURE: 'false', ENCRYPTION_KEY: 'short' }),
-    );
+    globalThis.fetch = async () => Response.json({ result: { nextcode: 'n/a' } }, { status: 202 });
+    const saved = await app.inject({
+      method: 'PUT',
+      url: '/api/connections/steam/history',
+      headers,
+      payload: { auth_code: 'ABCD-EFGHI-JKLM', share_code: 'CSGO-GADqf-jjyJ8-cSP2r-smZRo-TO2xK' },
+    });
+    assert.equal(saved.statusCode, 200);
+    const sync = await app.inject({
+      method: 'POST',
+      url: '/api/connections/steam/history/sync',
+      headers,
+    });
+    assert.deepEqual(sync.json(), { up_to_date: true });
   } finally {
     globalThis.fetch = fetchBefore;
     await app.close();
@@ -478,7 +453,7 @@ test('Steam match sync verifies before saving, resumes and protects user credent
     assert.match((await sync()).body, /Replace your Steam sync codes/);
     db.run('UPDATE steam_history SET needs_codes=0');
     db.run('DELETE FROM rate_limits');
-    config.encryptionKey = '22'.repeat(32);
+    db.run('UPDATE steam_history SET encrypted_code=?', Buffer.alloc(44));
     assert.match((await sync()).body, /saved Steam code cannot be read/);
     assert.equal((await remove()).statusCode, 200);
     assert.equal(db.one('SELECT * FROM steam_history'), undefined);

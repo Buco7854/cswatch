@@ -1,9 +1,8 @@
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { Config } from './config.js';
 import { now, type Store } from './db.js';
-import { encryptionKey } from './encryption-key.js';
+import { seal, steamCodeBinding, unseal } from './encryption-key.js';
 import { currentUser, HttpError, rateLimit, requireUser, token } from './security.js';
 import { decodeSteamShareCode } from './steam-share-code.js';
 import { readUpstreamJson, requestJson } from './upstream.js';
@@ -21,27 +20,6 @@ const matchLimit = 500;
 const pageSize = 25;
 const syncSteps = 5;
 const backoffKey = 'steam_history_retry_at';
-
-function seal(key: Buffer, binding: string, code: string) {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv('aes-256-gcm', key, iv);
-  cipher.setAAD(Buffer.from(binding));
-  const bytes = Buffer.concat([cipher.update(code, 'utf8'), cipher.final()]);
-  return Buffer.concat([iv, cipher.getAuthTag(), bytes]);
-}
-
-function unseal(key: Buffer, binding: string, sealed: Uint8Array) {
-  try {
-    const decipher = createDecipheriv('aes-256-gcm', key, sealed.subarray(0, 12));
-    decipher.setAAD(Buffer.from(binding));
-    decipher.setAuthTag(sealed.subarray(12, 28));
-    return gameCode.parse(
-      Buffer.concat([decipher.update(sealed.subarray(28)), decipher.final()]).toString('utf8'),
-    );
-  } catch {
-    throw new HttpError(409, 'The saved Steam code cannot be read. Verify and save it again.');
-  }
-}
 
 function retryAt(db: Store) {
   return Number(db.one('SELECT value FROM settings WHERE key=?', backoffKey)?.value ?? 0);
@@ -113,7 +91,7 @@ async function nextCode(
   );
 }
 
-export function steamHistoryRoutes(app: FastifyInstance, db: Store, c: Config) {
+export function steamHistoryRoutes(app: FastifyInstance, db: Store, c: Config, key: Buffer) {
   const inFlight = new Map<string, AbortController>();
   const configured = () => {
     if (!db.flag(c, 'steam_enabled')) throw new HttpError(403, 'Steam sign-in is disabled.');
@@ -139,7 +117,7 @@ export function steamHistoryRoutes(app: FastifyInstance, db: Store, c: Config) {
     return {
       userId: user.id,
       subject,
-      binding: `cswatch:steam-history:1:${user.id}:${subject}`,
+      binding: steamCodeBinding(user.id, subject),
       signal,
       revalidate() {
         const live = currentUser(db, r, c);
@@ -200,7 +178,6 @@ export function steamHistoryRoutes(app: FastifyInstance, db: Store, c: Config) {
     const body = z.object({ auth_code: gameCode, share_code: knownCode }).strict().parse(r.body);
     const operation = begin(r);
     try {
-      const key = encryptionKey(c, db);
       const next = await nextCode(
         c,
         db,
@@ -242,7 +219,12 @@ export function steamHistoryRoutes(app: FastifyInstance, db: Store, c: Config) {
         throw new HttpError(400, 'Verify and save your Steam sync codes first.');
       if (row.needs_codes)
         throw new HttpError(409, 'Replace your Steam sync codes to resume sync.');
-      const authCode = unseal(encryptionKey(c, db), operation.binding, row.encrypted_code);
+      let authCode: string;
+      try {
+        authCode = gameCode.parse(unseal(key, operation.binding, row.encrypted_code));
+      } catch {
+        throw new HttpError(409, 'The saved Steam code cannot be read. Verify and save it again.');
+      }
       let cursor = row.cursor as string;
       const seen = new Set([cursor]);
       for (let step = 0; step < syncSteps; step++) {

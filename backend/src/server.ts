@@ -23,6 +23,7 @@ import {
 import { abandon, accessDemo, reserve, validateMagic } from './ingestion.js';
 import { authRoutes } from './auth.js';
 import { steamHistoryRoutes } from './steam-history.js';
+import { openEncryptionKey, openEncryptionKeyForStartup } from './encryption-key.js';
 import { providerRoutes } from './providers.js';
 import { captionArtifactName } from './captions.js';
 import { requeueTranscription } from './transcription-worker.js';
@@ -48,6 +49,7 @@ export async function createApp(
   providerDownload?: Parameters<typeof providerRoutes>[3],
 ) {
   process.umask(0o077);
+  const key = openEncryptionKey(c, db);
   if (Boolean(c.adminUsername) !== Boolean(c.adminPassword))
     throw new Error('ADMIN_USERNAME and ADMIN_PASSWORD must be configured together.');
   await provisionAdmin(db, c);
@@ -195,7 +197,7 @@ export async function createApp(
   await setupRoutes(app, db, c);
   await guestRoutes(app, db, c);
   await providerRoutes(app, db, c, providerDownload);
-  steamHistoryRoutes(app, db, c);
+  steamHistoryRoutes(app, db, c, key);
   await equipmentAssetRoutes(app, db.root, c.mapAssetsDir, c.mapJobsDir);
   await gameplaySoundAssetRoutes(app, db.root, c.mapAssetsDir);
   await equipmentModelAssetRoutes(app, db.root, c.mapAssetsDir, c.mapJobsDir);
@@ -549,7 +551,9 @@ export async function createApp(
 }
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const c = loadConfig();
-  const app = await createApp(c, openStoreForStartup(c.dataDir));
+  const db = openStoreForStartup(c.dataDir);
+  openEncryptionKeyForStartup(c, db);
+  const app = await createApp(c, db);
   await app.listen({ port: c.port, host: '0.0.0.0' });
   const shutdown = async () => {
     await app.close();
