@@ -23,14 +23,17 @@ Compose uses the published `ghcr.io/buco7854/cswatch:latest` image for web, pars
 ```sh
 cp .env.example .env
 # Edit APP_URL to your public HTTPS origin.
+docker compose config --quiet
 docker compose pull web worker assets
 docker compose run --rm worker ./dist/parser-sandbox --check
 docker compose up -d web worker assets
 ```
 
+Compose forwards the settings listed for each service from the shell or the project’s `.env` file. Only `APP_URL` is required. Leave optional lines commented to use the application defaults. Bootstrap, provider, encryption and SMTP credentials belong to the web service. The offline workers receive processing settings and share the data volume.
+
 On a new instance, open the app and follow `/setup`. Retrieve the private one-time code with `docker compose exec web cat /data/setup-token`, then create the administrator. Registrations, sign-in and uploads remain closed until setup completes. Alternatively set both `ADMIN_USERNAME` and `ADMIN_PASSWORD` in `.env` before starting. They create the first administrator only and never reset an existing account. There is no default password or first-visitor takeover. See [first-run and guest access](docs/ACCESS-SETUP.md). The terminal `create-admin` command remains available for operators.
 
-Point your proxy at `127.0.0.1:8000`. Preserve the original `Host` header, terminate HTTPS, allow requests up to `MAX_UPLOAD_MB` plus multipart overhead, and allow long uploads. The application validates `Host` and request `Origin` against `APP_URL`. Set `TRUSTED_PROXY_IPS` to your proxy's exact address/CIDR only if it should supply client IPs. Never trust all proxy sources on a publicly reachable listener. For a proxy in another container, join a shared Docker network and remove the loopback port publishing only if needed.
+Compose publishes the web service on all IPv4 interfaces on port 8000 by default. For a reverse proxy on another machine, set its upstream to the Docker host’s LAN address, for example `http://192.168.1.50:8000`. Keep `APP_URL` set to the public HTTPS origin. To select a single interface or another port, set `HOST_BIND_IP` or `HOST_PORT` in `.env`. Allow the proxy host to reach that port through your firewall. Preserve the original `Host` header, terminate HTTPS, allow requests up to `MAX_UPLOAD_MB` plus multipart overhead, and allow long uploads. The application validates `Host` and request `Origin` against `APP_URL`. Set `TRUSTED_PROXY_IPS` to your proxy's exact address/CIDR only if it should supply client IPs. Never trust all proxy sources on a publicly reachable listener. A containerized proxy on a shared Docker network can also use `http://web:8000` as its upstream.
 
 Web, parser `worker` and the separate long-running `assets` service start in the normal stack. Automatic map acquisition remains an independent policy that defaults off. The assets service refreshes official metadata and prepares optional native artwork/sounds; it does not receive application data or credentials. Data is stored in the named volume `cswatch_cswatch-data`. The parser has no network. Services run as a non-root user with dropped capabilities, read-only root filesystems, memory/CPU/process limits and `no-new-privileges`. Uploads and prepared playback stay private until their owner explicitly shares them.
 
@@ -160,7 +163,7 @@ APP_URL=http://localhost:8000 COOKIE_SECURE=false npm run worker
 
 cswatch initializes its complete SQLite schema in an empty data directory. A server or worker pointed at an incompatible database exits with an instruction to use an empty data directory. Keep the original directory if you need to retain its contents.
 
-The local data directory defaults to `../var` relative to `backend/`. Environment files are not loaded implicitly by application code; export variables in your shell, use Node's `--env-file`, or use Docker Compose's `env_file`. For hot UI development, Vite's proxy is available; use `APP_URL=http://localhost:5173` for the backend so origin/host validation matches the browser. Do not weaken production checks for development.
+The local data directory defaults to `../var` relative to `backend/`. Environment files are not loaded implicitly by application code; export variables in your shell, use Node's `--env-file`, or use the supplied Compose deployment. For hot UI development, Vite's proxy is available; use `APP_URL=http://localhost:5173` for the backend so origin/host validation matches the browser. Do not weaken production checks for development.
 
 ```sh
 node scripts/fetch-test-demo.mjs   # checksum-pinned public upstream Mirage fixture
