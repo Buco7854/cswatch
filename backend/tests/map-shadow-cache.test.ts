@@ -4,6 +4,11 @@ import {
   Bone,
   BoxGeometry,
   DirectionalLight,
+  DoubleSide,
+  BackSide,
+  FrontSide,
+  Plane,
+  Vector3,
   Group,
   InstancedMesh,
   Mesh,
@@ -164,4 +169,89 @@ test('application depth callbacks retain ordinary shadow updates and external up
     true,
     'Another owner may explicitly request refresh',
   );
+});
+
+test('generated two-sided glass shadows ignore color pass recompilation but follow depth inputs', () => {
+  const { scene, update } = fixture();
+  const surface = new MeshStandardMaterial({ transparent: true, side: DoubleSide });
+  const pane = new Mesh(new BoxGeometry(), surface);
+  pane.castShadow = true;
+  scene.add(pane);
+  assert.equal(update(), true);
+  const doubleDraw = () => {
+    surface.side = BackSide;
+    surface.needsUpdate = true;
+    surface.side = FrontSide;
+    surface.needsUpdate = true;
+    surface.side = DoubleSide;
+  };
+  doubleDraw();
+  assert.equal(update(), false);
+  const check = (mutate: () => void) => {
+    mutate();
+    assert.equal(update(), true);
+    doubleDraw();
+    assert.equal(update(), false);
+  };
+  check(() => {
+    surface.alphaTest = 0.4;
+  });
+  check(() => {
+    surface.alphaToCoverage = true;
+  });
+  check(() => {
+    surface.opacity = 0.6;
+  });
+  check(() => {
+    surface.alphaMap = new Texture();
+  });
+  check(() => {
+    surface.alphaMap!.rotation += 0.5;
+  });
+  check(() => {
+    surface.displacementMap = new Texture();
+  });
+  check(() => {
+    surface.displacementScale++;
+  });
+  check(() => {
+    surface.displacementBias += 0.2;
+  });
+  check(() => {
+    surface.shadowSide = BackSide;
+  });
+  check(() => {
+    surface.clipShadows = true;
+  });
+  check(() => {
+    surface.clippingPlanes = [new Plane(new Vector3(1, 0, 0), 0)];
+  });
+  check(() => {
+    surface.clippingPlanes![0].constant++;
+  });
+  check(() => {
+    surface.wireframe = true;
+  });
+  check(() => {
+    surface.wireframeLinewidth = 2;
+  });
+  check(() => {
+    Object.assign(surface, { linewidth: 3 });
+  });
+  surface.forceSinglePass = true;
+  assert.equal(update(), true);
+  surface.needsUpdate = true;
+  assert.equal(update(), true);
+});
+
+test('oversized caster signatures release the cache and keep ordinary refresh enabled', () => {
+  const { scene, update } = fixture();
+  const mesh = new Mesh(new BoxGeometry(), new MeshStandardMaterial());
+  mesh.castShadow = true;
+  mesh.geometry.groups = Array(180_000).fill({ start: 0, count: 3, materialIndex: 0 });
+  scene.add(mesh);
+  assert.equal(update(), true);
+  assert.equal(update(), true);
+  mesh.position.x++;
+  assert.equal(update(), true);
 });
