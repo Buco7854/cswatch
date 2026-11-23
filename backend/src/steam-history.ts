@@ -4,6 +4,13 @@ import type { Config } from './config.js';
 import { now, type Store } from './db.js';
 import { seal, steamCodeBinding, unseal } from './encryption-key.js';
 import { currentUser, HttpError, rateLimit, requireUser, token } from './security.js';
+import {
+  matchDemo,
+  matchFilter,
+  matchOffset,
+  matchPageSize,
+  matchSources,
+} from './match-library.js';
 import { decodeSteamShareCode } from './steam-share-code.js';
 import { readUpstreamJson, requestJson } from './upstream.js';
 
@@ -17,7 +24,6 @@ const knownCode = z
   .max(34)
   .refine((code) => decodeSteamShareCode(code) !== null);
 const matchLimit = 500;
-const pageSize = 25;
 const syncSteps = 5;
 const backoffKey = 'steam_history_retry_at';
 
@@ -78,7 +84,7 @@ async function nextCode(
         case 403:
           throw new HttpError(
             403,
-            'Steam denied access. Check or replace your game authentication code. If it still fails, ask the administrator to check the Steam Web API key.',
+            'Steam denied access. Check or replace your game authentication code.',
           );
         case 412:
           throw new HttpError(400, 'Use a recent match sharing code from this Steam account.');
@@ -94,8 +100,7 @@ async function nextCode(
 export function steamHistoryRoutes(app: FastifyInstance, db: Store, c: Config, key: Buffer) {
   const inFlight = new Map<string, AbortController>();
   const configured = () => {
-    if (!db.flag(c, 'steam_enabled')) throw new HttpError(403, 'Steam sign-in is disabled.');
-    if (!c.steamApiKey)
+    if (!db.flag(c, 'steam_enabled') || !c.steamApiKey)
       throw new HttpError(
         503,
         'This instance does not have everything needed for automatic Steam match sync. You can still upload your demos.',
@@ -147,30 +152,57 @@ export function steamHistoryRoutes(app: FastifyInstance, db: Store, c: Config, k
       matchLimit,
     );
   }
+  function connection(userId: string) {
+    const row = saved(userId);
+    return {
+      configured: Boolean(row),
+      needs_codes: Boolean(row?.needs_codes),
+      retry_at: retryAt(db),
+    };
+  }
+  app.get('/api/connections/steam/history', async (r) => connection(requireUser(r).id));
   app.get('/api/connections/steam/matches', async (r) => {
     const user = requireUser(r);
-    rateLimit(db, r, 'steam-history-read', 60, 900, user.id);
-    const { offset } = z
-      .object({ offset: z.coerce.number().int().min(0).max(matchLimit).default(0) })
+    configured();
+    if (!matchSources(db, c, user.id).steam)
+      throw new HttpError(403, 'Verify and save your Steam sync codes first.');
+    rateLimit(db, r, 'steam-history-read', 120, 900, user.id);
+    const { offset, filter } = z
+      .object({ offset: matchOffset, filter: matchFilter })
       .parse(r.query);
+    const condition =
+      filter === 'missing'
+        ? 'WHERE id IS NULL'
+        : filter === 'all'
+          ? 'WHERE seq IS NOT NULL'
+          : 'WHERE id IS NOT NULL';
     const rows = db.all(
-      `SELECT m.code,(SELECT id FROM demos WHERE owner_id=m.user_id AND source_ref='steam:'||m.match_id
-        AND status IN ('queued','processing','ready') ORDER BY created_at DESC LIMIT 1) AS demo_id
-       FROM steam_matches m WHERE m.user_id=? ORDER BY m.seq DESC LIMIT ? OFFSET ?`,
+      `WITH paired AS (
+         SELECT substr(source_ref,7) AS match_id,id,status,map,metadata,created_at,
+           row_number() OVER (PARTITION BY source_ref ORDER BY status='ready' DESC,created_at DESC,id DESC) AS rank
+         FROM demos WHERE owner_id=? AND source_ref LIKE 'steam:%' AND status!='uploading'
+       ), synced AS (
+         SELECT match_id,code,seq FROM steam_matches WHERE user_id=?
+       ), matches AS (
+         SELECT coalesce(s.match_id,p.match_id) AS match_id,s.code,s.seq,p.id,p.status,p.map,p.metadata,p.created_at
+         FROM synced s FULL OUTER JOIN (SELECT * FROM paired WHERE rank=1) p ON p.match_id=s.match_id
+       )
+       SELECT * FROM matches ${condition}
+       ORDER BY seq DESC,created_at DESC,match_id DESC LIMIT ? OFFSET ?`,
       user.id,
-      pageSize + 1,
+      user.id,
+      matchPageSize + 1,
       offset,
     );
-    const connection = saved(user.id);
     return {
-      configured: Boolean(connection),
-      needs_codes: Boolean(connection?.needs_codes),
+      needs_codes: Boolean(saved(user.id)?.needs_codes),
       retry_at: retryAt(db),
-      next_offset: rows.length > pageSize ? offset + pageSize : null,
-      items: rows.slice(0, pageSize).map((row) => ({
-        ...decodeSteamShareCode(row.code)!,
+      had_matches: Boolean(db.one('SELECT 1 FROM steam_matches WHERE user_id=? LIMIT 1', user.id)),
+      next: rows.length > matchPageSize ? String(offset + matchPageSize) : null,
+      items: rows.slice(0, matchPageSize).map((row) => ({
+        match_id: row.match_id,
         share_code: row.code,
-        demo_id: row.demo_id,
+        demos: row.id ? [matchDemo(row)] : [],
       })),
     };
   });

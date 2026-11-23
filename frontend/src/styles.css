@@ -679,25 +679,6 @@ details form {
 .settings-panel > form {
   margin-top: 24px;
 }
-.history-panel {
-  margin-top: 36px;
-}
-.history-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 16px 0;
-  border-bottom: 1px solid #262626;
-}
-.history-row strong {
-  font-size: 13px;
-  font-weight: 500;
-}
-.history-row small {
-  display: block;
-  margin-top: 4px;
-}
 .admin-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1259,9 +1240,6 @@ details form {
 [data-theme='light'] .settings-section,
 [data-theme='light'] .event-panel > .tabs,
 [data-theme='light'] .kv-row,
-[data-theme='light'] .history-row {
-  border-color: #dedede;
-}
 [data-theme='light'] .tabs button.active {
   color: #111;
 }

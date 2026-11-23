@@ -430,9 +430,6 @@ summary {
 .audit-panel {
   margin-top: 28px;
 }
-.history-row {
-  border-color: var(--border);
-}
 [data-theme] .options-dialog {
   background: var(--surface);
   color: var(--text);

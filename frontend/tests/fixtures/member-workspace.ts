@@ -14,8 +14,6 @@ export const memberConfig: Config = {
   faceit_enabled: true,
   max_upload_mb: 1024,
   retention_days: 30,
-  faceit_configured: false,
-  faceit_downloads: false,
   steam_discovery: false,
   transcription_enabled: false,
   transcription_configured: false,
@@ -85,6 +83,12 @@ export const memberUser = {
   is_admin: true,
   csrf: 'synthetic-member-csrf',
   identities: [{ provider: 'steam', subject: '76561190000000000' }],
+  match_sources: {
+    steam: false,
+    faceit: false,
+    faceit_download: false,
+    faceit_verification: 'unavailable',
+  },
 };
 export async function installMemberWorkspace(page: Page) {
   await page.route('**/api/admin/maps', (route) =>

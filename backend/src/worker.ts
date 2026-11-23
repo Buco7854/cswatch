@@ -64,7 +64,14 @@ export async function processOne(db: Store, c: Config) {
     const output = validateReplayArtifacts(job);
     const m = output.manifest;
     if (m.sample) throw new Error('Uploaded demos cannot publish synthetic sample data');
+    const score = m.matchState?.samples.findLast(
+      (sample) => sample.ctScore !== undefined && sample.tScore !== undefined,
+    );
     const summary = {
+      recordedScore:
+        score?.ctScore !== undefined && score?.tScore !== undefined
+          ? [score.ctScore, score.tScore]
+          : undefined,
       map: m.map,
       mapIdentity: m.mapIdentity,
       duration: (m.lastTick - m.firstTick) / m.tickRate,
@@ -106,7 +113,7 @@ export async function processOne(db: Store, c: Config) {
       renameSync(join(pending, 'manifest.json.gz'), join(folder, 'manifest.json.gz'));
       manifestPromoted = true;
       db.run(
-        "UPDATE demos SET status='ready',map=?,duration=?,rounds=?,metadata=?,size=size+?,transcription_status=? WHERE id=? AND status='processing'",
+        "UPDATE demos SET status='ready',map=?,duration=?,rounds=?,metadata=json_patch(CASE WHEN json_valid(metadata) THEN metadata ELSE '{}' END,?),size=size+?,transcription_status=? WHERE id=? AND status='processing'",
         summary.map,
         summary.duration,
         summary.rounds,

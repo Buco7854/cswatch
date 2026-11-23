@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Route } from '@playwright/test';
+import { expect, test, type Locator } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { installMemberWorkspace, memberConfig, memberUser } from './fixtures/member-workspace';
@@ -13,65 +13,6 @@ const profiles = [1440, 768, 390].flatMap((width) =>
     })),
   ),
 );
-
-test('a FACEIT import resolving after leaving connections keeps the current page', async ({
-  page,
-}) => {
-  test.skip(Boolean(process.env.E2E_PRIVATE) || Boolean(process.env.E2E_SETUP));
-  await installMemberWorkspace(page);
-  await page.route('**/api/config', (route) =>
-    route.fulfill({ json: { ...memberConfig, faceit_configured: true, faceit_downloads: true } }),
-  );
-  await page.route('**/api/auth/me', (route) =>
-    route.fulfill({
-      json: {
-        user: {
-          ...memberUser,
-          identities: [
-            ...memberUser.identities,
-            { provider: 'faceit', subject: 'd999aa66-f0df-41ba-857f-50de9f9b7af6' },
-          ],
-        },
-      },
-    }),
-  );
-  await page.route('**/api/connections/faceit/match-demos?*', (route) =>
-    route.fulfill({
-      json: {
-        files: [
-          { id: 'a'.repeat(64), file: 1, demo_id: null },
-          { id: 'b'.repeat(64), file: 2, demo_id: null },
-        ],
-      },
-    }),
-  );
-  const wait = Promise.withResolvers<void>();
-  await page.route('**/api/connections/faceit/import', async (route) => {
-    expect(route.request().postDataJSON().resource_id).toBe('b'.repeat(64));
-    await wait.promise;
-    await route.fulfill({ status: 202, json: { id: 'late-faceit-import' } });
-  });
-  const unexpected: string[] = [];
-  page.on('request', (request) => {
-    if (request.url().includes('/api/demos/late-faceit-import')) unexpected.push(request.url());
-  });
-  await page.goto('/account/connections');
-  await page
-    .getByLabel('FACEIT match ID or match room URL')
-    .fill('1-d999aa66-f0df-41ba-857f-50de9f9b7af8');
-  await page.getByRole('button', { name: 'Find demo files', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Import demo file 1' })).toBeEnabled();
-  await page.getByRole('button', { name: 'Import demo file 2' }).click();
-  await expect(page.getByRole('button', { name: 'Working…', exact: true }).last()).toBeDisabled();
-  await page.getByRole('link', { name: 'cswatch home', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Demo library', exact: true })).toBeVisible();
-  const response = page.waitForResponse('**/api/connections/faceit/import');
-  wait.resolve();
-  expect((await response).status()).toBe(202);
-  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
-  await expect(page).toHaveURL(/\/library$/);
-  expect(unexpected).toEqual([]);
-});
 
 async function compactIcon(icon: Locator, container: Locator) {
   await expect(icon).toBeVisible();
@@ -148,8 +89,18 @@ for (const profile of profiles) {
     await capture('login');
 
     const connected = profile.width !== 768;
+    const faceitVerification =
+      profile.theme === 'light' ? 'unavailable' : connected ? 'ready' : 'steam_required';
     await page.route('**/api/auth/me', (route) =>
-      route.fulfill({ json: { user: connected ? memberUser : { ...memberUser, identities: [] } } }),
+      route.fulfill({
+        json: {
+          user: {
+            ...memberUser,
+            identities: connected ? memberUser.identities : [],
+            match_sources: { ...memberUser.match_sources, faceit_verification: faceitVerification },
+          },
+        },
+      }),
     );
     await page.goto('/account/connections');
     for (const provider of ['Steam', 'FACEIT']) {
@@ -172,17 +123,21 @@ for (const profile of profiles) {
       name: profile.language === 'fr' ? 'Vérifier FACEIT' : 'Verify FACEIT',
       exact: true,
     });
-    await expect(faceit).toBeDisabled();
-    await compactIcon(faceit.locator('svg'), faceit);
-    for (const action of [steamLink, faceit])
-      expect((await action.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    if (faceitVerification === 'ready') {
+      await expect(faceit).toBeEnabled();
+      await compactIcon(faceit.locator('svg'), faceit);
+      expect((await faceit.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    } else {
+      await expect(faceit).toHaveCount(0);
+    }
+    expect((await steamLink.boundingBox())!.height).toBeGreaterThanOrEqual(44);
     const notice = await (await page.request.get('/licenses/provider-brands.txt')).text();
     expect(notice).toContain('CC0-1.0');
     expect(notice).toContain('©2026 Valve Corporation.');
     if (connected) {
-      await page.route('**/api/connections/steam/matches?*', (route) =>
+      await page.route('**/api/connections/steam/history', (route) =>
         route.fulfill({
-          json: { configured: false, retry_at: 0, next_offset: null, items: [] },
+          json: { configured: false, retry_at: 0 },
         }),
       );
       await page
@@ -207,16 +162,14 @@ for (const profile of profiles) {
     await expect(skip).toBeFocused();
     await expect(skip).toHaveCSS('clip-path', 'none');
     await skip.blur();
-    if (connected) {
-      await expect(
-        page.getByText(
-          profile.language === 'fr'
-            ? 'Vérifiez le compte FACEIT associé à votre compte Steam.'
-            : 'Verify the FACEIT account linked to your Steam account.',
-          { exact: true },
-        ),
-      ).toBeVisible();
-    }
+    const verification = page.getByText(
+      profile.language === 'fr'
+        ? 'Vérifiez le compte FACEIT associé à votre compte Steam.'
+        : 'Verify the FACEIT account linked to your Steam account.',
+      { exact: true },
+    );
+    if (faceitVerification === 'ready') await expect(verification).toBeVisible();
+    else await expect(verification).toHaveCount(0);
     await capture('connections');
     expect(images.every((url) => new URL(url).origin === new URL(page.url()).origin)).toBe(true);
     expect(images.some((url) => /steam-openid|faceit-on-(light|dark)/.test(url))).toBe(false);
@@ -252,7 +205,7 @@ test('sign-in and connections expose only configured actions and link Steam with
   await page.getByRole('button', { name: 'Connect Steam', exact: true }).focus();
   await page.keyboard.press('Enter');
   await expect(page.getByRole('alert')).toHaveText('Steam sign-in is disabled.');
-  await expect(page.getByRole('button', { name: 'Verify FACEIT' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Verify FACEIT' })).toHaveCount(0);
 });
 
 test('Steam sync displays discovered matches and opens a pre-identified upload', async ({
@@ -266,22 +219,36 @@ test('Steam sync displays discovered matches and opens a pre-identified upload',
   const match = '3230642215713767580';
   const code = 'CSGO-GADqf-jjyJ8-cSP2r-smZRo-TO2xK';
   let saved = false;
+  await page.route('**/api/auth/me', (route) =>
+    route.fulfill({
+      json: {
+        user: {
+          ...memberUser,
+          match_sources: { ...memberUser.match_sources, steam: saved },
+        },
+      },
+    }),
+  );
   await page.route('**/api/connections/steam/matches?*', (route) =>
     route.fulfill({
       json: {
-        configured: saved,
+        needs_codes: false,
         retry_at: 0,
-        next_offset: null,
-        items: saved
-          ? [
-              { match_id: match, share_code: code, demo_id: null },
-              { match_id: '1234', share_code: code, demo_id: 'member-design-0' },
-            ]
-          : [],
+        next: null,
+        items: [
+          { match_id: match, share_code: code, demos: [] },
+          {
+            match_id: '1234',
+            share_code: code,
+            demos: [{ id: 'member-design-0', status: 'ready' }],
+          },
+        ],
       },
     }),
   );
   await page.route('**/api/connections/steam/history', (route) => {
+    if (route.request().method() === 'GET')
+      return route.fulfill({ json: { configured: saved, needs_codes: false } });
     expect(route.request().method()).toBe('PUT');
     expect(route.request().postDataJSON()).toEqual({
       auth_code: 'ABCD-EFGHI-JKLM',
@@ -310,11 +277,12 @@ test('Steam sync displays discovered matches and opens a pre-identified upload',
   await page.getByRole('button', { name: 'Verify and save codes' }).click();
   await expect(page.getByText('Steam sync codes verified.')).toBeVisible();
   await expect(page.getByLabel('Game authentication code')).toHaveCount(0);
+  await page.getByRole('link', { name: 'View matches' }).click();
   await expect(page.getByRole('link', { name: 'Download in CS2' }).first()).toHaveAttribute(
     'href',
     /steam:\/\/rungame\/730\/.*\+csgo_download_match/,
   );
-  await expect(page.getByRole('link', { name: 'Open uploaded demo' })).toHaveAttribute(
+  await expect(page.getByRole('link', { name: 'Open Ready' })).toHaveAttribute(
     'href',
     '/watch/member-design-0',
   );
@@ -324,52 +292,6 @@ test('Steam sync displays discovered matches and opens a pre-identified upload',
   );
   await page.getByRole('link', { name: 'Upload this demo' }).click();
   await expect(page.getByRole('dialog').getByText('Steam match ' + match)).toBeVisible();
-});
-
-test('FACEIT history keeps a stable time window across pages', async ({ page }) => {
-  test.skip(Boolean(process.env.E2E_PRIVATE) || Boolean(process.env.E2E_SETUP));
-  await installMemberWorkspace(page);
-  await page.route('**/api/config', (route) =>
-    route.fulfill({ json: { ...memberConfig, faceit_configured: true, faceit_downloads: true } }),
-  );
-  await page.route('**/api/auth/me', (route) =>
-    route.fulfill({
-      json: {
-        user: {
-          ...memberUser,
-          identities: [
-            ...memberUser.identities,
-            { provider: 'faceit', subject: 'd999aa66-f0df-41ba-857f-50de9f9b7af6' },
-          ],
-        },
-      },
-    }),
-  );
-  await page.route('**/api/connections/faceit/matches?*', (route) => {
-    const query = new URL(route.request().url()).searchParams;
-    const first = query.get('offset') === '0';
-    expect(query.get('to')).toBe(first && !query.has('to') ? null : '1700000000');
-    return route.fulfill({
-      json: {
-        items: [
-          {
-            match_id: first ? 'first-page' : 'second-page',
-            competition_name: first ? 'First result' : 'Second result',
-          },
-        ],
-        to: 1700000000,
-        next_offset: first ? 20 : null,
-      },
-    });
-  });
-  await page.goto('/account/connections');
-  await page.getByRole('button', { name: 'Recent matches', exact: true }).click();
-  await expect(page.getByText('First result')).toBeVisible();
-  await page.getByRole('button', { name: 'Next page' }).click();
-  await expect(page.getByText('Second result')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Next page' })).toBeDisabled();
-  await page.getByRole('button', { name: 'Previous page' }).click();
-  await expect(page.getByText('First result')).toBeVisible();
 });
 
 test('connection setup names the exact server settings for administrators only', async ({
@@ -388,9 +310,9 @@ test('connection setup names the exact server settings for administrators only',
   await page.route('**/api/auth/me', (route) =>
     route.fulfill({ json: { user: { ...memberUser, is_admin: admin } } }),
   );
-  await page.route('**/api/connections/steam/matches?*', (route) =>
+  await page.route('**/api/connections/steam/history', (route) =>
     route.fulfill({
-      json: { configured: false, needs_codes: false, next_offset: null, items: [] },
+      json: { configured: false, needs_codes: false },
     }),
   );
   const open = async () => {
@@ -405,53 +327,21 @@ test('connection setup names the exact server settings for administrators only',
   await expect(page.getByText('download FACEIT demos')).toHaveCount(0);
 
   admin = false;
+  config = { ...config, steam_enabled: false, faceit_enabled: true };
   await open();
   await expect(page.getByText('everything needed for automatic Steam match sync')).toBeVisible();
   await expect(page.getByText('everything needed for FACEIT matches')).toBeVisible();
+  await expect(
+    page.getByText('Verify the FACEIT account linked to your Steam account.', { exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Verify FACEIT' })).toHaveCount(0);
   await expect(page.getByText('administrator', { exact: false })).toHaveCount(0);
   await expect(page.getByText('STEAM_API_KEY')).toHaveCount(0);
   await expect(page.getByText('FACEIT_ENABLED')).toHaveCount(0);
 
   admin = true;
-  config = { ...config, steam_enabled: false, faceit_enabled: true, faceit_configured: false };
+  config = { ...config, steam_enabled: false, faceit_enabled: true };
   await page.goto('/account/connections');
   await expect(page.getByText('STEAM_ENABLED=true')).toBeVisible();
   await expect(page.getByText('FACEIT_API_KEY')).toBeVisible();
-});
-
-test('a FACEIT error appears beside its action and matches scroll into view', async ({ page }) => {
-  test.skip(Boolean(process.env.E2E_PRIVATE) || Boolean(process.env.E2E_SETUP));
-  await page.setViewportSize({ width: 390, height: 844 });
-  await installMemberWorkspace(page);
-  await page.route('**/api/config', (route) =>
-    route.fulfill({ json: { ...memberConfig, faceit_enabled: true, faceit_configured: true } }),
-  );
-  await page.route('**/api/auth/me', (route) =>
-    route.fulfill({
-      json: {
-        user: {
-          ...memberUser,
-          identities: [...memberUser.identities, { provider: 'faceit', subject: 'fixture' }],
-        },
-      },
-    }),
-  );
-  let reply: Parameters<Route['fulfill']>[0] = {
-    status: 502,
-    json: { detail: 'FACEIT returned an invalid response. Try again later.' },
-  };
-  await page.route('**/api/connections/faceit/matches?*', (route) => route.fulfill(reply));
-  await page.goto('/account/connections');
-  const recent = page.getByRole('button', { name: 'Recent matches', exact: true });
-  await recent.click();
-  const alert = page.getByRole('alert');
-  await expect(alert).toBeInViewport();
-  const panel = page.locator('.settings-panel').filter({ has: recent });
-  await expect(panel.getByRole('alert')).toHaveText(
-    'FACEIT returned an invalid response. Try again later.',
-  );
-  reply = { json: { items: [], next_offset: null, to: 1795300000 } };
-  await recent.click();
-  await expect(alert).toHaveCount(0);
-  await expect(page.getByText('FACEIT lists no CS2 matches for this account.')).toBeInViewport();
 });

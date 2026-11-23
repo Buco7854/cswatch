@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { loadConfig } from '../src/config.js';
 import { Store } from '../src/db.js';
-import { COOKIE, HttpError } from '../src/security.js';
+import { COOKIE, digest, HttpError } from '../src/security.js';
 import { createApp } from '../src/server.js';
 import { initializeFixture } from './fixtures/initialized.js';
 
@@ -64,7 +64,17 @@ test('FACEIT verification, history and download lookup use current verified iden
     const steam = '76561198000000001',
       faceit = 'd999aa66-f0df-41ba-857f-50de9f9b7af6',
       match = '1-d999aa66-f0df-41ba-857f-50de9f9b7af8';
+    const emptyMatch = match + '-empty';
+    const sources = async () =>
+      (await app.inject({ url: '/api/auth/me', headers: authenticated })).json().user.match_sources;
+    assert.equal((await sources()).faceit_verification, 'steam_required');
     db.run("INSERT INTO identities VALUES('steam',?,?)", steam, id);
+    assert.equal((await sources()).faceit_verification, 'ready');
+    const faceitKey = config.faceitApiKey;
+    config.faceitApiKey = '';
+    assert.equal((await sources()).faceit_verification, 'unavailable');
+    assert.equal((await sources()).faceit, false);
+    config.faceitApiKey = faceitKey;
     let malformed = false,
       revoke = false;
     let lookupStatus = 200;
@@ -112,23 +122,20 @@ test('FACEIT verification, history and download lookup use current verified iden
       }
       if (url.pathname === `/data/v4/players/${faceit}/history`) {
         assert.equal(url.searchParams.get('game'), 'cs2');
-        assert.equal(url.searchParams.get('limit'), '20');
-        if (url.searchParams.get('offset') === '20') {
-          assert.equal(url.searchParams.get('to'), '1700000000');
-          return Response.json({ items: [] });
-        }
+        assert.equal(url.searchParams.get('limit'), '100');
         return Response.json({
           items: Array.from({ length: 20 }, (_, index) => ({
-            match_id: index === 0 ? match : 'fixture_' + index,
+            match_id: index === 0 ? match : index === 1 ? emptyMatch : 'fixture_' + index,
             demo_url: ['private'],
           })),
         });
       }
-      assert.equal(url.pathname, `/data/v4/matches/${match}`);
+      const match_id = url.pathname.split('/').at(-1);
+      assert.ok(match_id === match || match_id === emptyMatch);
       return Response.json({
-        match_id: match,
+        match_id,
         game: 'cs2',
-        demo_url: demoUrls,
+        demo_url: match_id === emptyMatch ? [] : demoUrls,
         teams: { faction1: { roster: participant ? [{ player_id: faceit }] : [] } },
       });
     };
@@ -136,30 +143,39 @@ test('FACEIT verification, history and download lookup use current verified iden
       app.inject({ method: 'POST', url: '/api/connections/faceit/link', headers: authenticated });
     assert.equal((await link()).statusCode, 200);
     const history = await app.inject({
-      url: '/api/connections/faceit/matches',
+      url: '/api/connections/faceit/matches?cursor=1700000000.0',
       headers: authenticated,
     });
     assert.equal(history.statusCode, 200);
-    assert.deepEqual(history.json().items[0], { match_id: match });
-    assert.equal(history.json().next_offset, 20);
-    const page = await app.inject({
-      url: '/api/connections/faceit/matches?offset=20&to=1700000000',
-      headers: authenticated,
-    });
-    assert.deepEqual(page.json(), { items: [], next_offset: null, to: 1700000000 });
-    const details = () =>
+    assert.equal(history.json().items[0].match_id, match);
+    assert.equal(history.json().next, null);
+    assert.equal((await sources()).faceit_download, true);
+    assert.doesNotMatch(history.body, /demo_url|private/);
+    const details = (id = match) =>
       app.inject({
-        url: '/api/connections/faceit/match-demos?match_id=' + match,
+        url: '/api/connections/faceit/match-demos?match_id=' + id,
         headers: authenticated,
       });
-    const importDemo = (resource_id?: string) =>
+    const importDemo = (resource_id?: string, match_id = match) =>
       app.inject({
         method: 'POST',
         url: '/api/connections/faceit/import',
         headers: authenticated,
-        payload: { match_id: match, resource_id },
+        payload: { match_id, resource_id },
       });
-    assert.equal((await importDemo()).statusCode, 404);
+    assert.equal((await importDemo(undefined, emptyMatch)).statusCode, 404);
+    lookupStatus = 503;
+    assert.equal((await details(emptyMatch)).json().code, 'faceit_no_demo');
+    const retained = await app.inject({
+      url: '/api/connections/faceit/matches?cursor=1700000000.0',
+      headers: authenticated,
+    });
+    assert.equal(
+      retained.json().items.find((item: { match_id: string }) => item.match_id === emptyMatch)
+        .no_demo,
+      true,
+    );
+    lookupStatus = 200;
     assert.equal(db.one('SELECT id FROM demos'), undefined);
     for (const [upstream, mapped] of [
       [400, 502],
@@ -191,7 +207,7 @@ test('FACEIT verification, history and download lookup use current verified iden
     );
     assert.equal((await importDemo()).statusCode, 409);
     signerStatus = 403;
-    assert.match((await importDemo(fileList[0].id)).body, /denied Downloads API access/);
+    assert.match((await importDemo(fileList[0].id)).body, /denied the download/);
     signerStatus = 200;
     signedHost = 'arbitrary-bucket.s3.amazonaws.com';
     assert.match((await importDemo(fileList[0].id)).body, /unsupported download host/);
@@ -214,7 +230,9 @@ test('FACEIT verification, history and download lookup use current verified iden
     }
     assert.equal((await importDemo(fileList[0].id)).statusCode, 409);
     assert.equal(signerCalls, 6);
-    assert.ok((await details()).json().files.every((file: { demo_id: string }) => !!file.demo_id));
+    assert.ok(
+      (await details()).json().files.every((file: { demo: { id: string } }) => !!file.demo?.id),
+    );
     db.run('DELETE FROM demos');
     downloadBehavior = 'changed';
     assert.equal((await importDemo(fileList[0].id)).statusCode, 409);
@@ -278,7 +296,7 @@ test('Steam match sync needs only the operator API key', async () => {
       url: '/api/config',
       headers: { host: 'localhost:8000' },
     });
-    assert.equal(configured.json().steam_discovery, true);
+    assert.equal(configured.json().steam_discovery, undefined);
     const path = join(root, 'encryption.key');
     assert.match(readFileSync(path, 'utf8'), /^[a-f0-9]{64}\n$/);
     assert.equal(statSync(path).mode & 0o777, 0o600);
@@ -368,7 +386,10 @@ test('Steam match sync verifies before saving, resumes and protects user credent
       });
     const sync = () =>
       app.inject({ method: 'POST', url: base + '/history/sync', headers: owner.headers });
-    const list = (headers = owner.headers) => app.inject({ url: base + '/matches', headers });
+    const list = (headers = owner.headers, filter = 'all', offset = 0) =>
+      app.inject({ url: base + '/matches?filter=' + filter + '&offset=' + offset, headers });
+    const status = () => app.inject({ url: base + '/history', headers: owner.headers });
+    const capabilities = () => app.inject({ url: '/api/auth/me', headers: owner.headers });
     const remove = () =>
       app.inject({ method: 'DELETE', url: base + '/history', headers: owner.headers });
     assert.equal((await save({ ...owner.headers, 'x-csrf-token': 'wrong' })).statusCode, 403);
@@ -380,7 +401,8 @@ test('Steam match sync verifies before saving, resumes and protects user credent
     assert.equal((await save(other.headers)).statusCode, 400);
     assert.equal(calls, 0);
     assert.match((await save()).body, /replace your game authentication code/);
-    assert.equal((await list()).json().configured, false);
+    assert.equal((await status()).json().configured, false);
+    assert.equal((await capabilities()).json().user.match_sources.steam, false);
     upstream = () => new Response('invalid share code', { status: 412 });
     assert.match((await save()).body, /recent match sharing code/);
     upstream = () => new Response('not JSON');
@@ -402,7 +424,8 @@ test('Steam match sync verifies before saving, resumes and protects user credent
       (await list()).body,
       /ABCD-EFGHI-JKLM|synthetic-operator-key|encrypted_code/,
     );
-    assert.deepEqual((await list(other.headers)).json().items, []);
+    assert.equal((await list(other.headers)).statusCode, 403);
+    assert.equal((await capabilities()).json().user.match_sources.steam, true);
     upstream = (cursor) =>
       cursor === start
         ? Response.json({ result: { nextcode: next } })
@@ -438,7 +461,30 @@ test('Steam match sync verifies before saving, resumes and protects user credent
     assert.equal((await upload(other.headers)).statusCode, 404);
     const uploaded = await upload(owner.headers);
     assert.equal(uploaded.statusCode, 202, uploaded.body);
-    assert.equal((await list()).json().items[0].demo_id, uploaded.json().id);
+    const demoId = uploaded.json().id;
+    assert.equal((await list()).json().items[0].demos[0].id, demoId);
+    assert.equal((await list(owner.headers, 'downloaded')).json().items[0].match_id, match_id);
+    assert.equal((await list(owner.headers, 'missing')).json().items.length, 2);
+    assert.equal((await list(owner.headers, 'missing', 25)).json().items.length, 0);
+    db.run(
+      "UPDATE demos SET status='ready',map='de_ancient',metadata=? WHERE id=?",
+      JSON.stringify({ recordedScore: [13, 8] }),
+      demoId,
+    );
+    assert.deepEqual((await list(owner.headers, 'downloaded')).json().items[0].demos[0], {
+      id: demoId,
+      status: 'ready',
+      map: 'de_ancient',
+      score: [13, 8],
+    });
+    db.run("UPDATE demos SET status='failed' WHERE id=?", demoId);
+    assert.equal(
+      (await list(owner.headers, 'downloaded')).json().items[0].demos[0].status,
+      'failed',
+    );
+    assert.equal((await list(owner.headers, 'downloaded')).json().items[0].demos[0].map, null);
+    const mine = await app.inject({ url: '/api/demos?source=steam', headers: owner.headers });
+    assert.equal(mine.json().demos[0].source, 'steam');
     db.run('DELETE FROM rate_limits');
     upstream = () => new Response(null, { status: 504 });
     assert.match((await sync()).body, /timed out/);
@@ -457,7 +503,7 @@ test('Steam match sync verifies before saving, resumes and protects user credent
     assert.match((await sync()).body, /saved Steam code cannot be read/);
     assert.equal((await remove()).statusCode, 200);
     assert.equal(db.one('SELECT * FROM steam_history'), undefined);
-    assert.deepEqual((await list()).json().items, []);
+    assert.equal((await list()).statusCode, 403);
     assert.equal(
       db.one('SELECT id FROM demos WHERE id=?', uploaded.json().id)?.id,
       uploaded.json().id,
@@ -468,6 +514,275 @@ test('Steam match sync verifies before saving, resumes and protects user credent
     };
     assert.equal((await save()).statusCode, 401);
     assert.equal(db.one('SELECT * FROM steam_history'), undefined);
+  } finally {
+    globalThis.fetch = fetchBefore;
+    await app.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('FACEIT library walks the full history with a timestamp cursor and keeps downloaded pages private', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'cswatch-faceit-history-'));
+  const origin = 'http://localhost:8000';
+  const config = loadConfig({
+    APP_URL: origin,
+    DATA_DIR: root,
+    COOKIE_SECURE: 'false',
+    FACEIT_ENABLED: 'true',
+    FACEIT_API_KEY: 'synthetic-key',
+    LOG_LEVEL: 'silent',
+  });
+  const db = new Store(root);
+  initializeFixture(db);
+  const app = await createApp(config, db);
+  const fetchBefore = globalThis.fetch;
+  const endpoint = '/api/connections/faceit/matches';
+  try {
+    async function member(username: string, subject: string) {
+      const registered = await app.inject({
+        method: 'POST',
+        url: '/api/auth/register',
+        headers: { host: 'localhost:8000', origin },
+        payload: { username, password: 'disposable-fixture-password' },
+      });
+      assert.equal(registered.statusCode, 201, registered.body);
+      const { id, csrf } = registered.json().user;
+      const headers = {
+        host: 'localhost:8000',
+        origin,
+        'x-csrf-token': csrf,
+        cookie: `${COOKIE}=${registered.cookies.find((cookie) => cookie.name === COOKIE)!.value}`,
+      };
+      assert.equal(
+        (await app.inject({ url: '/api/auth/me', headers })).json().user.match_sources.faceit,
+        false,
+      );
+      db.run("INSERT INTO identities VALUES('faceit',?,?)", subject, id);
+      assert.equal(
+        (await app.inject({ url: '/api/auth/me', headers })).json().user.match_sources.faceit,
+        true,
+      );
+      return { id, headers };
+    }
+    const owner = await member('faceit_owner', 'owner-faceit');
+    const other = await member('faceit_other', 'other-faceit');
+    const newer = 1_700_000_000;
+    const history = Array.from({ length: 1278 }, (_, index) => ({
+      match_id: 'match-' + index,
+      finished_at: newer - Math.floor(index / 30), // repeated seconds cross page boundaries
+      competition_name: 'Fixture League',
+      teams: {
+        faction1: { nickname: 'North', players: [{ player_id: 'owner-faceit' }] },
+        faction2: { nickname: 'South', players: [{ player_id: 'other-faceit' }] },
+      },
+      results: { winner: 'faction1', score: { faction1: 13, faction2: 9 } },
+    }));
+    let calls = 0;
+    let respond: (() => Response | Promise<Response>) | undefined;
+    globalThis.fetch = async (input) => {
+      calls++;
+      const url = new URL(String(input));
+      assert.equal(url.origin, 'https://open.faceit.com');
+      if (url.pathname.includes('/matches/')) {
+        const match_id = url.pathname.split('/').at(-1);
+        return Response.json({
+          match_id,
+          game: 'cs2',
+          finished_at: newer,
+          teams: { faction1: { nickname: 'North', roster: [{ player_id: 'owner-faceit' }] } },
+        });
+      }
+      assert.match(url.pathname, /\/players\/(owner|other)-faceit(?:-\d+)?\/history$/);
+      const q = url.searchParams;
+      assert.equal(q.get('from'), '0');
+      const offset = Number(q.get('offset'));
+      const limit = Number(q.get('limit'));
+      assert.ok(offset >= 0 && offset <= 1000 && limit <= 100);
+      if (respond) return respond();
+      const items = history.filter((entry) => entry.finished_at <= Number(q.get('to')));
+      return Response.json({ items: items.slice(offset, offset + limit) });
+    };
+    const read = (query = '', headers = owner.headers) =>
+      app.inject({ url: endpoint + query, headers });
+    const first = (await read()).json();
+    assert.equal(first.items.length, 25);
+    assert.equal(
+      (await app.inject({ url: '/api/auth/me', headers: owner.headers })).json().user.match_sources
+        .faceit_download,
+      false,
+    );
+    assert.equal(first.items[0].result, 'win');
+    assert.deepEqual(first.items[0].teams, [
+      { name: 'North', score: 13 },
+      { name: 'South', score: 9 },
+    ]);
+    const expected = history.map((item) => item.match_id);
+    history.unshift({ ...history[0], match_id: 'new-match', finished_at: newer + 1 });
+    const walked = first.items.map((item: { match_id: string }) => item.match_id);
+    for (let next = first.next; next;) {
+      const page = await read('?cursor=' + next);
+      assert.equal(page.statusCode, 200, page.body);
+      walked.push(...page.json().items.map((item: { match_id: string }) => item.match_id));
+      next = page.json().next;
+    }
+    assert.deepEqual(walked, expected);
+    const beforeCache = calls;
+    const cursor = '?cursor=' + (newer - 41) + '.10';
+    await read(cursor);
+    await read(cursor);
+    assert.equal(calls, beforeCache + 1, 'the same provider page is fetched once');
+    for (let index = 0; index < 6; index++) await read('?cursor=' + (newer - index) + '.0');
+    const beforeEvicted = calls;
+    await read(cursor);
+    assert.equal(calls, beforeEvicted + 1, 'the oldest cached page was evicted');
+
+    // Populate the global member cache without performing password work for each fixture.
+    for (let index = 0; index < 65; index++) {
+      const id = 'cache-member-' + index;
+      const provider = index % 2 ? 'owner-faceit' : 'other-faceit';
+      db.run('INSERT INTO users VALUES(?,?,NULL,0,0)', id, id);
+      db.run("INSERT INTO identities VALUES('faceit',?,?)", provider + '-' + index, id);
+      db.run(
+        'INSERT INTO sessions VALUES(?,?,?,?)',
+        digest(id),
+        id,
+        id,
+        Math.floor(Date.now() / 1000) + 900,
+      );
+      const cached = await read('?cursor=' + (newer - 100) + '.0', {
+        ...owner.headers,
+        cookie: COOKIE + '=' + id,
+        'x-csrf-token': id,
+      });
+      assert.equal(cached.statusCode, 200, cached.body);
+    }
+    const afterMemberFill = calls;
+    assert.equal((await read(cursor)).statusCode, 200);
+    assert.equal(calls, afterMemberFill + 1, 'the least recently cached member was evicted');
+
+    for (let index = 0; index < 28; index++) {
+      db.run(
+        `INSERT INTO demos(id,owner_id,name,source,status,size,created_at,faceit_match_id)
+        VALUES(?,?,?,'faceit','failed',1,?,?)`,
+        'owned-' + index,
+        owner.id,
+        'Owned',
+        newer - index,
+        'match-' + index,
+      );
+    }
+    db.run(
+      `INSERT INTO demos(id,owner_id,name,source,status,size,created_at,faceit_match_id)
+      VALUES('other-demo',?,'Other','faceit','ready',1,?,'match-28')`,
+      other.id,
+      newer,
+    );
+    for (let index = 28; index < 430; index++) {
+      db.run(
+        `INSERT INTO demos(id,owner_id,name,source,status,size,created_at,faceit_match_id)
+         VALUES(?,?,?,'faceit','ready',1,?,?)`,
+        'scan-' + index,
+        owner.id,
+        'Downloaded while scanning',
+        newer - index,
+        'match-' + index,
+      );
+    }
+    const beforeScan = calls;
+    const sparse = (await read('?filter=missing&cursor=' + newer + '.0')).json();
+    assert.equal(sparse.items.length, 0);
+    assert.ok(sparse.next);
+    assert.ok(calls - beforeScan <= 4, 'the scan cannot exceed four history calls');
+    const filled = (await read('?filter=missing&cursor=' + sparse.next)).json();
+    assert.equal(filled.items.length, 25);
+    assert.equal(filled.items[0].match_id, 'match-430');
+    db.run("DELETE FROM demos WHERE owner_id=? AND id LIKE 'scan-%'", owner.id);
+
+    const notDownloaded = (await read('?filter=missing&cursor=' + newer + '.0')).json();
+    assert.equal(notDownloaded.items.length, 25);
+    assert.equal(notDownloaded.items[0].match_id, 'match-28');
+    assert.deepEqual(notDownloaded.items[0].demos, []);
+    const file =
+      '--pair\r\nContent-Disposition: form-data; name="file"; filename="fixture.dem"\r\n\r\nPBDEMS2\0synthetic\r\n--pair--\r\n';
+    const upload = (headers: typeof owner.headers) =>
+      app.inject({
+        method: 'POST',
+        url: '/api/demos?faceit_match=match-28',
+        headers: { ...headers, 'content-type': 'multipart/form-data; boundary=pair' },
+        payload: file,
+      });
+    assert.equal((await upload(other.headers)).statusCode, 403);
+    const paired = await upload(owner.headers);
+    assert.equal(paired.statusCode, 202, paired.body);
+    assert.equal(
+      db.one('SELECT faceit_match_id FROM demos WHERE id=?', paired.json().id)?.faceit_match_id,
+      'match-28',
+    );
+
+    respond = () => new Response('upstream private data', { status: 503 });
+    const offline = calls;
+    const downloaded = (await read('?filter=downloaded')).json();
+    assert.equal(downloaded.items.length, 25);
+    assert.equal(downloaded.next, '25');
+    assert.equal(downloaded.items[0].demos[0].id, paired.json().id);
+    assert.equal((await read('?filter=downloaded&offset=25')).json().items.length, 4);
+    assert.deepEqual(
+      (await read('?filter=downloaded', other.headers))
+        .json()
+        .items.map((match: { match_id: string }) => match.match_id),
+      ['match-28'],
+    );
+    assert.equal(calls, offline, 'downloaded filters make no provider requests');
+
+    for (const [upstream, expected] of [
+      [401, 502],
+      [403, 502],
+      [404, 404],
+      [503, 503],
+      [500, 502],
+      [200, 502],
+      [429, 429],
+    ]) {
+      respond = () =>
+        new Response('upstream private data', {
+          status: upstream,
+          headers: { 'Retry-After': '1' },
+        });
+      const reply = await read('?cursor=' + (newer - 120) + '.0', other.headers);
+      assert.equal(reply.statusCode, expected, reply.body);
+      assert.doesNotMatch(reply.body, /private data/);
+    }
+    const backoff = calls;
+    assert.equal((await read('?cursor=' + (newer - 121) + '.0', other.headers)).statusCode, 429);
+    assert.equal(calls, backoff);
+    await new Promise((resolve) => setTimeout(resolve, 1050));
+
+    const inFlight = Promise.withResolvers<void>();
+    const finish = Promise.withResolvers<Response>();
+    respond = () => {
+      inFlight.resolve();
+      return finish.promise;
+    };
+    const pending = read('?cursor=' + (newer - 122) + '.0', other.headers);
+    await inFlight.promise;
+    const unlinked = await app.inject({
+      method: 'DELETE',
+      url: '/api/connections/faceit/link',
+      headers: other.headers,
+    });
+    assert.equal(unlinked.statusCode, 200);
+    finish.resolve(Response.json({ items: [] }));
+    assert.equal((await pending).statusCode, 409);
+    assert.equal((await read('', other.headers)).statusCode, 403);
+
+    respond = undefined;
+    const logout = await app.inject({
+      method: 'POST',
+      url: '/api/auth/logout',
+      headers: owner.headers,
+    });
+    assert.equal(logout.statusCode, 200);
+    assert.equal((await read()).statusCode, 401);
   } finally {
     globalThis.fetch = fetchBefore;
     await app.close();

@@ -3,6 +3,15 @@ let csrf = '';
 export function setCsrf(value: string) {
   csrf = value;
 }
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string,
+  ) {
+    super(message);
+  }
+}
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers);
   if (options.body && !(options.body instanceof FormData))
@@ -17,10 +26,12 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   }
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(
+    throw new ApiError(
       typeof data.detail === 'string'
         ? data.detail
         : t('Request failed ({{v0}}). Check the fields and try again.', { v0: response.status }),
+      response.status,
+      typeof data.code === 'string' ? data.code : undefined,
     );
   }
   return response.json();
@@ -30,7 +41,7 @@ export function uploadFile(
   progress: (n: number) => void,
   signal?: AbortSignal,
   csrfToken = csrf,
-  steamMatch?: string,
+  match?: { source: 'steam' | 'faceit'; id: string },
 ): Promise<{ id: string }> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
@@ -51,7 +62,9 @@ export function uploadFile(
     }
     xhr.open(
       'POST',
-      steamMatch ? '/api/demos?' + new URLSearchParams({ steam_match: steamMatch }) : '/api/demos',
+      match
+        ? '/api/demos?' + new URLSearchParams({ [match.source + '_match']: match.id })
+        : '/api/demos',
     );
     xhr.setRequestHeader('X-CSRF-Token', csrfToken);
     xhr.upload.onprogress = (e) => {

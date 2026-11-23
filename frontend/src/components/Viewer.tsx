@@ -135,11 +135,12 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
   const linkedPlayer = query.get('player') || undefined;
   const previous = location.state?.from;
   const backTo =
-    typeof previous === 'string' && ['/', '/library'].includes(previous)
+    typeof previous === 'string' && (previous === '/' || /^\/library(?:\?[^#]*)?$/.test(previous))
       ? previous
       : user
         ? '/library'
         : '/';
+  const backState = backTo === previous ? location.state?.fromState : undefined;
   const [playing, setPlaying] = useState(false),
     [tick, setTick] = useState(0),
     [speed, setSpeed] = useState(1),
@@ -1031,7 +1032,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       <div className="inline-state">
         <h1>{t('Demo unavailable')}</h1>
         <p role="alert">{t(error)}</p>
-        <Link className="button" to={backTo}>
+        <Link className="button" to={backTo} state={backState}>
           {t(backTo === '/' ? 'Back to home' : 'Back to library')}
         </Link>
       </div>
@@ -1040,7 +1041,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
   if (!data)
     return (
       <>
-        <Link className="back-link" to={backTo}>
+        <Link className="back-link" to={backTo} state={backState}>
           <ArrowLeft size={16} />
           {t(backTo === '/' ? 'Home' : 'Library')}
         </Link>
@@ -1063,7 +1064,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
                 )}
           </p>
           {demo?.status === 'failed' && <p>{t('Demo reference: {{id}}', { id: demo.id })}</p>}
-          <Link className="button" to={backTo}>
+          <Link className="button" to={backTo} state={backState}>
             {t(backTo === '/' ? 'Back to home' : 'Return to library')}
           </Link>
           {(demo?.owned || demo?.guest_owned) &&
@@ -1310,6 +1311,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
           <Link
             className="icon-button viewer-back"
             to={backTo}
+            state={backState}
             aria-label={t(backTo === '/' ? 'Back to home' : 'Back to library')}
           >
             <ArrowLeft size={19} />

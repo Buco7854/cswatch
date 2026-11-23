@@ -1,20 +1,23 @@
 import { t } from '../i18n';
 import { useEffect, useId, useRef, useState } from 'react';
 import { FileUp, LockKeyhole } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { api, uploadFile } from '../api';
 import { useApp } from '../context';
 import './upload.css';
 
 export default function Upload({
   compact = false,
-  steamMatch,
+  match,
+  returnTo,
 }: {
   compact?: boolean;
-  steamMatch?: string;
+  match?: { source: 'steam' | 'faceit'; id: string };
+  returnTo?: string;
 }) {
   const { config, user, signIn, refresh } = useApp();
   const nav = useNavigate();
+  const location = useLocation();
   const input = useRef<HTMLInputElement>(null);
   const pending = useRef<AbortController | null>(null);
   const mounted = useRef(true);
@@ -78,14 +81,16 @@ export default function Upload({
         },
         controller.signal,
         session?.csrf,
-        steamMatch,
+        match,
       );
       if (controller.signal.aborted || !mounted.current) return;
       // The guest cookie already exists. Update the app's CSRF with the current
       // session before navigation so the viewer's owner actions can use it.
       if (session) await refresh().catch(() => {});
       if (controller.signal.aborted || !mounted.current) return;
-      nav('/watch/' + result.id, { state: { from: user ? '/library' : '/' } });
+      nav('/watch/' + result.id, {
+        state: { from: returnTo ?? (user ? '/library' : '/'), fromState: location.state },
+      });
     } catch (e) {
       if (mounted.current && !controller.signal.aborted) setError((e as Error).message);
     } finally {
@@ -105,7 +110,13 @@ export default function Upload({
       aria-label={compact ? t('Choose a CS2 demo') : undefined}
     >
       {!compact && <h2 id="upload-title">{t('Upload a demo')}</h2>}
-      {steamMatch && <p>{t('Steam match {{v0}}', { v0: steamMatch })}</p>}
+      {match && (
+        <p>
+          {t(match.source === 'steam' ? 'Steam match {{v0}}' : 'FACEIT match {{v0}}', {
+            v0: match.id,
+          })}
+        </p>
+      )}
       <div
         className={'demo-drop-target' + (drag ? ' is-dragging' : '')}
         onDragOver={(event) => {
