@@ -2,6 +2,8 @@
 
 Library and administration use the same dropdown and pagination controls. Members can pair a manual upload with a listed match, including when an automatic provider download is offered.
 
+Library rows show native map emblems, local map previews or a map-name fallback. A linked Steam identity can see its recorded counters and rank. FACEIT can supply a match roster level. [Verification](VERIFICATION.md#local-library-match-details)
+
 ## Access and replay
 
 - Schema 9 accounts have private email addresses and shared display names. SMTP is optional. New signups verify mailbox ownership before workspace access when enabled. A verified mailbox can receive a password-reset link. MFA and operator-assisted recovery retain their independent controls. [Account setup](ACCESS-SETUP.md#email-delivery-verification-and-password-reset)

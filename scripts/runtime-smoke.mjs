@@ -160,6 +160,22 @@ try {
   const manifest = JSON.parse(gunzipSync(playback.rawPayload).toString());
   assert.equal(manifest.version, 3);
   assert.equal(manifest.map, 'de_mirage');
+  const recordedPerformance = JSON.parse(
+    db.one('SELECT metadata FROM demos WHERE id=?', id).metadata,
+  ).matchPerformance;
+  const personal = Object.entries(recordedPerformance).find(
+    ([, row]) =>
+      Number.isSafeInteger(row.kills) &&
+      Number.isSafeInteger(row.deaths) &&
+      Number.isSafeInteger(row.assists),
+  );
+  assert.ok(personal, 'The confined parser publishes recorded match counters for the library.');
+  const [steamId, stats] = personal;
+  db.run("INSERT INTO identities VALUES('steam',?,?)", steamId, registration.json().user.id);
+  const library = await app.inject({ method: 'GET', url: '/api/demos', headers: authenticated });
+  assert.equal(library.statusCode, 200);
+  assert.deepEqual(library.json().demos.find((demo) => demo.id === id).performance, stats);
+  db.run("DELETE FROM identities WHERE provider='steam' AND subject=?", steamId);
   assert.equal(
     manifest.gameplaySounds?.coverage.footstep,
     'partial',
@@ -413,6 +429,8 @@ try {
       matchStateSamples: manifest.matchState.samples.length,
       throwInputs: manifest.throwInputs.length,
       recordedPlayerCounters: true,
+      libraryPlayers: Object.keys(recordedPerformance).length,
+      libraryRanks: Object.values(recordedPerformance).filter((row) => row.rank).length,
       recordedCrosshairs: true,
       privateGuestUpload: true,
       sandbox: 'required',

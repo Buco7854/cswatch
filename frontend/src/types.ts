@@ -55,6 +55,9 @@ export type AuthStatus = {
   guest_session: { csrf: string; expires_at: number } | null;
 };
 export type Demo = {
+  faceit_level?: number;
+  performance?: import('../../shared/library-match').MatchPerformance;
+  score?: number[] | null;
   id: string;
   name: string;
   source: string;

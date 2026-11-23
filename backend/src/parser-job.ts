@@ -1,3 +1,4 @@
+import { performanceBytes, performanceFile } from './match-performance.js';
 import { spawn } from 'node:child_process';
 import {
   closeSync,
@@ -66,7 +67,10 @@ export function inspectParserScratch(folder: string, c: Config) {
         } else if (!chunks && /^input\.(?:dem|zst|gz)$/.test(entry.name))
           limit = c.maxUploadMb * 1024 ** 2;
         else if (!chunks && entry.name === 'expanded.dem') limit = c.maxExpandedMb * 1024 ** 2;
-        else if (!chunks && entry.name === 'manifest.json.gz') {
+        else if (!chunks && entry.name === performanceFile) {
+          limit = performanceBytes;
+          stored += info.size;
+        } else if (!chunks && entry.name === 'manifest.json.gz') {
           limit = replayLimits.manifestBytes;
           stored += info.size;
         } else if (!chunks && entry.name === 'failure.txt') limit = 1024;

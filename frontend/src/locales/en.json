@@ -1343,5 +1343,14 @@
   "Email delivery is unavailable.": "Email delivery is unavailable.",
   "Configure the SMTP relay before enabling email delivery.": "Configure the SMTP relay before enabling email delivery.",
   "You are signed in with {{email}}, which is already verified. If the link is for another account, switch accounts and open it again.": "You are signed in with {{email}}, which is already verified. If the link is for another account, switch accounts and open it again.",
-  "The account email changed. Review the current address before trying again.": "The account email changed. Review the current address before trying again."
+  "The account email changed. Review the current address before trying again.": "The account email changed. Review the current address before trying again.",
+  "Unknown map": "Unknown map",
+  "K/D/A": "K/D/A",
+  "Premier": "Premier",
+  "Competitive": "Competitive",
+  "Wingman": "Wingman",
+  "Recorded kills, deaths and assists": "Recorded kills, deaths and assists",
+  "Recorded CT–T score": "Recorded CT–T score",
+  "FACEIT level {{v0}}": "FACEIT level {{v0}}",
+  "CT {{v0}} T": "CT {{v0}} T"
 }

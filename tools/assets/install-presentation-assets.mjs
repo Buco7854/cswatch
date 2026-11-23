@@ -137,6 +137,13 @@ async function validateBank(root, kind, manifest, write = false) {
     const proof = join(root, 'provenance.json');
     await regular(proof, 1024 ** 2, 2);
     const evidence = JSON.parse(await readFile(proof, 'utf8'));
+    const keys = Object.keys(equipmentIconSources);
+    if (
+      !Array.isArray(evidence.registryItems) ||
+      evidence.registryItems.length !== keys.length ||
+      !keys.every((key) => evidence.registryItems.includes(key))
+    )
+      throw Error('Native artwork registry changed.');
     const expected = new Map(Object.entries(evidence.items ?? {}));
     let count = 0;
     for (const filename of await readdir(root))

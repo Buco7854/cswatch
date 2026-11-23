@@ -11,6 +11,7 @@ import { observeItemState } from './item-state.js';
 import { observeMapIdentity } from './map-identity.js';
 import { observeSmokeTracks } from './smoke-state.js';
 import { observeInfernos } from './inferno-state.js';
+import { observeMatchPerformance } from './match-performance.js';
 import { observeRecordedEye } from './recorded-eye.js';
 
 export async function readCommunications(
@@ -33,6 +34,7 @@ export async function readCommunications(
   const finishSmokes = observeSmokeTracks(reader, lastTick, tickRate);
   const finishInfernos = observeInfernos(reader, lastTick);
   observeRecordedEye(reader, frames);
+  const finishPerformance = observeMatchPerformance(reader, actors, frames.at(-1));
   let unsupported = 0,
     encrypted = 0,
     bytes = 0,
@@ -137,6 +139,7 @@ export async function readCommunications(
   if (!matchState.complete) warnings.push('Some recorded match state could not be read.');
   return {
     ...finishSounds(!failed, events),
+    matchPerformance: finishPerformance(),
     voice,
     chat,
     mapIdentity: finishMapIdentity(),
