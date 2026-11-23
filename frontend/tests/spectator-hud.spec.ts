@@ -598,6 +598,7 @@ test('three seconds after a watched death POV follows a living teammate and a la
   page,
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE));
+  await page.clock.install();
   await fixture(page, 'spectator-follow', { death: true });
   await page.goto('/watch/spectator-follow?tick=0');
   await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
@@ -607,20 +608,30 @@ test('three seconds after a watched death POV follows a living teammate and a la
     exact: true,
   });
   await selected.click();
-  await page.clock.install();
-  await page.clock.pauseAt(new Date(Date.now() + 100));
+  const position = page.getByRole('slider', { name: 'Playback position' });
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
   await page.getByRole('button', { name: 'Play', exact: true }).click();
-  await page.clock.runFor(3500);
+  await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
+  // Advance between recorded checkpoints without rendering every intervening
+  // animation frame in software. Check the actual transport tick after each jump.
+  await page.clock.fastForward(1250);
+  await expect(position).toHaveValue('80');
+  await page.clock.fastForward(2250);
+  await expect(position).toHaveValue('224');
   await expect(selected).toHaveAttribute('aria-pressed', 'true');
-  await page.clock.runFor(700);
+  await page.clock.fastForward(700);
+  await expect(position).toHaveValue('269');
   await expect(
     page.getByRole('button', { name: 'Select player Original QA teammate', exact: true }),
   ).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Pause', exact: true }).click();
   await selected.click();
-  await page.getByRole('slider', { name: 'Playback position' }).fill('400');
+  await position.fill('400');
+  await expect(position).toHaveValue('400');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
-  await page.clock.runFor(1000);
+  await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
+  await page.clock.fastForward(1000);
+  await expect(position).toHaveValue('464');
   await expect(selected).toHaveAttribute('aria-pressed', 'true');
 });
 
@@ -628,6 +639,7 @@ test('a chunk stall after the watched death freezes its camera delay and resumes
   page,
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE));
+  await page.clock.install();
   const data = await fixture(page, 'spectator-buffer', { death: true });
   const { frames } = data;
   const { manifest } = await replayFixture(data);
@@ -683,12 +695,18 @@ test('a chunk stall after the watched death freezes its camera delay and resumes
       name: 'Select player Original QA reviewer',
       exact: true,
     });
-    await page.clock.install();
-    await page.clock.pauseAt(new Date(Date.now() + 100));
+    const position = page.getByRole('slider', { name: 'Playback position' });
+    await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
     await page.getByRole('button', { name: 'Play', exact: true }).click();
-    await page.clock.runFor(5000);
+    await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
+    await page.clock.fastForward(1250);
+    await expect(position).toHaveValue('80');
+    await expect(selected).toHaveAttribute('aria-pressed', 'true');
+    await page.clock.fastForward(3750);
     await expect(page.locator('.replay-buffer')).toBeVisible();
-    await expect(page.getByRole('slider', { name: 'Playback position' })).toHaveValue('128');
+    await expect(position).toHaveValue('128');
+    await page.clock.fastForward(1000);
+    await expect(position).toHaveValue('128');
     release();
     await expect
       .poll(async () => {
@@ -696,9 +714,13 @@ test('a chunk stall after the watched death freezes its camera delay and resumes
         return page.locator('.replay-buffer').count();
       })
       .toBe(0);
-    await page.clock.runFor(1000);
     await expect(selected).toHaveAttribute('aria-pressed', 'true');
-    await page.clock.runFor(1500);
+    await page.clock.fastForward(1000);
+    await expect.poll(async () => Number(await position.inputValue())).toBeGreaterThanOrEqual(192);
+    expect(Number(await position.inputValue())).toBeLessThan(256);
+    await expect(selected).toHaveAttribute('aria-pressed', 'true');
+    await page.clock.fastForward(1500);
+    await expect.poll(async () => Number(await position.inputValue())).toBeGreaterThanOrEqual(288);
     await expect(
       page.getByRole('button', { name: 'Select player Original QA teammate', exact: true }),
     ).toHaveAttribute('aria-pressed', 'true');

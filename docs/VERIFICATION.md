@@ -1,5 +1,13 @@
 # Verification record
 
+## Replay clock regressions, 2026-11-23
+
+Chromium reproduced the grenade landing failure from `e7a1e95` at 6× CPU throttling. The viewer entered free camera at recorded tick 496 and the slider reached 752 by the later assertion during ordinary 2× playback. With two browser workers and 16× throttling, both death-follow tests reached their 60-second deadline after the expected player selections. Advancing 3.5 seconds with every synthetic animation frame took 43 seconds of wall time in that run.
+
+The moment-action test pauses virtual time through the exact seek and camera assertions, then resumes ordinary playback. The death-follow tests step between recorded ticks and check the timeline, held chunk boundary and selections without lengthening the test deadline.
+
+Local Node 24 verification on port 4473 passed 269 public cases with two skips, 53 cases with 218 skips under each private policy, and four setup cases with one skip. With two workers and playback throttled at 6× for the review case and 16× for the death cases, all three passed ten repetitions each in Chromium with software WebGL. Build, formatting and locale checks passed.
+
 ## Local foot planting and equipment budget, 2026-11-22
 
 The follow-up uses merged revision `f927578` as its baseline. It reads the SHA-256-pinned Mirage recording `84a1a4191302bdd2a3bbb5a727842093744b1fb1a228aeec630369e44b622cb2` and the genuine CT/T and equipment packs from Steam depot `2347770`, manifest `8225060435969537482`. Capture and numerical evidence is indexed in `.design/r3b/PROOF.md`.
