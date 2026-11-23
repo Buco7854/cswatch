@@ -1,7 +1,7 @@
 import { useLayoutEffect, useMemo } from 'react';
 import { useLoader } from '@react-three/fiber';
-import { Loader, LoadingManager } from 'three';
-import type { GLTF } from 'three-stdlib';
+import { ImageBitmapLoader, Loader, LoadingManager, Texture } from 'three';
+import type { GLTF, GLTFLoader } from 'three-stdlib';
 import { loadScopedGLTF } from './scoped-gltf-loader';
 import { ModelCache, type ModelScope } from './model-cache';
 import { mapModelResources } from './map-model-resources';
@@ -13,6 +13,50 @@ const inactiveLimit = () =>
   typeof window !== 'undefined' && window.matchMedia('(max-width:780px),(pointer:coarse)').matches
     ? 512 * MiB
     : 1024 * MiB;
+
+/** Keep Three's sampler, channel, color-space and material handling. For ordinary embedded
+ * map images, the bytes already belong to the parser and need no blob URL or fetch. */
+function configureMap(loader: GLTFLoader, ownBitmap: (image: ImageBitmap) => void) {
+  registerMapBakedLighting(loader);
+  loader.register((parser) => ({
+    name: 'cswatch-embedded-map-images',
+    beforeRoot() {
+      const bitmaps = parser.textureLoader;
+      if (!(bitmaps instanceof ImageBitmapLoader)) return null;
+      const original = parser.loadImageSource.bind(parser);
+      const sources = new Map<number, Promise<Texture>>();
+      parser.loadImageSource = (index, imageLoader) => {
+        const image = parser.json.images[index];
+        if (
+          imageLoader !== bitmaps ||
+          image.uri !== undefined ||
+          !Number.isSafeInteger(image.bufferView) ||
+          image.extras !== undefined ||
+          !['image/webp', 'image/png', 'image/jpeg'].includes(image.mimeType)
+        )
+          return original(index, imageLoader);
+        const existing = sources.get(index);
+        if (existing) return existing.then((texture) => texture.clone());
+        const pending = parser
+          .getDependency('bufferView', image.bufferView)
+          .then(async (bytes: ArrayBuffer) => {
+            const bitmap = await createImageBitmap(new Blob([bytes], { type: image.mimeType }), {
+              ...bitmaps.options,
+              colorSpaceConversion: 'none',
+            });
+            ownBitmap(bitmap);
+            const texture = new Texture(bitmap);
+            texture.needsUpdate = true;
+            texture.userData.mimeType = image.mimeType;
+            return texture;
+          });
+        sources.set(index, pending);
+        return pending;
+      };
+      return null;
+    },
+  }));
+}
 
 const cache = new ModelCache<GLTF>({
   inactiveBytes: inactiveLimit,
@@ -32,7 +76,7 @@ const cache = new ModelCache<GLTF>({
       },
       undefined,
       false,
-      registerMapBakedLighting,
+      configureMap,
     ),
 });
 
