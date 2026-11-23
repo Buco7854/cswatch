@@ -20,12 +20,10 @@ const { frames } = JSON.parse(
   gunzipSync(readFileSync(chunkPath), { maxOutputLength: 64 * 1024 ** 2 }),
 );
 globalThis.self = globalThis;
-const loader = new GLTFLoader()
-  .setMeshoptDecoder(MeshoptDecoder)
-  .register(() => ({
-    name: 'EXT_texture_webp',
-    loadTexture: () => Promise.resolve(new Texture()),
-  }));
+const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).register(() => ({
+  name: 'EXT_texture_webp',
+  loadTexture: () => Promise.resolve(new Texture()),
+}));
 loader.manager.setURLModifier(() => {
   throw new Error('Expected embedded buffers');
 });
