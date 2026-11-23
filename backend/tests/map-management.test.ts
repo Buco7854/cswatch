@@ -67,13 +67,13 @@ async function fixture(t: TestContext) {
     packId = mapPackId(approval);
   await prepareMapJobs(jobs);
   await enqueueMapRequest(jobs, approval);
-  await writeMapJobResult(jobs, { schemaVersion: 2, packId, status: 'ready', updatedAt: now() });
+  await writeMapJobResult(jobs, { schemaVersion: 3, packId, status: 'ready', updatedAt: now() });
   const target = join(assets, 'packs', packId);
   await mkdir(target, { recursive: true });
   await writeFile(
     join(target, 'pack.json'),
     JSON.stringify({
-      schemaVersion: 2,
+      schemaVersion: 3,
       packId,
       approval: canonicalMapApproval(approval),
       preparedAt: now(),
@@ -358,7 +358,7 @@ test('map administration requires current admin, exact Origin, CSRF and reviewed
   assert.equal(discovery.code, 'removed_by_admin');
   assert.equal(discovery.canAcquire, false);
   await writeMapJobResult(f.jobs, {
-    schemaVersion: 2,
+    schemaVersion: 3,
     packId: f.packId,
     status: 'failed',
     code: 'removed_by_admin',

@@ -1,6 +1,6 @@
 /** Bounded S2V entity/material metadata, separate from game acquisition and rendering. */
 import { sourceRotate, srgbToLinear } from './environment-space.mjs';
-import { validPreparedFog } from './prepared-environment-fog.mjs';
+import { validPreparedFog, validPreparedGradientFog } from './prepared-environment-fog.mjs';
 
 const keys = new Set([
   'classname',
@@ -17,6 +17,9 @@ const keys = new Set([
   'enabled',
   'parentname',
   'targetname',
+  'bakedshadowindex',
+  'bakelightindex',
+  'baked_light_indexing',
 ]);
 const gradeKeys = new Set([
   ...keys,
@@ -31,6 +34,23 @@ const gradeKeys = new Set([
   'directlight',
   'skycolor',
   'skyintensity',
+]);
+const gradientKeys = new Set([
+  'classname',
+  'enabled',
+  'startdisabled',
+  'parentname',
+  'fogstart',
+  'fogend',
+  'fogfalloffexponent',
+  'heightfog',
+  'fogstartheight',
+  'fogendheight',
+  'fogverticalexponent',
+  'fogmaxopacity',
+  'fogcolor',
+  'fogstrength',
+  'gradientfogtexture',
 ]);
 const limits = { bytes: 16 * 1024 ** 2, lumps: 64, entities: 20000 };
 
@@ -175,7 +195,7 @@ export function inspectMapGrade(input) {
   return {
     resource: resource(entity.postprocessing, 'vpost') + '_c',
     min,
-    max: exposure ? number(entity.maxexposure, undefined, min, 16) : 1,
+    max: exposure ? number(entity.maxexposure, undefined, 0.01, 16) : 1,
     ...inspectGradeLighting(all),
   };
 }
@@ -229,6 +249,63 @@ export function inspectMapEnvironment(input) {
     fog: fog(all),
     skySources: skySources(all),
   };
+}
+
+/** A static untextured gradient in the source scene's distance and height basis. */
+export function inspectGradientFog(input, matrix) {
+  const authored = entities(input, gradientKeys).filter(
+    (entity) => entity.classname === 'env_gradient_fog' && active(entity),
+  );
+  if (!authored.length) return { fog: null, reason: 'no_authored_gradient_fog' };
+  const entity = authored[0];
+  const unsupported = { fog: null, reason: 'unsupported_gradient_fog' };
+  if (authored.length !== 1 || entity.parentname || entity.gradientfogtexture) return unsupported;
+  try {
+    const scale = matrix ? Math.hypot(...matrix.slice(0, 3)) : 1;
+    const strength = number(entity.fogstrength, undefined, 0, 16);
+    const heightEnabled = [true, 'true', 1, '1'].includes(
+      entity.heightfog ?? entity.fogverticalexponent !== undefined,
+    );
+    let height = null;
+    if (heightEnabled) {
+      if (matrix && (Math.abs(matrix[1]) > 1e-4 * scale || Math.abs(matrix[9]) > 1e-4 * scale))
+        return { fog: null, reason: 'unsupported_gradient_fog_transform' };
+      const worldHeight = (value) =>
+        number(value, undefined, -1e7, 1e7) * (matrix?.[5] ?? 1) * 0.0254 + (matrix?.[13] ?? 0);
+      const start = worldHeight(entity.fogstartheight),
+        end = worldHeight(entity.fogendheight);
+      if (start !== end)
+        height = { start, end, exponent: number(entity.fogverticalexponent, undefined, 0, 16) };
+    }
+    const fog = {
+      start: number(entity.fogstart, undefined, 0, 1e7) * scale * 0.0254,
+      end: number(entity.fogend, undefined, 0, 1e7) * scale * 0.0254,
+      exponent: number(entity.fogfalloffexponent, undefined, 0, 16),
+      height,
+      color: vector(entity.fogcolor, undefined, true).map((channel) => (channel / 255) * strength),
+      maxOpacity: number(entity.fogmaxopacity, undefined, 0, 1),
+    };
+    return validPreparedGradientFog(fog) ? { fog } : unsupported;
+  } catch {
+    return unsupported;
+  }
+}
+
+/** Source stationary shadow slots are assigned per light, not per shader or map name. */
+export function inspectSunShadowChannel(input) {
+  const sun = entities(input).filter(
+    (entity) => entity.classname === 'light_environment' && active(entity),
+  );
+  if (!sun.length) return null;
+  if (sun.length !== 1 || sun[0].parentname) return undefined;
+  const light = sun[0];
+  if ([false, 0, 'false', '0'].includes(light.baked_light_indexing)) return null;
+  const authored = light.bakedshadowindex ?? light.bakelightindex ?? -1;
+  if (typeof authored !== 'number' && (typeof authored !== 'string' || !/^-?\d+$/.test(authored)))
+    return undefined;
+  const channel = Number(authored);
+  if (channel === -1) return null;
+  return Number.isInteger(channel) && channel >= 0 && channel <= 3 ? channel : undefined;
 }
 
 export function inspectSkyCamera(input) {
@@ -287,10 +364,13 @@ export function prepareCubemapFog({ main, camera, material, effective }) {
       const name = entity.cubemapfogskyentity;
       if (typeof name !== 'string' || !name || name.length > 512)
         throw new Error('Cubemap fog has no bounded named sky source.');
-      const matches = main.skySources.filter((sky) => sky.targetName === name);
-      if (matches.length !== 1 || matches[0].parented)
+      const match = unique(
+        main.skySources.filter((sky) => sky.targetName === name),
+        'named fog sky sources',
+      );
+      if (!match || match.parented)
         throw new Error('The authored fog sky source is missing, ambiguous or parented.');
-      ({ skyMaterial, angles, brightnessScale } = matches[0]);
+      ({ skyMaterial, angles, brightnessScale } = match);
     } else if (source === 2) {
       skyMaterial = resource(entity.cubemapfogskymaterial, 'vmat');
       angles = entity.angles;
@@ -335,7 +415,7 @@ export function prepareCubemapFog({ main, camera, material, effective }) {
     const rotation = cubemapFogRotation(
       effective.angles,
       angles,
-      camera.skyEnvironment ? main.reference.angles : [0, 0, 0],
+      camera?.skyEnvironment ? main.reference.angles : [0, 0, 0],
     );
     const descriptor = {
       blend: 'multiply',

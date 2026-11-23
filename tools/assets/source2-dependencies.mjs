@@ -43,7 +43,11 @@ export function resourcePath(
     Buffer.byteLength(value) > maxBytes ||
     value.startsWith('/') ||
     value.endsWith('/') ||
-    !/^[A-Za-z0-9_ .@()+,/-]+$/.test(value) ||
+    (!/^[A-Za-z0-9_ .@()+,/-]+$/.test(value) &&
+      // Compiled entity lumps can carry this internal name marker in the verified VPK.
+      !/^maps\/[a-z0-9_]+\/entities\/[0-9]+(?:_[0-9]+){1,7}#entitylumpname\.vents(?:_c)?$/i.test(
+        value,
+      )) ||
     value
       .split('/')
       .some(

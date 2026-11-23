@@ -13,6 +13,7 @@ class BakedLighting extends ExtensionProperty {
     return {
       ...super.getDefaults(),
       irradianceTexture: null,
+      irradianceRange: format.irradianceRange,
       irradianceTextureInfo: new TextureInfo(this.graph, 'irradianceTextureInfo'),
       lightingDirectionTexture: null,
       lightingDirectionTextureInfo: new TextureInfo(this.graph, 'lightingDirectionTextureInfo'),
@@ -34,6 +35,19 @@ class BakedLighting extends ExtensionProperty {
   }
   getTextureInfo() {
     return this.getRef('irradianceTextureInfo');
+  }
+  setRange(range) {
+    if (
+      !Number.isInteger(range) ||
+      range < format.irradianceRange ||
+      range > format.maximumIrradianceRange ||
+      (range & (range - 1)) !== 0
+    )
+      throw Error('Unsupported map irradiance range.');
+    return this.set('irradianceRange', range);
+  }
+  getRange() {
+    return this.get('irradianceRange');
   }
   getDirection() {
     return this.getRef('lightingDirectionTexture');
@@ -98,7 +112,9 @@ export class MapBakedLightingExtension extends Extension {
         !texture
       )
         throw Error('Unsupported map baked-lighting extension.');
-      const lighting = this.createLighting().setTexture(texture);
+      const lighting = this.createLighting()
+        .setTexture(texture)
+        .setRange(extension.irradianceRange ?? format.irradianceRange);
       context.setTextureInfo(lighting.getTextureInfo(), info);
       if (extension.directionTexture !== undefined) {
         const direction = extension.directionTexture;
@@ -133,6 +149,9 @@ export class MapBakedLightingExtension extends Extension {
       definition.extensions ??= {};
       const extension = {
         schemaVersion: format.schemaVersion,
+        ...(lighting.getRange() === format.irradianceRange
+          ? {}
+          : { irradianceRange: lighting.getRange() }),
         irradianceTexture: context.createTextureInfoDef(
           lighting.getTexture(),
           lighting.getTextureInfo(),

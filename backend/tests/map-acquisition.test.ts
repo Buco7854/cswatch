@@ -195,15 +195,15 @@ test('job requests bind immutable approval hash, coalesce concurrent authorizati
     assert.match(initialRequest?.generation || '', /^[a-f0-9]{32}$/);
     assert.deepEqual(
       { ...initialRequest, generation: undefined },
-      { schemaVersion: 2, packId: id, approval, generation: undefined },
+      { schemaVersion: 3, packId: id, approval, generation: undefined },
     );
     assert.equal(
-      mapJobRequestSchema.safeParse({ schemaVersion: 2, packId: id, approval }).success,
+      mapJobRequestSchema.safeParse({ schemaVersion: 3, packId: id, approval }).success,
       false,
     );
     assert.equal(
       mapJobRequestSchema.safeParse({
-        schemaVersion: 2,
+        schemaVersion: 3,
         packId: id,
         approval,
         generation: 'A'.repeat(32),
@@ -212,7 +212,7 @@ test('job requests bind immutable approval hash, coalesce concurrent authorizati
     );
     assert.equal(
       mapJobRequestSchema.safeParse({
-        schemaVersion: 2,
+        schemaVersion: 3,
         packId: 'b'.repeat(64),
         approval,
         generation: 'a'.repeat(32),
@@ -220,13 +220,13 @@ test('job requests bind immutable approval hash, coalesce concurrent authorizati
       false,
     );
     assert.equal(
-      mapJobResultSchema.safeParse({ schemaVersion: 2, packId: id, status: 'failed', updatedAt: 1 })
+      mapJobResultSchema.safeParse({ schemaVersion: 3, packId: id, status: 'failed', updatedAt: 1 })
         .success,
       false,
     );
     assert.equal(
       mapJobResultSchema.safeParse({
-        schemaVersion: 2,
+        schemaVersion: 3,
         packId: id,
         status: 'ready',
         updatedAt: 1,
@@ -235,14 +235,14 @@ test('job requests bind immutable approval hash, coalesce concurrent authorizati
       false,
     );
     await writeMapJobResult(fixture.root, {
-      schemaVersion: 2,
+      schemaVersion: 3,
       packId: id,
       status: 'processing',
       updatedAt: 1,
     });
     assert.equal((await readMapResult(fixture.root, id))?.status, 'processing');
     await writeMapJobResult(fixture.root, {
-      schemaVersion: 2,
+      schemaVersion: 3,
       packId: id,
       status: 'failed',
       updatedAt: 2,
@@ -361,7 +361,7 @@ test('explicit transient retries require cooldown, preserve immutable requests a
       id = mapPackId(approval);
     await enqueueMapRequest(fixture.root, approval);
     const failure = {
-      schemaVersion: 2 as const,
+      schemaVersion: 3 as const,
       packId: id,
       status: 'failed' as const,
       updatedAt: at - mapJobRetrySeconds + 1,
@@ -411,7 +411,7 @@ test('failed retry removal preserves the terminal result after safely publishing
       previous = await readMapRequest(f.root, id),
       at = 10000;
     const failure = {
-      schemaVersion: 2 as const,
+      schemaVersion: 3 as const,
       packId: id,
       status: 'failed' as const,
       updatedAt: at - 301,

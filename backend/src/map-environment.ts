@@ -13,7 +13,7 @@ import {
 } from './map-asset-files.js';
 import { validPng } from './png.js';
 import { HttpError } from './security.js';
-import { mapCubeFogSchema } from './map-fog.js';
+import { mapCubeFogSchema, mapGradientFogSchema } from './map-fog.js';
 import { manualMapLocation, type MapAssetLocation } from './map-asset-location.js';
 
 /** Prepared offline in viewer Y-up cube order; no runtime Source rotation. */
@@ -40,6 +40,7 @@ const metadataSchema = z
     source: z.string().trim().min(1).max(500),
     landscape: z.boolean(),
     fog: mapCubeFogSchema.optional(),
+    gradientFog: mapGradientFogSchema.optional(),
     grade: z.unknown().optional(),
     sky: z
       .object({
@@ -48,7 +49,8 @@ const metadataSchema = z
           .object({ px: sha256, nx: sha256, py: sha256, ny: sha256, pz: sha256, nz: sha256 })
           .strict(),
       })
-      .strict(),
+      .strict()
+      .nullable(),
   })
   .strict();
 const mapManifestSchema = z.object({
@@ -105,9 +107,9 @@ async function preparedMapPair(location: MapAssetLocation, name: string) {
 type EnvironmentItem = {
   version: string;
   metadataDigest: string;
-  imageDigests: Record<Face, string>;
+  imageDigests: Partial<Record<Face, string>>;
   environment: MapEnvironment;
-  images: Record<Face, Buffer>;
+  images: Partial<Record<Face, Buffer>>;
   gradeLut?: Buffer;
   bytes: number;
 };
@@ -147,14 +149,6 @@ export function mapEnvironmentAssets(
           );
           if (!metadata) return;
           files.push(metadata);
-          let totalBytes = 0;
-          for (const face of environmentFaces) {
-            const file = await regularFile(directory, `${face}.png`, 57, environmentLimits.bytes);
-            if (!file) return;
-            files.push(file);
-            totalBytes += (await file.stat()).size;
-            if (totalBytes > environmentLimits.aggregateBytes) return;
-          }
           const metadataVersion = await fileVersion(metadata);
           const metadataBytes = await bytesFrom(
             metadata,
@@ -163,7 +157,22 @@ export function mapEnvironmentAssets(
           );
           const metadataDigest = createHash('sha256').update(metadataBytes).digest('hex');
           const parsed = metadataSchema.parse(JSON.parse(metadataBytes.toString('utf8')));
-          if (parsed.map !== name || parsed.assetVersion !== pair.assetVersion) return;
+          if (
+            parsed.map !== name ||
+            parsed.assetVersion !== pair.assetVersion ||
+            (parsed.fog && !parsed.sky) ||
+            (parsed.gradientFog?.landscape && !parsed.landscape)
+          )
+            return;
+          const faces = parsed.sky ? environmentFaces : [];
+          let totalBytes = 0;
+          for (const face of faces) {
+            const file = await regularFile(directory, `${face}.png`, 57, environmentLimits.bytes);
+            if (!file) return;
+            files.push(file);
+            totalBytes += (await file.stat()).size;
+            if (totalBytes > environmentLimits.aggregateBytes) return;
+          }
           const grade = validMapGrade(parsed.grade) ? parsed.grade : undefined;
           const lutSize = grade ? mapGradeBytes(grade.lut.size) : 0;
           const lutFile = lutSize
@@ -188,7 +197,7 @@ export function mapEnvironmentAssets(
             Boolean(previous.gradeLut) === Boolean(gradeLut)
           ) {
             let unchanged = true;
-            for (const [index, face] of environmentFaces.entries())
+            for (const [index, face] of faces.entries())
               if (
                 (await fileDigest(files[index + 1], environmentLimits.bytes)) !==
                 previous.imageDigests[face]
@@ -207,10 +216,10 @@ export function mapEnvironmentAssets(
             }
           }
           discard(key);
-          const images = {} as Record<Face, Buffer>;
+          const images: Partial<Record<Face, Buffer>> = {};
           let dimension: number | undefined;
           let readBytes = 0;
-          for (const [index, face] of environmentFaces.entries()) {
+          for (const [index, face] of faces.entries()) {
             const file = files[index + 1];
             const size = (await file.stat()).size;
             readBytes += size;
@@ -218,7 +227,7 @@ export function mapEnvironmentAssets(
             const image = await bytesFrom(file, size, environmentLimits.bytes);
             if (
               !validEnvironmentPng(image) ||
-              createHash('sha256').update(image).digest('hex') !== parsed.sky.faces[face]
+              createHash('sha256').update(image).digest('hex') !== parsed.sky?.faces[face]
             )
               return;
             const width = image.readUInt32BE(16);
@@ -234,19 +243,22 @@ export function mapEnvironmentAssets(
           const environment: MapEnvironment = {
             assetVersion: parsed.assetVersion,
             landscape: parsed.landscape,
-            sky: {
-              brightness: parsed.sky.brightness,
-              faces: environmentFaces.map(
-                (face) => `${location.apiPrefix}/${name}/environment/${face}.png`,
-              ) as MapEnvironment['sky']['faces'],
-            },
+            sky: parsed.sky
+              ? {
+                  brightness: parsed.sky.brightness,
+                  faces: environmentFaces.map(
+                    (face) => `${location.apiPrefix}/${name}/environment/${face}.png`,
+                  ) as NonNullable<MapEnvironment['sky']>['faces'],
+                }
+              : null,
             ...(parsed.fog ? { fog: parsed.fog } : {}),
+            ...(parsed.gradientFog ? { gradientFog: parsed.gradientFog } : {}),
             ...(gradeLut && grade ? { grade } : {}),
           };
           const item = {
             version,
             metadataDigest,
-            imageDigests: parsed.sky.faces,
+            imageDigests: parsed.sky?.faces ?? {},
             environment,
             images,
             gradeLut,
@@ -254,7 +266,8 @@ export function mapEnvironmentAssets(
           };
           cache.set(key, item);
           cachedBytes += item.bytes;
-          while (cachedBytes > environmentLimits.cacheBytes) discard(cache.keys().next().value!);
+          while (cachedBytes > environmentLimits.cacheBytes || cache.size > 128)
+            discard(cache.keys().next().value!);
           return item;
         } finally {
           for (const file of files) await file.close();
@@ -285,8 +298,9 @@ export function mapEnvironmentAssets(
       if (!mapName.safeParse(name).success || !environmentFaces.includes(face as Face))
         throw new HttpError(404, 'Map environment not found.');
       const item = await load(name);
-      if (!item) throw new HttpError(404, 'Map environment not found.');
-      return reply.type('image/png').send(item.images[face as Face]);
+      const image = item?.images[face as Face];
+      if (!image) throw new HttpError(404, 'Map environment not found.');
+      return reply.type('image/png').send(image);
     },
   );
   app.get<{ Params: { name: string } }>(

@@ -1,8 +1,52 @@
 /** Lossless EXT_meshopt_compression transport. No filters, quantization or index rotation. */
+import { Format, GLB_BUFFER } from '@gltf-transform/core';
 import { MeshoptEncoder, MeshoptDecoder } from 'meshoptimizer';
 const extension = 'EXT_meshopt_compression';
 const limit = 2 * 1024 ** 3;
 const aligned = (value) => value + 3 - ((value + 3) % 4);
+
+function serializeGlb(json, binary, bytes) {
+  const jsonSize = aligned(json.length),
+    binSize = aligned(bytes),
+    outputSize = 28 + jsonSize + binSize;
+  if (json.length > 64 * 1024 ** 2 || outputSize > limit)
+    throw new Error('Encoded Meshopt model exceeds its GLB bounds.');
+  const header = Buffer.alloc(20),
+    binaryHeader = Buffer.alloc(8);
+  header.write('glTF');
+  header.writeUInt32LE(2, 4);
+  header.writeUInt32LE(outputSize, 8);
+  header.writeUInt32LE(jsonSize, 12);
+  header.writeUInt32LE(0x4e4f534a, 16);
+  binaryHeader.writeUInt32LE(binSize, 0);
+  binaryHeader.writeUInt32LE(0x004e4942, 4);
+  return Buffer.concat(
+    [
+      header,
+      json,
+      Buffer.alloc(jsonSize - json.length, 32),
+      binaryHeader,
+      ...binary,
+      Buffer.alloc(binSize - bytes),
+    ],
+    outputSize,
+  );
+}
+
+/** Use the writer's binary resource directly, avoiding a full uncompressed GLB copy. */
+export async function compressMapDocumentGeometry(io, sourceDocument) {
+  const { json, resources } = await io.writeJSON(sourceDocument, { format: Format.GLB });
+  const binary = resources[GLB_BUFFER];
+  if (!(binary instanceof Uint8Array) || !binary.length || Object.keys(resources).length !== 1)
+    throw new Error('Geometry compression requires one self-contained uncompressed buffer.');
+  const bin = Buffer.from(binary.buffer, binary.byteOffset, binary.byteLength);
+  const metadata = Buffer.from(JSON.stringify(json));
+  const length = 28 + aligned(metadata.length) + aligned(bin.length);
+  if (metadata.length > 64 * 1024 ** 2 || length > limit)
+    throw new Error('Expected bounded prepared GLB bytes.');
+  return compressGeometry(json, bin, length, () => serializeGlb(metadata, [bin], bin.length));
+}
+
 export async function compressGlbGeometry(bytes) {
   if (!(bytes instanceof Uint8Array) || bytes.byteLength < 48 || bytes.byteLength > limit)
     throw new Error('Expected bounded prepared GLB bytes.');
@@ -22,16 +66,22 @@ export async function compressGlbGeometry(bytes) {
     binStart = 28 + jsonLength;
   if (
     source.readUInt32LE(24 + jsonLength) !== 0x004e4942 ||
-    binStart + source.readUInt32LE(20 + jsonLength) !== source.length ||
+    binStart + source.readUInt32LE(20 + jsonLength) !== source.length
+  )
+    throw new Error('Geometry compression requires one self-contained uncompressed buffer.');
+  return compressGeometry(document, source.subarray(binStart), source.length, () => source);
+}
+
+async function compressGeometry(document, bin, sourceLength, uncompressed) {
+  if (
     document.buffers?.length !== 1 ||
     document.buffers[0].uri !== undefined ||
-    document.buffers[0].byteLength > source.length - binStart
+    document.buffers[0].byteLength > bin.length
   )
     throw new Error('Geometry compression requires one self-contained uncompressed buffer.');
   if (document.extensionsRequired?.includes(extension))
     throw new Error('Geometry is already Meshopt compressed.');
-  const bin = source.subarray(binStart),
-    views = document.bufferViews ?? [],
+  const views = document.bufferViews ?? [],
     accessors = document.accessors ?? [];
   if (
     !Array.isArray(views) ||
@@ -101,7 +151,7 @@ export async function compressGlbGeometry(bytes) {
       compressed = MeshoptEncoder.encodeGltfBuffer(payload, count, stride, mode);
       const restored = new Uint8Array(payload.length);
       MeshoptDecoder.decodeGltfBuffer(restored, count, stride, compressed, mode, 'NONE');
-      if (!Buffer.from(restored).equals(payload))
+      if (!Buffer.from(restored.buffer, restored.byteOffset, restored.byteLength).equals(payload))
         throw new Error('Meshopt failed exact byte-preserving geometry verification.');
       if (compressed.length >= payload.length) compressed = undefined;
     }
@@ -133,7 +183,7 @@ export async function compressGlbGeometry(bytes) {
   }
   if (!compressedViews)
     return {
-      bytes: source,
+      bytes: uncompressed(),
       report: {
         extension,
         lossless: true,
@@ -141,32 +191,18 @@ export async function compressGlbGeometry(bytes) {
         compressedViews: 0,
         decodedBytes: 0,
         compressedBytes: 0,
-        encodedBytesBefore: source.length,
-        encodedBytesAfter: source.length,
+        encodedBytesBefore: sourceLength,
+        encodedBytesAfter: sourceLength,
       },
     };
-  const encodedBin = Buffer.concat(chunks, physical);
   document.bufferViews = outputViews;
   document.buffers = [
-    { ...document.buffers[0], byteLength: encodedBin.length },
+    { ...document.buffers[0], byteLength: physical },
     { byteLength: virtual, extensions: { [extension]: { fallback: true } } },
   ];
   document.extensionsUsed = [...new Set([...(document.extensionsUsed ?? []), extension])];
   document.extensionsRequired = [...new Set([...(document.extensionsRequired ?? []), extension])];
-  const json = Buffer.from(JSON.stringify(document)),
-    jsonPadding = aligned(json.length) - json.length,
-    encodedJson = Buffer.concat([json, Buffer.alloc(jsonPadding, 32)]),
-    header = Buffer.alloc(20),
-    binaryHeader = Buffer.alloc(8);
-  header.write('glTF');
-  header.writeUInt32LE(2, 4);
-  header.writeUInt32LE(28 + encodedJson.length + encodedBin.length, 8);
-  header.writeUInt32LE(encodedJson.length, 12);
-  header.writeUInt32LE(0x4e4f534a, 16);
-  binaryHeader.writeUInt32LE(encodedBin.length);
-  binaryHeader.writeUInt32LE(0x004e4942, 4);
-  const result = Buffer.concat([header, encodedJson, binaryHeader, encodedBin]);
-  if (result.length > limit) throw new Error('Encoded Meshopt model exceeds 2 GiB.');
+  const result = serializeGlb(Buffer.from(JSON.stringify(document)), chunks, physical);
   return {
     bytes: result,
     report: {
@@ -176,7 +212,7 @@ export async function compressGlbGeometry(bytes) {
       compressedViews,
       decodedBytes,
       compressedBytes,
-      encodedBytesBefore: source.length,
+      encodedBytesBefore: sourceLength,
       encodedBytesAfter: result.length,
     },
   };

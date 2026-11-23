@@ -37,6 +37,8 @@ import {
   latestMapResultMatches,
   writeMapJobResult,
   writeMapWorkerStatus,
+  enqueueObsoleteReadyMap,
+  finishLinkedMapRequest,
 } from '../../backend/dist/map-jobs.js';
 import {
   withDirectory,
@@ -67,7 +69,7 @@ import {
 import { installMapPreview, officialPreview } from './install-map-preview.mjs';
 import { installGameplaySounds } from './install-gameplay-sounds.mjs';
 import { installPresentationAssets } from './install-presentation-assets.mjs';
-import { presentationDirectory, preparerRevision } from '../../backend/dist/asset-preparer.js';
+import { presentationDirectory, mapPreparerRevision } from '../../backend/dist/asset-preparer.js';
 import {
   presentationKinds,
   consumePresentationRetries,
@@ -147,17 +149,33 @@ async function requests(jobs) {
   return (
     (await withDirectory(jobs, ['requests'], async (directory) => {
       const folder = await opendir(`/proc/self/fd/${directory.fd}`),
-        current = [];
+        current = [],
+        obsolete = [];
       let scanned = 0;
       for await (const entry of folder) {
         if (++scanned > mapJobLimits.scanned) throw Error('Map queue scan limit reached.');
-        if (entry.isFile() && mapJobTemporaryName.test(entry.name)) continue;
+        if (entry.isFile() && mapJobTemporaryName.test(entry.name)) {
+          await finishLinkedMapRequest(directory, entry.name);
+          continue;
+        }
         if (!entry.isFile() || !/^[a-f0-9]{64}\.json$/.test(entry.name))
           throw Error('Unexpected map queue entry.');
         const request = await readMapRequest(jobs, entry.name.slice(0, -5));
-        if (!request) continue;
+        if (!request) {
+          obsolete.push(entry.name.slice(0, -5));
+          continue;
+        }
         if (current.length >= mapJobLimits.retained) throw Error('Map queue limit reached.');
         current.push(request);
+      }
+      for (const id of obsolete) {
+        const next = await enqueueObsoleteReadyMap(jobs, id);
+        if (next?.status === 'queued') {
+          const request = await readMapRequest(jobs, next.packId);
+          if (request) current.push(request);
+          break;
+        }
+        if (next?.status === 'full') break;
       }
       return current.sort((a, b) => a.packId.localeCompare(b.packId));
     })) || []
@@ -301,7 +319,7 @@ export async function sourceCache(options, manifest) {
 
 const preparationMarker = (packId, requestId) =>
   JSON.stringify({
-    schemaVersion: preparerRevision,
+    schemaVersion: mapPreparerRevision,
     packId,
     kind: 'cswatch-official-map-preparation',
     ...(requestId ? { requestId } : {}),
@@ -396,7 +414,7 @@ async function validatePack(root, request, validate, proof) {
     );
   }
   if (
-    data.schemaVersion !== preparerRevision ||
+    data.schemaVersion !== mapPreparerRevision ||
     data.packId !== request.packId ||
     data.approval !== canonicalMapApproval(request.approval)
   )
@@ -489,7 +507,7 @@ export async function processOneMapRequest(options, adapters = {}) {
       : AbortSignal.timeout(mapWorkerLimits.deadlineMs);
     const result = (status, code) =>
       writeMapJobResult(options.jobs, {
-        schemaVersion: preparerRevision,
+        schemaVersion: mapPreparerRevision,
         packId,
         status,
         updatedAt: now(),
@@ -669,7 +687,7 @@ export async function processOneMapRequest(options, adapters = {}) {
           JSON.stringify(
             latest
               ? latestMapPackMarkerSchema.parse({
-                  schemaVersion: preparerRevision,
+                  schemaVersion: mapPreparerRevision,
                   kind: 'latest-official',
                   packId: assetPackId,
                   requestId: packId,
@@ -678,7 +696,7 @@ export async function processOneMapRequest(options, adapters = {}) {
                   preparedAt: now(),
                 })
               : {
-                  schemaVersion: preparerRevision,
+                  schemaVersion: mapPreparerRevision,
                   packId,
                   approval: canonicalMapApproval(request.approval),
                   preparedAt: now(),

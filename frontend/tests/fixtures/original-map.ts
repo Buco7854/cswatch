@@ -102,6 +102,7 @@ export function originalMapGLB(
   texture?: 'webp' | 'broken',
   landscape?: 'tagged' | 'untagged',
   black?: 'exact' | 'name-only',
+  vertexLighting = false,
 ) {
   const positions: number[] = [],
     normals: number[] = [],
@@ -136,9 +137,12 @@ export function originalMapGLB(
           ),
     vertexData = [...positions, ...normals, ...(texture ? coordinates : [])],
     imageOffset = vertexData.length * 4,
-    binary = Buffer.alloc(imageOffset + (texture ? Math.ceil(webp.length / 4) * 4 : 0));
+    vertexOffset = imageOffset + (texture ? Math.ceil(webp.length / 4) * 4 : 0),
+    vertexBytes = vertexLighting ? (positions.length / 3) * 4 : 0,
+    binary = Buffer.alloc(vertexOffset + vertexBytes);
   vertexData.forEach((value, index) => binary.writeFloatLE(value, index * 4));
   if (texture) webp.copy(binary, imageOffset);
+  if (vertexLighting) binary.fill(Buffer.from([255, 0, 0, 128]), vertexOffset);
   const document = {
     asset: { version: '2.0', generator: 'Original cswatch QA geometry, not CS2 content' },
     scene: 0,
@@ -191,7 +195,12 @@ export function originalMapGLB(
       {
         primitives: [
           {
-            attributes: { POSITION: 0, NORMAL: 1, ...(texture ? { TEXCOORD_0: 2 } : {}) },
+            attributes: {
+              POSITION: 0,
+              NORMAL: 1,
+              ...(texture ? { TEXCOORD_0: 2 } : {}),
+              ...(vertexLighting ? { _COLOR_1: texture ? 3 : 2 } : {}),
+            },
             material: 0,
           },
         ],
@@ -219,8 +228,9 @@ export function originalMapGLB(
             }
           : {}),
         doubleSided: true,
+        ...(vertexLighting ? { extras: { cswatch: { vertexLighting: true } } } : {}),
         pbrMetallicRoughness: {
-          baseColorFactor: texture || black ? [1, 1, 1, 1] : floorColor,
+          baseColorFactor: texture || black || vertexLighting ? [1, 1, 1, 1] : floorColor,
           ...(texture ? { baseColorTexture: { index: 0 } } : {}),
           metallicFactor: 0,
           roughnessFactor: 1,
@@ -265,6 +275,9 @@ export function originalMapGLB(
             { buffer: 0, byteOffset: imageOffset, byteLength: webp.length },
           ]
         : []),
+      ...(vertexLighting
+        ? [{ buffer: 0, byteOffset: vertexOffset, byteLength: vertexBytes, target: 34962 }]
+        : []),
     ],
     accessors: [
       {
@@ -282,6 +295,17 @@ export function originalMapGLB(
       { bufferView: 1, componentType: 5126, count: normals.length / 3, type: 'VEC3' },
       ...(texture
         ? [{ bufferView: 2, componentType: 5126, count: coordinates.length / 2, type: 'VEC2' }]
+        : []),
+      ...(vertexLighting
+        ? [
+            {
+              bufferView: texture ? 4 : 2,
+              componentType: 5121,
+              normalized: true,
+              count: positions.length / 3,
+              type: 'VEC4',
+            },
+          ]
         : []),
     ],
   };

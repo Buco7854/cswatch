@@ -22,10 +22,37 @@ const lightLoop = ShaderChunk.lights_fragment_begin.replace(
     directLight.color *=
       bakedSun * step(1e-6, dot(nonPerturbedNormal, directLight.direction));`,
 );
+const nativeIndirect = `
+  irradiance = vec3(0.0);
+  iblIrradiance = PI * bakedIrradiance;
+  #include <lights_fragment_end>
+`;
+
+function configureVertexLighting(material: MeshStandardMaterial) {
+  const stream = format.vertexAttribute.toLowerCase();
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader =
+      `attribute vec4 ${stream};\nvarying vec3 sourceVertexLight;\n` +
+      shader.vertexShader.replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+        vec3 encodedLight = ${stream}.rgb * (6.0 * ${stream}.a);
+        sourceVertexLight = encodedLight * encodedLight;`,
+      );
+    shader.fragmentShader =
+      'varying vec3 sourceVertexLight;\n' +
+      shader.fragmentShader.replace(
+        '#include <lights_fragment_end>',
+        `vec3 bakedIrradiance = sourceVertexLight;\n${nativeIndirect}`,
+      );
+  };
+  material.customProgramCacheKey = () => 'cswatch-source-vertex-lighting';
+}
 
 function configureMaterial(
   material: MeshStandardMaterial,
   atlas: Texture,
+  irradianceRange: number,
   direction?: Texture,
   layers?: MaterialLayers,
 ) {
@@ -64,7 +91,7 @@ function configureMaterial(
     }
     const sample = `
           vec4 bakedLighting = texture2D(lightMap, vLightMapUv);
-          vec3 bakedIrradiance = (exp2(bakedLighting.rgb * log2(${format.irradianceRange}.0 * ${format.irradianceBias}.0 + 1.0)) - 1.0) / ${format.irradianceBias}.0;
+          vec3 bakedIrradiance = (exp2(bakedLighting.rgb * log2(${irradianceRange}.0 * ${format.irradianceBias}.0 + 1.0)) - 1.0) / ${format.irradianceBias}.0;
           ${shading}
           float bakedSun = 1.0 - clamp((bakedLighting.a * 255.0 - 1.0) / 254.0, 0.0, 1.0);`;
     shader.fragmentShader = shader.fragmentShader.replace(
@@ -73,16 +100,7 @@ function configureMaterial(
     );
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <lights_fragment_begin>', `${sample}\n${lightLoop}`)
-      .replace(
-        '#include <lights_fragment_end>',
-        `
-            // Replace ambient and sky irradiance with the captured light.
-            // Three's energy-conserving indirect BRDF divides by pi.
-            irradiance = vec3(0.0);
-            iblIrradiance = PI * bakedIrradiance;
-            #include <lights_fragment_end>
-          `,
-      )
+      .replace('#include <lights_fragment_end>', nativeIndirect)
       .replace(
         '#include <aomap_fragment>',
         `#include <aomap_fragment>
@@ -96,6 +114,7 @@ function configureMaterial(
   const programKey = [
     format.extension,
     format.schemaVersion,
+    irradianceRange,
     Boolean(direction),
     Boolean(layers),
     Boolean(layers?.detail),
@@ -129,10 +148,11 @@ export function registerMapBakedLighting(loader: GLTFLoader) {
   loader.register((parser) => ({
     name: format.extension,
     async afterRoot(gltf: GLTF) {
-      if (!parser.json.extensionsUsed?.includes(format.extension)) return;
       const materials = new Map<MeshStandardMaterial, number>();
+      const vertexMaterials = new Map<MeshStandardMaterial, boolean>();
       const ineligible = new Set<MeshStandardMaterial>();
       const textureIds = new Set<number>();
+      const irradianceRanges = new Set<number>();
       const directionIds = new Set<number>();
       const directionalMaterials = new Set<MeshStandardMaterial>();
       const layerMaterials = new Map<MeshStandardMaterial, LayerTextureIds>();
@@ -156,17 +176,34 @@ export function registerMapBakedLighting(loader: GLTFLoader) {
           const uv = object.geometry.getAttribute('uv1');
           const position = object.geometry.getAttribute('position');
           const blend = object.geometry.getAttribute(format.layerAttribute.toLowerCase());
+          const vertex = object.geometry.getAttribute(format.vertexAttribute.toLowerCase());
           for (const material of Array.isArray(object.material)
             ? object.material
             : [object.material]) {
             if (!(material instanceof MeshStandardMaterial)) continue;
+            if (material.userData?.cswatch?.vertexLighting === true) {
+              vertexMaterials.set(
+                material,
+                Boolean(
+                  vertexMaterials.get(material) !== false &&
+                  vertex?.itemSize === 4 &&
+                  vertex.count === position?.count,
+                ),
+              );
+              continue;
+            }
             const index = parser.associations.get(material)?.materials;
             if (index === undefined) continue;
             const metadata = parser.json.materials?.[index]?.extensions?.[format.extension];
             if (!metadata) continue;
             const texture = textureId(metadata.irradianceTexture, format.texCoord);
+            const range = metadata.irradianceRange ?? format.irradianceRange;
             if (
               metadata.schemaVersion !== format.schemaVersion ||
+              !Number.isInteger(range) ||
+              range < format.irradianceRange ||
+              range > format.maximumIrradianceRange ||
+              (range & (range - 1)) !== 0 ||
               texture === undefined ||
               !uv ||
               uv.itemSize !== 2 ||
@@ -177,6 +214,7 @@ export function registerMapBakedLighting(loader: GLTFLoader) {
             }
             materials.set(material, texture);
             textureIds.add(texture);
+            irradianceRanges.add(range);
             const direction = textureId(metadata.directionTexture, format.texCoord);
             if (direction !== undefined && direction !== texture) {
               directionIds.add(direction);
@@ -190,10 +228,12 @@ export function registerMapBakedLighting(loader: GLTFLoader) {
             }
           }
         });
+      for (const [material, valid] of vertexMaterials) if (valid) configureVertexLighting(material);
       // A prepared map has exactly one atlas. Unsupported metadata keeps the PBR path.
-      if (textureIds.size !== 1 || !materials.size) return;
+      if (textureIds.size !== 1 || irradianceRanges.size !== 1 || !materials.size) return;
       try {
         const index = textureIds.values().next().value!;
+        const irradianceRange = irradianceRanges.values().next().value!;
         const atlas = atlasTexture(await parser.getDependency('texture', index));
         if (!atlas) return;
         let direction: Texture | undefined;
@@ -237,6 +277,7 @@ export function registerMapBakedLighting(loader: GLTFLoader) {
             configureMaterial(
               material,
               atlas,
+              irradianceRange,
               directionalMaterials.has(material) ? direction : undefined,
               layers,
             );

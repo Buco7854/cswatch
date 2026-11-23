@@ -18,7 +18,7 @@ import { checkFreeReserve, fileHash, readableDirectory, regular } from './asset-
 
 import { verifyPreparedGlb } from './prepared-glb.mjs';
 import { mapGradeBytes, mapGradeFile, validMapGrade } from '../../shared/map-grade.mjs';
-import { validPreparedFog } from './prepared-environment-fog.mjs';
+import { validPreparedFog, validPreparedGradientFog } from './prepared-environment-fog.mjs';
 import { validateTexturePlan } from './texture-plan-validation.mjs';
 
 const environmentFaces = ['px', 'nx', 'py', 'ny', 'pz', 'nz'];
@@ -34,6 +34,7 @@ async function validateEnvironment(prepared, map, assetVersion) {
   await regular(metadata, 16384);
   const data = JSON.parse(await readFile(metadata, 'utf8'));
   const hasFog = data && typeof data === 'object' && Object.hasOwn(data, 'fog');
+  const hasGradientFog = data && typeof data === 'object' && Object.hasOwn(data, 'gradientFog');
   const hasGrade = data && typeof data === 'object' && Object.hasOwn(data, 'grade');
   if (
     !exactKeys(data, [
@@ -44,9 +45,16 @@ async function validateEnvironment(prepared, map, assetVersion) {
       'landscape',
       'sky',
       ...(hasFog ? ['fog'] : []),
+      ...(hasGradientFog ? ['gradientFog'] : []),
       ...(hasGrade ? ['grade'] : []),
     ]) ||
-    (hasFog && !validPreparedFog(data.fog)) ||
+    (hasFog && (!data.sky || !validPreparedFog(data.fog))) ||
+    (hasGradientFog &&
+      (!exactKeys(data.gradientFog, ['world', 'landscape']) ||
+        !(data.gradientFog.world || data.gradientFog.landscape) ||
+        (data.gradientFog.world !== null && !validPreparedGradientFog(data.gradientFog.world)) ||
+        (data.gradientFog.landscape !== null &&
+          (!data.landscape || !validPreparedGradientFog(data.gradientFog.landscape))))) ||
     data.schemaVersion !== 2 ||
     (hasGrade && !validMapGrade(data.grade)) ||
     data.map !== map ||
@@ -55,15 +63,17 @@ async function validateEnvironment(prepared, map, assetVersion) {
     !data.source.trim() ||
     data.source.length > 500 ||
     typeof data.landscape !== 'boolean' ||
-    !exactKeys(data.sky, ['faces', 'brightness']) ||
-    !Number.isFinite(data.sky.brightness) ||
-    data.sky.brightness < 0 ||
-    data.sky.brightness > 16 ||
-    !exactKeys(data.sky.faces, environmentFaces) ||
-    environmentFaces.some(
-      (face) =>
-        typeof data.sky.faces[face] !== 'string' || !/^[a-f0-9]{64}$/.test(data.sky.faces[face]),
-    )
+    (data.sky !== null &&
+      (!exactKeys(data.sky, ['faces', 'brightness']) ||
+        !Number.isFinite(data.sky.brightness) ||
+        data.sky.brightness < 0 ||
+        data.sky.brightness > 16 ||
+        !exactKeys(data.sky.faces, environmentFaces) ||
+        environmentFaces.some(
+          (face) =>
+            typeof data.sky.faces[face] !== 'string' ||
+            !/^[a-f0-9]{64}$/.test(data.sky.faces[face]),
+        )))
   )
     throw new Error(
       'Prepared environment does not match this installation or its bounded fixed-face contract.',
@@ -71,7 +81,7 @@ async function validateEnvironment(prepared, map, assetVersion) {
   const files = [];
   let total = 0,
     dimension;
-  for (const face of environmentFaces) {
+  for (const face of data.sky ? environmentFaces : []) {
     const path = join(pack, `${face}.png`);
     const info = await regular(path, 8 * 1024 ** 2, 57);
     total += info.size;

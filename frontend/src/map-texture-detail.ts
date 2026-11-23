@@ -17,6 +17,9 @@ export function improveMapTextureDetail(scenes: readonly Object3D[]) {
       for (const material of Array.isArray(node.material) ? node.material : [node.material]) {
         if (seen.has(material)) continue;
         seen.add(material);
+        // Masked foliage retains the authored cutoff. Multisampled map targets
+        // turn the derivative-smoothed edge into fragment coverage.
+        if (material.alphaTest > 0 && !material.transparent) material.alphaToCoverage = true;
         // Keep the indirect, normal and other auxiliary maps at their authored
         // sampling cost. The visible color is the texture most affected at grazing angles.
         const value = 'map' in material ? material.map : undefined;

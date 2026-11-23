@@ -27,7 +27,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev &
 COPY tools/assets/package*.json ./tools/assets/
 RUN npm ci --prefix tools/assets --omit=dev
 COPY tools/assets/*.mjs ./tools/assets/
-COPY tools/assets/mirage-layer-textures.json ./tools/assets/
 COPY tools/assets/native/asset-network-deny.c ./tools/assets/native/
 COPY shared/map-previews.json shared/equipment-models.json shared/map-baked-lighting.json shared/map-grade.mjs ./shared/
 RUN node tools/assets/build-network-deny.mjs --output tools/assets/bin/asset-network-deny \
@@ -45,7 +44,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 COPY --from=asset-build /build/tools/assets/package*.json ./tools/assets/
 COPY --from=asset-build /build/tools/assets/node_modules ./tools/assets/node_modules
 COPY --from=asset-build /build/tools/assets/*.mjs ./tools/assets/
-COPY --from=asset-build /build/tools/assets/mirage-layer-textures.json ./tools/assets/
 COPY --from=asset-build /build/tools/assets/bin/asset-network-deny ./tools/assets/bin/asset-network-deny
 COPY --from=backend /build/backend/dist/map-catalog.js /build/backend/dist/map-identity.js /build/backend/dist/map-jobs.js /build/backend/dist/map-asset-files.js /build/backend/dist/asset-content.js /build/backend/dist/map-removals.js /build/backend/dist/presentation-assets.js /build/backend/dist/png.js /build/backend/dist/asset-preparer.js ./backend/dist/
 COPY --from=backend /build/backend/node_modules/zod ./backend/node_modules/zod

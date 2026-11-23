@@ -12,12 +12,14 @@ export default function SceneLighting({
   sample,
   sun,
   skylight,
+  fallbackSun = false,
   shadows = false,
   directionalRef,
 }: {
   sample: boolean;
   sun: MapSun | null;
   skylight: boolean;
+  fallbackSun?: boolean;
   shadows?: boolean;
   directionalRef?: RefObject<DirectionalLight | null>;
 }) {
@@ -40,6 +42,7 @@ export default function SceneLighting({
     ),
     { scene, invalidate } = useThree();
   const ambientIntensity = sample ? 0.9 : lighting ? 0 : skylight ? 0.08 : 0.35;
+  const directionalIntensity = sample ? 3.5 : sun || fallbackSun ? 1.8 : 0;
   const hemisphereIntensity = sample
     ? 2
     : skylight
@@ -78,8 +81,8 @@ export default function SceneLighting({
         target={target}
         color={color}
         position={sun?.position || [-25, 40, 12]}
-        intensity={sample ? 3.5 : 1.8}
-        castShadow={shadows}
+        intensity={directionalIntensity}
+        castShadow={shadows && directionalIntensity > 0}
         shadow-mapSize={[2048, 2048]}
         shadow-normalBias={0.04}
       />

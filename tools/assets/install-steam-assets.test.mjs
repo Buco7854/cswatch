@@ -40,6 +40,7 @@ import {
   missingShaderNames,
   shaderBatch,
   assertExportableUnknowns,
+  selectedSkyPrefabFile,
   skyPrefabPackage,
 } from './steam-assets-plan.mjs';
 
@@ -284,6 +285,10 @@ test('only an enabled selected-map reference permits one exact prefab package an
   const record = { selector: sky.file, bytes: 100 };
   assert.throws(() => checkedBatch([record]));
   assert.deepEqual(checkedBatch([record], { prefabs: [sky.file] }), [record]);
+  const authoredAlias = skyPrefabPackage('de_fixture', 'maps/prefabs/fixture/sky.vmap');
+  assert.equal(selectedSkyPrefabFile('de_fixture', authoredAlias.file), true);
+  assert.equal(selectedSkyPrefabFile('de_other', authoredAlias.file), false);
+  assert.deepEqual(assertExportableUnknowns([], 'de_fixture', { skyMap: null }), []);
   const pending = {
     pending: {
       map: [{ resource: 'materials/sky.vmat_c', length: 10, preloadBytes: 2 }],

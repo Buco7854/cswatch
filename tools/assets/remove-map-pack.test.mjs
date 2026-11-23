@@ -85,7 +85,7 @@ async function fixture(t, latest = false) {
   if (latest) await enqueueLatestMapRequest(jobs, selection);
   else await enqueueMapRequest(jobs, approval);
   await writeMapJobResult(jobs, {
-    schemaVersion: 2,
+    schemaVersion: 3,
     packId: requestId,
     status: 'ready',
     updatedAt: Math.floor(Date.now() / 1000),
@@ -105,7 +105,7 @@ async function fixture(t, latest = false) {
     JSON.stringify(
       latest
         ? {
-            schemaVersion: 2,
+            schemaVersion: 3,
             kind: 'latest-official',
             packId,
             requestId,
@@ -114,7 +114,7 @@ async function fixture(t, latest = false) {
             preparedAt: Math.floor(Date.now() / 1000),
           }
         : {
-            schemaVersion: 2,
+            schemaVersion: 3,
             packId,
             approval: canonicalMapApproval(approval),
             preparedAt: Math.floor(Date.now() / 1000),

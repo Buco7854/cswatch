@@ -4,6 +4,8 @@
   "texCoord": 1,
   "maximumEdge": 2048,
   "irradianceRange": 64,
+  "maximumIrradianceRange": 65536,
   "irradianceBias": 16,
-  "layerAttribute": "_TEXCOORD_4"
+  "layerAttribute": "_TEXCOORD_4",
+  "vertexAttribute": "_COLOR_1"
 }

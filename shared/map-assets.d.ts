@@ -24,6 +24,14 @@ export type MapCubeFog = {
   brightness: number;
   rotation: [number, number, number, number, number, number, number, number, number];
 };
+export type MapGradientFog = {
+  start: number;
+  end: number;
+  exponent: number;
+  height: { start: number; end: number; exponent: number } | null;
+  color: [number, number, number];
+  maxOpacity: number;
+};
 /** Sky faces are prepared offline in viewer Y-up order +X,-X,+Y,-Y,+Z,-Z.
  * Landscape geometry is already merged into the ordinary prepared map GLBs. */
 export type MapEnvironment = {
@@ -32,9 +40,11 @@ export type MapEnvironment = {
   sky: {
     faces: [string, string, string, string, string, string];
     brightness: number;
-  };
+  } | null;
   fog?: MapCubeFog;
+  gradientFog?: { world: MapGradientFog | null; landscape: MapGradientFog | null };
   grade?: MapGrade;
+  gradeUrl?: string;
 };
 export type MapAssets = {
   model: string | null;

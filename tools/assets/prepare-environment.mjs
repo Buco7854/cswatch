@@ -7,6 +7,7 @@ import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { mergeDocuments, unpartition } from '@gltf-transform/functions';
 import sharp from 'sharp';
 import {
+  inspectGradientFog,
   inspectMapEnvironment,
   inspectMapGrade,
   inspectSkyCamera,
@@ -25,7 +26,8 @@ import {
 import { fileHash, localDirectory, regularFile } from './toolchain-security.mjs';
 import { writePreparedModel } from './prepared-model-output.mjs';
 import { steamAssetLimits } from './steam-assets-plan.mjs';
-import { MeshoptDecoder } from './meshopt-glb.mjs';
+import { compressMapDocumentGeometry, MeshoptDecoder } from './meshopt-glb.mjs';
+import { isSupportedAtmosphericMaterial } from './atmosphere-glb.mjs';
 import { writeMapGrade } from './prepare-map-grade.mjs';
 import { applyTextureBudget } from './texture-budget.mjs';
 
@@ -253,19 +255,32 @@ export async function prepareEnvironment(config) {
     throw new Error(
       'Environment requires a valid map, asset version and bounded source description.',
     );
-  const main = inspectMapEnvironment(mainEntities),
-    camera = inspectSkyCamera(skyEntities),
-    material = inspectSkyMaterial(materialData);
-  if (!main.reference)
-    throw new Error('Actual landscape preparation requires an authored skybox_reference.');
-  const effective = camera.skyEnvironment ?? main;
-  if (!effective.skyMaterial) throw new Error('The selected world has no authored sky material.');
-  const matrix = skyWorldMatrix(main.reference, camera);
-  const brightness =
-    effective.brightnessScale * 2 ** (material.exposureBias + material.renderExposureBias);
+  const main = inspectMapEnvironment(mainEntities);
+  if (Boolean(main.reference) !== Boolean(skyGltf) || Boolean(skyGltf) !== Boolean(skyEntities))
+    throw new Error('Prepared landscape requires both authored reference and sky export.');
+  const camera = skyEntities ? inspectSkyCamera(skyEntities) : null;
+  const effective = camera?.skyEnvironment ?? main;
+  if (Boolean(effective.skyMaterial) !== Boolean(materialData && skyFaces))
+    throw new Error('Prepared sky requires its authored material and six faces.');
+  const material = materialData ? inspectSkyMaterial(materialData) : null;
+  const matrix = camera ? skyWorldMatrix(main.reference, camera) : null;
+  const brightness = material
+    ? effective.brightnessScale * 2 ** (material.exposureBias + material.renderExposureBias)
+    : 1;
   if (!Number.isFinite(brightness) || brightness < 0 || brightness > 16)
     throw new Error('Authored sky exposure exceeds the environment brightness contract.');
-  const cubeFog = prepareCubemapFog({ main, camera, material, effective });
+  const cubeFog = material
+    ? prepareCubemapFog({ main, camera, material, effective })
+    : { fog: null, reason: 'no_authored_sky' };
+  const worldGradient = inspectGradientFog(mainEntities);
+  const skyGradient = skyEntities ? inspectGradientFog(skyEntities, matrix) : null;
+  const gradientFog = {
+    world: worldGradient.fog,
+    landscape:
+      skyGradient?.reason === 'no_authored_gradient_fog'
+        ? worldGradient.fog
+        : (skyGradient?.fog ?? null),
+  };
   const root = await localDirectory(output);
   const environments = await localDirectory(join(root, 'environments'), true);
   const destination = join(environments, map);
@@ -275,14 +290,17 @@ export async function prepareEnvironment(config) {
   try {
     stage = await mkdtemp(join(root, '.environment-'));
     const sourceMain = await inspectGltf(mainGltf),
-      sourceSky = await inspectGltf(skyGltf);
-    if (sourceMain.bytes + sourceSky.bytes > steamAssetLimits.outputBytes)
+      sourceSky = skyGltf ? await inspectGltf(skyGltf) : null;
+    const sourceBytes = sourceMain.bytes + (sourceSky?.bytes ?? 0);
+    if (sourceBytes > steamAssetLimits.outputBytes)
       throw new Error('Combined environment source exceeds the 4 GiB preparation bound.');
-    const converted = await convertSkyFaces(
-      skyFaces,
-      effective,
-      camera.skyEnvironment ? main.reference.angles : [0, 0, 0],
-    );
+    const converted = material
+      ? await convertSkyFaces(
+          skyFaces,
+          effective,
+          camera?.skyEnvironment ? main.reference.angles : [0, 0, 0],
+        )
+      : null;
     onProgress('read-main');
     await MeshoptDecoder.ready;
     const io = new NodeIO()
@@ -290,12 +308,9 @@ export async function prepareEnvironment(config) {
       .registerDependencies({ 'meshopt.decoder': MeshoptDecoder })
       .setAllowNetwork(false);
     const mainDocument = await io.read(sourceMain.path);
-    onProgress('read-sky');
-    const skyDocument = await io.read(sourceSky.path);
-    const mainScenes = mainDocument.getRoot().listScenes(),
-      skyScenes = skyDocument.getRoot().listScenes();
-    if (mainScenes.length !== 1 || skyScenes.length !== 1 || !skyScenes[0].listChildren().length)
-      throw new Error('Landscape merge requires one nonempty scene in each local export.');
+    const mainScenes = mainDocument.getRoot().listScenes();
+    if (mainScenes.length !== 1)
+      throw new Error('Map preparation requires one scene in the main export.');
     if (
       mainDocument
         .getRoot()
@@ -303,21 +318,30 @@ export async function prepareEnvironment(config) {
         .some((node) => node.getExtras()?.cswatch?.kind === 'skybox')
     )
       throw new Error('Main geometry already contains a prepared sky landscape.');
-    const mapping = mergeDocuments(mainDocument, skyDocument);
-    const importedScene = mapping.get(skyScenes[0]);
-    const landscape = mainDocument
-      .createNode('cswatch_skybox')
-      .setExtras({ cswatch: { kind: 'skybox', schemaVersion: 1 } })
-      .setMatrix(matrix);
-    for (const child of importedScene.listChildren()) landscape.addChild(child);
-    mainScenes[0].addChild(landscape);
-    importedScene.dispose();
+    if (sourceSky) {
+      onProgress('read-sky');
+      const skyDocument = await io.read(sourceSky.path);
+      const skyScenes = skyDocument.getRoot().listScenes();
+      if (skyScenes.length !== 1 || !skyScenes[0].listChildren().length)
+        throw new Error('Landscape merge requires one nonempty sky scene.');
+      const importedScene = mergeDocuments(mainDocument, skyDocument).get(skyScenes[0]);
+      const landscape = mainDocument
+        .createNode('cswatch_skybox')
+        .setExtras({ cswatch: { kind: 'skybox', schemaVersion: 1 } })
+        .setMatrix(matrix);
+      for (const child of importedScene.listChildren()) landscape.addChild(child);
+      mainScenes[0].addChild(landscape);
+      importedScene.dispose();
+    }
     mainDocument.getRoot().setDefaultScene(mainScenes[0]);
     // Do not build a multi-gigabyte PNG GLB only to shrink it in the next stage.
     // The same final desktop residency policy bounds this intermediate, and
     // unchanged WebP images are reused by subsequent tier preparation.
     onProgress('budget-textures');
-    const texturePreparation = await applyTextureBudget(mainDocument, { tier: 'desktop' });
+    const texturePreparation = await applyTextureBudget(mainDocument, {
+      tier: 'desktop',
+      preserveCutoutCoverage: true,
+    });
     await mainDocument.transform(unpartition());
     mainDocument
       .getRoot()
@@ -325,18 +349,29 @@ export async function prepareEnvironment(config) {
       .find((extension) => extension.extensionName === 'EXT_meshopt_compression')
       ?.dispose();
     onProgress('encode-geometry');
-    const encoded = await io.writeBinary(mainDocument);
-    if (encoded.byteLength + converted.bytes > steamAssetLimits.outputBytes)
+    globalThis.gc?.();
+    // A large raw export and an uncompressed merge otherwise coexist until the
+    // installer has verified the merge. Atmosphere patching needs one physical buffer.
+    const compressIntermediate =
+      sourceBytes > 1024 * MiB &&
+      !mainDocument
+        .getRoot()
+        .listMaterials()
+        .some((entry) => isSupportedAtmosphericMaterial(entry.getExtras().vmat));
+    const encoded = compressIntermediate
+      ? (await compressMapDocumentGeometry(io, mainDocument)).bytes
+      : await io.writeBinary(mainDocument);
+    if (encoded.byteLength + (converted?.bytes ?? 0) > steamAssetLimits.outputBytes)
       throw new Error('Combined prepared environment exceeds its 4 GiB output bound.');
     const mergedInput = join(stage, 'merged.glb');
     await writePreparedModel(mergedInput, encoded);
-    const faces = Object.fromEntries(
-      viewerFaces.map((face) => [face, hash(converted.outputs[face])]),
-    );
+    const faces = converted
+      ? Object.fromEntries(viewerFaces.map((face) => [face, hash(converted.outputs[face])]))
+      : null;
     const authoredGrade = gradeInput && inspectMapGrade(mainEntities);
     if (gradeInput && (!authoredGrade || !/^[a-f0-9]{64}$/.test(gradeInput.sha256)))
       throw Error('Prepared grading requires authored entity provenance.');
-    const grade = authoredGrade
+    const preparedGrade = authoredGrade
       ? await writeMapGrade(destination, authoredGrade, gradeInput.data)
       : undefined;
     const descriptor = {
@@ -344,10 +379,11 @@ export async function prepareEnvironment(config) {
       map,
       assetVersion,
       source: source.trim(),
-      landscape: true,
-      sky: { brightness, faces },
+      landscape: Boolean(matrix),
+      sky: faces ? { brightness, faces } : null,
       ...(cubeFog.fog ? { fog: cubeFog.fog } : {}),
-      ...(grade ? { grade } : {}),
+      ...(gradientFog.world || gradientFog.landscape ? { gradientFog } : {}),
+      ...(preparedGrade ? { grade: preparedGrade.grade } : {}),
     };
     const report = {
       schemaVersion: 1,
@@ -358,14 +394,23 @@ export async function prepareEnvironment(config) {
       effectiveEnvironment: effective,
       material,
       cubeFog,
-      ...(grade ? { postProcessing: { ...authoredGrade, sha256: gradeInput.sha256 } } : {}),
+      gradientFog: { world: worldGradient, landscape: skyGradient },
+      ...(preparedGrade
+        ? {
+            postProcessing: {
+              ...authoredGrade,
+              sha256: gradeInput.sha256,
+              colorCorrection: preparedGrade.colorCorrection,
+            },
+          }
+        : {}),
       skyWorldMatrix: matrix,
-      landscape: true,
+      landscape: Boolean(matrix),
       brightness,
-      faceSize: converted.size,
+      faceSize: converted?.size ?? null,
       sourceMain,
       sourceSky,
-      sourceFaces: converted.inputs,
+      sourceFaces: converted?.inputs ?? null,
       intermediateTextureBudget: texturePreparation.manifest,
       output: { mergedBytes: encoded.byteLength, mergedSha256: hash(encoded), faces },
       conversion: {
@@ -377,14 +422,14 @@ export async function prepareEnvironment(config) {
       },
       limitations: [
         'HDR values above one were clipped by ForceLDR.',
-        'Authored cubemap fog supports the scoped opaque black_unlit compatibility material only.',
-        'Source global, gradient and volumetric fog and other material shading are not reconstructed.',
+        'Static authored cubemap and untextured gradient fog use the source world distances and heights.',
+        'Textured gradient, volumetric fog volumes and dynamic fog inputs require additional rendering support.',
       ],
     };
     const provenance = Buffer.from(JSON.stringify(report, null, 2));
     if (provenance.length > MiB)
       throw new Error('Environment provenance exceeds its 1 MiB report bound.');
-    for (const face of viewerFaces)
+    for (const face of converted ? viewerFaces : [])
       await writeBounded(join(destination, `${face}.png`), converted.outputs[face]);
     await writeBounded(
       join(destination, 'environment.json'),

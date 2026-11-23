@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { StringDecoder } from 'node:string_decoder';
 import { constants } from 'node:fs';
-import { access, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -18,6 +18,7 @@ import {
   selectedSteamManifest,
   initialSteamFiles,
   overviewResources,
+  selectedSkyPrefabFile,
   parseSteamListing,
   checkedBatch,
 } from './steam-assets-plan.mjs';
@@ -79,11 +80,11 @@ export async function runAssetProcess(
         DOTNET_CLI_TELEMETRY_OPTOUT: '1',
         DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1',
         DOTNET_EnableDiagnostics: '0',
-        // Bound managed heap growth while leaving room for native texture work.
-        // .NET environment numeric settings use hexadecimal: 0x100000000 = 4 GiB.
-        // This is not a total RSS limit; operators still need host memory limits.
+        // Keep native texture allocations and the parent worker inside the host budget.
+        // .NET interprets this managed heap size as hexadecimal (4 GiB).
         DOTNET_GCHeapHardLimit: '100000000',
         DOTNET_GCConserveMemory: '9',
+        DOTNET_PROCESSOR_COUNT: '2',
       },
     });
     let stdout = '',
@@ -501,7 +502,7 @@ export async function installSteamAssets(options, adapters = {}) {
           onSourceImages,
           storage: (needed) => checkStorage(cache, output, needed),
           permitPrefab: (file) => {
-            if (!file.startsWith(`game/csgo/maps/prefabs/${map}/`))
+            if (!selectedSkyPrefabFile(map, file))
               throw new Error('Sky prefab is outside the selected map.');
             checkedBatch([{ selector: file, bytes: 0 }], { prefabs: [file] });
             permittedPrefabs.add(file);
@@ -574,41 +575,65 @@ export async function installSteamAssets(options, adapters = {}) {
           execute,
           packageFiles: [
             packageFile,
-            preparedEnvironment.report.selectedPrefab,
+            ...(preparedEnvironment.report.selectedPrefab
+              ? [preparedEnvironment.report.selectedPrefab]
+              : []),
             'game/csgo/pak01_dir.vpk',
             'game/core/pak01_dir.vpk',
           ],
         });
         source = atmosphere.path;
-        const baked = await prepareInstalledBakedLighting({
+        const baked = await (adapters.prepareBakedLighting || prepareInstalledBakedLighting)({
           map,
-          manifest: plan.manifest,
+          packageFile,
           game,
           stage,
           index,
           execute,
           s2v: tools.s2v,
+          input: source,
+          sunChannel: environment.sunChannel,
           hasHeadroom: (needed) => hasFreeReserve(cache, output, needed),
         });
         // The packer checks each actual encoded tier plus the reserve immediately
         // before its exclusive write. Source PNG sizes do not predict GLB bytes.
         await checkStorage(cache, output);
-        await execute(
-          process.execPath,
-          [
-            prepareMapScript,
-            '--input',
-            source,
-            '--output',
-            prepared,
-            '--map',
-            map,
-            '--asset-version',
-            assetVersion,
-            ...(baked?.args ?? []),
-          ],
-          `${map}-pack`,
-        );
+        // Separate tiers so the kernel can reclaim the GLB and codec working
+        // sets before the next tier starts its geometry transforms.
+        for (const tier of ['desktop', 'mobile', 'compact'])
+          await execute(
+            process.execPath,
+            [
+              '--expose-gc',
+              prepareMapScript,
+              '--input',
+              source,
+              '--output',
+              prepared,
+              '--map',
+              map,
+              '--asset-version',
+              assetVersion,
+              '--only-tier',
+              tier,
+              ...(tier === 'compact' ? [] : ['--auto-lighting', ...baked.args]),
+            ],
+            `${map}-pack-${tier}`,
+          );
+        const lightingTiers = {};
+        for (const tier of ['desktop', 'mobile']) {
+          const path = join(prepared, map, tier, 'manifest.json');
+          await regular(path, 16384);
+          const { bakedLighting, vertexLighting, lightingFallback, worldMaterials } = JSON.parse(
+            await readFile(path, 'utf8'),
+          );
+          lightingTiers[tier] = {
+            path: bakedLighting ? 'lightmap_v8_2' : vertexLighting ? 'vertex' : 'pbr',
+            ...(bakedLighting ?? { reason: lightingFallback ?? baked.proof.reason }),
+            ...(vertexLighting ? { vertexLighting } : {}),
+            worldMaterials,
+          };
+        }
         const provenance = {
           schemaVersion: 1,
           app: STEAM_APP,
@@ -624,7 +649,7 @@ export async function installSteamAssets(options, adapters = {}) {
           resolvedExternalSky: environment.skyMap,
           shaderPreflights,
           sourceImagePreparation: sourceImages,
-          ...(baked ? { bakedLighting: baked.proof } : {}),
+          bakedLighting: { source: baked.proof, tiers: lightingTiers },
           resourceCoverage: {
             complete:
               closure.unknown.filter((resource) => resource !== `${environment.skyMap}_c`)

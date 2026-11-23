@@ -27,11 +27,13 @@ export function observeAssets<Value>({
   read,
   complete,
   changed,
+  fingerprint,
   failed,
 }: {
   read: (signal: AbortSignal) => Promise<Value>;
   complete: (value: Value) => boolean;
   changed: (value: Value) => void;
+  fingerprint?: (value: Value) => string;
   failed?: () => void;
 }) {
   let active = true;
@@ -39,6 +41,7 @@ export function observeAssets<Value>({
   let deadline: ReturnType<typeof setTimeout> | undefined;
   let request: AbortController | undefined;
   let attempts = 0;
+  let accepted: string | undefined;
   const started = performance.now();
   const current = () => active && performance.now() - started < assetDiscoveryLimits.durationMs;
   async function refresh() {
@@ -50,10 +53,13 @@ export function observeAssets<Value>({
     try {
       const value = await read(controller.signal);
       if (!current() || controller.signal.aborted) return;
-      changed(value);
+      const next = fingerprint?.(value);
+      if (next === undefined || next !== accepted) changed(value);
+      accepted = next;
       finished = complete(value);
     } catch (error) {
       if (!current()) return;
+      if (failed) accepted = undefined;
       failed?.();
       finished = error instanceof AssetDiscoveryDenied;
     } finally {

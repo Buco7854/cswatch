@@ -129,6 +129,14 @@ test('compiled resource references retain exact relative offset semantics, norma
   );
   assert.deepEqual(source2References(Buffer.from('plain local text')), []);
   assert.equal(resourcePath('models/a.vmdl', { compiled: true }), 'models/a.vmdl_c');
+  assert.equal(
+    resourcePath('maps/de_fixture/entities/2_28160#entitylumpname.vents', { compiled: true }),
+    'maps/de_fixture/entities/2_28160#entitylumpname.vents_c',
+  );
+  assert.equal(
+    resourcePath('maps/cs_fixture/entities/2_42786_7678_13#entitylumpname.vents_c'),
+    'maps/cs_fixture/entities/2_42786_7678_13#entitylumpname.vents_c',
+  );
   for (const path of [
     '../outside.vmat',
     '/absolute.vtex',
@@ -140,6 +148,9 @@ test('compiled resource references retain exact relative offset semantics, norma
     'a\0b.vmat',
     'a/./b.vmat',
     'a.vmat?secret',
+    'a.vmat#fragment',
+    'maps/de_fixture/entities/2_28160#arbitrary.vents_c',
+    'maps/de_fixture/entities/2_28160#entitylumpname.vmat_c',
   ])
     assert.throws(() => resourcePath(path));
 });

@@ -30,6 +30,7 @@ export function useAgentAssets(identity: string, enabled: boolean): State {
       read: async (signal) =>
         validateAgentAssets(await readAssetJSON('/api/assets/agents', 1024, signal)),
       complete: (assets) => Boolean(assets.ct && assets.t),
+      fingerprint: JSON.stringify,
       changed: (assets) =>
         setState((previous) => {
           const status = assets.ct || assets.t ? 'ready' : 'missing';

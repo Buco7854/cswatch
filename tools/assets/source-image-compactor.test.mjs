@@ -15,9 +15,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { setTimeout as delay } from 'node:timers/promises';
 import { crc32, deflateSync } from 'node:zlib';
 import sharp from 'sharp';
-import { createSourceImageCompactor } from './source-image-compactor.mjs';
+import { completePng, createSourceImageCompactor } from './source-image-compactor.mjs';
 const sha = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const event = (name, count = 1, total = 1) => `--- [${count}/${total}] Exported texture: ${name}`;
 async function fixture() {
@@ -37,6 +38,17 @@ const png = (width = 64, height = 32) =>
   })
     .png()
     .toBuffer();
+
+test('a complete Source PNG can use more than 4096 IDAT chunks within its byte bound', async () => {
+  const original = await png();
+  const empty = Buffer.alloc(12);
+  empty.write('IDAT', 4);
+  empty.writeUInt32BE(crc32(empty.subarray(4, 8)), 8);
+  const split = Buffer.alloc(4096 * empty.length, empty);
+  assert.doesNotThrow(() =>
+    completePng(Buffer.concat([original.subarray(0, -12), split, original.subarray(-12)])),
+  );
+});
 
 test('only exact completed events compact a known fresh PNG and leave geometry bytes unchanged', async () => {
   const f = await fixture();
@@ -81,6 +93,24 @@ test('small completed PNGs are fully decoded but remain byte-for-byte and inode 
     assert.deepEqual(await readFile(path), image);
     assert.equal((await stat(path)).ino, before.ino);
     assert.equal(result.images[0].input.sha256, result.images[0].output.sha256);
+  } finally {
+    await f.close();
+  }
+});
+
+test('a small PNG flush after its progress event is still checked and recorded', async () => {
+  const f = await fixture();
+  try {
+    const compactor = await createSourceImageCompactor({ root: f.exportRoot });
+    const image = await png(1, 1);
+    const path = join(f.exportRoot, 'late.png');
+    await writeFile(path, '');
+    const completion = compactor.consume(event('late'));
+    const flush = delay(30).then(() => writeFile(path, image));
+    await Promise.all([completion, flush]);
+    const { images } = await compactor.finish();
+    assert.equal(images[0].input.sha256, sha(image));
+    assert.deepEqual(await readFile(path), image);
   } finally {
     await f.close();
   }
