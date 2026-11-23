@@ -10,19 +10,15 @@ class IntermediateGradeTarget extends WebGLRenderTarget {
  * used by WebXR). The owner's textures, sample count and depth/stencil storage stay intact.
  * The wrapper has zero samples so intermediate render calls don't resolve the color. */
 export function intermediateGradeTarget(gl: WebGLRenderer, target: WebGLRenderTarget) {
-  const external = gl as WebGLRenderer & {
-    setRenderTargetFramebuffer?: (target: WebGLRenderTarget, framebuffer: WebGLFramebuffer) => void;
-  };
-  if (
-    !target.samples ||
-    !external.setRenderTargetFramebuffer ||
-    gl.extensions.has('WEBGL_multisampled_render_to_texture')
-  )
-    return;
+  if (!target.samples || gl.extensions.has('WEBGL_multisampled_render_to_texture')) return;
   const context = gl.getContext();
   const framebuffer = context.getParameter(context.FRAMEBUFFER_BINDING) as WebGLFramebuffer | null;
   if (!framebuffer) return;
   const wrapper = new IntermediateGradeTarget(target);
+  // Three exposes this WebXR method at runtime. Its WebGLRenderer declarations omit it.
+  const external = gl as WebGLRenderer & {
+    setRenderTargetFramebuffer(target: WebGLRenderTarget, framebuffer: WebGLFramebuffer): void;
+  };
   external.setRenderTargetFramebuffer(wrapper, framebuffer);
   return wrapper;
 }
