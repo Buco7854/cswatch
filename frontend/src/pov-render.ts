@@ -24,6 +24,7 @@ export function renderPovEquipment(
   equipmentCamera: Camera,
   worldAlreadyRendered: boolean,
   skyExposure: number,
+  beforeEquipment?: () => void,
 ): void {
   const autoClear = renderer.autoClear;
   try {
@@ -32,6 +33,7 @@ export function renderPovEquipment(
     renderer.clearDepth();
     withSceneEnvironment(world, equipment, () => {
       equipment.environmentIntensity *= skyExposure;
+      beforeEquipment?.();
       renderer.render(equipment, equipmentCamera);
     });
   } finally {

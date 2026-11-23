@@ -1,6 +1,7 @@
 import { useMemo, useRef, type ReactNode } from 'react';
 import { createPortal, useFrame } from '@react-three/fiber';
 import { PerspectiveCamera, Scene, Vector3, type DirectionalLight } from 'three';
+import { beginFinalGradePass } from '../map-grade-target';
 import { renderPovEquipment, updatePovCamera } from '../pov-render';
 import { povFar, povNear } from '../pov-camera';
 import SceneLighting from './SceneLighting';
@@ -53,7 +54,16 @@ export default function PovEquipmentPass({
     updatePovCamera(worldCamera, camera, size.width / size.height);
     const exposure = sunlight?.(camera.position) ?? 1;
     if (directional.current) directional.current.intensity = (sample ? 3.5 : 1.8) * exposure;
-    renderPovEquipment(gl, scene, equipment, worldCamera, camera, hasSky, 0.72 + 0.28 * exposure);
+    renderPovEquipment(
+      gl,
+      scene,
+      equipment,
+      worldCamera,
+      camera,
+      hasSky,
+      0.72 + 0.28 * exposure,
+      () => beginFinalGradePass(gl),
+    );
   }, 2);
   return createPortal(
     <>

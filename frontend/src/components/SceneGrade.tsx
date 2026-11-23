@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { HalfFloatType, LinearFilter, Vector2, WebGLRenderTarget } from 'three';
+import { intermediateGradeTarget } from '../map-grade-target';
 import type { MapEnvironment } from '../../../shared/map-assets';
 import { createGradeOutput, loadGradeLut, MapGradeContext, type AuthoredGrade } from '../map-grade';
 
@@ -70,6 +71,7 @@ function GradeFrames({
 }) {
   const resources = useRef<{
     target: WebGLRenderTarget;
+    intermediate?: WebGLRenderTarget;
     output: ReturnType<typeof createGradeOutput>;
     size: Vector2;
     samples: number[];
@@ -118,8 +120,11 @@ function GradeFrames({
       usable: false,
     };
     return () => {
+      const intermediate = resources.current?.intermediate;
       resources.current = null;
-      if (gl.getRenderTarget() === target) gl.setRenderTarget(null);
+      if (gl.getRenderTarget() === target || gl.getRenderTarget() === intermediate)
+        gl.setRenderTarget(null);
+      intermediate?.dispose();
       output.dispose();
       target.dispose();
     };
@@ -149,6 +154,8 @@ function GradeFrames({
       const context = gl.getContext();
       frame.tested.copy(size);
       frame.usable = false;
+      frame.intermediate?.dispose();
+      frame.intermediate = undefined;
       for (const count of samples) {
         if (width * height * attachmentBytesPerPixel * (count + 1) > attachmentBudget) continue;
         target.dispose();
@@ -157,12 +164,15 @@ function GradeFrames({
         gl.setRenderTarget(target);
         if (context.checkFramebufferStatus(context.FRAMEBUFFER) === context.FRAMEBUFFER_COMPLETE) {
           frame.usable = true;
+          frame.intermediate = intermediateGradeTarget(gl, target);
           break;
         }
         gl.setRenderTarget(null);
       }
       if (!frame.usable) target.dispose();
-    } else if (frame.usable) gl.setRenderTarget(target);
+    }
+    if (frame.usable)
+      gl.setRenderTarget(!manualWorld && frame.intermediate ? frame.intermediate : target);
   }, 0.99);
 
   useFrame(({ gl, scene, camera }) => {
