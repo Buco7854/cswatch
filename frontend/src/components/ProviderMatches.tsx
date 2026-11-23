@@ -102,6 +102,8 @@ function MatchRow({
       ? [state.added, ...match.demos]
       : match.demos;
   const unavailable = Boolean(state?.unavailable || match.no_demo);
+  // A member can always pair their own file, whether or not an automatic download exists.
+  const needsDemo = demos.every((demo) => demo.status === 'failed');
   const recorded = match.demos.find((demo) => demo.status === 'ready');
   const map = match.map ?? recorded?.map;
   const time = match.played_at;
@@ -164,9 +166,7 @@ function MatchRow({
             {t(demos.length ? 'More demo files' : 'Download')}
           </button>
         )}
-        {(source === 'steam'
-          ? match.share_code && (!demos.length || demos.every((demo) => demo.status === 'failed'))
-          : !canDownload) && (
+        {needsDemo && (source === 'faceit' || match.share_code) && (
           <Link className="button" to={'/library?' + upload} state={location.state}>
             {t(source === 'steam' ? 'Upload this demo' : 'Upload demo')}
           </Link>
