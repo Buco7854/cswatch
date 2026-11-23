@@ -95,6 +95,20 @@ test('account email and sessions, administrative reset audit, and browser-bound 
     const username = await member.getByLabel('Username', { exact: true }).inputValue();
     await member.getByRole('button', { name: 'Continue', exact: true }).click();
 
+    const adminReads: string[] = [];
+    member.on('request', (request) => {
+      const path = new URL(request.url()).pathname;
+      if (path.startsWith('/api/admin')) adminReads.push(path);
+    });
+    const denied = await member.goto('/admin?section=users');
+    expect(denied?.status()).toBe(403);
+    await expect(member).toHaveURL(/\/admin\?section=users$/);
+    await expect(member.getByRole('alert')).toContainText('Administrator access required.');
+    await member.getByRole('link', { name: 'Back to library', exact: true }).click();
+    await expect(member.getByRole('heading', { name: 'Demo library', exact: true })).toBeVisible();
+    await expect(member.getByRole('alert')).toHaveCount(0);
+    expect(adminReads).toEqual([]);
+
     await member.goto('/account');
     await expect(member.getByText(registeredEmail, { exact: true })).toBeVisible();
     await expect(member.getByRole('button', { name: 'Send verification email' })).toHaveCount(0);

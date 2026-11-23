@@ -59,12 +59,7 @@ import {
   demoWriteTimeoutMs,
   enqueueUserDemoDeletion,
 } from './demo-deletion.js';
-import {
-  adminClientAddress,
-  adminNetworkAllowed,
-  adminNetworkDenial,
-  trustProxyAddress,
-} from './admin-network.js';
+import { adminClientAddress, adminNetworkDenial, trustProxyAddress } from './admin-network.js';
 import { hasPermission } from './roles.js';
 import { authRoutes } from './auth.js';
 import {
@@ -226,8 +221,6 @@ export async function createApp(
       if (setupRequired(db)) destination = '/setup';
       else if (onboarding) destination = '/account?returnTo=%2Fadmin';
       else if (!r.user) destination = '/login?returnTo=%2Fadmin';
-      else if (!hasPermission(r.user.role, 'admin')) destination = '/library?admin=role';
-      else if (!adminNetworkAllowed(r, c)) destination = '/library?admin=network';
       if (destination) {
         recordAdminDenial(r);
         return reply.redirect(destination);
@@ -365,6 +358,11 @@ export async function createApp(
       r.log.error('Administration denial could not be recorded');
     }
   });
+  const frontendIndex = join(c.frontendDir, 'index.html');
+  function sendAppShell(reply: FastifyReply) {
+    if (!existsSync(frontendIndex)) throw new HttpError(503, 'Build the frontend first.');
+    return reply.type('text/html').send(createReadStream(frontendIndex));
+  }
   app.setErrorHandler((error, r, reply) => {
     let e = error as Error & { statusCode?: number; code?: string };
     const { code } = e;
@@ -402,6 +400,10 @@ export async function createApp(
     if (code === 'FST_REQ_FILE_TOO_LARGE' || code === 'FST_ERR_CTP_BODY_TOO_LARGE')
       return reply.code(413).send({ detail: 'Request exceeds the configured upload limit.' });
     const status = e.statusCode && e.statusCode >= 400 && e.statusCode < 600 ? e.statusCode : 500;
+    // The static application shell contains no private data. Keep the denial
+    // on the requested page while privileged API responses stay independent.
+    if (status === 403 && r.user && isRead(r) && adminPage(r.url) && acceptsHtml(r))
+      return sendAppShell(reply.code(403));
     if (status >= 500) r.log.error({ err: { code, statusCode: status } }, 'Request failed');
     if (status === 429 && !reply.hasHeader('retry-after'))
       reply.header('Retry-After', String(e instanceof HttpError ? (e.retryAfter ?? 60) : 60));
@@ -847,9 +849,7 @@ export async function createApp(
       r.url.startsWith('/map-assets/')
     )
       throw new HttpError(404, 'Not found.');
-    if (!existsSync(join(c.frontendDir, 'index.html')))
-      throw new HttpError(503, 'Build the frontend first.');
-    return reply.type('text/html').send(createReadStream(join(c.frontendDir, 'index.html')));
+    return sendAppShell(reply);
   });
   app.addHook('onClose', async () => {
     await mail.close();

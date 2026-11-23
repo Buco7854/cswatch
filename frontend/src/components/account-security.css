@@ -379,3 +379,10 @@
 .account-email-value {
   overflow-wrap: anywhere;
 }
+
+.admin-access-denied {
+  display: grid;
+  justify-items: start;
+  gap: 16px;
+  max-width: 65ch;
+}
