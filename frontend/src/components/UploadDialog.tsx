@@ -5,10 +5,12 @@ import DemoConnectionsLink from './DemoConnectionsLink';
 import Upload from './Upload';
 export default function UploadDialog({
   close,
-  steamMatch,
+  match,
+  returnTo,
 }: {
   close: () => void;
-  steamMatch?: string;
+  match?: { source: 'steam' | 'faceit'; id: string };
+  returnTo?: string;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -29,7 +31,7 @@ export default function UploadDialog({
           <X size={20} />
         </button>
       </div>
-      <Upload steamMatch={steamMatch} />
+      <Upload match={match} returnTo={returnTo} />
       <DemoConnectionsLink />
     </dialog>
   );

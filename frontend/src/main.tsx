@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { PublicShell, Landing } from './components/PublicSite';
 import Setup from './components/Setup';
 import { ConfirmationProvider } from './components/Confirmation';
-import { Component, StrictMode, useCallback, useEffect, useRef, useState } from 'react';
+import { Component, StrictMode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
@@ -19,6 +19,7 @@ import { X } from 'lucide-react';
 import { api, setCsrf } from './api';
 import { AppContext } from './context';
 import type { Config, User } from './types';
+import { MatchActivity } from './match-activity';
 import Library from './components/Library';
 import Viewer from './components/Viewer';
 import WorkspaceShell from './components/WorkspaceShell';
@@ -84,6 +85,10 @@ function App() {
     [toast, setToast] = useState(''),
     [error, setError] = useState('');
   const location = useLocation();
+  const faceitIdentity = user?.identities?.find(
+    (identity) => identity.provider === 'faceit',
+  )?.subject;
+  const activity = useMemo(() => new MatchActivity(), [user?.csrf, faceitIdentity]);
   const refreshGeneration = useRef(0);
   const refresh = useCallback(async () => {
     const generation = ++refreshGeneration.current;
@@ -278,7 +283,7 @@ function App() {
           toggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
         >
           <Routes>
-            <Route path="/library" element={<Library />} />
+            <Route path="/library" element={<Library key={user?.id} activity={activity} />} />
             <Route path="/account" element={<Account />} />
             <Route path="/account/connections" element={<Account section="connections" />} />
             <Route path="/admin" element={<Admin />} />

@@ -8,7 +8,7 @@
 | `/setup`                           | Operator-code enrollment only while no admin exists                   | Redirect after initialization              | Same initialization gate |
 | `/watch/:id`                       | Own temporary guest capability or explicit shared link, otherwise 404 | Own or explicitly shared demo              | Sign-in gate             |
 | `/watch/sample`                    | Labeled internal practice fixture, no public CTA                      | Same, separate from history                | Sign-in gate             |
-| `/library`                         | Account gate with safe return intent                                  | Own demos, uploads, status and recovery    | Sign-in gate             |
+| `/library`                         | Account gate with safe return intent                                  | Own demos and eligible provider match tabs | Sign-in gate             |
 | `/account`, `/account/connections` | Sign-in with return intent                                            | Own identity/password and linked sources   | Sign-in gate             |
 | `/admin`                           | Sign-in then enforce role                                             | Admin policy only, other members forbidden | Sign-in then role check  |
 
@@ -50,7 +50,7 @@ The Play group stays centered. Wide views show both five- and fifteen-second jum
 - Public + guest uploads disabled: sign-in upload action. Registrations policy independently controls account creation.
 - Public + registrations off: existing members can sign in, and enabled guest uploads remain available without creating members. New social accounts remain blocked.
 - Private: branded sign-in entry, with account creation only when registrations policy permits. Anonymous demo/assets remain gated and guest uploads are ineffective.
-- Provider disabled/missing approval: explain on Connections/import help. Never promise automatic Steam demo access or unapproved FACEIT downloads.
+- Provider disabled/missing approval: explain at connection setup or beside the affected library action. Never promise automatic Steam demo access or unapproved FACEIT downloads.
 
 ## Localization and themes
 
@@ -60,7 +60,7 @@ English/French apply to public content, app navigation, viewer options/status/er
 
 Viewer routes use their own shell. The canvas fills the entire viewport beneath small floating identity and action groups, with a centered recorded score/clock strip. The duplicate local round label is omitted when that strip is shown. Tapping the scene fades the menus and player HUD together; camera drags, long presses and pinches never toggle them. Mouse movement and H/Tab recover controls on desktop. Optional automatic hiding occurs after three seconds of playback, with guards for dialogs, keyboard focus and gestures. Captions remain visible when chrome fades. Language/theme/account/demo actions move into Viewer menu. The in-view bottom dock contains play/seek/speed, round selection/jumps, overlays/panel entry points and browser fullscreen. A finished upload opens paused in a living player’s POV at the first recorded live round. An explicit tick takes precedence over the position saved in this tab. The world lens defaults to 73.74° vertical and supports recorded scope changes. Starting Free uses a living player’s eye or an overhead overview. The loading view names the map and reports transfer progress when the total is known. Failed and unavailable assets restore the controls. Only one player/review side panel is open at a time; it scrolls internally and closes with Escape, restoring focus to its trigger. The deck keeps the round segment lane, event/seek row and transport row separate. The CT/T rosters and Kills/Utility panel are enabled on wide replay surfaces. Phones default to the compact controls and open Players in one tap. A saved right-only layout remains available. Equipment and health/armor occupy separate rows. Options use a left-edge native modal on desktop and a bounded phone sheet, five horizontal keyboard tabs, one scrolling active panel and a reachable close/communications footer. No viewing control requires scrolling the document.
 
-The member library is a single working list with a confirmed delete action on each owned demo. Upload opens a focused modal instead of occupying a permanent right-hand column. No community or sample CTA competes with the private list. Existing upload/auth return intent opens that dialog after authentication; dismissing it clears the transient upload query flag.
+The member library opens on **My demos**, with source labels, a source filter and a confirmed delete action on each owned demo. Eligible members can open **Steam** or **FACEIT** by tab or link. Provider tabs use local filters, page controls and row-level actions and feedback. The viewer returns to the active source, filter and page. Upload opens a focused modal instead of occupying a permanent right-hand column. No community or sample CTA competes with the private list. Existing upload/auth return intent opens that dialog after authentication; dismissing it clears the transient upload query flag.
 
 ## Spectator overlays
 

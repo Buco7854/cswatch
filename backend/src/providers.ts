@@ -13,35 +13,104 @@ import {
 } from './security.js';
 import { abandon, reserve, validateMagic } from './ingestion.js';
 import { downloadRemoteDemo, validateRemoteUrl } from './remote-download.js';
+import { faceitId, matchDemo, matchFilter, matchOffset, matchPageSize } from './match-library.js';
 import { readUpstreamJson, requestJson } from './upstream.js';
-const faceitId = z.string().regex(/^[A-Za-z0-9_-]{1,128}$/);
 const faceitProfile = z.object({
   player_id: faceitId,
   games: z.object({ cs2: z.object({ game_player_id: z.string().regex(/^\d{17}$/) }) }),
+});
+const timestamp = z.number().int().min(0).max(8_640_000_000_000);
+const historyBatch = 100;
+const historyCacheTtl = 30_000;
+const historyCacheMembers = 64;
+const historyCachePages = 6;
+const maxHistoryCalls = 4;
+const maxNoDemoMatches = 256;
+const maxFilesPerMatch = 16;
+const historyResults = z.object({
+  winner: faceitId.nullish(),
+  score: z.record(z.string(), z.number().int().min(0).max(1000)).nullish(),
 });
 const faceitHistory = z.object({
   items: z
     .array(
       z.object({
         match_id: faceitId,
-        finished_at: z.number().int().min(0).max(8_640_000_000_000).nullish(),
+        finished_at: timestamp.nullish(),
+        started_at: timestamp.nullish(),
         competition_name: z.string().max(256).nullish(),
-        teams: z.record(z.string(), z.object({ nickname: z.string().max(256) })).nullish(),
+        map: z.string().max(128).nullish().catch(null),
+        teams: z
+          .record(
+            z.string(),
+            z.object({
+              nickname: z.string().max(256).nullish(),
+              players: z
+                .array(z.object({ player_id: faceitId }))
+                .max(32)
+                .nullish(),
+            }),
+          )
+          .nullish(),
+        results: historyResults.nullish(),
       }),
     )
-    .max(20),
+    .max(historyBatch),
 });
+type HistoryEntry = z.infer<typeof faceitHistory>['items'][number];
+type HistoryRow = ReturnType<typeof matchSummary> & { cursorTime: number | null };
+const invalidHistory = () =>
+  new HttpError(502, 'FACEIT returned an invalid response. Try again later.');
+const historyTime = (entry: HistoryEntry) => entry.finished_at ?? entry.started_at ?? null;
+function matchSummary(entry: HistoryEntry, subject: string) {
+  const teams = Object.entries(entry.teams ?? {}).slice(0, 2);
+  const participant = teams.find(([, team]) =>
+    team.players?.some((player) => player.player_id === subject),
+  )?.[0];
+  const winner = entry.results?.winner;
+  return {
+    match_id: entry.match_id,
+    played_at: entry.finished_at ?? entry.started_at ?? null,
+    competition: entry.competition_name ?? null,
+    map: entry.map ?? null,
+    teams: teams.map(([key, team]) => ({
+      name: team.nickname || null,
+      score: entry.results?.score?.[key] ?? null,
+    })),
+    result:
+      participant && teams.some(([key]) => key === winner)
+        ? winner === participant
+          ? 'win'
+          : 'loss'
+        : null,
+  };
+}
 const faceitMatch = z.object({
   match_id: faceitId,
   game: z.string(),
-  demo_url: z.array(z.string().max(4096)).max(16).nullish(),
+  finished_at: timestamp.nullish(),
+  started_at: timestamp.nullish(),
+  competition_name: z.string().max(256).nullish(),
+  results: historyResults.nullish(),
+  voting: z
+    .object({
+      map: z.object({ pick: z.array(z.string().max(128)).max(16).nullish() }).nullish(),
+    })
+    .nullish()
+    .catch(null),
+  demo_url: z.array(z.string().max(4096)).max(maxFilesPerMatch).nullish(),
   teams: z
     .record(
       z.string(),
       z.object({
-        roster: z.array(z.object({ player_id: z.string() })).nullish(),
+        nickname: z.string().max(256).nullish(),
+        roster: z
+          .array(z.object({ player_id: faceitId }))
+          .max(32)
+          .nullish(),
         substitutes: z
-          .array(z.object({ player_id: z.string(), playing: z.boolean().optional() }))
+          .array(z.object({ player_id: faceitId, playing: z.boolean().optional() }))
+          .max(32)
           .nullish(),
       }),
     )
@@ -60,12 +129,8 @@ async function faceit(
   path: string,
   missing: string,
   params: Record<string, string> = {},
+  onResponse?: (response: Response) => void,
 ) {
-  if (!c.faceitApiKey)
-    throw new HttpError(
-      503,
-      'This instance does not have everything needed for FACEIT matches. You can still upload your demos.',
-    );
   return requestJson(
     'https://open.faceit.com/data/v4/' + path + '?' + new URLSearchParams(params),
     {
@@ -74,15 +139,13 @@ async function faceit(
     },
     'FACEIT returned an invalid response. Try again later.',
     async (response) => {
+      onResponse?.(response);
       switch (response.status) {
         case 200:
           return readUpstreamJson(response);
         case 401:
         case 403:
-          throw new HttpError(
-            502,
-            'FACEIT denied Data API access. Ask the administrator to check the key and permissions.',
-          );
+          throw new HttpError(502, 'FACEIT denied access. Try again later.');
         case 404:
           throw new HttpError(404, missing);
         case 429:
@@ -102,10 +165,57 @@ export async function providerRoutes(
   c: Config,
   download = downloadRemoteDemo,
 ) {
+  const historyCache = new Map<
+    string,
+    {
+      binding: string;
+      pages: Map<string, { expires: number; to: number; items: HistoryRow[] }>;
+      noDemo: Set<string>;
+    }
+  >();
+  const activeOperations = new Map<string, Set<AbortController>>();
+  let historyRetryAt = 0;
+  function existingCache(user: SessionUser, subject: string) {
+    const member = historyCache.get(user.id);
+    return member?.binding === user.csrf + ':' + subject ? member : undefined;
+  }
+  function cacheFor(user: SessionUser, subject: string) {
+    const member = existingCache(user, subject) ?? {
+      binding: user.csrf + ':' + subject,
+      pages: new Map(),
+      noDemo: new Set<string>(),
+    };
+    historyCache.delete(user.id);
+    historyCache.set(user.id, member);
+    if (historyCache.size > historyCacheMembers)
+      historyCache.delete(historyCache.keys().next().value!);
+    return member;
+  }
+
+  function invalidate(userId: string) {
+    historyCache.delete(userId);
+    for (const operation of activeOperations.get(userId) ?? []) operation.abort();
+    activeOperations.delete(userId);
+  }
+  function operationFor(userId: string) {
+    const controller = new AbortController();
+    const active = activeOperations.get(userId) ?? new Set<AbortController>();
+    active.add(controller);
+    activeOperations.set(userId, active);
+    return {
+      signal: controller.signal,
+      finish() {
+        active.delete(controller);
+        if (!active.size && activeOperations.get(userId) === active)
+          activeOperations.delete(userId);
+      },
+    };
+  }
   const resourceHosts = [...faceitResourceHosts, ...c.faceitResourceHosts];
   const downloadHosts = [...faceitDownloadHosts, ...c.faceitSignedDownloadHosts];
   const enabled = () => {
-    if (!db.flag(c, 'faceit_enabled')) throw new HttpError(403, 'FACEIT integration is disabled.');
+    if (!db.flag(c, 'faceit_enabled') || !c.faceitApiKey)
+      throw new HttpError(403, 'This instance does not have everything needed for FACEIT matches.');
   };
   function revalidate(request: FastifyRequest, captured: SessionUser) {
     const live = currentUser(db, request, c);
@@ -130,103 +240,319 @@ export async function providerRoutes(
       u.id,
     );
     if (!steam) throw new HttpError(400, 'Link Steam first to verify your FACEIT account.');
-    const result = await faceit(
-      c,
-      'players',
-      'No FACEIT CS2 profile was found for this Steam account.',
-      {
-        game: 'cs2',
-        game_player_id: steam.subject,
-      },
-    );
-    const profile = faceitProfile.safeParse(result);
-    if (!profile.success || profile.data.games.cs2.game_player_id !== steam.subject)
-      throw new HttpError(400, 'FACEIT did not confirm a matching Steam account.');
-    const subject = profile.data.player_id;
-    db.transaction(() => {
-      revalidate(r, u);
-      if (
-        db.one("SELECT subject FROM identities WHERE user_id=? AND provider='steam'", u.id)
-          ?.subject !== steam.subject
-      )
-        throw new HttpError(409, 'Session expired. Refresh the page and try again.');
-      const existing = db.one(
-        "SELECT user_id FROM identities WHERE provider='faceit' AND subject=?",
-        subject,
+    const operation = operationFor(u.id);
+    try {
+      const result = await faceit(
+        c,
+        'players',
+        'No FACEIT CS2 profile was found for this Steam account.',
+        {
+          game: 'cs2',
+          game_player_id: steam.subject,
+        },
       );
-      if (existing && existing.user_id !== u.id)
-        throw new HttpError(409, 'This FACEIT account is already linked.');
-      db.run(
-        "INSERT INTO identities VALUES('faceit',?,?) ON CONFLICT(provider,user_id) DO UPDATE SET subject=excluded.subject",
-        subject,
-        u.id,
-      );
-    });
-    db.audit(u.id, 'faceit.linked');
-    return { subject };
+      const profile = faceitProfile.safeParse(result);
+      if (!profile.success || profile.data.games.cs2.game_player_id !== steam.subject)
+        throw new HttpError(400, 'FACEIT did not confirm a matching Steam account.');
+      const subject = profile.data.player_id;
+      const linkedBefore = linkedFaceit(u.id)?.subject;
+      db.transaction(() => {
+        revalidate(r, u);
+        if (operation.signal.aborted)
+          throw new HttpError(409, 'The FACEIT connection changed. Try again.');
+        if (
+          db.one("SELECT subject FROM identities WHERE user_id=? AND provider='steam'", u.id)
+            ?.subject !== steam.subject
+        )
+          throw new HttpError(409, 'Session expired. Refresh the page and try again.');
+        const existing = db.one(
+          "SELECT user_id FROM identities WHERE provider='faceit' AND subject=?",
+          subject,
+        );
+        if (existing && existing.user_id !== u.id)
+          throw new HttpError(409, 'This FACEIT account is already linked.');
+        db.run(
+          "INSERT INTO identities VALUES('faceit',?,?) ON CONFLICT(provider,user_id) DO UPDATE SET subject=excluded.subject",
+          subject,
+          u.id,
+        );
+      });
+      if (linkedBefore !== subject) invalidate(u.id);
+      db.audit(u.id, 'faceit.linked');
+      return { subject };
+    } finally {
+      operation.finish();
+    }
   });
+  app.delete('/api/connections/faceit/link', async (r) => {
+    const user = requireUser(r);
+    rateLimit(db, r, 'faceit-unlink', 8, 900, user.id);
+    db.run("DELETE FROM identities WHERE user_id=? AND provider='faceit'", user.id);
+    invalidate(user.id);
+    return { ok: true };
+  });
+
+  function demosFor(owner: string, ids: string[]) {
+    const grouped = new Map<string, ReturnType<typeof matchDemo>[]>();
+    if (!ids.length) return grouped;
+    for (const row of db.all(
+      `WITH paired AS (
+         SELECT id,status,map,faceit_match_id,
+           row_number() OVER (PARTITION BY faceit_match_id ORDER BY created_at DESC,id DESC) AS rank
+         FROM demos WHERE owner_id=? AND status!='uploading'
+         AND faceit_match_id IN (${ids.map(() => '?').join(',')})
+       )
+       SELECT id,status,map,faceit_match_id FROM paired WHERE rank<=? ORDER BY rank`,
+      owner,
+      ...ids,
+      maxFilesPerMatch,
+    )) {
+      const group = grouped.get(row.faceit_match_id) ?? [];
+      group.push(matchDemo(row));
+      grouped.set(row.faceit_match_id, group);
+    }
+    return grouped;
+  }
+
+  async function historyPage(
+    r: FastifyRequest,
+    user: SessionUser,
+    subject: string,
+    to: number,
+    offset: number,
+    first: boolean,
+  ) {
+    const key = first ? 'recent' : to + ':' + offset;
+    const cached = existingCache(user, subject)?.pages.get(key);
+    if (cached && cached.expires > Date.now()) return cached;
+    if (historyRetryAt > Date.now())
+      throw new HttpError(429, 'FACEIT is rate limiting requests. Try again later.');
+    rateLimit(db, r, 'faceit-history', 80, 900, user.id);
+    const operation = operationFor(user.id);
+    try {
+      const raw = await faceit(
+        c,
+        `players/${subject}/history`,
+        'FACEIT could not find the linked player.',
+        {
+          game: 'cs2',
+          limit: String(historyBatch),
+          offset: String(offset),
+          from: '0',
+          to: String(to),
+        },
+        (response) => {
+          if (response.status !== 429) return;
+          const header = response.headers.get('retry-after') ?? '';
+          const delay = /^\d+$/.test(header)
+            ? Number(header) * 1000
+            : Date.parse(header) - Date.now();
+          historyRetryAt =
+            Date.now() +
+            Math.min(3600_000, Math.max(1000, Number.isFinite(delay) ? delay : 60_000));
+        },
+      ).catch((error: unknown) => {
+        revalidateFaceit(r, user, subject);
+        throw error;
+      });
+      revalidateFaceit(r, user, subject);
+      if (operation.signal.aborted)
+        throw new HttpError(409, 'The FACEIT connection changed. Try again.');
+      const parsed = faceitHistory.safeParse(raw);
+      if (!parsed.success) throw invalidHistory();
+      const entries = parsed.data.items;
+      if (new Set(entries.map((item) => item.match_id)).size !== entries.length)
+        throw invalidHistory();
+      let previousTime = to;
+      for (const item of entries) {
+        const time = historyTime(item);
+        if (time === null) continue;
+        if (time > previousTime) throw invalidHistory();
+        previousTime = time;
+      }
+
+      const items = entries.map((entry) => ({
+        ...matchSummary(entry, subject),
+        cursorTime: historyTime(entry),
+      }));
+      const { pages } = cacheFor(user, subject);
+      pages.delete(key);
+      const page = { expires: Date.now() + historyCacheTtl, to, items };
+      pages.set(key, page);
+      if (pages.size > historyCachePages) pages.delete(pages.keys().next().value!);
+      return page;
+    } finally {
+      operation.finish();
+    }
+  }
+
   app.get('/api/connections/faceit/matches', async (r) => {
-    const u = requireUser(r);
+    const user = requireUser(r);
     enabled();
-    rateLimit(db, r, 'faceit-history', 20, 900, u.id);
-    const identity = linkedFaceit(u.id);
-    if (!identity) throw new HttpError(400, 'Link your FACEIT account first.');
-    const { offset, to } = z
+    rateLimit(db, r, 'faceit-history-read', 150, 900, user.id);
+    const identity = linkedFaceit(user.id);
+    if (!identity) throw new HttpError(403, 'Link your FACEIT account first.');
+    const { filter, offset, cursor } = z
       .object({
-        offset: z.coerce.number().int().min(0).max(1000).default(0),
-        to: z.coerce
-          .number()
-          .int()
-          .min(1)
-          .max(Math.floor(Date.now() / 1000))
+        filter: matchFilter,
+        offset: matchOffset,
+        cursor: z
+          .string()
+          .regex(/^\d{1,13}\.\d{1,4}$/)
           .optional(),
       })
       .parse(r.query);
-    const through = to ?? Math.floor(Date.now() / 1000);
-    const history = await faceit(
-      c,
-      `players/${identity.subject}/history`,
-      'FACEIT could not find the linked player.',
-      {
-        game: 'cs2',
-        limit: '20',
-        offset: String(offset),
-        // FACEIT returns only the last month without an explicit start.
-        from: '0',
-        to: String(through),
-      },
-    );
-    const parsed = faceitHistory.safeParse(history);
-    if (!parsed.success)
-      throw new HttpError(502, 'FACEIT returned an invalid response. Try again later.');
-    revalidateFaceit(r, u, identity.subject);
-    return {
-      items: parsed.data.items,
-      next_offset: parsed.data.items.length === 20 && offset + 20 <= 1000 ? offset + 20 : null,
-      to: through,
-    };
+    const noDemo = () => existingCache(user, identity.subject)?.noDemo;
+    if (filter === 'downloaded') {
+      const rows = db.all(
+        `WITH owned AS (
+           SELECT faceit_match_id AS match_id,created_at,
+             CASE WHEN json_valid(metadata) THEN json_extract(metadata,'$.faceitMatch') END AS evidence
+           FROM demos WHERE owner_id=? AND faceit_match_id IS NOT NULL AND status!='uploading'
+         ), ranked AS (
+           SELECT *, row_number() OVER (PARTITION BY match_id ORDER BY evidence IS NOT NULL DESC,created_at DESC) AS rank
+           FROM owned
+         )
+         SELECT * FROM ranked WHERE rank=1
+         ORDER BY coalesce(json_extract(evidence,'$.played_at'),created_at) DESC,match_id DESC LIMIT ? OFFSET ?`,
+        user.id,
+        matchPageSize + 1,
+        offset,
+      );
+      const page = rows.slice(0, matchPageSize);
+      const demos = demosFor(
+        user.id,
+        page.map((row) => row.match_id),
+      );
+      return {
+        items: page.map((row) => ({
+          ...(row.evidence ? JSON.parse(row.evidence) : {}),
+          match_id: row.match_id,
+          no_demo: noDemo()?.has(row.match_id) ?? false,
+          demos: demos.get(row.match_id) ?? [],
+        })),
+        next: rows.length > matchPageSize ? String(offset + matchPageSize) : null,
+      };
+    }
+
+    const through = Math.floor(Date.now() / 1000) - 1;
+    const [to, skipped] = cursor?.split('.').map(Number) ?? [through, 0];
+    if (to > through || skipped > 1100)
+      throw new HttpError(400, 'Check the form fields and try again.');
+    let position = { to, offset: skipped };
+    const items: (ReturnType<typeof matchSummary> & {
+      demos: ReturnType<typeof matchDemo>[];
+      no_demo: boolean;
+    })[] = [];
+    let next: string | null = null;
+    let hadMatches = skipped > 0;
+    for (let call = 0; call < maxHistoryCalls; call++) {
+      const window = position;
+      const offset = Math.min(window.offset, 1000);
+      const overlap = window.offset - offset;
+      const { items: batch, to: windowEnd } = await historyPage(
+        r,
+        user,
+        identity.subject,
+        window.to,
+        offset,
+        !cursor && call === 0,
+      );
+      revalidateFaceit(r, user, identity.subject);
+      const remaining = batch.slice(overlap);
+      hadMatches ||= remaining.length > 0;
+      if (!remaining.length && batch.length === historyBatch)
+        throw new HttpError(502, 'FACEIT history reached its paging limit for one timestamp.');
+      const demos = demosFor(
+        user.id,
+        remaining.map((row) => row.match_id),
+      );
+      let canNarrow = true;
+      for (const [index, { cursorTime: time, ...entry }] of remaining.entries()) {
+        const paired = demos.get(entry.match_id) ?? [];
+        if (items.length === matchPageSize && (filter === 'all' || !paired.length))
+          return { items, next, had_matches: hadMatches };
+        if (time === null) canNarrow = false;
+        position =
+          canNarrow && time !== null
+            ? { to: time, offset: time === position.to ? position.offset + 1 : 1 }
+            : { to: windowEnd, offset: window.offset + index + 1 };
+        next = position.to + '.' + position.offset;
+        if (filter === 'all' || !paired.length)
+          items.push({ ...entry, demos: paired, no_demo: noDemo()?.has(entry.match_id) ?? false });
+      }
+      if (batch.length < historyBatch) return { items, next: null, had_matches: hadMatches };
+    }
+    return { items, next, had_matches: hadMatches };
   });
+  async function verifyFaceitUpload(r: FastifyRequest, u: SessionUser, matchId: string) {
+    enabled();
+    const identity = linkedFaceit(u.id);
+    if (!identity) throw new HttpError(400, 'Link your FACEIT account first.');
+    const operation = operationFor(u.id);
+    try {
+      const match = faceitMatch.safeParse(
+        await faceit(c, 'matches/' + matchId, 'FACEIT could not find this match.'),
+      );
+      if (!match.success || match.data.match_id !== matchId)
+        throw new HttpError(502, 'FACEIT returned an invalid response. Try again later.');
+      if (match.data.game !== 'cs2')
+        throw new HttpError(400, 'Only FACEIT CS2 matches can be imported.');
+      const participant = Object.values(match.data.teams ?? {}).some(
+        (team) =>
+          team.roster?.some((player) => player.player_id === identity.subject) ||
+          team.substitutes?.some(
+            (player) => player.playing && player.player_id === identity.subject,
+          ),
+      );
+      if (!participant)
+        throw new HttpError(403, 'FACEIT could not confirm you played in this match.');
+      revalidateFaceit(r, u, identity.subject);
+      if (operation.signal.aborted)
+        throw new HttpError(409, 'The FACEIT connection changed. Try again.');
+      const maps = match.data.voting?.map?.pick;
+      const summary = matchSummary(
+        {
+          ...match.data,
+          map: maps?.length === 1 ? maps[0] : null,
+          teams: Object.fromEntries(
+            Object.entries(match.data.teams ?? {}).map(([key, team]) => [
+              key,
+              {
+                nickname: team.nickname,
+                players: [
+                  ...(team.roster ?? []),
+                  ...(team.substitutes ?? []).filter((player) => player.playing),
+                ],
+              },
+            ]),
+          ),
+        },
+        identity.subject,
+      );
+      return { match: match.data, subject: identity.subject, summary };
+    } finally {
+      operation.finish();
+    }
+  }
+  const noDemoError = () =>
+    new HttpError(
+      404,
+      'FACEIT has no demo for this match. It may be pending or expired.',
+      'faceit_no_demo',
+    );
   async function matchDemos(r: FastifyRequest, u: SessionUser, matchId: string) {
     const identity = linkedFaceit(u.id);
     if (!identity) throw new HttpError(400, 'Link your FACEIT account first.');
-    const match = faceitMatch.safeParse(
-      await faceit(c, 'matches/' + matchId, 'FACEIT could not find this match.'),
-    );
-    if (!match.success || match.data.match_id !== matchId)
-      throw new HttpError(502, 'FACEIT returned an invalid response. Try again later.');
-    if (match.data.game !== 'cs2')
-      throw new HttpError(400, 'Only FACEIT CS2 matches can be imported.');
-    const participant = Object.values(match.data.teams ?? {}).some(
-      (team) =>
-        team.roster?.some((player) => player.player_id === identity.subject) ||
-        team.substitutes?.some((player) => player.playing && player.player_id === identity.subject),
-    );
-    if (!participant)
-      throw new HttpError(403, 'FACEIT could not confirm you played in this match.');
-    revalidateFaceit(r, u, identity.subject);
-    const resources = match.data.demo_url ?? [];
-    if (!resources.length)
-      throw new HttpError(404, 'FACEIT has no demo for this match. It may be pending or expired.');
+    if (existingCache(u, identity.subject)?.noDemo.has(matchId)) throw noDemoError();
+    const { match, subject, summary } = await verifyFaceitUpload(r, u, matchId);
+    const resources = match.demo_url ?? [];
+    if (!resources.length) {
+      const { noDemo } = cacheFor(u, subject);
+      noDemo.add(matchId);
+      if (noDemo.size > maxNoDemoMatches) noDemo.delete(noDemo.values().next().value!);
+      throw noDemoError();
+    }
     const files = new Map<string, { id: string; file: number; resource: string; suffix: string }>();
     for (const [index, resource] of resources.entries()) {
       const url = validateRemoteUrl(resource, resourceHosts);
@@ -242,26 +568,28 @@ export async function providerRoutes(
           suffix: extension[1]?.toLowerCase() || '.dem',
         });
     }
-    return { files, subject: identity.subject };
+    return { files, subject, summary };
   }
   app.get('/api/connections/faceit/match-demos', async (r) => {
     const u = requireUser(r);
     enabled();
     rateLimit(db, r, 'faceit-details', 30, 900, u.id);
     const { match_id } = z.object({ match_id: faceitId }).parse(r.query);
+    if (!c.faceitDownloadToken)
+      throw new HttpError(
+        403,
+        'This instance does not have everything needed to download FACEIT demos. You can still upload them yourself.',
+      );
     const { files } = await matchDemos(r, u, match_id);
     return {
-      files: [...files.values()].map(({ id, file }) => ({
-        id,
-        file,
-        demo_id:
-          db.one(
-            'SELECT id FROM demos WHERE owner_id=? AND source_ref=? AND status!=?',
-            u.id,
-            'faceit:' + id,
-            'uploading',
-          )?.id ?? null,
-      })),
+      files: [...files.values()].map(({ id, file }) => {
+        const demo = db.one(
+          "SELECT id,status,map FROM demos WHERE owner_id=? AND source_ref=? AND status!='uploading'",
+          u.id,
+          'faceit:' + id,
+        );
+        return { id, file, demo: demo ? matchDemo(demo) : null };
+      }),
     };
   });
   app.post('/api/connections/faceit/import', async (r, reply) => {
@@ -284,7 +612,7 @@ export async function providerRoutes(
         503,
         'This instance does not have everything needed to download FACEIT demos. You can still upload them yourself.',
       );
-    const { files, subject } = await matchDemos(r, u, match_id);
+    const { files, subject, summary } = await matchDemos(r, u, match_id);
     const selected = resource_id
       ? files.get(resource_id)
       : files.size === 1
@@ -301,8 +629,9 @@ export async function providerRoutes(
       match_id,
       'faceit:' + selected.id,
     );
+    const operation = operationFor(u.id);
     try {
-      const signal = AbortSignal.timeout(180000);
+      const signal = AbortSignal.any([AbortSignal.timeout(180000), operation.signal]);
       const url = await requestJson(
         'https://api.faceit.com/download/v2/demos/download',
         {
@@ -317,10 +646,7 @@ export async function providerRoutes(
         'FACEIT could not sign the demo download. Try again or upload manually.',
         async (response) => {
           if (response.status === 401 || response.status === 403)
-            throw new HttpError(
-              502,
-              'FACEIT denied Downloads API access. Ask the administrator to check token approval.',
-            );
+            throw new HttpError(502, 'FACEIT denied the download. Try again or upload manually.');
           if (response.status === 429)
             throw new HttpError(429, 'FACEIT is rate limiting requests. Try again later.');
           if (!response.ok) throw new Error();
@@ -329,6 +655,8 @@ export async function providerRoutes(
       );
       revalidateFaceit(r, u, subject);
       validateRemoteUrl(url, downloadHosts);
+      if (operation.signal.aborted)
+        throw new HttpError(409, 'The FACEIT connection changed. Try again.');
       const { bytes: size } = await download(url, join(folder, 'input' + suffix), {
         allowedHosts: downloadHosts,
         maxBytes: c.maxUploadMb * 1024 ** 2,
@@ -337,10 +665,13 @@ export async function providerRoutes(
       validateMagic(join(folder, 'input' + suffix), suffix);
       db.transaction(() => {
         revalidateFaceit(r, u, subject);
+        if (operation.signal.aborted)
+          throw new HttpError(409, 'The FACEIT connection changed. Try again.');
         if (
           !db.run(
-            "UPDATE demos SET status='queued',size=? WHERE id=? AND owner_id=? AND status='uploading'",
+            "UPDATE demos SET status='queued',size=?,metadata=? WHERE id=? AND owner_id=? AND status='uploading'",
             size,
+            JSON.stringify({ faceitMatch: summary }),
             id,
             u.id,
           ).changes
@@ -353,6 +684,9 @@ export async function providerRoutes(
       abandon(db, id);
       if (e instanceof HttpError) throw e;
       throw new HttpError(502, 'FACEIT download failed. Try again or upload manually.');
+    } finally {
+      operation.finish();
     }
   });
+  return { invalidate, operationFor, verifyFaceitUpload, revalidateFaceit };
 }

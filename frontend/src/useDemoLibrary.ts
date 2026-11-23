@@ -6,11 +6,7 @@ type DemoPage = { demos: Demo[]; total: number };
 const pageSize = 50;
 const unique = (demos: Demo[]) => [...new Map(demos.map((demo) => [demo.id, demo])).values()];
 
-export function useDemoLibrary(
-  scope: 'public' | 'mine',
-  userId: string | undefined,
-  search: string,
-) {
+export function useDemoLibrary(userId: string | undefined, search: string, source = '') {
   const [query, setQuery] = useState(search.trim());
   const [demos, setDemos] = useState<Demo[]>([]);
   const [total, setTotal] = useState(0);
@@ -34,7 +30,13 @@ export function useDemoLibrary(
       setError('');
       const getPage = (offset: number) =>
         api<DemoPage>(
-          '/api/demos?' + new URLSearchParams({ scope, q: query, offset: String(offset) }),
+          '/api/demos?' +
+            new URLSearchParams({
+              scope: 'mine',
+              q: query,
+              offset: String(offset),
+              ...(source ? { source } : {}),
+            }),
           { signal: controller.signal },
         );
       try {
@@ -63,7 +65,7 @@ export function useDemoLibrary(
         }
       }
     },
-    [scope, userId, query],
+    [userId, query, source],
   );
 
   useEffect(() => {

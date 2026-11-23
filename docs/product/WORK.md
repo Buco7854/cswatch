@@ -1,5 +1,7 @@
 # Active work
 
+The private library now contains eligible Steam and FACEIT match tabs. Connected accounts handles credentials and identity management. Live provider verification remains the next provider checkpoint, including FACEIT history and signed Downloads access, Steam sync and the desktop CS2 download handoff. [Provider setup](../ACCESS-SETUP.md#steam-and-faceit)
+
 After the private preview was gracefully stopped, the complete ignored pack tree was restored to `var/maps-final`. It includes Mirage, Dust2 and Ancient, ten equipment IDs and private agent exports. Keep the operator asset tree intact. `MAP_ASSETS_DIR` supplies all operator artwork independently of the application database volume. Do not commit proprietary assets, recordings, extracted audio, private captures, credentials or preparation caches.
 
 Local third-person work adds authored grenade, Dual Berettas, C4 carry and defuse poses to the CT/T directional bank. The renderer fits the model’s grip to the posed hand and keeps player sun shadows independent of the static map cache. Recorded movement still drives gait phase and the centred blend window across chunks. Terrain contacts remain approximate. [Renderer](NATIVE-RENDERER.md#third-person-rendering)

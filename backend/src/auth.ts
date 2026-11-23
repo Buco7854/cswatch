@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { Store } from './db.js';
+import { matchSources } from './match-library.js';
 import { now } from './db.js';
 import type { Config } from './config.js';
 import { fetchSteamName } from './steam-name.js';
@@ -29,11 +30,17 @@ const credentials = z.object({
 });
 /** Steam-created accounts use their Steam name, which can contain any script. */
 const login = credentials.extend({ username: z.string().trim().min(1).max(64) });
-export async function authRoutes(app: FastifyInstance, db: Store, c: Config) {
+export async function authRoutes(
+  app: FastifyInstance,
+  db: Store,
+  c: Config,
+  invalidateProviderCache: (userId: string) => void,
+) {
   app.get('/api/auth/me', async (r) => ({
     user: r.user
       ? {
           ...r.user,
+          match_sources: matchSources(db, c, r.user.id),
           identities: db.all('SELECT provider,subject FROM identities WHERE user_id=?', r.user.id),
         }
       : null,
@@ -86,6 +93,7 @@ export async function authRoutes(app: FastifyInstance, db: Store, c: Config) {
     };
   });
   app.post('/api/auth/logout', async (r, reply) => {
+    if (r.user) invalidateProviderCache(r.user.id);
     const cookie = sessionCookieName(c);
     db.run('DELETE FROM sessions WHERE token_hash=?', digest(r.cookies[cookie] || ''));
     reply.clearCookie(cookie, {

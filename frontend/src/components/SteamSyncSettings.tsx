@@ -1,6 +1,6 @@
 import { ExternalLink } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { useApp } from '../context';
 import { api } from '../api';
 import { t } from '../i18n';
 import { useConfirm } from './Confirmation';
@@ -8,11 +8,9 @@ import { useConfirm } from './Confirmation';
 type History = {
   configured: boolean;
   needs_codes: boolean;
-  next_offset: number | null;
-  items: { match_id: string; share_code: string; demo_id: string | null }[];
 };
 
-export default function SteamMatchHistory({
+export default function SteamSyncSettings({
   enabled,
   admin,
 }: {
@@ -20,18 +18,18 @@ export default function SteamMatchHistory({
   admin: boolean;
 }) {
   const confirm = useConfirm();
+  const { refresh } = useApp();
   const [history, setHistory] = useState<History>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
   const [edit, setEdit] = useState(false);
-  const [offset, setOffset] = useState(0);
   const [reload, setReload] = useState(0);
   const [opened, setOpened] = useState(false);
   useEffect(() => {
     if (!opened) return;
     const controller = new AbortController();
-    api<History>('/api/connections/steam/matches?offset=' + offset, { signal: controller.signal })
+    api<History>('/api/connections/steam/history', { signal: controller.signal })
       .then((result) => {
         if (!controller.signal.aborted) setHistory(result);
       })
@@ -39,7 +37,7 @@ export default function SteamMatchHistory({
         if (!controller.signal.aborted) setError(failure.message);
       });
     return () => controller.abort();
-  }, [opened, offset, reload]);
+  }, [opened, reload]);
 
   async function run(action: () => Promise<string | undefined>) {
     if (busy) return;
@@ -51,7 +49,6 @@ export default function SteamMatchHistory({
     } catch (failure) {
       setError((failure as Error).message);
     } finally {
-      setOffset(0);
       setReload((n) => n + 1);
       setBusy(false);
     }
@@ -68,6 +65,7 @@ export default function SteamMatchHistory({
     const body = JSON.stringify({ auth_code: data.get('auth_code'), share_code });
     void run(async () => {
       await api('/api/connections/steam/history', { method: 'PUT', body });
+      await refresh();
       form.reset();
       setEdit(false);
       return 'Steam sync codes verified.';
@@ -83,9 +81,7 @@ export default function SteamMatchHistory({
       )}
       {status && <p role="status">{t(status)}</p>}
       <p className="muted">
-        {t(
-          'Match sync lists your recent Premier and Competitive matches so you can add their demos here.',
-        )}
+        {t('Save codes to sync your Premier and Competitive matches in the library.')}
       </p>
       {!enabled && (
         <>
@@ -112,7 +108,7 @@ export default function SteamMatchHistory({
           )}
         </>
       )}
-      {!history && opened && !error && <p role="status">{t('Loading matches…')}</p>}
+      {!history && opened && !error && <p role="status">{t('Loading Steam sync settings…')}</p>}
       {enabled && history && (!history.configured || edit) && (
         <form onSubmit={save} aria-busy={busy}>
           <p className="muted">
@@ -166,23 +162,6 @@ export default function SteamMatchHistory({
         <div className="actions">
           {enabled && (
             <>
-              <button
-                className="button primary"
-                disabled={busy || history.needs_codes}
-                onClick={() =>
-                  void run(async () => {
-                    const result = await api<{ up_to_date: boolean }>(
-                      '/api/connections/steam/history/sync',
-                      { method: 'POST' },
-                    );
-                    return result.up_to_date
-                      ? 'Steam match list is up to date.'
-                      : 'More Steam matches may be available. Sync again to continue.';
-                  })
-                }
-              >
-                {t('Sync Steam matches')}
-              </button>
               {!edit && (
                 <button className="button" disabled={busy} onClick={() => setEdit(true)}>
                   {t('Replace Steam sync codes')}
@@ -205,64 +184,13 @@ export default function SteamMatchHistory({
                 });
                 if (!accepted) return;
                 await api('/api/connections/steam/history', { method: 'DELETE' });
+                await refresh();
                 setEdit(false);
                 return 'Steam match sync was removed.';
               })
             }
           >
             {t('Remove Steam sync')}
-          </button>
-        </div>
-      )}
-      {Boolean(history?.items.length) && (
-        <p className="muted">
-          {t(
-            'Only CS2 can download these demos. Choose Download in CS2, then upload the file from the game/csgo/replays folder of your CS2 installation. Older matches may no longer be available.',
-          )}
-        </p>
-      )}
-      {history?.items.map((match) => (
-        <div key={match.match_id} className="history-row">
-          <div>
-            <strong>{t('Steam match {{v0}}', { v0: match.match_id })}</strong>
-            <small>{match.share_code}</small>
-          </div>
-          <div className="actions">
-            <a
-              className="button"
-              href={
-                'steam://rungame/730/76561202255233023/+csgo_download_match%20' + match.share_code
-              }
-            >
-              {t('Download in CS2')}
-            </a>
-            {match.demo_id ? (
-              <Link className="button" to={'/watch/' + match.demo_id}>
-                {t('Open uploaded demo')}
-              </Link>
-            ) : (
-              <Link className="button" to={'/library?upload=1&steamMatch=' + match.match_id}>
-                {t('Upload this demo')}
-              </Link>
-            )}
-          </div>
-        </div>
-      ))}
-      {(offset > 0 || history?.next_offset != null) && (
-        <div className="actions">
-          <button
-            className="button"
-            disabled={busy || offset === 0}
-            onClick={() => setOffset(Math.max(0, offset - 25))}
-          >
-            {t('Previous page')}
-          </button>
-          <button
-            className="button"
-            disabled={busy || history?.next_offset == null}
-            onClick={() => setOffset(history!.next_offset!)}
-          >
-            {t('Next page')}
           </button>
         </div>
       )}

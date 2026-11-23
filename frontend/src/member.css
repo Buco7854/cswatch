@@ -382,6 +382,14 @@
   padding: 10px 20px;
   border-bottom: 1px solid var(--border);
 }
+.library-sources {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  min-width: 0;
+}
+
 .library-total {
   font-weight: 500;
   white-space: nowrap;
@@ -678,22 +686,6 @@
   font-size: 13px;
   padding: 12px;
   overflow-wrap: anywhere;
-}
-.app-shell .history-row {
-  border-color: var(--border);
-  gap: 20px;
-  min-width: 0;
-}
-.app-shell .history-row > div {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.app-shell .history-row strong {
-  font-size: 14px;
-  font-weight: 500;
-}
-.app-shell .history-row small {
-  font-size: 12px;
 }
 .app-shell .admin-grid {
   gap: 20px;
@@ -1259,14 +1251,6 @@
   }
   .app-shell .settings-panel .button {
     min-height: 42px;
-  }
-  .app-shell .history-row {
-    gap: 14px;
-    flex-wrap: wrap;
-  }
-  .app-shell .history-row > div {
-    flex: 1;
-    min-width: 160px;
   }
   .app-shell .kv-row {
     gap: 16px;

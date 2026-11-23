@@ -3,6 +3,12 @@ export type User = {
   username: string;
   is_admin: boolean;
   csrf: string;
+  match_sources?: {
+    steam: boolean;
+    faceit: boolean;
+    faceit_download: boolean;
+    faceit_verification: 'ready' | 'steam_required' | 'unavailable';
+  };
   identities?: { provider: string; subject: string }[];
 };
 export type Config = {
@@ -17,9 +23,7 @@ export type Config = {
   faceit_enabled: boolean;
   max_upload_mb: number;
   retention_days: number;
-  faceit_configured: boolean;
-  faceit_downloads: boolean;
-  steam_discovery: boolean;
+  steam_discovery?: boolean;
   transcription_enabled: boolean;
   transcription_configured: boolean;
 };

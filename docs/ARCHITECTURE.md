@@ -172,7 +172,7 @@ Password verification/hashing yields to other requests. Login therefore rereads 
 
 Steam match sync stores an encrypted revocable game authentication code, a cursor and a bounded library of share codes for each member. Each verified response advances the cursor in a synchronous transaction. Replay files come from the member’s CS2 client and enter the ordinary upload pipeline.
 
-FACEIT Data API supplies profiles, paged history and match details. A match roster must confirm participation. The approved Downloads API signs the specific upstream resource selected by the member. Each file is validated and queued privately.
+The signed-in session exposes match-source capabilities from instance policy and the member’s identities and saved Steam codes. FACEIT history uses a Unix-time upper bound and an offset within matching seconds to traverse older records beyond the upstream offset limit. Normalized pages use a bounded short-lived cache scoped to the member, session and linked identity. Downloaded reads use SQL restricted to the owner and do not call providers. FACEIT pairing and import check the match roster and live authorization. The approved Downloads API signs the selected upstream resource. Each file is validated and queued privately.
 
 ## Initialization and temporary guests
 

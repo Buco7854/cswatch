@@ -21,6 +21,7 @@ import {
   token,
 } from './security.js';
 import { abandon, accessDemo, reserve, validateMagic } from './ingestion.js';
+import { faceitId } from './match-library.js';
 import { authRoutes } from './auth.js';
 import { steamHistoryRoutes } from './steam-history.js';
 import { openEncryptionKey, openEncryptionKeyForStartup } from './encryption-key.js';
@@ -185,6 +186,7 @@ export async function createApp(
     if (status >= 500) r.log.error({ err: { name: e.name, code: e.code } }, 'Request failed');
     if (status === 429 && !reply.hasHeader('retry-after')) reply.header('Retry-After', '900');
     return reply.code(status).send({
+      ...(e instanceof HttpError && e.code ? { code: e.code } : {}),
       detail:
         e instanceof HttpError
           ? e.message
@@ -193,10 +195,10 @@ export async function createApp(
             : 'The request could not be completed. Try again later.',
     });
   });
-  await authRoutes(app, db, c);
+  const providers = await providerRoutes(app, db, c, providerDownload);
+  await authRoutes(app, db, c, providers.invalidate);
   await setupRoutes(app, db, c);
   await guestRoutes(app, db, c);
-  await providerRoutes(app, db, c, providerDownload);
   steamHistoryRoutes(app, db, c, key);
   await equipmentAssetRoutes(app, db.root, c.mapAssetsDir, c.mapJobsDir);
   await gameplaySoundAssetRoutes(app, db.root, c.mapAssetsDir);
@@ -230,6 +232,7 @@ export async function createApp(
         'error',
       ].map((k) => [k, row[k]]),
     ),
+    source: row.source_ref?.startsWith('steam:') ? 'steam' : row.source,
     owned: row.owner_id === uid,
     guest_owned: row.owner_id === guestId,
     expires_at:
@@ -253,9 +256,11 @@ export async function createApp(
           ? Math.min(c.maxUploadMb, c.guestStorageMb)
           : c.maxUploadMb,
       retention_days: c.retentionDays,
-      steam_discovery: Boolean(c.steamApiKey),
-      faceit_configured: Boolean(c.faceitApiKey),
-      faceit_downloads: Boolean(c.faceitDownloadToken),
+      ...(r.user?.is_admin
+        ? {
+            steam_discovery: Boolean(c.steamApiKey),
+          }
+        : {}),
       transcription_configured: Boolean(c.transcriptionModelDir),
     };
   });
@@ -265,6 +270,7 @@ export async function createApp(
         scope: z.literal('mine').default('mine'),
         offset: z.coerce.number().int().min(0).max(100000).default(0),
         q: z.string().trim().max(120).default(''),
+        source: z.enum(['upload', 'faceit', 'steam']).optional(),
       })
       .parse(r.query);
     const filter = 'owner_id=?';
@@ -276,7 +282,11 @@ export async function createApp(
       const pattern = '%' + q.q.replace(/[\\%_]/g, '\\$&') + '%';
       args.push(pattern, pattern);
     }
-    const where = `WHERE ${filter}${search}`;
+    const source = q.source
+      ? " AND CASE WHEN source_ref LIKE 'steam:%' THEN 'steam' ELSE source END=?"
+      : '';
+    if (q.source) args.push(q.source);
+    const where = `WHERE ${filter}${search}${source}`;
     const rows = db.all(
       `SELECT * FROM demos ${where} ORDER BY created_at DESC,id DESC LIMIT 50 OFFSET ?`,
       ...args,
@@ -287,71 +297,91 @@ export async function createApp(
   });
   app.post('/api/demos', async (r, reply) => {
     const u = r.user || r.guest || requireUser(r);
-    const { steam_match } = z
+    const { steam_match, faceit_match } = z
       .object({
+        faceit_match: faceitId.optional(),
         steam_match: z
           .string()
           .regex(/^[1-9]\d{0,19}$/)
           .optional(),
       })
       .parse(r.query);
-    function checkSteamUpload() {
-      if (!steam_match) return;
-      const live = currentUser(db, r, c);
-      if (!r.user || !live || live.id !== u.id || live.csrf !== r.user.csrf)
-        throw new HttpError(401, 'Session expired. Refresh the page and try again.');
-      if (!db.one('SELECT 1 FROM steam_matches WHERE user_id=? AND match_id=?', u.id, steam_match))
-        throw new HttpError(404, 'This Steam match is no longer in your history.');
-    }
-    checkSteamUpload();
-    const uploadMb = r.user ? c.maxUploadMb : Math.min(c.maxUploadMb, c.guestStorageMb),
-      file = await r.file({ limits: { fileSize: uploadMb * 1024 ** 2 } });
-    if (!file) throw new HttpError(400, 'Choose a .dem or .dem.zst file.');
-    const filename = basename(file.filename),
-      lower = filename.toLowerCase(),
-      suffix = lower.endsWith('.dem.zst') ? '.dem.zst' : lower.endsWith('.dem') ? '.dem' : null;
-    if (!suffix) {
-      file.file.resume();
-      throw new HttpError(400, 'Only .dem and .dem.zst files are supported.');
-    }
-    const ext = suffix === '.dem.zst' ? '.zst' : '.dem';
-    const name =
-      filename.length > 120
-        ? filename.slice(0, 120 - suffix.length) + filename.slice(-suffix.length)
-        : filename;
-    const quota = r.user
-      ? c
-      : {
-          ...c,
-          maxUploadMb: uploadMb,
-          userDemoLimit: c.guestDemoLimit,
-          userStorageMb: c.guestStorageMb,
-        };
-    const { id, folder } = reserve(db, quota, u.id, name, r.user ? 'upload' : 'guest');
-    let size = 0;
-    file.file.on('data', (chunk) => {
-      size += chunk.length;
-    });
+    if (steam_match && faceit_match) throw new HttpError(400, 'Choose one match for this upload.');
+    const faceitUpload = faceit_match ? providers.operationFor(requireUser(r).id) : undefined;
     try {
-      await pipeline(file.file, createWriteStream(join(folder, 'input' + ext), { mode: 0o600 }));
-      if (file.file.truncated) throw new HttpError(413, 'Demo exceeds the upload limit.');
-      validateMagic(join(folder, 'input' + ext), ext);
-      db.transaction(() => {
-        checkSteamUpload();
-        db.run(
-          "UPDATE demos SET status='queued',size=?,source_ref=? WHERE id=?",
-          size,
-          steam_match ? 'steam:' + steam_match : null,
-          id,
-        );
+      const faceit = faceit_match
+        ? await providers.verifyFaceitUpload(r, requireUser(r), faceit_match)
+        : undefined;
+      function checkSteamUpload() {
+        if (!steam_match) return;
+        const live = currentUser(db, r, c);
+        if (!r.user || !live || live.id !== u.id || live.csrf !== r.user.csrf)
+          throw new HttpError(401, 'Session expired. Refresh the page and try again.');
+        if (
+          !db.one('SELECT 1 FROM steam_matches WHERE user_id=? AND match_id=?', u.id, steam_match)
+        )
+          throw new HttpError(404, 'This Steam match is no longer in your history.');
+      }
+      checkSteamUpload();
+      const uploadMb = r.user ? c.maxUploadMb : Math.min(c.maxUploadMb, c.guestStorageMb),
+        file = await r.file({ limits: { fileSize: uploadMb * 1024 ** 2 } });
+      if (!file) throw new HttpError(400, 'Choose a .dem or .dem.zst file.');
+      const filename = basename(file.filename),
+        lower = filename.toLowerCase(),
+        suffix = lower.endsWith('.dem.zst') ? '.dem.zst' : lower.endsWith('.dem') ? '.dem' : null;
+      if (!suffix) {
+        file.file.resume();
+        throw new HttpError(400, 'Only .dem and .dem.zst files are supported.');
+      }
+      const ext = suffix === '.dem.zst' ? '.zst' : '.dem';
+      const name =
+        filename.length > 120
+          ? filename.slice(0, 120 - suffix.length) + filename.slice(-suffix.length)
+          : filename;
+      const quota = r.user
+        ? c
+        : {
+            ...c,
+            maxUploadMb: uploadMb,
+            userDemoLimit: c.guestDemoLimit,
+            userStorageMb: c.guestStorageMb,
+          };
+      const { id, folder } = reserve(db, quota, u.id, name, r.user ? 'upload' : 'guest');
+      let size = 0;
+      file.file.on('data', (chunk) => {
+        size += chunk.length;
       });
-    } catch (e) {
-      abandon(db, id);
-      throw e;
+      try {
+        await pipeline(file.file, createWriteStream(join(folder, 'input' + ext), { mode: 0o600 }));
+        if (file.file.truncated) throw new HttpError(413, 'Demo exceeds the upload limit.');
+        validateMagic(join(folder, 'input' + ext), ext);
+        db.transaction(() => {
+          checkSteamUpload();
+          if (faceit) {
+            providers.revalidateFaceit(r, requireUser(r), faceit.subject);
+            if (faceitUpload?.signal.aborted)
+              throw new HttpError(409, 'The FACEIT connection changed. Try again.');
+          }
+          db.run(
+            "UPDATE demos SET status='queued',size=?,source_ref=?,source=?,faceit_match_id=?,metadata=? WHERE id=?",
+            size,
+            steam_match ? 'steam:' + steam_match : null,
+            faceit ? 'faceit' : r.user ? 'upload' : 'guest',
+            faceit_match ?? null,
+            faceit ? JSON.stringify({ faceitMatch: faceit.summary }) : null,
+            id,
+          );
+        });
+      } catch (e) {
+        abandon(db, id);
+        throw e;
+      }
+      db.audit(u.id, 'demo.uploaded');
+      reply.code(202);
+      return { id };
+    } finally {
+      faceitUpload?.finish();
     }
-    db.audit(u.id, 'demo.uploaded');
-    reply.code(202);
-    return { id };
   });
   app.get<{ Params: { id: string } }>('/api/demos/:id', async (r) =>
     visible(accessDemo(db, r.params.id, r.user, false, r.guest), r.user?.id, r.guest?.id),
