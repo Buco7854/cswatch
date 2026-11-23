@@ -54,7 +54,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
       faceit_enabled: boolean(env.FACEIT_ENABLED),
       transcription_enabled: boolean(env.TRANSCRIPTION_ENABLED),
     },
-    steamSyncKeyFile: env.STEAM_SYNC_KEY_FILE || '',
+    encryptionKey: z
+      .string()
+      .regex(/^(?:[a-fA-F0-9]{64})?$/, 'ENCRYPTION_KEY must be 64 hexadecimal characters.')
+      .parse(env.ENCRYPTION_KEY || ''),
     steamApiKey: env.STEAM_API_KEY || '',
     adminUsername:
       z
