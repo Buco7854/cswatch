@@ -4,11 +4,16 @@ import { eventPlayer } from './review-events';
 import { playerPose } from './player-pose';
 
 type ParticipantEvents = Map<string, GameEvent[]>;
-type SpectatorEvents = { damage: ParticipantEvents; deaths: ParticipantEvents };
+type SpectatorEvents = {
+  damage: ParticipantEvents;
+  deaths: ParticipantEvents;
+  killfeed: GameEvent[];
+};
 export function indexSpectatorEvents(data: Playback): SpectatorEvents {
-  const index: SpectatorEvents = { damage: new Map(), deaths: new Map() };
+  const index: SpectatorEvents = { damage: new Map(), deaths: new Map(), killfeed: [] };
   for (const event of data.events) {
     if (!Number.isSafeInteger(event.tick)) continue;
+    if (event.type === 'player_death') index.killfeed.push(event);
     const destination =
       event.type === 'player_hurt'
         ? index.damage
@@ -23,7 +28,7 @@ export function indexSpectatorEvents(data: Playback): SpectatorEvents {
     events.push(event);
     destination.set(player.id, events);
   }
-  for (const events of [...index.damage.values(), ...index.deaths.values()])
+  for (const events of [index.killfeed, ...index.damage.values(), ...index.deaths.values()])
     events.sort((a, b) => a.tick - b.tick);
   return index;
 }
@@ -36,6 +41,14 @@ function preceding(events: GameEvent[], tick: number) {
     else high = middle;
   }
   return low - 1;
+}
+/** Most recent four eliminations, including world kills with an unidentified victim. */
+export function killfeedAt(index: SpectatorEvents, tick: number, rate: number) {
+  const events = index.killfeed;
+  const end = preceding(events, tick) + 1;
+  let start = end;
+  while (start > 0 && end - start < 4 && events[start - 1].tick > tick - rate * 6) start--;
+  return events.slice(start, end);
 }
 function at(data: Playback, id: string, tick: number) {
   if (!data.frames.length || tick < data.frames[0].tick || tick > data.frames.at(-1)!.tick) return;

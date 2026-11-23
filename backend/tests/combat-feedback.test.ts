@@ -2,7 +2,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { sample } from '../../frontend/src/sample.js';
 import { readSettings, shotTracersEnabled } from '../../frontend/src/playback.js';
-import { damageFeedbackAt, indexSpectatorEvents } from '../../frontend/src/spectator-state.js';
+import {
+  damageFeedbackAt,
+  indexSpectatorEvents,
+  killfeedAt,
+} from '../../frontend/src/spectator-state.js';
 import { flashFeedbackAt } from '../../frontend/src/flash-feedback.js';
 import {
   createShotRayCache,
@@ -21,6 +25,24 @@ import {
 import { povProjection, type CameraView } from '../../frontend/src/pov-camera.js';
 import { tacticalPalette } from '../../frontend/src/tactical-palette.js';
 import type { GameEvent, Grenade, Playback } from '../../shared/playback.js';
+
+test('killfeed preserves simultaneous and world deaths, its four-entry limit and expiry on seek', () => {
+  const events: GameEvent[] = [1, 9, 9, 9, 10, 12].map((tick, i) => ({
+    tick,
+    type: 'player_death',
+    user_name: String(i),
+  }));
+  const index = indexSpectatorEvents({
+    ...sample,
+    events: [...events, { tick: 10, type: 'round_end' }],
+  });
+  for (const tick of [0, 1, 9, 10, 12, 15, 16, 18, 9, 0]) {
+    assert.deepEqual(
+      killfeedAt(index, tick, 1),
+      events.filter((e) => e.tick <= tick && e.tick > tick - 6).slice(-4),
+    );
+  }
+});
 
 test('hurt feedback has a small-hit floor, capped stacking and a linear demo-time release', () => {
   const player = sample.players.find(({ id }) => id !== '0')!.id;
