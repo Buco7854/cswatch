@@ -1,4 +1,14 @@
-import { Group, Light, Mesh, Object3D, Scene, Matrix4, type AnimationClip } from 'three';
+import {
+  Bone,
+  Group,
+  Light,
+  Mesh,
+  SkinnedMesh,
+  Object3D,
+  Scene,
+  Matrix4,
+  type AnimationClip,
+} from 'three';
 
 /**
  * Prepared map descendants are immutable; only their placement can change. Three's
@@ -8,6 +18,7 @@ import { Group, Light, Mesh, Object3D, Scene, Matrix4, type AnimationClip } from
  */
 export class StaticMapGroup extends Group {
   private sealed = false;
+  private trackRigCasters = false;
   private settled = false;
   private readonly placedLocal = new Matrix4();
   private readonly placedParent = new Matrix4();
@@ -17,14 +28,25 @@ export class StaticMapGroup extends Group {
     return this.sealed;
   }
 
+  // Clip-free maps with bound prop rigs stay mutable. The shadow cache can
+  // inspect their casters normally instead of invalidating every frame.
+  get canTrackRigCasters(): boolean {
+    return this.trackRigCasters;
+  }
+
   seal(clips: readonly AnimationClip[]): void {
     if (clips.length || this.sealed) return;
     let eligible = true;
+    let rigs = 0;
+    let nodes = 0;
+    let hasBone = false;
     this.traverse((object) => {
+      nodes++;
+      if (object.constructor === Bone) hasBone = true;
+      const boundRig = object instanceof SkinnedMesh && Boolean(object.skeleton?.bones.length);
+      if (boundRig) rigs++;
       if (
         object.animations.length ||
-        ('isSkinnedMesh' in object && object.isSkinnedMesh) ||
-        ('isBone' in object && object.isBone) ||
         ('isInstancedMesh' in object && object.isInstancedMesh) ||
         (object instanceof Mesh && object.morphTargetInfluences?.length) ||
         !(
@@ -32,6 +54,8 @@ export class StaticMapGroup extends Group {
           object.constructor === Group ||
           object.constructor === Scene ||
           object.constructor === Mesh ||
+          object.constructor === Bone ||
+          boundRig ||
           object === this ||
           object instanceof Light
         )
@@ -39,6 +63,10 @@ export class StaticMapGroup extends Group {
         eligible = false;
     });
     if (!eligible) return;
+    if (rigs || hasBone) {
+      this.trackRigCasters = rigs > 0 && rigs <= 256 && nodes <= 8192;
+      return;
+    }
     this.traverse((object) => {
       if (object === this) return;
       if (object.matrixAutoUpdate) object.updateMatrix();

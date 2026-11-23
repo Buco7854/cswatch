@@ -235,3 +235,39 @@ test('actual WebGL static shadow reuse preserves pixels and updates moving caste
     expect(scenario.differentPixels).toBe(0);
   }
 });
+
+test('changing the loaded grade preserves mixed-map shadow refresh and reuse', async ({
+  page,
+}, info) => {
+  const bundle = await build({
+    entryPoints: [fileURLToPath(new URL('./fixtures/graded-shadow-scene.tsx', import.meta.url))],
+    format: 'esm',
+    bundle: true,
+    write: false,
+    jsx: 'automatic',
+    define: { 'process.env.NODE_ENV': '"production"' },
+  });
+  await page.route('**/__qa_graded_shadow__/**', (route) =>
+    route.request().url().endsWith('fixture.js')
+      ? route.fulfill({ contentType: 'text/javascript', body: bundle.outputFiles[0].text })
+      : route.fulfill({
+          contentType: 'text/html',
+          body: '<canvas width="320" height="240"></canvas>',
+        }),
+  );
+  await page.goto('/__qa_graded_shadow__/index.html');
+  const result = await page.evaluate(async () => {
+    const url = location.origin + '/__qa_graded_shadow__/fixture.js';
+    const { gradedShadowScene } = await import(/* @vite-ignore */ url);
+    return gradedShadowScene(document.querySelector('canvas'));
+  });
+  await info.attach('graded-shadow-draws.json', {
+    contentType: 'application/json',
+    body: JSON.stringify(result),
+  });
+  expect(result.moved, JSON.stringify(result)).toBe(result.reference);
+  expect(result.reused).toBe(result.quiet);
+  expect(result.moved).toBeGreaterThan(result.reused);
+  expect(result.movedBytes).toBeGreaterThan(100);
+  expect(result.referenceDifferences).toBe(0);
+});

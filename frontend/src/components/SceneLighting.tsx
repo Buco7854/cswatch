@@ -1,5 +1,5 @@
 import { useContext, useLayoutEffect, useMemo, useRef, type RefObject } from 'react';
-import { useThree } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber';
 import { Color, Object3D, type DirectionalLight } from 'three';
 import { mapGradeBurstLights, MapGradeContext, mapGradeExposureGain } from '../map-grade';
 import { applySunShadow, type MapSun } from '../map-sun';
@@ -53,18 +53,13 @@ export default function SceneLighting({
         ? Math.PI
         : 0.6;
   const headroom = Math.max(1, mapGradeExposureGain(authored) * 1.35);
-  useLayoutEffect(() => {
-    const original = scene.onBeforeRender;
-    scene.onBeforeRender = function (...args) {
-      original.apply(this, args);
-      const burst = mapGradeBurstLights.get(scene);
-      if (burst) burst.light.intensity = burst.intensity() / headroom;
-    };
-    invalidate();
-    return () => {
-      scene.onBeforeRender = original;
-    };
-  }, [scene, headroom, invalidate]);
+  useLayoutEffect(() => invalidate(), [headroom, invalidate]);
+  // Apply the recorded light on the same frame, before the world draws. Grade
+  // arrival must not replace the scene's static shadow invalidation callback.
+  useFrame(() => {
+    const burst = mapGradeBurstLights.get(scene);
+    if (burst) burst.light.intensity = burst.intensity() / headroom;
+  }, -1);
   useLayoutEffect(() => {
     target.position.set(...(sun?.target || [0, 0, 0]));
     target.updateMatrixWorld(true);
