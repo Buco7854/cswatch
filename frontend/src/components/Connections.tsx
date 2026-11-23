@@ -32,7 +32,7 @@ export default function Connections() {
   const nav = useNavigate();
   const [params] = useSearchParams();
   const [busy, setBusy] = useState(''),
-    [error, setError] = useState(''),
+    [error, setError] = useState<{ at: 'steam' | 'faceit'; message: string }>(),
     [history, setHistory] = useState<History>(),
     [page, setPage] = useState(0),
     [selection, setSelection] = useState<{ matchId: string; files: DemoFile[] }>();
@@ -41,11 +41,12 @@ export default function Connections() {
   const identity = useRef(user?.id);
   identity.current = user?.id;
   const active = useRef(true);
+  const results = useRef<HTMLElement>(null);
   const pending = useRef<object | null>(null);
   useEffect(() => {
     active.current = true;
     setBusy('');
-    setError('');
+    setError(undefined);
     setHistory(undefined);
     setPage(0);
     setSelection(undefined);
@@ -61,11 +62,12 @@ export default function Connections() {
     const current = () =>
       active.current && identity.current === user.id && pending.current === attempt;
     setBusy(name);
-    setError('');
+    setError(undefined);
     try {
       await fn(current);
     } catch (e) {
-      if (current()) setError((e as Error).message);
+      if (current())
+        setError({ at: name === 'steam-link' ? 'steam' : 'faceit', message: (e as Error).message });
     } finally {
       if (current()) {
         pending.current = null;
@@ -81,6 +83,9 @@ export default function Connections() {
       if (current()) {
         setPage(offset);
         setHistory(result);
+        requestAnimationFrame(() =>
+          results.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }),
+        );
       }
     });
   }
@@ -102,6 +107,12 @@ export default function Connections() {
       if (current()) nav('/watch/' + r.id);
     });
   }
+  const notice = (at: 'steam' | 'faceit') =>
+    error?.at === at && (
+      <p role="alert" className="error notice">
+        {t(error.message)}
+      </p>
+    );
   return (
     <>
       {!user ? (
@@ -116,11 +127,6 @@ export default function Connections() {
         <>
           {params.get('steam') === 'cancelled' && !error && (
             <p role="status">{t('Steam linking was cancelled. Start again.')}</p>
-          )}
-          {error && (
-            <p role="alert" className="error notice">
-              {t(error)}
-            </p>
           )}
           <div className="settings-section">
             <div>
@@ -151,6 +157,7 @@ export default function Connections() {
                 <h3>{t('Steam identity')}</h3>
                 <Link2 size={18} />
               </div>
+              {notice('steam')}
               <p>
                 {steam
                   ? t('Steam ID {{v0}}', { v0: steam.subject })
@@ -158,6 +165,11 @@ export default function Connections() {
                       'Link your Steam account to use match discovery and verify your FACEIT account.',
                     )}
               </p>
+              {!config.steam_enabled && Boolean(user.is_admin) && (
+                <p role="status">
+                  {t('Turn on Steam sign-in in Administration, or set STEAM_ENABLED=true.')}
+                </p>
+              )}
               <div className="actions">
                 {config.steam_enabled && (
                   <button
@@ -191,6 +203,7 @@ export default function Connections() {
                 <SteamMatchHistory
                   key={user.id + ':' + steam.subject}
                   enabled={config.steam_enabled && config.steam_discovery}
+                  admin={Boolean(user.is_admin)}
                 />
               )}
             </div>
@@ -228,6 +241,7 @@ export default function Connections() {
                 <h3>{t('Match history & imports')}</h3>
                 <Link2 size={18} />
               </div>
+              {notice('faceit')}
               <p>
                 {faceit
                   ? t(
@@ -273,18 +287,27 @@ export default function Connections() {
                   )}
                 </div>
               )}
-              {config.faceit_enabled && !config.faceit_configured && (
-                <p className="muted">
-                  {t('The administrator must configure a FACEIT Data API key.')}
+              {!config.faceit_enabled && Boolean(user.is_admin) && (
+                <p role="status">
+                  {t('Turn on FACEIT integration in Administration, or set FACEIT_ENABLED=true.')}
                 </p>
               )}
-              <p className="muted">
-                {config.faceit_downloads
-                  ? t('Downloads API is configured. Demo availability still depends on FACEIT.')
-                  : t(
-                      'Automatic demo downloads need an approved FACEIT Downloads API token. Manual uploads always work.',
-                    )}
-              </p>
+              {config.faceit_enabled && !config.faceit_configured && (
+                <p role="status">
+                  {user.is_admin
+                    ? t('Set FACEIT_API_KEY on the server, then restart the web service.')
+                    : t('The administrator must configure a FACEIT Data API key.')}
+                </p>
+              )}
+              {config.faceit_enabled && (
+                <p className="muted">
+                  {config.faceit_downloads
+                    ? t('Downloads API is configured. Demo availability still depends on FACEIT.')
+                    : t(
+                        'Automatic demo downloads need an approved FACEIT Downloads API token. Manual uploads always work.',
+                      )}
+                </p>
+              )}
               {config.faceit_enabled &&
                 config.faceit_configured &&
                 config.faceit_downloads &&
@@ -295,7 +318,11 @@ export default function Connections() {
                       const raw = String(new FormData(e.currentTarget).get('match'));
                       const matchId = parseMatch(raw);
                       if (matchId) selectMatch(matchId);
-                      else setError('Enter a FACEIT CS2 match ID or match room URL.');
+                      else
+                        setError({
+                          at: 'faceit',
+                          message: 'Enter a FACEIT CS2 match ID or match room URL.',
+                        });
                     }}
                   >
                     <label>
@@ -325,10 +352,10 @@ export default function Connections() {
             </div>
           </div>
           {history && (
-            <section className="history-panel">
+            <section ref={results} className="history-panel">
               <h2>{t('Recent FACEIT matches')}</h2>
               {history.items.length === 0 && (
-                <p role="status">{t('No recent CS2 matches found.')}</p>
+                <p role="status">{t('FACEIT lists no CS2 matches for this account.')}</p>
               )}
               {history.items.map((m) => (
                 <div key={m.match_id} className="history-row">

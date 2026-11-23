@@ -12,7 +12,13 @@ type History = {
   items: { match_id: string; share_code: string; demo_id: string | null }[];
 };
 
-export default function SteamMatchHistory({ enabled }: { enabled: boolean }) {
+export default function SteamMatchHistory({
+  enabled,
+  admin,
+}: {
+  enabled: boolean;
+  admin: boolean;
+}) {
   const confirm = useConfirm();
   const [history, setHistory] = useState<History>();
   const [busy, setBusy] = useState(false);
@@ -76,9 +82,36 @@ export default function SteamMatchHistory({ enabled }: { enabled: boolean }) {
         </p>
       )}
       {status && <p role="status">{t(status)}</p>}
-      {!enabled && (
-        <p className="muted">{t('The administrator must configure Steam match sync.')}</p>
-      )}
+      <p className="muted">
+        {t(
+          'Match sync lists your recent Premier and Competitive matches so you can add their demos here.',
+        )}
+      </p>
+      {!enabled &&
+        (admin ? (
+          <>
+            <p role="status">
+              {t(
+                'Match sync is not set up on this server. Add a Steam Web API key as STEAM_API_KEY, then restart the web service.',
+              )}
+            </p>
+            <a
+              className="button"
+              href="https://steamcommunity.com/dev/apikey"
+              target="_blank"
+              rel="noreferrer"
+            >
+              {t('Get a Steam Web API key')}
+              <ExternalLink size={15} aria-hidden="true" />
+            </a>
+          </>
+        ) : (
+          <p role="status">
+            {t(
+              'Match sync is not set up on this server yet. Ask its administrator to add a Steam Web API key.',
+            )}
+          </p>
+        ))}
       {!history && opened && !error && <p role="status">{t('Loading matches…')}</p>}
       {enabled && history && (!history.configured || edit) && (
         <form onSubmit={save} aria-busy={busy}>
@@ -181,11 +214,13 @@ export default function SteamMatchHistory({ enabled }: { enabled: boolean }) {
           </button>
         </div>
       )}
-      <p className="muted">
-        {t(
-          'Download a match in the Steam desktop client, then upload its demo here. If CS2 cannot download a match, the recording may have expired.',
-        )}
-      </p>
+      {Boolean(history?.items.length) && (
+        <p className="muted">
+          {t(
+            'Only CS2 can download these demos. Choose Download in CS2, then upload the file from the game/csgo/replays folder of your CS2 installation. Older matches may no longer be available.',
+          )}
+        </p>
+      )}
       {history?.items.map((match) => (
         <div key={match.match_id} className="history-row">
           <div>

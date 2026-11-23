@@ -157,6 +157,8 @@ test('verified Steam subject creates independent ownership when a local username
     });
     let verifications = 0;
     globalThis.fetch = async (input, options) => {
+      if (input === `https://steamcommunity.com/profiles/${subject}/?xml=1`)
+        return new Response('', { status: 503 });
       assert.equal(input, 'https://steamcommunity.com/openid/login');
       assert.equal(
         new URLSearchParams(String(options?.body)).get('openid.mode'),
@@ -184,6 +186,100 @@ test('verified Steam subject creates independent ownership when a local username
     );
     assert.equal((await callback()).statusCode, 400);
     assert.equal(verifications, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+    await s.close();
+  }
+});
+
+test('Steam-created accounts follow their Steam name until a password fixes it', async () => {
+  const s = await setup({ STEAM_ENABLED: 'true' });
+  const originalFetch = globalThis.fetch;
+  let name = '';
+  let nonce = 0;
+  globalThis.fetch = async (input) => {
+    const profile = /^https:\/\/steamcommunity\.com\/profiles\/(\d{17})\/\?xml=1$/.exec(
+      String(input),
+    );
+    if (profile)
+      return new Response(
+        `<?xml version="1.0"?><profile><steamID64>${profile[1]}</steamID64><steamID><![CDATA[${name}]]></steamID></profile>`,
+      );
+    assert.equal(input, 'https://steamcommunity.com/openid/login');
+    return new Response('ns:http://specs.openid.net/auth/2.0\nis_valid:true\n');
+  };
+  const host = 'localhost:8000';
+  async function signIn(subject: string, session?: { cookie: string; csrf: string }) {
+    const start = session
+      ? await s.app.inject({
+          method: 'POST',
+          url: '/api/auth/steam/link',
+          headers: { host, origin, cookie: session.cookie, 'x-csrf-token': session.csrf },
+        })
+      : await s.app.inject({ url: '/api/auth/steam', headers: { host } });
+    const upstream = new URL(session ? start.json().location : start.headers.location!);
+    const returnTo = upstream.searchParams.get('openid.return_to')!;
+    const state = new URL(returnTo).searchParams.get('state')!;
+    const id = `https://steamcommunity.com/openid/id/${subject}`;
+    const query = new URLSearchParams({
+      state,
+      'openid.mode': 'id_res',
+      'openid.ns': 'http://specs.openid.net/auth/2.0',
+      'openid.op_endpoint': 'https://steamcommunity.com/openid/login',
+      'openid.return_to': returnTo,
+      'openid.identity': id,
+      'openid.claimed_id': id,
+      'openid.response_nonce': new Date().toISOString().replace(/\.\d{3}Z$/, 'Z') + 'n' + nonce++,
+      'openid.assoc_handle': 'test-assoc',
+      'openid.signed': 'op_endpoint,return_to,response_nonce,assoc_handle,claimed_id,identity',
+      'openid.sig': 'test-signature',
+    });
+    const result = await s.app.inject({
+      url: '/api/auth/steam/callback?' + query,
+      headers: {
+        host,
+        cookie: `steam_state=${state}` + (session ? '; ' + session.cookie : ''),
+      },
+    });
+    assert.equal(result.statusCode, 303, result.body);
+    const cookie = `${COOKIE}=${result.cookies.find((c) => c.name === COOKIE)!.value}`;
+    const me = await s.app.inject({ url: '/api/auth/me', headers: { host, cookie } });
+    return { cookie, ...me.json().user } as { cookie: string; csrf: string; username: string };
+  }
+  try {
+    name = "Подсосник blick'a";
+    const first = await signIn('76561198000000011');
+    assert.equal(first.username, name);
+    const twin = await signIn('76561198000000012');
+    assert.equal(twin.username, `${name} (0012)`);
+
+    name = 'New name';
+    assert.equal((await signIn('76561198000000011')).username, 'New name');
+    name = '';
+    const kept = await signIn('76561198000000011');
+    assert.equal(kept.username, 'New name', 'A missing Steam name keeps the previous one.');
+
+    const password = 'a-long-test-password';
+    const set = await s.app.inject({
+      method: 'POST',
+      url: '/api/auth/password',
+      headers: { host, origin, cookie: kept.cookie, 'x-csrf-token': kept.csrf },
+      payload: { current_password: '', new_password: password },
+    });
+    assert.equal(set.statusCode, 200, set.body);
+    name = 'Renamed again';
+    assert.equal((await signIn('76561198000000011')).username, 'New name');
+    const login = await s.app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      headers: { host, origin },
+      payload: { username: 'new NAME', password },
+    });
+    assert.equal(login.statusCode, 200, login.body);
+
+    const local = await s.register('local_owner');
+    const linked = await signIn('76561198000000013', local);
+    assert.equal(linked.username, 'local_owner', 'Linking never renames a local account.');
   } finally {
     globalThis.fetch = originalFetch;
     await s.close();

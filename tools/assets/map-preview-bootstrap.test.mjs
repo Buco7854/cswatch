@@ -29,7 +29,7 @@ async function fixture(t) {
   await prepareMapJobs(options.jobs);
   return options;
 }
-test('actors and HUD icons precede alternating static and first-person models, which yield to queued maps', async (t) => {
+test('artwork, actors, HUD icons and sounds precede alternating static and first-person models, which yield to queued maps', async (t) => {
   const options = await fixture(t),
     controller = new AbortController(),
     sequence = [];
@@ -71,9 +71,13 @@ test('actors and HUD icons precede alternating static and first-person models, w
   );
   assert.deepEqual(sequence, [
     'map',
+    'preview',
+    'map',
     'agents',
     'map',
     'equipment',
+    'map',
+    'sounds',
     'map',
     'model1',
     'map',
@@ -82,10 +86,6 @@ test('actors and HUD icons precede alternating static and first-person models, w
     'model2',
     'map',
     'rig2',
-    'map',
-    'preview',
-    'map',
-    'sounds',
     'map',
   ]);
 });
@@ -125,8 +125,8 @@ test('a transient native failure preserves its retry backoff while other present
   assert.deepEqual(attempts, [
     ['agents', 1000],
     ['equipment', 1000],
-    ['equipment-models', 1000],
-    ['viewmodels', 1000],
+    ['equipment-models', 1002],
+    ['viewmodels', 1002],
     ['agents', 1300],
   ]);
   assert.ok(maps >= 150);

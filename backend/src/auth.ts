@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { Store } from './db.js';
 import { now } from './db.js';
 import type { Config } from './config.js';
+import { fetchSteamName } from './steam-name.js';
 import { readUpstreamText } from './upstream.js';
 import {
   HttpError,
@@ -26,6 +27,8 @@ const credentials = z.object({
   username: z.string().regex(/^[A-Za-z0-9_-]{3,32}$/),
   password: z.string().min(12).max(128),
 });
+/** Steam-created accounts use their Steam name, which can contain any script. */
+const login = credentials.extend({ username: z.string().trim().min(1).max(64) });
 export async function authRoutes(app: FastifyInstance, db: Store, c: Config) {
   app.get('/api/auth/me', async (r) => ({
     user: r.user
@@ -55,7 +58,7 @@ export async function authRoutes(app: FastifyInstance, db: Store, c: Config) {
     return { user: { id, username: body.username, is_admin: false, csrf } };
   });
   app.post('/api/auth/login', async (r, reply) => {
-    const b = credentials.parse(r.body);
+    const b = login.parse(r.body);
     rateLimit(db, r, 'login-ip', 20);
     rateLimit(db, r, 'login-user', 10, 900, b.username.toLowerCase());
     const u = db.one(
@@ -262,6 +265,14 @@ export async function authRoutes(app: FastifyInstance, db: Store, c: Config) {
     } catch {
       throw new HttpError(400, 'Steam could not verify this sign-in. Try again.');
     }
+    // A password fixes the name its owner types. Accounts that only use Steam follow their Steam name.
+    const named = db.one(
+      stored.user_id
+        ? 'SELECT password_hash FROM users WHERE id=?'
+        : "SELECT u.password_hash FROM identities i JOIN users u ON u.id=i.user_id WHERE i.provider='steam' AND i.subject=?",
+      stored.user_id ?? subject,
+    );
+    const steamName = named?.password_hash ? null : await fetchSteamName(subject, c.steamApiKey);
     const uid = db.transaction(() => {
       checkSession();
       if (!db.flag(c, 'steam_enabled')) throw new HttpError(403, 'Steam sign-in is disabled.');
@@ -300,6 +311,14 @@ export async function authRoutes(app: FastifyInstance, db: Store, c: Config) {
       if (linked && linked.subject !== subject)
         throw new HttpError(409, 'Your account has a different Steam identity.');
       db.run("INSERT OR IGNORE INTO identities VALUES('steam',?,?)", subject, id);
+      const username = steamName
+        ? [steamName, `${steamName} (${subject.slice(-4)})`].find(
+            (name) =>
+              !db.one('SELECT 1 FROM users WHERE username=? COLLATE NOCASE AND id<>?', name, id),
+          )
+        : undefined;
+      if (username)
+        db.run('UPDATE users SET username=? WHERE id=? AND password_hash IS NULL', username, id);
       return id as string;
     });
     newSession(db, c, r, reply, uid);

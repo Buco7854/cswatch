@@ -188,7 +188,8 @@ export async function providerRoutes(
         game: 'cs2',
         limit: '20',
         offset: String(offset),
-        from: String(Math.max(0, through - 30 * 86400)),
+        // FACEIT returns only the last month without an explicit start.
+        from: '0',
         to: String(through),
       },
     );
