@@ -1,5 +1,11 @@
 # Verification record
 
+## Spectator HUD during playback
+
+The Chromium 159 production React timeline benchmark used the pinned Mirage manifest (2,186 recorded events, ten rounds, ten players). At a 1,000 px plot width it committed 120 consecutive one-tick updates beginning at tick 10,721, with four passes per configuration. The last three passes gave a median per-update time of 0.6 ms before and 0.1 ms after for the selected player. Including every player and utility throw gave 1.9–2.3 ms before and 0.1 ms after. Marker positions, localized event labels, SVG stems and the final slider value agreed across revisions in both configurations. The measurement isolates timeline updates from the 3D renderer.
+
+Eight focused production browser cases covered communications, equipment and event selection, including exact seek and timeline clustering. Keyboard stepping and the timeline layout were also checked on the practice courtyard at 1,440 × 900, 768 × 1,024 and 390 × 844, in both themes, in English on desktop and French on tablet and phone. These layout checks used emulated viewports on Chromium with SwiftShader.
+
 ## Shared Steam Coordinator and provider limits
 
 On Node 24.22.3, the protocol tests used the installed Steam client and CS2 protobuf codecs with a simulated Steam directory, login and match response. They exercised a cold and warm session, exact match selection, bounded caching, expiry, Steam Guard errors, cancellation and idle disconnect. No live Steam account was used. Request tests covered shared budgets, stream concurrency, persistent provider cooldowns and opted-in queue lifecycle.
