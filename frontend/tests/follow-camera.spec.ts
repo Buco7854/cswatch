@@ -5,7 +5,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { originalMapGLB, originalMapReplay, qaActor } from './fixtures/original-map';
 import { originalAnimatedAgentGLB } from './fixtures/original-agent';
 import { originalEquipmentCatalog, originalEquipmentGLB } from './fixtures/original-equipment';
-import { BoxGeometry, Group, Mesh, MeshBasicMaterial } from 'three';
+import { BoxGeometry, Group, Mesh, MeshBasicMaterial, PlaneGeometry, Vector3 } from 'three';
 import { followObstruction } from '../src/follow-obstruction';
 import type { FollowCamera } from '../src/follow-camera';
 
@@ -28,6 +28,32 @@ test('follow camera retracts at an opaque wall and reproduces its position after
   expect(trace(view)).toBe(clipped);
   expect(trace(clear)).toEqual(clear.position);
   expect(trace(view)).toEqual(clipped);
+});
+
+test('large indexed and unindexed map surfaces preserve edge contacts under transformed instances', () => {
+  for (const indexed of [true, false]) {
+    const world = new Group();
+    const plane = new PlaneGeometry(4, 4, 17, 17);
+    const mesh = new Mesh(indexed ? plane : plane.toNonIndexed(), new MeshBasicMaterial());
+    mesh.scale.set(1.4, 0.7, 2);
+    mesh.rotation.set(0.3, 0.5, 0.1);
+    const other = mesh.clone();
+    other.position.x = 10;
+    world.add(mesh, other);
+    const trace = followObstruction(world).fork(0);
+    for (const instance of [mesh, other, mesh]) {
+      for (const [x, y] of [
+        [1.99, -1.99],
+        [0, 0],
+        [-1.99, 1.99],
+      ]) {
+        const point = (z: number) => instance.localToWorld(new Vector3(x, y, z)).toArray();
+        const result = trace({ target: point(2), position: point(-1) });
+        for (const [axis, coordinate] of point(0).entries())
+          expect(result[axis]).toBeCloseTo(coordinate, 10);
+      }
+    }
+  }
 });
 
 async function mode(page: Page, name: string) {

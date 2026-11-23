@@ -4,6 +4,8 @@ import type { FollowCamera } from './follow-camera';
 const CLEARANCE = 0.24;
 const MAX_SURFACES = 8192;
 const MAX_TEST_TRIANGLES = 100000;
+const TRIANGLES_PER_BLOCK = 64;
+const MAX_BLOCKS = 32_768;
 type Surface = {
   geometry: Mesh['geometry'];
   bounds: Box3;
@@ -48,6 +50,32 @@ export function followObstruction(root: Group) {
     const toWorld = mesh.matrixWorld.clone();
     surfaces.push({ geometry, bounds, toWorld, toLocal: toWorld.clone().invert(), triangles });
   });
+  // Prepared primitives retain spatial locality in their index order. Build bounds
+  // only for large geometry that a ray reaches, and share them across instances.
+  const blocksByGeometry = new WeakMap<Mesh['geometry'], Box3[]>();
+  let blockCount = 0;
+  function triangleBlocks({ geometry, triangles }: Surface) {
+    const cached = blocksByGeometry.get(geometry);
+    if (cached) return cached;
+    const count = Math.ceil(triangles / TRIANGLES_PER_BLOCK);
+    if (count < 2 || blockCount + count > MAX_BLOCKS) return;
+    const blocks: Box3[] = [];
+    const { index, attributes } = geometry;
+    for (let start = 0; start < triangles; start += TRIANGLES_PER_BLOCK) {
+      const box = new Box3();
+      const end = Math.min(start + TRIANGLES_PER_BLOCK, triangles) * 3;
+      for (let i = start * 3; i < end; i++) {
+        vertex.fromBufferAttribute(attributes.position, index ? index.getX(i) : i);
+        box.expandByPoint(vertex);
+      }
+      // Include edge contacts despite rounding between model and ray transforms.
+      blocks.push(box.expandByScalar(1e-7));
+    }
+    blockCount += count;
+    blocksByGeometry.set(geometry, blocks);
+    return blocks;
+  }
+
   const createTrace = (clearance = CLEARANCE) => {
     const ray = new Ray(),
       localRay = new Ray(),
@@ -90,13 +118,18 @@ export function followObstruction(root: Group) {
         checked += surface.triangles;
         localRay.copy(ray).applyMatrix4(surface.toLocal);
         const { index, attributes } = surface.geometry;
-        for (let i = 0; i < surface.triangles * 3; i += 3) {
-          a.fromBufferAttribute(attributes.position, index ? index.getX(i) : i);
-          b.fromBufferAttribute(attributes.position, index ? index.getX(i + 1) : i + 1);
-          c.fromBufferAttribute(attributes.position, index ? index.getX(i + 2) : i + 2);
-          if (!localRay.intersectTriangle(a, b, c, false, hit)) continue;
-          const distance = hit.applyMatrix4(surface.toWorld).distanceTo(ray.origin);
-          if (distance > 1e-4) nearest = Math.min(nearest, distance);
+        const blocks = triangleBlocks(surface);
+        for (let first = 0; first < surface.triangles; first += TRIANGLES_PER_BLOCK) {
+          if (blocks && !localRay.intersectsBox(blocks[first / TRIANGLES_PER_BLOCK])) continue;
+          const end = Math.min(first + TRIANGLES_PER_BLOCK, surface.triangles) * 3;
+          for (let i = first * 3; i < end; i += 3) {
+            a.fromBufferAttribute(attributes.position, index ? index.getX(i) : i);
+            b.fromBufferAttribute(attributes.position, index ? index.getX(i + 1) : i + 1);
+            c.fromBufferAttribute(attributes.position, index ? index.getX(i + 2) : i + 2);
+            if (!localRay.intersectTriangle(a, b, c, false, hit)) continue;
+            const distance = hit.applyMatrix4(surface.toWorld).distanceTo(ray.origin);
+            if (distance > 1e-4) nearest = Math.min(nearest, distance);
+          }
         }
       }
       lastPosition =
