@@ -207,3 +207,18 @@ test('optional draw samples actual contiguous weapon switches, including in over
   expect(povDraw(history(frames), actor, 16, 45, 0.45)).toBeUndefined();
   expect(draw(frames)).toEqual({ age: 10 / 64, weight: 1 });
 });
+
+test('confirmed flight removes stride from the arms while preserving turn, rise and landing', () => {
+  const next = { ...actor, x: actor.x + 12, z: 5, yaw: -176, pitch: 5 };
+  const timing = { fromTick: 4, nextTick: 8, tickRate: 64 };
+  const motion = (phase: number, air: number) =>
+    povMovement(actor, next, 0.5, timing, undefined, phase, 0.02, air)!;
+  const flight = motion(0, 1);
+  expect(flight).toEqual(motion(0.3, 1));
+  expect(flight.lift).toBeLessThan(-0.02);
+  expect(flight.yaw).not.toBe(0);
+  expect(flight.depth).toBe(0);
+  const ground = motion(0.3, 0);
+  expect(ground).not.toEqual(flight);
+  expect(motion(0.3, 0.5).lift).toBeCloseTo((ground.lift + flight.lift) / 2, 12);
+});

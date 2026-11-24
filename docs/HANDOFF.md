@@ -2,6 +2,8 @@
 
 Use the late-catalog Mirage windows when changing gameplay sound scheduling. Both sides have an approved classic announcer WAV. The viewer schedules it at the recorded winner tick even when catalog discovery finishes during lookahead. [Browser evidence](VERIFICATION.md#recorded-round-announcements)
 
+POV arms and third-person foot planting share an airborne weight from the live pawn’s vertical path. Keep it local to actor presentation and sample its two endpoints once per spatial frame. [Matched AK frames and seek checks](VERIFICATION.md#airborne-arm-and-boot-motion)
+
 The opening screen is shared by demo processing, map discovery and client-side map loading. Keep its return link at the top left and preserve the link's DOM identity through stage changes so keyboard focus survives. Programmatically focused headings announce navigation and form transitions. Text fields and compound search controls each own one visible focus indicator.
 
 Revision 4 map packs derive constant glass opacity and the shadow flag from verified native materials. Solid door geometry remains available, and dynamic door states require recorded instance evidence. Map preparation appears inside the scene so recorded rounds and the timeline remain usable during a worker job. Map discovery can run during replay initialization. The parser batches compatible event reads, and native map lighting layout blocks share a confined S2V invocation. Native actor motion carries the outgoing firing pose into the next recorded shot and uses chunk travel evidence for missing gait histories. [Measurements](VERIFICATION.md#map-preparation-nuke-door-glass-and-native-player-poses)
