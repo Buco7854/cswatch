@@ -1,5 +1,7 @@
 # Current handoff
 
+The map loader shares a fragment texture read when a glTF material binds the same texture for roughness and metalness. Occlusion shares that read only when it also uses that exact texture. Keep this hook after the native lighting and glass material setup. [Renderer checks](VERIFICATION.md#packed-world-materials)
+
 Use the late-catalog Mirage windows when changing gameplay sound scheduling. Both sides have an approved classic announcer WAV. The viewer schedules it at the recorded winner tick even when catalog discovery finishes during lookahead. [Browser evidence](VERIFICATION.md#recorded-round-announcements)
 
 POV arms and third-person foot planting share an airborne weight from the live pawn’s vertical path. Keep it local to actor presentation and sample its two endpoints once per spatial frame. [Matched AK frames and seek checks](VERIFICATION.md#airborne-arm-and-boot-motion)
