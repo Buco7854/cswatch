@@ -1,5 +1,7 @@
 # Active work
 
+The shared actor sampler reduces ground stride on curved airborne paths. Uniform climbs and isolated steps lack evidence for that correction. The existing lower-body clips still supply the airborne leg pose. [Verification](../VERIFICATION.md#airborne-arm-and-boot-motion)
+
 Schema 9 adds optional account email verification and recovery. It requires a fresh data directory. New signups verify before using the workspace when delivery is enabled. Steam onboarding collects an address locally. [Operator guide](../ACCESS-SETUP.md#email-delivery-verification-and-password-reset)
 
 Schema 8 adds account roles, WebAuthn passkeys, authenticator codes, session management and administrator recovery and network policy. Use a fresh data directory. Verification distinguishes source coverage, local test results and operator hardware or proxy checks. [Account security](../ACCOUNT-SECURITY.md)
