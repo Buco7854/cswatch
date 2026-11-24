@@ -14,7 +14,7 @@ export const directionalRoles = Object.freeze([
   ...contract.weaponClasses.flatMap((weapon) => [
     ...directionalClassRoles(weapon),
     ...contract.actions
-      .filter((action) => weapon !== 'knife' || action === 'draw')
+      .filter((action) => weapon !== 'knife' || action !== 'reload')
       .map((action) => `${weapon}-${action}`),
   ]),
   ...contract.overlays,

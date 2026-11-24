@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   BufferGeometry,
   Float32BufferAttribute,
+  Int16BufferAttribute,
   Mesh,
   MeshBasicMaterial,
   PerspectiveCamera,
@@ -161,5 +162,74 @@ test('large maps spread their block budget across distinct static geometries', (
     assert.equal(draws, 2);
   } finally {
     release();
+  }
+});
+
+test('idle measurement resumes a half-scanned batch on its first visible draw and cancels at disposal', () => {
+  const callbacks = new Map<number, IdleRequestCallback>();
+  let callbackId = 0;
+  const originalRequest = globalThis.requestIdleCallback;
+  const originalCancel = globalThis.cancelIdleCallback;
+  globalThis.requestIdleCallback = (callback) => {
+    callbacks.set(++callbackId, callback);
+    return callbackId;
+  };
+  globalThis.cancelIdleCallback = (id) => void callbacks.delete(id);
+  const scene = new Scene();
+  const camera = new PerspectiveCamera(60, 1, 0.1, 20);
+  camera.updateMatrixWorld();
+  const material = new MeshBasicMaterial();
+  const geometry = new BufferGeometry();
+  // The first 48 blocks are beyond the right edge. Repeated indices span two idle slices.
+  const indices: number[] = [];
+  for (let b = 0; b < 64; b++) {
+    const start = b < 48 ? 0 : 3;
+    for (let triangle = 0; triangle < 64; triangle++) indices.push(start, start + 1, start + 2);
+  }
+  geometry.setIndex(indices);
+  // Integer and normalized positions exercise Three's native decoder, including its signed floor.
+  const position = new Int16BufferAttribute(
+    [
+      32700, 0, -10000, 32600, 0, -10000, 32700, 100, -10000, 0, 0, -10000, 100, 0, -10000, 0, 100,
+      -10000,
+    ],
+    3,
+    true,
+  );
+  let reads = 0;
+  const read = position.getX.bind(position);
+  position.getX = (index) => {
+    reads++;
+    return read(index);
+  };
+  geometry.setAttribute('position', position);
+  const mesh = new Mesh(geometry, material);
+  scene.add(mesh);
+  const ranges: number[][] = [];
+  const renderer = {
+    renderBufferDirect: () => ranges.push([geometry.drawRange.start, geometry.drawRange.count]),
+    info: { render: { frame: 1 } },
+  } as unknown as WebGLRenderer;
+  try {
+    const dispose = installMapDrawRanges(renderer, scene, scene);
+    try {
+      assert.equal(reads, 0);
+      const firstIdle = callbacks.get(callbackId)!;
+      callbacks.delete(callbackId);
+      let calls = 0;
+      firstIdle({ didTimeout: false, timeRemaining: () => (calls++ === 0 ? 5 : 0) });
+      assert.ok(reads > 0 && reads < 64 * 3);
+      renderer.renderBufferDirect(camera, scene, geometry, material, mesh, null);
+      assert.deepEqual(ranges, [[48 * 192, 16 * 192]]);
+      assert.equal(reads, 64 * 3);
+    } finally {
+      dispose();
+    }
+    assert.equal(callbacks.size, 0);
+  } finally {
+    if (originalRequest) globalThis.requestIdleCallback = originalRequest;
+    else Reflect.deleteProperty(globalThis, 'requestIdleCallback');
+    if (originalCancel) globalThis.cancelIdleCallback = originalCancel;
+    else Reflect.deleteProperty(globalThis, 'cancelIdleCallback');
   }
 });

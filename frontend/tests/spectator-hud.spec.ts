@@ -948,3 +948,21 @@ test('recorded-map free camera turns in place, moves with ZQSD, preserves its vi
   ).toEqual(orientation);
   await expect(page.locator('.viewer-frame')).toHaveAttribute('data-chrome-visible', 'true');
 });
+
+test('the POV shows fatal damage after the ordinary hit has faded and restores it on a rewind', async ({
+  page,
+}) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE));
+  await fixture(page, 'fatal-only-at-death', { death: true });
+  await page.goto('/watch/fatal-only-at-death?tick=0&player=' + qaActor);
+  await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
+  const slider = page.getByRole('slider', { name: 'Playback position' });
+  const tint = page.locator('.spectator-damage');
+  await slider.fill('92');
+  await expect(tint).toBeVisible();
+  await expect(tint.locator('svg')).toHaveCount(0);
+  await slider.fill('142');
+  await expect(tint).toHaveCount(0);
+  await slider.fill('92');
+  await expect(tint).toBeVisible();
+});

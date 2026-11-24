@@ -91,6 +91,7 @@ const pov = equipmentLoader(8, {
   inactiveBytes: () => (mobile() ? 20 : 40) * MiB,
   residentBytes: () => (mobile() ? 48 : 80) * MiB,
 });
+export const loadedEquipmentModel = (url: string) => world.cache.peek(url);
 export const useEquipmentGLTF = (url: string) => useLoader(world.Loader, url);
 export const usePovGLTF = (url: string) => useLoader(pov.Loader, url);
 function useNativeScope(cache: ModelCache<EquipmentGLTF>, url: string, identity: object) {

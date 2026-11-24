@@ -119,6 +119,7 @@ export function povMovement(
   travelMeters?: number,
   dip = 0,
   airborne = 0,
+  gaitPhase?: number,
 ) {
   if (!timing || timing.roundBoundary || !Number.isFinite(alpha)) return;
   if (next && Math.abs(next.z - position.z) > 128) return;
@@ -129,7 +130,10 @@ export function povMovement(
   const amplitude =
     Math.max(0, Math.min(1, (speed - 0.08) / 4)) * (1 - duck * 0.55) * (1 - airborne);
   const time = (fromTick + (nextTick - fromTick) * Math.max(0, Math.min(1, alpha))) / tickRate;
-  const step = 2 * Math.PI * (travelMeters === undefined ? 1.6 * time : travelMeters / 1.55);
+  // Use the same full left/right cycle as the native character. Missing
+  // character artwork keeps the distance-based bob without starting a download.
+  const step =
+    2 * Math.PI * (gaitPhase ?? (travelMeters === undefined ? 1.6 * time : travelMeters / 1.55));
   const sway = amplitude ? Math.sin(step) * 0.016 * amplitude : 0;
   const bounce = amplitude ? Math.cos(step * 2) * amplitude : 0;
   return {

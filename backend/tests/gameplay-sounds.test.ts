@@ -23,6 +23,7 @@ import {
 } from '../src/gameplay-sounds.js';
 import type { GameplaySoundCue } from '../../shared/gameplay-sounds.js';
 import { gameplaySoundAssetRoutes } from '../src/gameplay-sound-assets.js';
+import { managedSoundDirectory } from '../../shared/gameplay-sound-bank.mjs';
 import { inspectGameplayAudio } from '../../shared/gameplay-sound-files.mjs';
 import { sample } from '../../frontend/src/sample.js';
 import { writeReplay, validateReplayArtifacts } from '../src/replay.js';
@@ -131,6 +132,33 @@ test('event audio never invents steps/reloads or unknown guns and keeps actor/re
   )[0];
   assert.equal(missing.position, undefined);
   assert.equal(missing.actor, undefined);
+});
+test('operator samples take precedence while missing samples appear when the managed generation publishes', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'cswatch-sound-generation-'));
+  const app = Fastify();
+  await gameplaySoundAssetRoutes(app, root, root);
+  try {
+    const operator = wav(401),
+      automatic = wav(402),
+      knife = 'knife-hit-slice';
+    const path = prepared(root, 'ak47-fire', operator);
+    prepared(join(root, 'sounds-' + '0'.repeat(64)), knife, automatic);
+    const catalog = async () => (await app.inject('/api/sound-assets')).json().items;
+    assert.deepEqual(Object.keys(await catalog()), ['ak47-fire']);
+    const bank = join(root, managedSoundDirectory);
+    prepared(bank, 'ak47-fire', automatic);
+    prepared(bank, knife, automatic);
+    const items = await catalog();
+    assert.equal(items['ak47-fire'].sha256, createHash('sha256').update(operator).digest('hex'));
+    assert.deepEqual((await app.inject(items['ak47-fire'].url)).rawPayload, operator);
+    assert.deepEqual((await app.inject(items[knife].url)).rawPayload, automatic);
+    rmSync(join(path, 'manifest.json'));
+    assert.equal((await catalog())['ak47-fire'], undefined);
+    assert.equal((await app.inject('/api/sound-assets/ak47-fire.wav')).statusCode, 404);
+  } finally {
+    await app.close();
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 test('sound HTTP delivery is registry/hash bound, rejects links and sees same-size in-place corruption', async () => {
   const root = mkdtempSync(join(tmpdir(), 'cswatch-sound-route-'));
@@ -258,6 +286,32 @@ test('recorded native surface/reload cues retain exact names and stop evidence w
   assert.equal(result.sounds[1].category, 'reload');
   assert.equal(result.sounds[1].eventName, 'Weapon_AK47.Clipout');
   assert.equal(result.gameplaySounds.coverage.footstep, 'partial');
+});
+test('recorded knife swings distinguish light, heavy, gear and impacts at the reported position', () => {
+  const handlers = new Map<string, (value: any) => void>();
+  const reader = {
+    currentTick: 100,
+    on: (name: string, fn: (value: any) => void) => handlers.set(name, fn),
+  };
+  const finish = observeGameplaySounds(reader as any, 500, new Set());
+  const cases = [
+    ['Weapon_Knife.Swish.Light', 'knife-swish-light', 0.03],
+    ['Weapon_Knife.Swish.Heavy', 'knife-swish-heavy', 0.04],
+    ['Weapon_Knife.Swish.Gear', 'knife-swish-gear', 0.04],
+    ['Weapon_Knife.Swish.Gear.Quiet', 'knife-swish-gear', 0.01],
+    ['Weapon_Knife.Hit.Light.Backstab', 'knife-hit-light-backstab', 0.55],
+  ] as const;
+  for (const [sound] of cases) {
+    handlers.get('CS_UM_WeaponSound')!({ sound, origin_x: 8, origin_y: 1, origin_z: -12 });
+    reader.currentTick++;
+  }
+  const cues = finish(true, []).sounds;
+  assert.deepEqual(
+    cues.map((c) => [c.eventName, c.soundId, c.volume]),
+    cases,
+  );
+  assert.ok(cues.every((c) => c.evidence === 'network-sound'));
+  assert.deepEqual(cues[1].position, { x: 8, y: 1, z: -12 });
 });
 test('oversized native sound text is rejected before case-folding while known bounded tokens remain usable', () => {
   const handlers = new Map<string, (value: any) => void>();

@@ -1,14 +1,18 @@
 # Current handoff
 
+For a Nuke passage that appears closed, use revision 9 map packs. The preparer preserves the initial visibility supplied by the source entity. A newly parsed broadcast can enable a matching placement at the recorded tick. Collect the match, tick, player, tier and pack identity when comparing a particular doorway. [Mode geometry and playback checks](VERIFICATION.md#mode-geometry-and-playback)
+
+For a network-denied administrator, inspect the connection and verified client addresses on the Administration page. The displayed cause distinguishes the immediate peer, missing or repeated headers, invalid addresses and conflicting client identities. [Operator checks](ACCESS-SETUP.md)
+
 For a slow map opening, distinguish the server's first conversion from the browser downloading a published pack. Follow the selected request's `map.phase` events in the assets log. Compare times for acquisition, geometry, lighting and tier preparation separately. The demo can be closed once the job is accepted. [Worker status and reuse](product/MAP-ACQUISITION.md)
 
 When checking a breakable window, measure the intact surface over two different backgrounds, seek across its recorded break and keep the adjacent pane in frame. A successful visibility toggle alone can miss an opaque exported material. [Nuke window measurements](VERIFICATION.md#textured-breakable-glass)
 
 For a moving or damaged door, compare the recorded model and closed pivot with one prepared map entity. Check the chosen mesh, yaw, camera collision and shadow invalidation on forward play, direct seek and rewind. The capture report identifies absent or ambiguous matches. Nuke supplies three observed damage stages and a deletion, and Cache supplies a 90-degree swing. [Verified sequences](VERIFICATION.md#recorded-doors-and-progressive-damage)
 
-For a blurry replay, capture the world render target, composited display pixels and moving frame times at the device’s actual pixel ratio. For a missing destruction, use a freshly parsed recording and a revision 8 map, and compare the tick before deletion, the deletion tick, rewind and round reset. An existing replay needs a new import to collect the network tracks; preserve the original demo and its notes. [Display and breakable checks](VERIFICATION.md#display-resolution-and-recorded-map-breakables)
+For a blurry replay, capture the world render target, composited display pixels and moving frame times at the device’s actual pixel ratio. For a missing destruction, use a freshly parsed recording and a revision 9 map, and compare the tick before deletion, the deletion tick, rewind and round reset. An existing replay needs a new import to collect the network tracks; preserve the original demo and its notes. [Display and breakable checks](VERIFICATION.md#display-resolution-and-recorded-map-breakables)
 
-Use the matched camera regressions when changing rendering. Prepare a fresh revision 8 map to check native material switches or painted albedos. For first-person framing, compare the isolated hand silhouette at the same tick and preserve the clearance of the static prop fallback. For smoke, compare the recorded voxel field, scene depth and GPU completion. [Corrections and limits](VERIFICATION.md#rendering-corrections-against-matched-external-scenes)
+Use the matched camera regressions when changing rendering. Prepare a fresh revision 9 map to check native material switches or painted albedos. For first-person framing, compare the isolated hand silhouette at the same tick and preserve the clearance of the static prop fallback. For smoke, compare the recorded voxel field, scene depth and GPU completion. [Corrections and limits](VERIFICATION.md#rendering-corrections-against-matched-external-scenes)
 
 Measure detailed maps with a fixed desktop tier and live shadows. For clip-free prop rigs, the shadow cache budgets the actual casters and their inputs. A large organizational hierarchy can be cheap to track. Keep the moved-bone regression when changing shadow invalidation. [Detailed-world checks](VERIFICATION.md#high-quality-playback-on-four-official-maps)
 

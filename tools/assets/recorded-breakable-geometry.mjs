@@ -133,7 +133,8 @@ export function tagBreakableGeometry(document, dumps, sourceClassCounts) {
   const rows = entityDumpRows(dumps, fields);
   const usedIds = new Map();
   const placements = new Map();
-  let eligible = 0;
+  let interactive = 0,
+    initiallyDisabled = 0;
   for (const row of rows) {
     const kind = row.classname;
     const hasBreakSignal =
@@ -164,34 +165,52 @@ export function tagBreakableGeometry(document, dumps, sourceClassCounts) {
       continue;
     const scales = row.scales ?? new Array(3).fill(row.scale ?? 1);
     if (!vec3(scales, 1024) || scales.some((s) => s === 0)) continue;
-    const allowed =
-      ['prop_dynamic', 'prop_door_rotating', 'func_breakable'].includes(row.classname) &&
+    const disabled = yes(row.startdisabled);
+    const independent =
       !row.parentname &&
       !yes(row.uselocaloffset) &&
-      !yes(row.startdisabled) &&
       !yes(row.clientsideentity) &&
       typeof row.hammeruniqueid === 'string' &&
-      hammerId.test(row.hammeruniqueid) &&
-      (row.classname === 'prop_door_rotating' || hasBreakSignal);
+      hammerId.test(row.hammeruniqueid);
+    const allowed =
+      independent &&
+      (disabled
+        ? row.classname === 'prop_dynamic' || row.classname === 'func_brush'
+        : row.classname === 'prop_door_rotating' ||
+          (hasBreakSignal &&
+            (row.classname === 'prop_dynamic' || row.classname === 'func_breakable')));
     const stem = basename(row.model, '.vmdl');
     if (!placements.has(stem)) placements.set(stem, []);
     placements
       .get(stem)
-      .push({ row, matrix: placedMatrix({ ...row, scales }), allowed, nodes: [] });
-    if (allowed) eligible++;
+      .push({ row, matrix: placedMatrix({ ...row, scales }), allowed, disabled, nodes: [] });
+    if (allowed) {
+      if (disabled) initiallyDisabled++;
+      else interactive++;
+    }
   }
-  if (!eligible || eligible > breakableLimits.active) return 0;
+  // A map with excessive conditional props can still prepare its authored doors and breakables.
+  if (initiallyDisabled > breakableLimits.active || interactive > breakableLimits.active) {
+    for (const places of placements.values()) {
+      for (const p of places) {
+        if ((p.disabled ? initiallyDisabled : interactive) > breakableLimits.active)
+          p.allowed = false;
+      }
+    }
+  }
   const candidates = new Map(
     [...placements].filter(
       ([, places]) => places.length <= breakableLimits.active && places.some((p) => p.allowed),
     ),
   );
+  if (!candidates.size) return 0;
   for (const node of document.getRoot().listNodes()) {
     const mesh = node.getMesh();
     if (
       !mesh ||
       node.getExtension('EXT_mesh_gpu_instancing') ||
       node.listChildren().length ||
+      node.getExtras().cswatchInitiallyDisabled ||
       node.getExtras().cswatchBreakable ||
       node.getExtras().cswatchDoor ||
       node.getExtras().cswatchDoorStage
@@ -219,7 +238,7 @@ export function tagBreakableGeometry(document, dumps, sourceClassCounts) {
       .flatMap((a) => a.listChannels().map((c) => c.getTargetNode())),
   );
   for (const places of candidates.values())
-    for (const { row, nodes } of places) {
+    for (const { row, nodes, disabled } of places) {
       if (nodes.length !== 1 || usedIds.get(row.hammeruniqueid) !== 1) continue;
       const [{ node, matrix }] = nodes;
       const tag = {
@@ -233,10 +252,14 @@ export function tagBreakableGeometry(document, dumps, sourceClassCounts) {
       if (row.classname === 'prop_door_rotating') {
         if (!preparePlacedDoor(document, node, tag, matrix, animated, cachedMeshes)) continue;
       } else {
+        // Preserve each conditional instance: a default-hidden placement may be enabled in another match.
         // Single-bone rigid props can also survive the Compact static-geometry pass.
         // Articulated breakables keep their complete authored skinned representation.
         if (node.getSkin()) useRigidMapMesh(document, node, matrix, animated, cachedMeshes);
-        node.setExtras({ ...node.getExtras(), cswatchBreakable: tag });
+        node.setExtras({
+          ...node.getExtras(),
+          [disabled ? 'cswatchInitiallyDisabled' : 'cswatchBreakable']: tag,
+        });
       }
       tagged++;
     }

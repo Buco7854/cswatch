@@ -193,6 +193,15 @@ const clips = {
   decoy: ['grenade/_default_grenade', { idle: 'idle_grenade', draw: 'draw_grenade' }],
   c4: ['equipment/c4', { idle: 'idle_c4', draw: 'draw_c4' }],
 };
+// These fixed first-person families use the same suffix as their draw clip.
+function actionFiles(directory, roles) {
+  const suffix = roles.draw.slice('draw_'.length);
+  if (directory.startsWith('grenade/'))
+    return { ...roles, throw: 'throw_overhand_' + suffix, underhand: 'throw_underhand_' + suffix };
+  if (directory.startsWith('knife/')) return { ...roles, slash: 'light_miss1_' + suffix };
+  return roles;
+}
+
 export const viewmodelSources = Object.freeze(
   Object.fromEntries(
     Object.entries(clips).map(([id, [directory, roles]]) => [
@@ -201,7 +210,7 @@ export const viewmodelSources = Object.freeze(
         arms,
         weapon: equipmentModelRegistry[id].resource,
         ...Object.fromEntries(
-          Object.entries(roles).map(([role, file]) => [
+          Object.entries(actionFiles(directory, roles)).map(([role, file]) => [
             role,
             root + directory + '/' + file + '.vnmclip_c',
           ]),

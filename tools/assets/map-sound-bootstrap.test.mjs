@@ -116,6 +116,7 @@ test('idle sound acquisition passes only bounded asset roots and fixed manifest,
     [
       'cache',
       'manifest',
+      'managed',
       'networkDeny',
       'output',
       'signal',
@@ -124,6 +125,7 @@ test('idle sound acquisition passes only bounded asset roots and fixed manifest,
     ].sort(),
   );
   assert.equal(received.manifest, '42');
+  assert.equal(received.managed, true);
   assert.equal(received.output, options.assets);
   assert.equal(received.networkDeny, options.networkDeny);
   assert.equal(received.toolchainCache, join(options.cache, 'tools'));

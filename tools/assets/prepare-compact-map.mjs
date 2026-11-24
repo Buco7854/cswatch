@@ -128,7 +128,12 @@ function compactSource(source) {
     const matrix = node.getWorldMatrix();
     if (stage && stage.stage !== 0) holder.setScale(scale);
     if (!matrix.every(Number.isFinite)) continue;
-    const tag = node.getExtras().cswatchBreakable;
+    const extras = node.getExtras();
+    const initialTag = extras.cswatchInitiallyDisabled;
+    const disabled = ['prop_dynamic', 'func_brush'].includes(initialTag?.className)
+      ? preparedMapEntity(initialTag, initialTag.className)
+      : undefined;
+    const tag = extras.cswatchBreakable;
     const breakable = ['prop_dynamic', 'func_breakable'].includes(tag?.className)
       ? preparedMapEntity(tag, tag.className)
       : undefined;
@@ -150,7 +155,17 @@ function compactSource(source) {
       vertices += count;
       indices += indexCount;
       if (vertices > maxSourceVertices || indices > maxSourceIndices) return;
-      entries.push({ matrix, position, material, count, index, breakable, door, stage });
+      entries.push({
+        matrix,
+        position,
+        material,
+        count,
+        index,
+        entity: disabled ?? breakable,
+        tagName: disabled ? 'cswatchInitiallyDisabled' : 'cswatchBreakable',
+        door,
+        stage,
+      });
     }
   }
   return { entries, vertices, indices };
@@ -172,7 +187,17 @@ async function buildCompactMap(input, colors, mode) {
   document.getRoot().setDefaultScene(world);
   const samples = new Map(),
     cells = new Map();
-  for (const { matrix, position, material, count, index, breakable, door, stage } of entries) {
+  for (const {
+    matrix,
+    position,
+    material,
+    count,
+    index,
+    entity,
+    tagName,
+    door,
+    stage,
+  } of entries) {
     if (!colors.has(material)) colors.set(material, await colorOf(material, samples));
     const color = colors.get(material);
     const encodedColor = new Uint8Array(count * 3);
@@ -223,19 +248,19 @@ async function buildCompactMap(input, colors, mode) {
       throw new Error('Invalid compact source bounds.');
     const key = door
       ? 'door/' + door.hammerId + '/' + stage.stage + '/' + Boolean(twoSided)
-      : breakable
-        ? 'entity/' + breakable.hammerId + '/' + Boolean(twoSided)
+      : entity
+        ? 'entity/' + entity.hammerId + '/' + Boolean(twoSided)
         : [
             Boolean(twoSided),
             ...min.map((value, axis) => Math.floor((value + max[axis]) / 2 / cellSize)),
           ].join(':');
-    if (!cells.has(key)) cells.set(key, { breakable, door, stage, batch: [] });
+    if (!cells.has(key)) cells.set(key, { entity, tagName, door, stage, batch: [] });
     cells.get(key).batch.push(primitive);
   }
   if (!cells.size || cells.size > limits.primitives) return;
   const entityMeshes = new Map();
   const doorGroups = new Map();
-  for (const [key, { breakable, door, stage, batch }] of cells) {
+  for (const [key, { entity, tagName, door, stage, batch }] of cells) {
     const primitive = batch.length === 1 ? batch[0] : joinPrimitives(batch);
     if (batch.length > 1) for (const source of batch) source.dispose();
     // Keep both sidedness groups under a single independently visible entity, even
@@ -254,13 +279,13 @@ async function buildCompactMap(input, colors, mode) {
       else addDoorStage(document, group, document.createMesh().addPrimitive(primitive), stage);
       continue;
     }
-    let mesh = breakable && entityMeshes.get(breakable.hammerId);
+    let mesh = entity && entityMeshes.get(entity.hammerId);
     if (!mesh) {
       mesh = document.createMesh();
       const node = document.createNode(key).setMesh(mesh);
-      if (breakable) {
-        node.setExtras({ cswatchBreakable: breakable });
-        entityMeshes.set(breakable.hammerId, mesh);
+      if (entity) {
+        node.setExtras({ [tagName]: entity });
+        entityMeshes.set(entity.hammerId, mesh);
       }
       world.addChild(node);
     }

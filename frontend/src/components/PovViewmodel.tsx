@@ -28,11 +28,15 @@ import {
 import type { ViewmodelAsset } from '../../../shared/viewmodel-assets';
 import type { EquipmentCatalog } from '../equipment-assets';
 import { canonicalEquipmentKey } from '../equipment-key';
-import { usePovGLTF, usePovScope } from '../equipment-loader';
+import { loadedEquipmentModel, usePovGLTF, usePovScope } from '../equipment-loader';
+import { agentModelClips, agentStrideProfile } from '../directional-agent';
+import { agentPhaseAt } from '../agent-phase';
+import type { GaitHistory } from '../../../shared/agent-gait-history.mjs';
 import type { ModelScope } from '../model-cache';
 import { assertMapBaseColorTextures } from '../map-model';
 import { disposeEquipmentInstance, prepareEquipmentModel } from '../equipment-model';
 import type { Playback, Position } from '../types';
+import type { PovAction } from '../agent-replay';
 import { povDraw, povLanding, povMovement } from '../pov-movement';
 import { povOffset } from '../pov-camera';
 import { useReducedMotion } from '../reduced-motion';
@@ -156,6 +160,7 @@ function AuthoredViewmodel({
   scope,
   id,
   asset,
+  action: recordedAction,
   history,
   frameTick,
   tick,
@@ -165,6 +170,7 @@ function AuthoredViewmodel({
   scope: ModelScope;
   id: string;
   asset: ViewmodelAsset;
+  action?: PovAction;
   history: ReplayHistory;
   frameTick: number;
   tick: number;
@@ -196,6 +202,13 @@ function AuthoredViewmodel({
       value ? mixer.clipAction(value).setLoop(LoopOnce, 1) : undefined;
     return {
       model,
+      mount: model.getObjectByName(id + '-authored-mount'),
+      utility: Object.fromEntries(
+        (['throw', 'underhand', 'slash'] as const).map((kind) => [
+          kind,
+          action(gltf.animations.find((clip) => clip.name === id + '-' + kind)),
+        ]),
+      ),
       disposeMaterials,
       mixer,
       fire: action(clip),
@@ -209,8 +222,13 @@ function AuthoredViewmodel({
   }, [gltf, id]);
   const pose = useNativeWeaponPose(position, rig.fireDuration, rig.reloadDuration);
   const { fire, priorFire, reload } = pose;
+  const action = !reducedMotion && recordedAction ? rig.utility[recordedAction.kind] : undefined;
+  const age = recordedAction?.age ?? 0;
+  const duration = action?.getClip().duration ?? 0;
+  const actionWeight = age < duration ? Math.min(1, age / 0.05, (duration - age) / 0.08) : 0;
+  const released = recordedAction?.released === true;
   const draw =
-    !reducedMotion && rig.drawDuration && !fire && !priorFire && !reload
+    !reducedMotion && rig.drawDuration && !fire && !priorFire && !reload && !actionWeight
       ? povDraw(history, position, frameTick, tick, rig.drawDuration)
       : undefined;
   useLayoutEffect(() => {
@@ -218,6 +236,9 @@ function AuthoredViewmodel({
     sampleAction(rig.priorFire, priorFire);
     sampleAction(rig.reload, reload);
     if (rig.draw) sampleAction(rig.draw, draw);
+    for (const clip of Object.values(rig.utility))
+      sampleAction(clip, clip && clip === action ? { age, weight: actionWeight } : undefined);
+    if (rig.mount) rig.mount.visible = !released;
     rig.mixer.update(0);
     invalidate();
   }, [
@@ -230,6 +251,10 @@ function AuthoredViewmodel({
     reload?.weight,
     draw?.age,
     draw?.weight,
+    action,
+    age,
+    actionWeight,
+    released,
     invalidate,
   ]);
   useEffect(
@@ -264,6 +289,7 @@ function AvailableViewmodel({
   position: Position;
   fallback: ReactNode;
   identity: object;
+  action?: PovAction;
   history: ReplayHistory;
   frameTick: number;
   tick: number;
@@ -304,12 +330,18 @@ function AvailableViewmodel({
 /** Local asset availability is scoped to this viewer. Missing artwork keeps the normal POV. */
 export default function PovViewmodel({
   native,
+  agentModel,
+  gaitHistory,
+  action,
   airborne,
   history,
   tick,
   ...props
 }: PovEquipmentProps & {
   native: boolean;
+  agentModel?: string | null;
+  gaitHistory?: GaitHistory;
+  action?: PovAction;
   airborne: number;
   history: ReplayHistory;
   tick: number;
@@ -317,6 +349,19 @@ export default function PovViewmodel({
   const context = useContext(EquipmentModels);
   const reducedMotion = useReducedMotion();
   const frameTick = props.timing?.fromTick ?? tick;
+  const teamRig = !reducedMotion && agentModel ? loadedEquipmentModel(agentModel) : undefined;
+  const stride = useMemo(() => {
+    const clips = teamRig && agentModelClips(teamRig);
+    return clips && agentStrideProfile(clips);
+  }, [teamRig]);
+  const phase = useMemo(
+    () =>
+      stride &&
+      gaitHistory &&
+      agentPhaseAt(gaitHistory, props.position.id, history.tickRate, stride),
+    [stride, gaitHistory, props.position.id, history.tickRate],
+  );
+
   const motion = reducedMotion
     ? undefined
     : povMovement(
@@ -328,6 +373,10 @@ export default function PovViewmodel({
         props.travelMeters,
         povLanding(history, props.position, frameTick, tick),
         airborne,
+        phase?.(tick) ??
+          (stride && props.travelMeters !== undefined
+            ? props.travelMeters / stride.referenceStride
+            : undefined),
       );
   const root = useRef<Group>(null);
   const { invalidate } = useThree();
@@ -353,7 +402,7 @@ export default function PovViewmodel({
   const id = weapon === 'knife' && props.position.team === 2 ? 'knifet' : weapon;
   const catalog = context?.catalog as EquipmentCatalog | undefined;
   const asset = native && props.position.alive ? catalog?.viewmodels?.[id] : undefined;
-  const fallback = <PovEquipment position={props.position} />;
+  const fallback = action?.released ? null : <PovEquipment position={props.position} />;
   return (
     <group ref={root}>
       {identity && asset ? (
@@ -361,6 +410,7 @@ export default function PovViewmodel({
           key={asset.model + ':' + props.position.id + ':' + props.position.team}
           id={id}
           asset={asset}
+          action={action}
           position={props.position}
           fallback={fallback}
           identity={identity}

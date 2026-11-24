@@ -18,6 +18,7 @@ for (const name of [
   copyFileSync(resolve(root, `../shared/${name}.json`), resolve(root, `dist/${name}.json`));
 for (const name of [
   'gameplay-sound-files',
+  'gameplay-sound-bank',
   'auth-navigation',
   'passkey-name',
   'roles',

@@ -52,6 +52,18 @@ const smooth = (value: number) => {
   return t * t * (3 - 2 * t);
 };
 
+const loadedClips = new WeakMap<object, ClipSet | null>();
+/** Agents and their POV rig share one validated set of source animation curves. */
+export function agentModelClips(gltf: {
+  animations: AnimationClip[];
+  parser: { json: { animations?: unknown } };
+}) {
+  if (loadedClips.has(gltf)) return loadedClips.get(gltf) ?? undefined;
+  const clips = directionalClips(gltf.animations, gltf.parser.json.animations);
+  loadedClips.set(gltf, clips ?? null);
+  return clips;
+}
+
 export function directionalClips(
   clips: readonly AnimationClip[],
   declarations: unknown,

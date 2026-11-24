@@ -73,7 +73,7 @@ async function fixture(t) {
 }
 const noStorage = async () => {};
 const adapters = { storage: noStorage, reserve: noStorage };
-async function triangle(agent) {
+async function triangle(agent, roles = directionalRoles) {
   const document = new Document(),
     buffer = document.createBuffer();
   const positions = document
@@ -104,7 +104,7 @@ async function triangle(agent) {
       .setType('VEC3')
       .setArray(new Float32Array([0, 0, 0, 0, 0.1, 0]))
       .setBuffer(buffer);
-    for (const role of directionalRoles) {
+    for (const role of roles) {
       const sampler = document.createAnimationSampler().setInput(input).setOutput(output);
       document
         .createAnimation('cswatch:' + role)
@@ -764,7 +764,7 @@ test('native source-integrity failures remain terminal for the selected source a
   );
   assert.equal(calls, 1);
 });
-test('unknown native status is replaced and the agent bank is repaired after damage', async (t) => {
+test('unknown native status is replaced and the agent bank automatically rebuilds its missing native action', async (t) => {
   const { options, output } = await fixture(t);
   const status = join(options.jobs, 'presentation-status-v2.json');
   await writeFile(status, '{"schemaVersion":2,"categories":{},"unknown":true}', { mode: 0o600 });
@@ -782,12 +782,35 @@ test('unknown native status is replaced and the agent bank is repaired after dam
     'prepared',
   );
   assert.equal((await readPresentationStatus(options.jobs)).categories.agents.status, 'ready');
-  await writeFile(join(output, 'agents/ct.glb'), 'damaged');
+  // An intact worker-owned pack can still need repair when a native action is added.
+  const oldRoles = directionalRoles.filter((role) => role !== 'knife-fire');
+  const previous = await triangle(true, oldRoles);
+  const manifestPath = join(output, 'agents/ct.manifest.json');
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+  await writeFile(join(output, 'agents/ct.glb'), previous);
+  await writeFile(
+    manifestPath,
+    JSON.stringify({
+      ...manifest,
+      animationRoles: oldRoles,
+      bytes: previous.length,
+      sha256: digest(previous),
+    }),
+  );
   assert.equal(
     (await installPresentationAssets(options, '1', 'agents', installer)).status,
     'prepared',
   );
   assert.equal(acquisitions, 2);
+  const rebuilt = JSON.parse(await readFile(manifestPath, 'utf8'));
+  assert.ok(rebuilt.animationRoles.includes('knife-fire'));
+  assert.equal(rebuilt.sha256, digest(await readFile(join(output, 'agents/ct.glb'))));
+  await writeFile(join(output, 'agents/ct.glb'), 'damaged');
+  assert.equal(
+    (await installPresentationAssets(options, '1', 'agents', installer)).status,
+    'prepared',
+  );
+  assert.equal(acquisitions, 3);
   assert.deepEqual(
     (await readdir(output)).filter((name) => name.startsWith('.retired-')),
     [],

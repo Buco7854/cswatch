@@ -297,6 +297,7 @@ export async function parse(folder: string, maxExpanded: number) {
     infernos: media.infernos,
     mapBreakables: media.mapBreakables,
     mapDoors: media.mapDoors,
+    mapVisibility: media.mapVisibility,
     eventAvailability,
     throwInputs: throwInputs.snapshots,
   };

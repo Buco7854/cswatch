@@ -8,6 +8,7 @@ import {
   type Material,
   type Object3D,
 } from 'three';
+import { breakableKey } from '../../shared/map-breakables.mjs';
 import { preparedWater } from './source-water-material';
 import { preparedGlass } from './source-glass-material';
 import { prepareDoorStage } from './map-doors';
@@ -57,6 +58,16 @@ export function assertMapBaseColorTextures({ scene, parser }: MapTextureEvidence
 export function cloneMapModel(scene: Object3D): Object3D {
   const copy = scene.clone(true);
   copy.traverse((object) => {
+    const disabled = object.userData.cswatchInitiallyDisabled;
+    if (
+      (disabled?.className === 'prop_dynamic' || disabled?.className === 'func_brush') &&
+      typeof disabled.model === 'string' &&
+      disabled.model.endsWith('.vmdl') &&
+      typeof disabled.hammerId === 'string' &&
+      disabled.hammerId &&
+      breakableKey(disabled)
+    )
+      object.visible = false;
     if (object.userData.cswatchDoorStage) prepareDoorStage(object);
     if (object instanceof Light) {
       object.visible = false;

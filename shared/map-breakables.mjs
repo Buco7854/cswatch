@@ -6,7 +6,9 @@ const triple = (v, bound) =>
 
 // Brush and prop entities can legitimately occupy the same pose and use the same model.
 const resourceKey = (row) =>
-  row.className === 'func_breakable' ? 'func_breakable/' + row.modelId : row.modelId;
+  row.className === 'func_breakable' || row.className === 'func_brush'
+    ? row.className + '/' + row.modelId
+    : row.modelId;
 
 /** Exact identity prior to any join at a recording's declared wire precision. */
 export function breakableKey(row) {
@@ -82,6 +84,12 @@ function wirePose(row, tie) {
 }
 
 export function uniqueBreakableNodes(tracks, visit) {
+  return uniquePoseNodes(tracks, visit, ['prop_dynamic', 'func_breakable']);
+}
+export function uniqueVisibilityNodes(tracks, visit) {
+  return uniquePoseNodes(tracks, visit, ['prop_dynamic', 'func_brush']);
+}
+function uniquePoseNodes(tracks, visit, classes) {
   const matches = new Map();
   if (!tracks?.length) return matches;
   const quantized = new Set(),
@@ -110,7 +118,7 @@ export function uniqueBreakableNodes(tracks, visit) {
       ambiguous.add(key);
     } else wanted.set(key, [raw]);
   }
-  const found = uniqueMapNodes(wanted, visit, ['prop_dynamic', 'func_breakable'], (tag) => {
+  const found = uniqueMapNodes(wanted, visit, classes, (tag) => {
     const raw = breakableKey(tag);
     if (raw) return target(tag, raw);
   });
@@ -135,6 +143,12 @@ export function doorAnglesMatch(recorded, authored) {
 }
 
 export function validMapBreakables(rows, lastTick) {
+  return validIntervals(rows, lastTick, 'hidden');
+}
+export function validMapVisibility(rows, lastTick) {
+  return validIntervals(rows, lastTick, 'visible');
+}
+function validIntervals(rows, lastTick, field) {
   if (
     !Array.isArray(rows) ||
     !rows.length ||
@@ -150,18 +164,20 @@ export function validMapBreakables(rows, lastTick) {
       !key ||
       seen.has(key) ||
       (row.poseCodec !== undefined && row.poseCodec !== breakablePoseCodec) ||
-      (row.className !== undefined && row.className !== 'func_breakable') ||
+      (field === 'hidden'
+        ? row.className !== undefined && row.className !== 'func_breakable'
+        : !['prop_dynamic', 'func_brush'].includes(row.className)) ||
       Object.keys(row).length !==
         4 + Number(row.poseCodec !== undefined) + Number(row.className !== undefined) ||
-      !Array.isArray(row.hidden) ||
-      !row.hidden.length
+      !Array.isArray(row[field]) ||
+      !row[field].length
     )
       return false;
     seen.add(key);
-    total += row.hidden.length;
+    total += row[field].length;
     if (total > breakableLimits.intervals) return false;
     let end = -1;
-    for (const span of row.hidden) {
+    for (const span of row[field]) {
       if (
         !Array.isArray(span) ||
         span.length !== 2 ||

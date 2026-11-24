@@ -26,7 +26,15 @@ const grenadeKeys = new Set(
     .filter(([, item]) => item.kind === 'grenade')
     .map(([key]) => key),
 );
-type ThrowPose = { tick: number; weapon: string; underhand: boolean };
+type ThrowPose = {
+  tick: number;
+  start: number;
+  weapon: string;
+  underhand: boolean;
+  observedRelease: boolean;
+};
+type MeleePose = { tick: number; weapon: string };
+export type PovAction = { kind: 'throw' | 'underhand' | 'slash'; age: number; released: boolean };
 
 export function indexAgentEvents(data: Playback) {
   const { deaths } = indexSpectatorEvents(data);
@@ -35,10 +43,26 @@ export function indexAgentEvents(data: Playback) {
     data.agentDeaths?.map((anchor) => [anchor.id + ':' + anchor.tick, anchor]),
   );
   const throws = new Map<string, ThrowPose[]>();
+  const melee = new Map<string, MeleePose[]>();
+  const pending = new Map<string, ThrowPose>();
   const inputs = new Map(data.throwInputs?.map((snapshot) => [snapshot.eventIndex, snapshot]));
   for (const [index, event] of data.events.entries()) {
-    if (event.type !== 'weapon_fire' || !event.weapon || !event.user_steamid) continue;
+    if (event.type === 'round_start') pending.clear();
+    if (
+      (event.type !== 'weapon_fire' && event.type !== 'grenade_thrown') ||
+      !event.weapon ||
+      !event.user_steamid
+    )
+      continue;
     const weapon = canonicalEquipmentKey(event.weapon);
+    if (
+      equipment.items[weapon as keyof typeof equipment.items]?.kind === 'knife' &&
+      event.type === 'weapon_fire'
+    ) {
+      const attacks = melee.get(event.user_steamid) ?? [];
+      attacks.push({ tick: event.tick, weapon });
+      melee.set(event.user_steamid, attacks);
+    }
     if (!grenadeKeys.has(weapon)) continue;
     const snapshot = inputs.get(index);
     const input =
@@ -47,16 +71,84 @@ export function indexAgentEvents(data: Playback) {
       snapshot.sampleTick === event.tick
         ? snapshot.input
         : undefined;
-    const list = throws.get(event.user_steamid) ?? [];
-    list.push({
+    const actor = event.user_steamid;
+    const prior = pending.get(actor);
+    const underhand = input?.attack2 === true && input.attack === false;
+    // A utility weapon_fire starts the action. grenade_thrown records the
+    // subsequent projectile release; some recordings supply just one of them.
+    if (
+      event.type === 'grenade_thrown' &&
+      prior?.weapon === weapon &&
+      event.tick >= prior.start &&
+      event.tick - prior.start <= data.tickRate * 0.25
+    ) {
+      prior.tick = event.tick;
+      prior.observedRelease = true;
+      pending.delete(actor);
+      continue;
+    }
+    const entry = {
       tick: event.tick,
+      start: event.tick,
       weapon,
-      underhand: input?.attack2 === true && input.attack === false,
-    });
-    throws.set(event.user_steamid, list);
+      underhand,
+      observedRelease: event.type === 'grenade_thrown',
+    };
+    const list = throws.get(actor) ?? [];
+    list.push(entry);
+    throws.set(actor, list);
+    if (event.type === 'weapon_fire') pending.set(actor, entry);
+    else pending.delete(actor);
   }
   for (const list of throws.values()) list.sort((a, b) => a.tick - b.tick);
-  return { deaths, shots, anchors, throws };
+  for (const list of melee.values()) list.sort((a, b) => a.tick - b.tick);
+  return { deaths, shots, anchors, throws, melee };
+}
+
+function heldMeleeMatches(attack: MeleePose, weapon: string, team: number) {
+  return (
+    attack.weapon === weapon || (attack.weapon === 'knifet' && weapon === 'knife' && team === 2)
+  );
+}
+
+/** Sample the action at demo time. Only the release event retires the held
+ * grenade from the viewmodel; the recorded projectile owns its world position. */
+export function povActionAt(
+  evidence: ReturnType<typeof indexAgentEvents>,
+  position: Position,
+  tick: number,
+  rate: number,
+  roundStart: number,
+): PovAction | undefined {
+  if (!position.alive || !(rate > 0)) return;
+  const weapon = canonicalEquipmentKey(position.weapon);
+  if (grenadeKeys.has(weapon)) {
+    const entries = evidence.throws.get(position.id);
+    // Entries are ordered by release. The only following release that can
+    // already be winding up belongs to the same action within a quarter second.
+    const candidate = latestAt(entries, tick + rate * 0.25);
+    const action = candidate && candidate.start <= tick ? candidate : latestAt(entries, tick);
+    if (
+      action &&
+      action.weapon === weapon &&
+      action.start >= roundStart &&
+      tick < action.start + rate * 2
+    )
+      return {
+        kind: action.underhand ? 'underhand' : 'throw',
+        age: (tick - action.start) / rate,
+        released: action.observedRelease && tick >= action.tick,
+      };
+  } else {
+    const action = latestAt(evidence.melee.get(position.id), tick);
+    if (
+      action &&
+      heldMeleeMatches(action, weapon, position.team) &&
+      action.tick >= roundStart &&
+      tick < action.tick + rate * 2
+    )
+      return { kind: 'slash', age: (tick - action.tick) / rate, released: false };
+  }
 }
 
 export function indexAgentDraws(data: Playback) {
@@ -120,12 +212,14 @@ export function agentActionAt(
   const change = latestAt(draws.get(position.id), tick);
   const draw = change?.weapon === key ? change?.tick : undefined;
   const fire = fireEnabled ? recentWeaponShot(evidence.shots, position, tick, rate, 30) : undefined;
+  const attack = latestAt(evidence.melee.get(position.id), tick);
+  const melee = attack && heldMeleeMatches(attack, key, position.team) ? attack.tick : undefined;
   const reload = position.reloadStarted;
   let winner: { kind: AgentAction; tick: number } | undefined;
   for (const [kind, start] of [
     ['draw', draw],
     ['reload', reload],
-    ['fire', fire?.tick],
+    ['fire', fire?.tick ?? melee],
   ] as const) {
     if (
       start !== undefined &&

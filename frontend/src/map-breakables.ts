@@ -3,17 +3,24 @@ import { bindMapDoors } from './map-doors';
 import {
   breakableKey,
   uniqueBreakableNodes,
+  uniqueVisibilityNodes,
   type MapBreakable,
   type MapDoor,
+  type MapVisibility,
 } from '../../shared/map-breakables.mjs';
 
-type Entry = { node: Object3D; initial: boolean; hidden: MapBreakable['hidden'] };
-type MapVisibility = {
+type Entry = {
+  node: Object3D;
+  initial: boolean;
+  shownBetween: boolean;
+  intervals: [number, number][];
+};
+type SceneVisibility = {
   revision: number;
   authored: Map<Object3D, boolean>;
   moving: Set<Object3D>;
 };
-const visibility = new WeakMap<Object3D, MapVisibility>();
+const visibility = new WeakMap<Object3D, SceneVisibility>();
 export const mapBreakableVisibility = (root: Object3D) => visibility.get(root);
 
 /** Upper bound on an ordered list. Adjacent chunks and fractional ticks share
@@ -36,8 +43,9 @@ export function bindMapBreakables(
   root: Object3D,
   tracks: MapBreakable[] | undefined,
   doorTracks?: MapDoor[],
+  visibilityTracks?: MapVisibility[],
 ) {
-  if (!tracks?.length && !doorTracks?.length) return;
+  if (!tracks?.length && !doorTracks?.length && !visibilityTracks?.length) return;
   const doors = bindMapDoors(root, doorTracks);
   const wanted = new Map((tracks ?? []).map((track) => [breakableKey(track), track]));
   const matches = uniqueBreakableNodes<Object3D>(tracks, (accept) =>
@@ -45,20 +53,29 @@ export function bindMapBreakables(
   );
   const entries: Entry[] = [],
     boundaries = new Set<number>();
-  const state: MapVisibility = {
+  const state: SceneVisibility = {
     revision: 0,
     authored: new Map(doors.map((d) => [d.node, d.initial])),
     moving: new Set(doors.map((d) => d.node)),
   };
-  for (const [key, node] of matches) {
-    if (!node) continue;
-    const track = wanted.get(key)!;
-    for (const [a, b] of track.hidden) {
+  function add(node: Object3D, intervals: [number, number][], shownBetween: boolean) {
+    for (const [a, b] of intervals) {
       boundaries.add(a);
       boundaries.add(b);
     }
-    state.authored.set(node, node.visible);
-    entries.push({ node, initial: node.visible, hidden: track.hidden });
+    // Include switchable geometry in the follow-camera index even on an initially hidden tick.
+    state.authored.set(node, shownBetween || node.visible);
+    entries.push({ node, initial: node.visible, intervals, shownBetween });
+  }
+  for (const [key, node] of matches) {
+    if (node) add(node, wanted.get(key)!.hidden, false);
+  }
+  const visible = new Map((visibilityTracks ?? []).map((track) => [breakableKey(track), track]));
+  const conditional = uniqueVisibilityNodes<Object3D>(visibilityTracks, (accept) =>
+    root.traverse((node) => accept(node, node.userData.cswatchInitiallyDisabled)),
+  );
+  for (const [key, node] of conditional) {
+    if (node) add(node, visible.get(key)!.visible, true);
   }
   if (!entries.length && !doors.length) return;
   visibility.set(root, state);
@@ -74,9 +91,9 @@ export function bindMapBreakables(
         const next = upperBound(edges, tick, identity);
         from = edges[next - 1] ?? -Infinity;
         to = edges[next] ?? Infinity;
-        for (const { node, initial, hidden } of entries) {
-          const last = upperBound(hidden, tick, start) - 1;
-          const show = initial && (last < 0 || tick >= hidden[last][1]);
+        for (const { node, initial, intervals, shownBetween } of entries) {
+          const last = upperBound(intervals, tick, start) - 1;
+          const show = last >= 0 && tick < intervals[last][1] ? shownBetween : initial;
           if (node.visible !== show) {
             node.visible = show;
             changed = true;

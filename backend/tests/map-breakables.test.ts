@@ -8,12 +8,14 @@ import {
   MeshBasicMaterial,
   PlaneGeometry,
 } from '../../frontend/node_modules/three/build/three.module.js';
+import { observeMapVisibility } from '../src/map-visibility.js';
 import { observeMapBreakables } from '../src/map-breakables.js';
 import { bindMapBreakables, mapBreakableVisibility } from '../../frontend/src/map-breakables.js';
 import { followObstruction } from '../../frontend/src/follow-obstruction.js';
 import {
   breakableKey,
   validMapBreakables,
+  validMapVisibility,
   type MapPropPose,
 } from '../../shared/map-breakables.mjs';
 
@@ -222,5 +224,57 @@ test('the replay marks wire precision only when all seven live class decoders ma
     const result = r.finish(true)!;
     assert.equal(result.length, 1);
     assert.equal(result[0].poseCodec, expected ? 'cell32-angle20' : undefined);
+  }
+});
+
+test('broadcast visibility uses explicit render flags across full snapshots, serial reuse, removal and rewind', () => {
+  const c = recording();
+  const finish = observeMapVisibility(c.source as unknown as DemoReader, 50);
+  c.source.emit('serverinfo', { is_hltv: true });
+  const at = (tick: number, props: Record<string, unknown>, effects: number, mode: bigint) => {
+    c.source.currentTick = tick;
+    props['CDynamicProp.m_fEffects'] = effects;
+    props['CDynamicProp.m_nRenderMode'] = mode;
+    c.source.emit('tickend');
+  };
+  const p = c.present(4, 1, 3);
+  at(4, p, 32, 0n);
+  at(7, p, 0, 0n);
+  c.source.emit('entitycreated', [1, 0, 0, 'CDynamicProp', 3]);
+  at(13, p, 32, 0n);
+  at(16, p, 0, 1n);
+  at(20, p, 1, 0n);
+  c.remove(24, 1);
+  const q = c.present(28, 1, 4);
+  at(28, q, 0, 0n);
+  const rows = finish(true)!;
+  assert.ok(validMapVisibility(rows, 50));
+  assert.equal(rows[0].className, 'prop_dynamic');
+  assert.deepEqual(rows[0].visible, [
+    [7, 13],
+    [20, 24],
+    [28, 51],
+  ]);
+});
+
+test('a moving or ambiguous network placement cannot turn on authored mode geometry', () => {
+  for (const reason of ['moved', 'duplicate', 'incomplete', 'client']) {
+    const c = recording(),
+      finish = observeMapVisibility(c.source as unknown as DemoReader, 50);
+    c.source.emit('serverinfo', { is_hltv: reason !== 'client' });
+    const enable = (p: Record<string, unknown>) => {
+      p['CDynamicProp.m_fEffects'] = 0;
+      p['CDynamicProp.m_nRenderMode'] = 0n;
+      c.source.emit('tickend');
+    };
+    const pose = c.present(1, 2, 5);
+    enable(pose);
+    if (reason === 'duplicate') enable(c.present(2, 3, 6));
+    if (reason === 'moved') {
+      c.source.currentTick = 3;
+      pose[skeleton + 'm_vecOrigin.m_vecX'] = 12;
+      c.source.emit('tickend');
+    }
+    assert.equal(finish(reason !== 'incomplete'), undefined, reason);
   }
 });

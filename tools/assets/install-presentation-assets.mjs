@@ -191,6 +191,7 @@ async function validateItem(root, kind, manifest, id, verifyModel) {
     json.animations.length !== roles.length ||
     roles.some(
       (role) =>
+        !Object.hasOwn(viewmodelSources[id], role) ||
         !json.animations.some(
           (animation) =>
             animation.name === id + '-' + role &&

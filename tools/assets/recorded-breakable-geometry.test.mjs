@@ -179,8 +179,9 @@ test('independent instances survive static sibling batching, tier serialization 
       tagBreakableGeometry(doc, [
         dump('12', 10, '@OnBreak Once A B'),
         dump('13', 20, 'health 1').replace('prop_dynamic', 'func_breakable'),
+        dump('14', 30, 'startdisabled true').replace('prop_dynamic', 'func_brush'),
       ]),
-      2,
+      3,
     );
     await writeMapTier({
       ...metadata,
@@ -202,6 +203,14 @@ test('independent instances survive static sibling batching, tier serialization 
     const model = await io.read(join(dir, tier, 'scene.glb'));
     const tags = tagged(model);
     assert.equal(tags.length, 2);
+    const conditional = model
+      .getRoot()
+      .listNodes()
+      .filter((n) => n.getExtras().cswatchInitiallyDisabled);
+    assert.equal(conditional.length, 1);
+    assert.equal(conditional[0].getExtras().cswatchInitiallyDisabled.className, 'func_brush');
+    assert.equal(conditional[0].getExtras().cswatchInitiallyDisabled.hammerId, '14');
+    assert.ok(conditional[0].getMesh()?.listPrimitives().length);
     assert.equal(new Set(tags.map((n) => n.getExtras().cswatchBreakable.hammerId)).size, 2);
     for (const node of tags) {
       assert.equal(node.getExtras().cswatchBreakable.modelId, modelResourceId(path));
@@ -211,7 +220,32 @@ test('independent instances survive static sibling batching, tier serialization 
       model
         .getRoot()
         .listNodes()
-        .some((n) => n.getMesh() && !n.getExtras().cswatchBreakable),
+        .some(
+          (n) =>
+            n.getMesh() &&
+            !n.getExtras().cswatchBreakable &&
+            !n.getExtras().cswatchInitiallyDisabled,
+        ),
     );
   }
+});
+
+test('authored disabled props and brushes are independent of names and materials', () => {
+  const doc = makeScene();
+  const rows = [
+    dump('11', 10, 'startdisabled true'),
+    dump('12', 20, 'startdisabled false').replace('prop_dynamic', 'func_brush'),
+    dump('13', 30, 'startdisabled true\nparentname "moving"'),
+    dump('14', 40, 'startdisabled true'),
+    dump('15', 40),
+  ];
+  assert.equal(tagBreakableGeometry(doc, rows), 1);
+  const tags = doc
+    .getRoot()
+    .listNodes()
+    .flatMap((n) => n.getExtras().cswatchInitiallyDisabled ?? []);
+  assert.deepEqual(
+    tags.map((t) => t.hammerId),
+    ['11'],
+  );
 });

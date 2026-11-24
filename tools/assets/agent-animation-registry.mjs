@@ -30,6 +30,7 @@ const special = {
   'pistol-reload': 'animation/anims/world/pistol/pistol_glock/reload_glock.vnmclip_c',
   'knife-idle': 'animation/anims/world/knife/_default_knife/idle_knife.vnmclip_c',
   'knife-crouch-idle': 'animation/anims/world/knife/_default_knife/idle_crouch_knife.vnmclip_c',
+  'knife-fire': 'animation/anims/world/knife/_default_knife/frontswing_knife.vnmclip_c',
   'knife-draw': 'animation/anims/world/knife/_default_knife/draw_knife.vnmclip_c',
   'dual-idle':
     'animation/anims/world/pistol/pistol_elite/idle_elite.vnmclip+non_additive.vnmclip_c',

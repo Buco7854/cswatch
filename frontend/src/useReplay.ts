@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api';
-import { openingTick } from './replay-opening';
+import { firstPovTick, openingTick } from './replay-opening';
 import { sample } from './sample';
 import { ReplayCache, chunkIndex, validateManifest } from './replay-cache';
 import type { Demo, Playback } from './types';
@@ -85,7 +85,8 @@ export function useReplay(
           api<PlaybackChunk>(`/api/demos/${id}/playback/chunks/${index}`, { signal }),
         );
         cache.current = next;
-        const start = openingTick(metadata, linkedTick ?? resumeTick ?? savedTick);
+        const requested = linkedTick ?? resumeTick ?? savedTick;
+        const start = openingTick(metadata, requested);
         const initial = await next.at(start);
         if (controller.signal.aborted) {
           next.close();
@@ -95,7 +96,7 @@ export function useReplay(
         setBounds({ first: metadata.firstTick, last: metadata.lastTick });
         setManifest(metadata);
         setLoadedFor(identity);
-        callback.current(initial, start);
+        callback.current(initial, requested === undefined ? firstPovTick(initial, start) : start);
       } catch (e) {
         if (!controller.signal.aborted) setError((e as Error).message);
       }

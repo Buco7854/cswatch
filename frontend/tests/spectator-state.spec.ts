@@ -3,6 +3,8 @@ import type { Playback, Position } from '../src/types';
 import {
   damageFeedbackAt,
   DeathFollowController,
+  deathCameraEvidence,
+  deathCameraView,
   indexSpectatorEvents,
 } from '../src/spectator-state';
 import { firstPersonView, overheadDistance } from '../src/pov-camera';
@@ -60,7 +62,8 @@ test('hurt feedback uses recorded immutable identities, bounded damage and avail
   expect(hit.opacity).toBeGreaterThan(0);
   expect(hit.direction).toBe(-90);
   expect(damageFeedbackAt(data, timeline, ids[0], 48)!.opacity).toBeLessThan(hit.opacity);
-  expect(damageFeedbackAt(data, timeline, ids[0], 74)).toBeUndefined();
+  const hurtOnly = indexSpectatorEvents({ ...data, events: data.events.slice(0, 1) });
+  expect(damageFeedbackAt(data, hurtOnly, ids[0], 74)).toBeUndefined();
   expect(damageFeedbackAt(data, timeline, ids[1], 32)).toBeUndefined();
   // Trail/chunk context cannot establish an attacker's authoritative hit pose.
   expect(
@@ -251,4 +254,32 @@ test('recorded native eye height and lateral displacement are sampled in Source 
   expect(firstPersonView(pose).position[1]).toBeCloseTo(85 * 0.0254);
   expect(firstPersonView(pose).position[2]).toBeCloseTo(-202 * 0.0254);
   expect(playerPose(from, { ...to, id: '2' }, 0.5)).toBe(from);
+});
+
+test('a fatal event without a separate hit anchors the POV turn and tint to the demo clock', () => {
+  const data = recording();
+  const death = data.events[1];
+  data.events = [death];
+  data.frames.splice(1, 0, { ...data.frames[0], tick: 60 });
+  const events = indexSpectatorEvents(data);
+  expect(damageFeedbackAt(data, events, ids[0], 63)).toBeUndefined();
+  expect(damageFeedbackAt(data, events, ids[0], 64)?.opacity).toBe(0.96);
+  expect(damageFeedbackAt(data, events, ids[0], 95)?.opacity).toBeGreaterThan(0);
+  expect(damageFeedbackAt(data, events, ids[0], 140)).toBeUndefined();
+  const evidence = deathCameraEvidence(data, death, ids[0])!;
+  expect(evidence.yaw).toBeCloseTo(90);
+  const start = deathCameraView(evidence, 0, false),
+    end = deathCameraView(evidence, 1, false);
+  expect(end.position).toEqual(start.position);
+  expect(end.target).not.toEqual(start.target);
+  expect(deathCameraView(evidence, 0.45, false)).toEqual(end);
+  expect(deathCameraView(evidence, 1, true)).toEqual(start);
+  expect(deathCameraEvidence(data, { ...death, attacker_steamid: ids[0] }, ids[0])).toBeUndefined();
+  expect(
+    deathCameraEvidence(data, { ...death, attacker_steamid: undefined }, ids[0]),
+  ).toBeUndefined();
+  expect(deathCameraEvidence(data, { ...death, noreplay: true }, ids[0])).toBeUndefined();
+  data.rounds.push({ number: 2, tick: 80 });
+  expect(damageFeedbackAt(data, events, ids[0], 80)).toBeUndefined();
+  expect(damageFeedbackAt(data, events, ids[0], 64)?.opacity).toBe(0.96);
 });

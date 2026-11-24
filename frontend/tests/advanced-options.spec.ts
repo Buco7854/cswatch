@@ -330,6 +330,7 @@ test('vertical FOV changes real 3D camera pixels reversibly rather than only sav
   await page.setViewportSize({ width: 960, height: 640 });
   await openPractice(page);
   await expect(page.locator('.viewer-stage canvas')).toBeVisible();
+  await chooseCamera(page, 'en', 'Free camera');
   await expect(page.locator('.scene')).toHaveAttribute('data-camera-mode', 'orbit');
   // The canvas screenshot includes composited DOM. Isolate the world lens
   // from text settling and the label layout, which have separate checks.

@@ -101,3 +101,38 @@ test('a new match opens live in POV with the game FOV and the recorded match HUD
   await expect(position).toHaveValue('700');
   await expect(opponent.getByRole('button')).toHaveAttribute('aria-pressed', 'true');
 });
+
+test('a fresh recording opens at the first available living POV while an explicit earlier time is respected', async ({
+  page,
+}) => {
+  const id = 'delayed-pov-fixture',
+    replay = recordedReplay();
+  replay.frames[0].players = [];
+  await page.route('**/api/demos/' + id, (route) =>
+    route.fulfill({
+      json: {
+        id,
+        name: 'Delayed spawn',
+        status: 'ready',
+        public: true,
+        owned: false,
+        map: replay.map,
+      },
+    }),
+  );
+  await page.route('**/api/demos/' + id + '/playback', (route) =>
+    fulfillReplayFixture(route, replay),
+  );
+  await installMapFixture(page, replay.map, id);
+  await page.goto('/watch/' + id);
+  const position = page.getByRole('slider', { name: 'Playback position' });
+  await expect(position).toHaveValue('256');
+  await expectCameraControl(page, 'Player perspective');
+  await page.goto('/watch/' + id + '?tick=12');
+  await expect(position).toHaveValue('12');
+  await position.fill('256');
+  await expectCameraControl(page, 'Player perspective');
+  await page.goto('/watch/sample');
+  await expect(page.getByRole('slider', { name: 'Playback position' })).toBeVisible();
+  await expectCameraControl(page, 'Player perspective');
+});
