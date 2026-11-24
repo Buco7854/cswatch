@@ -132,6 +132,18 @@ class AgentBoundary extends Component<
     return this.state.error ? this.props.fallback : this.props.children;
   }
 }
+// The loader owns immutable clip data. Players and corpses using the same
+// loaded model can bind its validated curves to their own independent bones.
+const sourceClips = new WeakMap<object, NonNullable<ReturnType<typeof directionalClips>>>();
+function clipsForModel(gltf: ReturnType<typeof useEquipmentGLTF>) {
+  const resolved = sourceClips.get(gltf);
+  if (resolved) return resolved;
+  const clips = directionalClips(gltf.animations, gltf.parser.json.animations);
+  if (!clips) throw Error('Agent model requires the complete directional animation set.');
+  sourceClips.set(gltf, clips);
+  return clips;
+}
+
 type AgentProps = {
   url: string;
   id: string;
@@ -174,8 +186,7 @@ function LoadedAgent({
     { invalidate } = useThree();
   useLayoutEffect(() => scope.acquire(), [scope]);
   const { prepared, pose, strideProfile, footLock, corpseFloor } = useMemo(() => {
-    const clips = directionalClips(gltf.animations, gltf.parser.json.animations);
-    if (!clips) throw Error('Agent model requires the complete directional animation set.');
+    const clips = clipsForModel(gltf);
     const prepared = prepareAgentModel(gltf.scene);
     try {
       assertMapBaseColorTextures({ scene: gltf.scene, parser: gltf.parser });
