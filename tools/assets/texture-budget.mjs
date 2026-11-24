@@ -1,5 +1,6 @@
 /** Decoded texture residency policy for trusted offline map preparation. */
 import { createHash } from 'node:crypto';
+import { availableParallelism } from 'node:os';
 import sharp from 'sharp';
 import { EXTTextureWebP } from '@gltf-transform/extensions';
 import { listTextureInfo, listTextureSlots } from '@gltf-transform/functions';
@@ -220,7 +221,40 @@ export function preserveAlphaCoverage(source, rgba, cutoff) {
     rgba[index] = Math.min(255, Math.round(rgba[index] * gain));
 }
 
-/** Serial encodes keep only one image decode live at a time. */
+// Two small independent libvips jobs can use separate cores. Keep large sources
+// serial, including cutout jobs that need both original and resized channels.
+const pairedImagePixels = 8 * 1024 ** 2;
+
+async function encodeImage({ texture, source, target, baked, cutoff, lossless, reuse }) {
+  const input = texture.getImage();
+  let encoded = input;
+  if (!reuse) {
+    const decoder = () =>
+      sharp(Buffer.from(input.buffer, input.byteOffset, input.byteLength), {
+        limitInputPixels: textureBudgetLimits.sourcePixels,
+      });
+    let resized = decoder().resize(target.width, target.height, {
+      fit: 'fill',
+      withoutEnlargement: true,
+      kernel: baked ? 'nearest' : 'lanczos3',
+    });
+    if (cutoff) {
+      const alpha = await decoder().toColourspace('srgb').extractChannel(3).raw().toBuffer();
+      const raw = await resized.toColourspace('srgb').ensureAlpha().raw().toBuffer();
+      preserveAlphaCoverage(alpha, raw, cutoff);
+      resized = sharp(raw, { raw: { width: target.width, height: target.height, channels: 4 } });
+    }
+    encoded = await resized
+      .webp(lossless ? { lossless: true, effort: 4 } : { quality: 80, effort: 4 })
+      .toBuffer();
+  }
+  const { width, height, bytes, sha256 } = encoded === input ? source : await metadata(encoded);
+  const actual = { width, height, bytes, sha256 };
+  if (actual.width > target.width || actual.height > target.height)
+    throw new Error('Compressed image dimensions exceed their decoded residency plan.');
+  return { encoded, actual };
+}
+
 export async function applyTextureBudget(
   document,
   { tier, preserveCutoutCoverage = false, ...overrides },
@@ -240,69 +274,80 @@ export async function applyTextureBudget(
   const planned = planTextureBudget(sources, { tier, ...overrides }),
     targets = new Map(planned.images.map((row) => [row.id, row]));
   const cutoffs = preserveCutoutCoverage ? cutoutCutoffs(document) : new Map();
-  const images = [];
+  // The main world and its referenced sky can contain separate texture objects
+  // backed by the very same PNG. Preserve their sampler and residency records.
+  const groups = new Map(),
+    images = new Array(textures.length);
   for (const [index, texture] of textures.entries()) {
-    const target = targets.get(String(index)),
-      source = sources[index],
+    const source = sources[index],
+      target = targets.get(String(index)),
       input = texture.getImage();
     const baked = bakedAtlas(target.roles);
-    const cutoff = source.hasAlpha && target.roles.length === 1 && cutoffs.get(texture);
+    const lossless =
+      baked || target.roles.includes('layerBlendTexture') || target.roles.includes('baseHeight');
+    const unchanged = source.width === target.width && source.height === target.height;
+    const cutoff =
+      (!unchanged && source.hasAlpha && target.roles.length === 1 && cutoffs.get(texture)) || 0;
     const alreadyWebP =
       texture.getMimeType() === 'image/webp' &&
       input.byteLength >= 12 &&
       Buffer.from(input.buffer, input.byteOffset, 4).toString('ascii') === 'RIFF' &&
       Buffer.from(input.buffer, input.byteOffset + 8, 4).toString('ascii') === 'WEBP';
-    const unchanged = source.width === target.width && source.height === target.height;
-    let encoded = input;
-    if (!alreadyWebP || !unchanged) {
-      const decoder = () =>
-        sharp(Buffer.from(input.buffer, input.byteOffset, input.byteLength), {
-          limitInputPixels: textureBudgetLimits.sourcePixels,
-        });
-      let resized = decoder().resize(target.width, target.height, {
-        fit: 'fill',
-        withoutEnlargement: true,
-        kernel: baked ? 'nearest' : 'lanczos3',
-      });
-      if (cutoff && !unchanged) {
-        const alpha = await decoder().toColourspace('srgb').extractChannel(3).raw().toBuffer();
-        const raw = await resized.toColourspace('srgb').ensureAlpha().raw().toBuffer();
-        preserveAlphaCoverage(alpha, raw, cutoff);
-        resized = sharp(raw, { raw: { width: target.width, height: target.height, channels: 4 } });
-      }
-      encoded = await resized
-        .webp(
-          baked || target.roles.includes('layerBlendTexture') || target.roles.includes('baseHeight')
-            ? { lossless: true, effort: 4 }
-            : { quality: 80, effort: 4 },
-        )
-        .toBuffer();
+    const reuse = alreadyWebP && unchanged;
+    const key = JSON.stringify([
+      source.sha256,
+      target.width,
+      target.height,
+      baked,
+      lossless,
+      cutoff,
+      reuse,
+    ]);
+    let group = groups.get(key);
+    if (!group) {
+      group = { source, target, texture, baked, cutoff, lossless, reuse, indices: [] };
+      groups.set(key, group);
     }
-    const { hasAlpha: _hasAlpha, ...actual } = await metadata(encoded);
-    if (
-      actual.width > target.width ||
-      actual.height > target.height ||
-      actual.width > planned.policy.maxEdge ||
-      actual.height > planned.policy.maxEdge
-    )
-      throw new Error('Compressed image dimensions exceed their decoded residency plan.');
-    texture
-      .setImage(encoded)
-      .setMimeType('image/webp')
-      .setURI(texture.getURI().replace(/\.[^./]+$/, '.webp'));
-    images.push({
-      id: source.id,
-      roles: target.roles,
-      copies: target.copies,
-      source: {
-        width: source.width,
-        height: source.height,
-        bytes: source.bytes,
-        sha256: source.sha256,
-      },
-      planned: { width: target.width, height: target.height, halvings: target.halvings },
-      actual,
-    });
+    group.indices.push(index);
+  }
+  async function applyGroup(group) {
+    const { encoded, actual } = await encodeImage(group);
+    for (const index of group.indices) {
+      const texture = textures[index],
+        source = sources[index],
+        target = targets.get(source.id);
+      texture
+        .setImage(encoded)
+        .setMimeType('image/webp')
+        .setURI(texture.getURI().replace(/\.[^./]+$/, '.webp'));
+      images[index] = {
+        id: source.id,
+        roles: target.roles,
+        copies: target.copies,
+        source: {
+          width: source.width,
+          height: source.height,
+          bytes: source.bytes,
+          sha256: source.sha256,
+        },
+        planned: { width: target.width, height: target.height, halvings: target.halvings },
+        actual,
+      };
+    }
+  }
+  const work = [...groups.values()];
+  const parallel = availableParallelism() > 1;
+  const small = (group) =>
+    group.source.width * group.source.height + group.target.width * group.target.height <=
+    pairedImagePixels;
+  for (let i = 0; i < work.length; i++) {
+    const current = work[i],
+      next = work[i + 1];
+    if (parallel && next && small(current) && small(next)) {
+      const batch = await Promise.allSettled([applyGroup(current), applyGroup(next)]);
+      i++;
+      for (const result of batch) if (result.status === 'rejected') throw result.reason;
+    } else await applyGroup(current);
   }
   if (textures.length) document.createExtension(EXTTextureWebP).setRequired(true);
   const summary = {

@@ -229,6 +229,7 @@ export async function demoMapAssetRoutes(
         verification: 'unavailable',
         packId: resolution.status === 'approved' ? resolution.packId : null,
         code: 'pack_invalid',
+        ...(result?.phase ? { phase: result.phase } : {}),
         assets: emptyAssets,
       };
       if (result?.status === 'ready') {
@@ -261,6 +262,7 @@ export async function demoMapAssetRoutes(
         return {
           resolution,
           acquisition: result.status,
+          ...(result.phase ? { phase: result.phase } : {}),
           canAcquire: Boolean(
             enabled &&
             owned &&

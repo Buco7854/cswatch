@@ -56,6 +56,19 @@ export const mapJobResultSchema = z
     schemaVersion: z.literal(mapPreparerRevision),
     packId: packIdSchema,
     status: z.enum(['processing', 'ready', 'failed']),
+    phase: z
+      .enum([
+        'tools',
+        'source',
+        'geometry',
+        'environment',
+        'lighting',
+        'desktop',
+        'mobile',
+        'compact',
+        'publishing',
+      ])
+      .optional(),
     updatedAt: z.number().int().min(0).max(8640000000000),
     assetPackId: packIdSchema.optional(),
     repairing: z.literal(true).optional(),
@@ -77,7 +90,7 @@ export const mapJobResultSchema = z
   .refine((value) =>
     value.status === 'failed' ? value.code !== undefined : value.code === undefined,
   )
-  .refine((value) => !value.repairing || value.status === 'processing')
+  .refine((value) => value.status === 'processing' || (!value.repairing && !value.phase))
   .refine((value) => {
     const supplied = [value.assetPackId, value.source, value.sourceCheckedAt].filter(
       (v) => v !== undefined,

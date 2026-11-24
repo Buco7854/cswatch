@@ -43,15 +43,18 @@ export async function regular(path, max, min = 1) {
   return info;
 }
 export async function fileHash(path, algorithm = 'sha256', max = steamAssetLimits.outputBytes) {
+  return (await fileHashes(path, [algorithm], max))[algorithm];
+}
+export async function fileHashes(path, algorithms, max) {
   const initial = await regular(path, max);
-  const hash = createHash(algorithm);
+  const hashes = algorithms.map((name) => createHash(name));
   let bytes = 0;
   for await (const chunk of createReadStream(path, {
     flags: constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
   })) {
     bytes += chunk.length;
     if (bytes > max) throw new Error('Operator asset grew beyond its byte limit.');
-    hash.update(chunk);
+    for (const hash of hashes) hash.update(chunk);
   }
   const after = await regular(path, max);
   if (
@@ -63,7 +66,7 @@ export async function fileHash(path, algorithm = 'sha256', max = steamAssetLimit
     after.ctimeMs !== initial.ctimeMs
   )
     throw new Error('Operator asset changed during verification.');
-  return hash.digest('hex');
+  return Object.fromEntries(algorithms.map((name, index) => [name, hashes[index].digest('hex')]));
 }
 export async function allocatedStorage(root) {
   let physicalBytes = 0,

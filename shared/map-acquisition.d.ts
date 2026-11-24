@@ -60,11 +60,22 @@ type MapJobFailureCode =
   | 'approval_removed'
   | 'worker_interrupted'
   | 'removed_by_admin';
+export type MapPreparationPhase =
+  | 'tools'
+  | 'source'
+  | 'geometry'
+  | 'environment'
+  | 'lighting'
+  | 'desktop'
+  | 'mobile'
+  | 'compact'
+  | 'publishing';
 export type MapJobResult = {
   schemaVersion: MapJobIdentity['schemaVersion'];
   repairing?: true;
   packId: string;
   status: 'processing' | 'ready' | 'failed';
+  phase?: MapPreparationPhase;
   updatedAt: number;
   code?: MapJobFailureCode;
   /** Worker-generated post-download source proof; never caller-selected. */
@@ -88,6 +99,7 @@ export type DemoMapAssets = {
   /** Why a source cannot currently be prepared, separate from historical matching. */
   readinessReason?: MapReadinessReason;
   acquisition: 'disabled' | 'unavailable' | 'queued' | 'processing' | 'ready' | 'failed';
+  phase?: MapPreparationPhase;
   code?: MapJobFailureCode | 'queue_full' | 'pack_invalid';
   verification: 'operator-approved' | 'latest-official' | 'version-unverified' | 'unavailable';
   packId: string | null;

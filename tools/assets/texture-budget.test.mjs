@@ -202,6 +202,45 @@ test('actual post-compression metadata stays under plan, retains alpha, shared i
   assert.equal(second.manifest.sourceEncodedImageBytes, second.manifest.encodedImageBytes);
 });
 
+test('identical source images share an encoding only for matching dimensions and alpha processing', async () => {
+  const document = new Document();
+  const png = Buffer.alloc(32 * 32 * 4);
+  for (let i = 0; i < png.length; i += 4) {
+    const pixel = i / 4;
+    png[i] = (pixel * 7) % 256;
+    png[i + 1] = 200;
+    png[i + 2] = 80;
+    png[i + 3] = (pixel * 11) % 256;
+  }
+  const image = await sharp(png, { raw: { width: 32, height: 32, channels: 4 } })
+    .png()
+    .toBuffer();
+  const textures = [];
+  for (const mode of ['OPAQUE', 'OPAQUE', 'MASK', 'MASK']) {
+    const texture = document.createTexture().setImage(Buffer.from(image)).setMimeType('image/png');
+    document.createMaterial().setBaseColorTexture(texture).setAlphaMode(mode).setAlphaCutoff(0.4);
+    textures.push(texture);
+  }
+  const result = await applyTextureBudget(document, {
+    tier: 'mobile',
+    maxEdge: 16,
+    preserveCutoutCoverage: true,
+  });
+  assert.strictEqual(textures[0].getImage(), textures[1].getImage());
+  assert.strictEqual(textures[2].getImage(), textures[3].getImage());
+  assert.notStrictEqual(textures[0].getImage(), textures[2].getImage());
+  assert.equal(result.plan.images.length, 4);
+  assert.equal(result.manifest.residentBaseRGBABytes, 4 * 16 * 16 * 4);
+  const partlyResized = await applyTextureBudget(document, {
+    tier: 'mobile',
+    budgetBytes: 4 * 16 * 16 * 3,
+  });
+  assert.ok(new Set(partlyResized.plan.images.map((row) => row.actual.width)).size > 1);
+  for (const [i, row] of partlyResized.plan.images.entries()) {
+    assert.equal((await sharp(textures[i].getImage()).metadata()).width, row.planned.width);
+  }
+});
+
 test('ordinary map packing applies both default decoded budgets and binds complete texture plans', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'cswatch-pack-budget-'));
   t.after(() => rm(root, { recursive: true, force: true }));

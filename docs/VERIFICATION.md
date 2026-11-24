@@ -1,5 +1,22 @@
 # Verification record
 
+## First-time official map preparation
+
+The measurements below cover server conversion. The same inputs were run through the released and updated code on this host. No complete cold Steam-to-ready conversion was timed for this change.
+
+| Measured operation                                                               | Released                     | Updated                 | Output checked                     |
+| -------------------------------------------------------------------------------- | ---------------------------- | ----------------------- | ---------------------------------- |
+| Nuke lighting layout, full exported world, 197 models and 33 materials           | 45.80 s, 230 S2V launches    | 6.51 s, 27 launches     | Identical lighting bindings        |
+| Cache lightmap signature lookup, 24 real compiled materials                      | 4.97–5.24 s, 24 S2V launches | 0.24–0.37 s, one launch | Same signature per material        |
+| Cache image encoding, 663 texture references reconstructed from prepared artwork | 6.59 s                       | 4.39 s                  | Identical images and budget report |
+| Cache image processing, 529 textures from the prepared mobile pack               | 3.19 s                       | 2.78 s                  | Identical images and budget report |
+
+The full Cache Compact rebuild produced the same 4,755,396-byte file. The texture benchmark used up to 362 MiB RSS, up from 342 MiB on the reconstructed inputs. An earlier Cache run spent 83.44 s invoking S2V 392 times in the lighting layout step. That run reused an existing geometry export. It provides a baseline for the work involved but does not measure time from an empty cache.
+
+Worker tests cover initial acquisition, verified reuse under the same manifest, replacement of a damaged cached input and preservation of source proof across phase writes. The browser checks use the production viewer with simulated worker responses to exercise all nine phases, repair, completion and timeline access. The loading screen was inspected at 1440 × 900, 768 × 1024 and 390 × 844, in English and French and both themes.
+
+On Node 24, the integrated build passed 636 backend tests, 337 asset tests, 12 Chromium acquisition tests, formatting and English/French coverage. Docker Compose and the genuine weapon-registry fixture accounted for one skipped check in each of the first two suites. The native worker smoke passed under Linux kernel confinement and published both an approved pack and a latest official fixture pack.
+
 ## Textured breakable glass
 
 The official Nuke pack supplied two breakable window materials and a breakable brush material with spatially varying dust opacity. The 93 × 76 window uses a 1024² texture with alpha values from 24 to 255. The second window uses a 2048² texture and a compiled opacity remap. The separate brush texture has alpha values of 5 and 6. The worker verified each native material and its two texture references against the selected pack. Two independent builds produced the same six geometry files across the detailed and Compact tiers.

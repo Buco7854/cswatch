@@ -289,6 +289,27 @@ test('fresh official inventory enables disclosed latest fallback without manual 
     const request = await readMapRequest(f.jobs, id);
     assert.equal(request?.kind, 'latest-official');
     assert.equal(request?.approval, undefined);
+    const processing = {
+      schemaVersion: mapPreparerRevision,
+      packId: id,
+      status: 'processing' as const,
+      updatedAt: now(),
+      phase: 'mobile' as const,
+    };
+    await writeMapJobResult(f.jobs, processing);
+    assert.equal((await f.request()).json().phase, 'mobile');
+    await writeMapJobResult(f.jobs, { ...processing, repairing: true });
+    const repair = (await f.request()).json();
+    assert.equal(repair.phase, 'mobile');
+    assert.equal(repair.code, 'pack_invalid');
+    await assert.rejects(writeMapJobResult(f.jobs, { ...processing, status: 'ready' }));
+    await writeMapJobResult(f.jobs, {
+      ...processing,
+      phase: undefined,
+      status: 'failed',
+      code: 'storage_limit',
+    });
+    assert.equal((await f.request()).json().phase, undefined);
   } finally {
     await f.close();
   }

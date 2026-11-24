@@ -1,11 +1,19 @@
 /** Match exported world meshes to manifest-verified embedded Source draw calls. */
-import { writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import { readAtmosphereGlb } from './atmosphere-glb.mjs';
+import { nativeResourceBatch } from './native-resource-batch.mjs';
 import { regularFile } from './toolchain-security.mjs';
 
 const MiB = 1024 ** 2;
-const limits = { models: 256, materials: 256, modelBytes: MiB, dump: 1024 * 1024, total: 32 * MiB };
+const limits = {
+  models: 256,
+  materials: 256,
+  modelBytes: MiB,
+  materialBytes: 64 * 1024,
+  dump: MiB,
+  total: 32 * MiB,
+};
 const family = /^csgo_(?:complex|environment(?:_blend)?|vertexlitgeneric|simple)\.vfx$/;
 const vertexFamily =
   /^csgo_(?:vertexlitgeneric|environment(?:_blend)?|lightmappedgeneric|lightmapped_4wayblend)\.vfx$/;
@@ -196,6 +204,7 @@ export async function discoverNativeMapLighting({
   includeAtlas,
 }) {
   const { document } = await readAtmosphereGlb(input);
+  const root = resolve(folder);
   const candidates = new Map();
   for (const mesh of document.meshes ?? []) {
     const name = nativeMesh.exec(mesh.name ?? '') ?? aggregateMesh.exec(mesh.name ?? '');
@@ -241,82 +250,168 @@ export async function discoverNativeMapLighting({
   let consumed = 0,
     models = 0,
     materials = 0;
-  const read = async (bank, key, extension, limit) => {
+  const read = async (bank, key, extension, limit, directory, ordinal = materials) => {
     const entry = bank.entries.get(key);
     const bytes = entry ? entry.length + entry.preloadBytes : 0;
     if (!bytes || bytes > limit || consumed + bytes > limits.total) return;
     const data = await bank.readEntry(key);
     if (data?.length !== bytes) return;
-    const path = join(folder, `native-layout-${models}-${materials}.${extension}_c`);
+    const path = join(directory, `source-${ordinal}.${extension}_c`);
     await writeFile(path, data, { flag: 'wx', mode: 0o600 });
     consumed += bytes;
     return path;
   };
-  const dump = async (path, block) => {
-    const result = await execute(
-      s2v,
-      ['-i', path, '--block', block],
-      `native-layout-${models}-${materials}-${block}`,
-      { allowFailure: true },
-    );
-    return result.code === 0 ? result.stdout : '';
-  };
-  const signatures = new Map();
-  const signature = async (material) => {
-    if (signatures.has(material)) return signatures.get(material);
-    if (materials >= limits.materials) return;
-    const key = `${material}_c`;
+  // Admit VMATs in the same order as their verified model draws so the byte
+  // and source limits still choose the same inputs. Decode their signatures in batches.
+  const signatureFiles = new Map(),
+    batches = [];
+  const stageSignature = async (material) => {
+    if (signatureFiles.has(material) || materials >= limits.materials) return;
+    const key = material + '_c';
     const bank = banks.find(({ entries }) => entries.has(key));
-    const slot = bank && (await read(bank, key, 'vmat', 64 * 1024));
-    materials++;
-    const channel = slot ? nativeMaterialLightmapSlot(await dump(slot, 'INSG')) : undefined;
-    signatures.set(material, channel);
-    return channel;
-  };
-  const bindings = Object.create(null),
-    secondaryUv = Object.create(null);
-  for (const [key, rows] of [...candidates].sort((a, b) => b[1].length - a[1].length)) {
-    if (++models > limits.models) break;
-    const path = await read(source, key, 'vmdl', limits.modelBytes);
-    if (!path) continue;
-    // S2V accepts comma-separated blocks. Reuse the same confined tool process
-    // and input read for both the embedded layout and its draw metadata.
-    let metadata;
-    try {
-      metadata = embeddedMapDraws(await dump(path, 'CTRL,MDAT'));
-    } catch (error) {
-      if (error?.code !== 'ASSET_OUTPUT_LIMIT') throw error;
-      // A combined dump can hit the process cap even when each block fits.
-      // Preserve the individual diagnostic limits for these exceptional models.
-      metadata = embeddedMapDraws(await dump(path, 'CTRL'), await dump(path, 'MDAT'));
+    let path;
+    if (bank) {
+      let batch = batches.at(-1);
+      if (!batch || batch.files.length === 24) {
+        const directory = join(root, 'native-signatures-' + batches.length);
+        await mkdir(directory, { mode: 0o700 });
+        batch = { directory, files: [] };
+        batches.push(batch);
+      }
+      path = await read(bank, key, 'vmat', limits.materialBytes, batch.directory);
+      if (path) batch.files.push(path);
     }
-    if (!metadata) continue;
-    for (const row of rows) {
-      if (row.group && row.group !== metadata.name) continue;
-      const matches = metadata.records.filter(
-        ({ material, indices, vertices }) =>
-          material === row.material && indices === row.indices && vertices === row.vertices,
-      );
-      if (!matches.length) continue;
-      const binding = nativeLightingKey(row.mesh, row.material, row.indices, row.vertices);
-      if (row.layerUv && matches.every(({ slots }) => slots.length > 0)) {
-        const slots = new Set(matches.map((draw) => draw.slots.indexOf(1)));
-        if (slots.size === 1 && [...slots][0] >= 0) secondaryUv[binding] = [...slots][0];
-      }
-      if (row.atlas && matches.every(({ atlas }) => atlas)) {
-        const slot = await signature(row.material);
-        if (slot !== undefined) {
-          const channels = new Set(matches.map(({ slots }) => slots.indexOf(slot)));
-          const channel = [...channels][0];
-          if (channels.size === 1 && channel >= 1) {
-            bindings[binding] = channel;
-            continue;
-          }
+    materials++;
+    signatureFiles.set(material, path);
+  };
+  const draws = [],
+    bindings = Object.create(null),
+    secondaryUv = Object.create(null);
+  const ordered = [...candidates].sort((a, b) => b[1].length - a[1].length).slice(0, limits.models);
+  while (models < ordered.length) {
+    const begin = models;
+    let estimated = 0;
+    // A model can discover up to one new 64 KiB VMAT per atlas row. Group
+    // neighbors only when every possible input still fits the shared byte cap.
+    // Near the limit, inspecting one model at a time preserves original ordering.
+    do {
+      const [key, rows] = ordered[models];
+      const entry = source.entries.get(key);
+      const size = entry.length + entry.preloadBytes;
+      const upper =
+        size <= limits.modelBytes
+          ? size +
+            Math.min(rows.filter((r) => r.atlas).length, limits.materials - materials) *
+              limits.materialBytes
+          : 0;
+      if (models > begin && consumed + estimated + upper > limits.total) break;
+      estimated += upper;
+      models++;
+    } while (models < ordered.length && models - begin < 8);
+    const directory = join(root, 'native-models-' + begin);
+    await mkdir(directory, { mode: 0o700 });
+    const modelRows = new Map();
+    for (let i = begin; i < models; i++) {
+      const [key, rows] = ordered[i];
+      const path = await read(source, key, 'vmdl', limits.modelBytes, directory, i);
+      if (path) modelRows.set(path, rows);
+    }
+    const layouts = await decodeLayoutBatch({
+      directory,
+      files: [...modelRows.keys()],
+      execute,
+      s2v,
+      block: 'CTRL,MDAT',
+    });
+    for (const [path, rows] of modelRows) {
+      const metadata = layouts.get(path);
+      if (!metadata) continue;
+      for (const row of rows) {
+        if (row.group && row.group !== metadata.name) continue;
+        const matches = metadata.records.filter(
+          ({ material, indices, vertices }) =>
+            material === row.material && indices === row.indices && vertices === row.vertices,
+        );
+        if (!matches.length) continue;
+        const binding = nativeLightingKey(row.mesh, row.material, row.indices, row.vertices);
+        if (row.layerUv && matches.every(({ slots }) => slots.length > 0)) {
+          const slots = new Set(matches.map((draw) => draw.slots.indexOf(1)));
+          if (slots.size === 1 && [...slots][0] >= 0) secondaryUv[binding] = [...slots][0];
         }
+        const atlas = row.atlas && matches.every(({ atlas }) => atlas);
+        const vertex = row.vertex && matches.every(({ vertex }) => vertex);
+        if (!atlas && !vertex) continue;
+        let channels;
+        if (atlas) {
+          await stageSignature(row.material);
+          // Retain only slots shared by all matching draws at the same UV channel.
+          channels = matches[0].slots.map((slot, channel) =>
+            channel >= 1 && matches.every(({ slots }) => slots.indexOf(slot) === channel)
+              ? slot
+              : -1,
+          );
+        }
+        draws.push({ binding, material: row.material, channels, vertex });
       }
-      if (row.vertex && bindings[binding] === undefined && matches.every(({ vertex }) => vertex))
-        bindings[binding] = 'vertex';
     }
   }
-  return { bindings, secondaryUv, models: Math.min(models, limits.models), materials };
+  const signatures = new Map();
+  for (const { directory, files } of batches) {
+    const decoded = await decodeLayoutBatch({ directory, files, execute, s2v, block: 'INSG' });
+    for (const [path, slot] of decoded) signatures.set(path, slot);
+  }
+  for (const { binding, material, channels, vertex } of draws) {
+    const slot = signatures.get(signatureFiles.get(material));
+    const channel = channels?.indexOf(slot);
+    if (channel >= 1) bindings[binding] = channel;
+    else if (vertex && bindings[binding] === undefined) bindings[binding] = 'vertex';
+  }
+  return { bindings, secondaryUv, models, materials };
+}
+
+/** A native error, excessive batch output, or incomplete headings retain the
+ * single-file inspection behavior. Never use a neighboring VMAT's declaration. */
+export async function decodeLayoutBatch({ directory, files, execute, s2v, block }) {
+  const result = new Map();
+  const decode = block === 'INSG' ? nativeMaterialLightmapSlot : embeddedMapDraws;
+  const dump = async (input, requested, batch) => {
+    const native = await execute(
+      s2v,
+      ['-i', input, '--block', requested, ...(batch ? ['--recursive', '--threads', '1'] : [])],
+      'native-layout-' + requested,
+      { allowFailure: true },
+    );
+    return native.code === 0 ? native.stdout : '';
+  };
+  if (files.length > 1) {
+    let stdout;
+    try {
+      stdout = await dump(directory, block, true);
+    } catch (error) {
+      if (error?.code !== 'ASSET_OUTPUT_LIMIT') throw error;
+    }
+    if (stdout) {
+      let bodies;
+      try {
+        bodies = nativeResourceBatch(stdout, files);
+      } catch {
+        // A partial or ambiguous native listing cannot be joined to the requested input files.
+      }
+      if (bodies) {
+        for (const { path, body } of bodies) result.set(path, decode(body));
+        return result;
+      }
+    }
+  }
+  for (const path of files) {
+    let decoded;
+    try {
+      decoded = decode(await dump(path, block, false));
+    } catch (error) {
+      if (block !== 'CTRL,MDAT' || error?.code !== 'ASSET_OUTPUT_LIMIT') throw error;
+      decoded = embeddedMapDraws(await dump(path, 'CTRL', false), await dump(path, 'MDAT', false));
+    }
+    result.set(path, decoded);
+  }
+  return result;
 }

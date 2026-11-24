@@ -1,3 +1,4 @@
+import { nativeResourceBatch } from './native-resource-batch.mjs';
 /** Shader requirements come from CRC-proven VMAT DATA, never asynchronous logs. */
 import { mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
@@ -28,28 +29,11 @@ export function shaderNameFromMaterialData(text) {
   return name[1];
 }
 export function materialShaderBatch(text, files) {
-  if (typeof text !== 'string' || Buffer.byteLength(text) > steamAssetLimits.logBytes)
-    throw new Error('Material batch DATA exceeds its bound.');
-  const headers = [...text.matchAll(/^\[(\d+)\/(\d+)\] ([^\r\n]+)\r?$/gm)];
-  if (headers.length !== files.length)
-    throw new Error('Material batch DATA did not cover every selected source.');
-  const wanted = new Set(files.map((path) => resolve(path))),
-    seen = new Set(),
-    results = [];
-  for (const [index, header] of headers.entries()) {
-    const path = resolve(header[3]);
-    if (Number(header[2]) !== files.length || !wanted.has(path) || seen.has(path))
-      throw new Error('Material batch DATA contains an unexpected source.');
-    seen.add(path);
-    const body = text.slice(
-      header.index + header[0].length,
-      headers[index + 1]?.index ?? text.length,
-    );
+  return nativeResourceBatch(text, files).map(({ path, body }) => {
     const shader = shaderNameFromMaterialData(body);
     const water = shader === 'csgo_water_fancy' && waterFromMaterialData(body);
-    results.push({ path, shader, ...(water ? { water } : {}) });
-  }
-  return results;
+    return { path, shader, ...(water ? { water } : {}) };
+  });
 }
 export function requiredShaderPrograms(names, indexes) {
   if (

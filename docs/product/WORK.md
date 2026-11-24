@@ -1,5 +1,7 @@
 # Active work
 
+Official map preparation now reports which operation is running. Cold-cache timing on the deployment still needs a full conversion from Steam acquisition to publication. The Cache and Nuke component measurements identify how much time batching the native lighting reads and reusing texture encodes saved locally. [Preparation measurements](../VERIFICATION.md#first-time-official-map-preparation)
+
 Nuke glass checks now cover two breakable window materials and one breakable brush material. Further map checks should include intact texture coverage, the recorded disappearance and adjacent objects. Source reflections, backlighting and physical GPU frame times remain open. [Glass evidence](../VERIFICATION.md#textured-breakable-glass)
 
 Replay checks now join real captures to the full observed official map inventory. Each recording can carry a reference image, display resolution and frame-time budget. The five-map high-density series covers Cache, Ancient, Dust2, Mirage and Nuke. Nuke and Cache supply verified door sequences. Prepared sources now count moving and breakable entity classes even where the viewer lacks a matching renderable instance. Sliding and parented doors, further destructible classes, additional map recordings and physical Android and desktop GPU measurements remain open. [Display and geometry evidence](../VERIFICATION.md#display-resolution-and-recorded-map-breakables)

@@ -268,6 +268,67 @@ test('guest-owned demo acquires only its approved immutable pack once and observ
   );
 });
 
+test('worker phases update the existing waiting screen and review without hiding repair or source details', async ({
+  page,
+}) => {
+  await install(page);
+  await page.clock.install();
+  let descriptor: Record<string, unknown> = {
+    ...latestEligible,
+    canAcquire: false,
+    acquisition: 'queued',
+    phase: 'lighting',
+  };
+  let posts = 0;
+  await page.route('**/api/demos/acquisition-a/map-assets', (route) => {
+    if (route.request().method() === 'POST') posts++;
+    return route.fulfill({ json: descriptor });
+  });
+  await page.goto('/watch/acquisition-a');
+  const loading = page.locator('.viewer-map-loading');
+  const title = loading.getByRole('status').getByRole('heading');
+  await expect(title).toHaveText('Map preparation queued');
+  const processing = { ...latestEligible, canAcquire: false, acquisition: 'processing' };
+  const phases = [
+    ['constructor', 'Preparing map assets'],
+    ['tools', 'Preparing conversion tools'],
+    ['source', 'Retrieving map files'],
+    ['geometry', 'Converting map geometry'],
+    ['environment', 'Preparing the map environment'],
+    ['lighting', 'Preparing map lighting'],
+    ['desktop', 'Building the desktop map'],
+    ['mobile', 'Building the mobile map'],
+    ['compact', 'Building the compact map'],
+  ];
+  for (const [phase, label] of phases) {
+    descriptor = { ...processing, phase };
+    await page.clock.fastForward(11000);
+    await expect(title).toHaveText(label);
+    await expect(loading.getByRole('progressbar', { name: label })).not.toHaveAttribute(
+      'aria-valuenow',
+      /.+/,
+    );
+    await expect(loading).toContainText('Its layout may differ from this recording.');
+  }
+  descriptor = { ...processing, code: 'pack_invalid' };
+  await page.clock.fastForward(11000);
+  await expect(title).toHaveText('Preparing map again');
+  await expect(loading).toContainText('The prepared map is incomplete or damaged.');
+  descriptor = { ...processing, phase: 'publishing', code: 'pack_invalid' };
+  await page.clock.fastForward(11000);
+  await expect(title).toHaveText('Installing the prepared map');
+  await expect(loading).toContainText('incomplete or damaged');
+  await expect(loading).toContainText('latest official layout may differ from this recording.');
+  await expect(loading.getByRole('link', { name: 'Back to home' })).toBeInViewport();
+  await loading.getByRole('button', { name: 'Open timeline' }).click();
+  await expect(page.locator('.viewer-map-status')).toHaveText('Installing the prepared map');
+  descriptor = { ...latestReady, phase: 'lighting' };
+  await page.clock.fastForward(11000);
+  await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
+  await expect(page.locator('.viewer-map-status')).toHaveText('3D map');
+  expect(posts).toBe(0);
+});
+
 test('unknown ambiguous disabled and unavailable-worker states never enqueue or substitute a familiar map', async ({
   page,
 }) => {

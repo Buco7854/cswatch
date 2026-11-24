@@ -491,6 +491,7 @@ export async function processOneMapRequest(options, adapters = {}) {
     const signal = options.signal
       ? AbortSignal.any([options.signal, AbortSignal.timeout(mapWorkerLimits.deadlineMs)])
       : AbortSignal.timeout(mapWorkerLimits.deadlineMs);
+    let phase;
     const result = (status, code) =>
       writeMapJobResult(options.jobs, {
         schemaVersion: mapPreparerRevision,
@@ -498,6 +499,7 @@ export async function processOneMapRequest(options, adapters = {}) {
         status,
         updatedAt: now(),
         ...proof,
+        ...(phase && status === 'processing' ? { phase } : {}),
         ...(repairing && status === 'processing' ? { repairing: true } : {}),
         ...(code ? { code } : {}),
       });
@@ -546,6 +548,11 @@ export async function processOneMapRequest(options, adapters = {}) {
           {
             maps: [map],
             manifest,
+            onPhase: async (next) => {
+              phase = next;
+              await result('processing');
+              options.log?.({ event: 'map.phase', packId, map, phase });
+            },
             ...(latest
               ? {
                   expectedMapFiles: {

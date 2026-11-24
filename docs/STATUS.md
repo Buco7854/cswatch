@@ -1,5 +1,7 @@
 # Feature status
 
+The viewer shows the current worker phase while an official map is being prepared. An intact, manifest-verified source cache can skip the initial Steam transfer. Prepared maps keep the same format and reuse rules. [Operator instructions](product/MAP-ACQUISITION.md)
+
 Detailed packs restore the verified source opacity and printed markings on supported glass. Three native Nuke materials now use per-pixel coverage in the existing transparency pass. [Window measurements](VERIFICATION.md#textured-breakable-glass)
 
 New broadcast replays can drive rotating doors and native damage stages. Nuke shows the same panel dented, perforated, removed and restored on rewind. Cache shows its door swinging and its grates disappearing separately. Nuke also supplies verified individual window removals using both prop and brush entities. The source map supplies the hinge and meshes. [Door verification](VERIFICATION.md#recorded-doors-and-progressive-damage)

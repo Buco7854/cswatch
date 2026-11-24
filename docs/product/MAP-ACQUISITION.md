@@ -4,6 +4,10 @@ The service prefers a unique operator-approved source for the recording. When no
 
 A demo becomes replay-ready independently of game assets. `GET /api/demos/:id/map-assets` applies its ownership/sharing policy and reports source selection, acquisition state and fixed local asset URLs. GET never enqueues or contacts Steam. An eligible owner or guest can authorize a shared job with an empty-body POST, exact Origin, CSRF, persistent owner/IP limits and bounded queue capacity. Viewers of someone else's explicitly shared demo cannot start acquisition. Environment values override admin policy.
 
+The viewer shows the worker's current operation during preparation. The assets container emits one structured `map.phase` event when it enters each phase, followed by `map.ready` or `map.failed`. Run `docker compose logs --timestamps -f assets` to follow it. Tools, inventory, preview and sound readiness are separate events. Closing the viewer leaves an accepted job running. Recordings with the same eligible source reuse the published pack.
+
+For an on-disk source cache, the installer still checks the pinned Steam manifest. It can skip the initial transfer when every listed file has the expected contents and length. The map's manifest SHA-1 and content SHA-256 are computed in one read. A missing or changed file takes the download and verification path.
+
 ## Recorded evidence and source selection
 
 The replay's optional `mapIdentity` retains raw map name, engine build number, patch version, demo-format GUID and known addon presence. Missing values stay missing. Contradictory evidence is marked conflicted. These are unsigned recording fields, not a Steam manifest or a content checksum. The current CS2 header and ServerInfo schemas do not provide the old CS:GO `map_crc` field. [Demo header schema](https://github.com/SteamTracking/Protobufs/blob/master/csgo/demo.proto), [CS2 ServerInfo schema](https://github.com/SteamTracking/Protobufs/blob/master/csgo/netmessages.proto).
