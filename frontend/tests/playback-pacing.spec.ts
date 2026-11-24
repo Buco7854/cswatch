@@ -84,6 +84,11 @@ test('Auto reduces the actual 3D drawing buffer in response to slow continuous p
   // Observe actual offscreen HDR color resolves at the current drawing-buffer size.
   await page.addInitScript(() => {
     const proto = WebGL2RenderingContext.prototype;
+    const getExtension = proto.getExtension;
+    proto.getExtension = function (name: string) {
+      if (name === 'WEBGL_multisampled_render_to_texture') return null;
+      return getExtension.call(this, name);
+    };
     const blit = proto.blitFramebuffer;
     const widths: number[] = [];
     Object.assign(window, { gradeResolves: widths });
@@ -102,7 +107,17 @@ test('Auto reduces the actual 3D drawing buffer in response to slow continuous p
   const before = await canvas.evaluate((element) => element.width);
   const resolves = () =>
     page.evaluate(() => (window as Window & { gradeResolves: number[] }).gradeResolves);
-  await expect.poll(resolves).toContain(before);
+  const supportsMsaa = await canvas.evaluate((element) => {
+    const gl = element.getContext('webgl2')!;
+    const samples = (format: number): number[] =>
+      Array.from(gl.getInternalformatParameter(gl.RENDERBUFFER, format, gl.SAMPLES));
+    const depth = samples(gl.DEPTH24_STENCIL8);
+    return Boolean(
+      gl.getExtension('EXT_color_buffer_float') &&
+      samples(gl.RGBA16F).some((n) => n > 1 && n <= 4 && depth.includes(n)),
+    );
+  });
+  if (supportsMsaa) await expect.poll(resolves).toContain(before);
   await page.clock.install();
   await page.clock.pauseAt(new Date(Date.now() + 1000));
   await page.getByRole('button', { name: 'Play', exact: true }).click();
