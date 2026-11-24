@@ -86,3 +86,38 @@ The inventory join keys are `map`, `tier`, `assetVersion`, `sourceSha256`, `mode
 A matched comparison has no automatic quality threshold. Explicit `--max-mae` gates the full-frame RGB error. Explicit `--max-p95-ratio` gates the candidate/baseline ratio only when device label, browser, renderer, timing method, warmup and sample count agree. The process preserves the report and exits 2 on a breached budget or 3 on an unverifiable requested check. Ordinary successful captures exit 0. Input or rendering failures produce a nonzero error and remove the new partial output directory.
 
 The runner accepts a 128 KiB audit with up to 24 views, 64–1920 pixels wide by 64–1080 high, a 10–150° vertical FOV and 5–60 measured samples per view. It verifies the detailed tier's prepared GLB and decoded texture plan and reserves at least 512 MiB beyond its estimated output. The browser run is bounded to four minutes after launch. Run the focused original-geometry and reference tests with `node --test scripts/graphics/capture.test.mjs`.
+
+## Capture a recorded production POV
+
+`scripts/capture-viewer.mjs` opens the production watch route at an exact live-player POV. Build the backend, native sandbox and frontend first. Supply a local uncompressed demo, installed map/presentation assets, a numeric recorded tick and a player Steam ID as a string. The input demo is copied to a new private temporary data directory, hashed, and parsed under the required Linux sandbox. The CLI signs into a disposable local instance on loopback (default port 4672). The password stays in memory. The temporary database, session and staged replay are removed when the run finishes.
+
+```sh
+npm run build
+node scripts/capture-viewer.mjs \
+  --demo /private/match.dem --assets /private/prepared-maps \
+  --tick 52080 --player "$PLAYER_STEAM_ID" --quality high \
+  --width 960 --height 640 --fov 73.74 --out /private/frames/first
+
+node scripts/capture-viewer.mjs \
+  --demo /private/match.dem --assets /private/prepared-maps \
+  --tick 52080 --player "$PLAYER_STEAM_ID" --quality high \
+  --width 960 --height 640 --fov 73.74 --out /private/frames/repeat \
+  --reference /private/frames/first/frame.json --max-mae 0
+```
+
+`--assets` uses the server's normal map-asset root. For a manually installed map it contains `MAP/desktop` and/or `MAP/mobile` with the model and tier manifest, plus available environment and presentation assets. Acquisition is disabled. The run requires an available detailed model. Its freshly proven delivery ETag must agree with the selected tier manifest's SHA-256. Missing actor/equipment artwork can use the normal production fallback and is reported in the frame. Use the same `--software` option on both runs to compare software-rendered captures. The captured GPU label identifies the actual renderer.
+
+The probe observes the production Three renderer inside the capture browser. It reads the committed Scene props, verifies the selected actor, tick and settings, and requests a normal demand frame. It compares the actual world camera with the recorded eye and interpolated aim from the delivered primary chunk. It captures Chromium’s composited canvas rectangle after the final screen pass, preserving the scene background beneath transparent fragments. The frame includes native lighting, available rigged actors, first-person equipment, sky and postprocessing. The output excludes the DOM HUD, CSS scope mask and HTML feedback overlays. Review-only X-ray, trajectories, tracers and labels are disabled. The probe requires the paused image and asset status to repeat before writing it.
+
+`frame.json` records the demo, decoded manifest and chunk digests, map and source revision, visual resource and application bundle fingerprints, actual player/tick, effective settings, viewport, framebuffer size, camera transforms and equipment projection. The eye-position source distinguishes a recorded eye offset from the viewer’s standing or duck-height fallback. The map verification field carries the application's historical-source verdict. A manually installed model can reproduce an exact rendered frame while its correspondence to the map revision on match day remains unknown. Treat reports as private match metadata. Timing measurements belong to the isolated capture command.
+
+### External recorded-frame references
+
+Use `--reference /private/reference.json` for a local CS2 or csdemo PNG. The manifest uses `schemaVersion: 1` and `kind: "external-replay-frame-reference"`. Supply the following from verifiable capture records.
+
+- `replaySha256`, exact `tick` and string `player`, `cameraMode: "pov"`, `map`, `assetVersion` and `sourceSha256` bind the recording, actor and map revision to the supplied source export.
+- `coordinateSystem: "viewer-meters-y-up"`, `camera.worldMatrix` and `camera.projectionMatrix` declare the world camera. Both matrices have 16 column-major elements in the Three/WebGL convention. `equipmentProjection` supplies the corresponding separate POV lens matrix, or null when the pass was absent. The matrix tolerances are 0.00001 for world pose and 0.000001 for projection.
+- `viewport: {"width": W, "height": H}`, `buffer: [W, H]`, `colorSpace: "srgb"` and `hudFree: true` describe the unscaled RGB frame. `png` names an opaque local file alongside the manifest. `sha256` binds its bytes.
+- `provenance` supplies `producer` (CS2 or csdemo), `version`, `captureSource`, `renderSettings` and `mapRevisionEvidence`. These are operator attestations. Only supply camera or revision values established for the external image.
+
+Missing HUD/projection evidence, an inferred tick, a mismatched source, or a different actor yields `unverified` and no metrics. Matching external provenance permits a pixel comparison of that one declared view. A genuine game reference remains necessary for a game-parity claim. Local viewer baselines additionally require matching parsed evidence, model, settings and asset states. A requested comparison that cannot be verified exits 3. A breached explicit MAE budget exits 2. Both preserve the frame and result.
