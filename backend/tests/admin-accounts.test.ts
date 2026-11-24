@@ -246,10 +246,20 @@ test('admin network and session boundaries cover every registered route and the 
   });
   assert.equal(unverifiable.json().admin_access, false);
   assert.equal(unverifiable.json().admin_network_denial, 'unknown_client');
-  for (const headers of [member, pending]) {
+  assert.deepEqual(config.json().admin_network_diagnostic, {
+    connection: '203.0.113.5',
+    client: '203.0.113.5',
+  });
+  assert.deepEqual(unverifiable.json().admin_network_diagnostic, {
+    connection: '198.51.100.8',
+    client: null,
+    issue: 'untrusted_proxy',
+  });
+  for (const headers of [{}, member, pending]) {
     const status = await f.inject({ url: '/api/config', remoteAddress: '203.0.113.5', headers });
     assert.equal(status.json().admin_access, false);
     assert.equal(status.json().admin_network_denial, undefined);
+    assert.equal(status.json().admin_network_diagnostic, undefined);
   }
   const library = await f.inject({
     url: '/api/demos',

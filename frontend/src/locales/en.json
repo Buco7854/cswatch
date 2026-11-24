@@ -1394,5 +1394,13 @@
   "Only .dem, .dem.zst and .dem.bz2 files are supported for Steam matches.": "Only .dem, .dem.zst and .dem.bz2 files are supported for Steam matches.",
   "Drop a .dem, .dem.zst or .dem.bz2 file · {{size}} MB max": "Drop a .dem, .dem.zst or .dem.bz2 file · {{size}} MB max",
   "Use a network listed in ADMIN_ALLOWED_IPS or ask the operator to check the allowed client networks.": "Use a network listed in ADMIN_ALLOWED_IPS or ask the operator to check the allowed client networks.",
-  "The server could not verify your client address. Ask the operator to check TRUSTED_PROXY_IPS and the X-Real-IP or X-Forwarded-For header.": "The server could not verify your client address. Ask the operator to check TRUSTED_PROXY_IPS and the X-Real-IP or X-Forwarded-For header."
+  "The server could not read the connection address.": "The server could not read the connection address.",
+  "The connection forwarded client information but its address is outside TRUSTED_PROXY_IPS. Check the address of your reverse proxy.": "The connection forwarded client information but its address is outside TRUSTED_PROXY_IPS. Check the address of your reverse proxy.",
+  "The proxy forwarded request information without a client address. Configure it to set X-Real-IP or X-Forwarded-For.": "The proxy forwarded request information without a client address. Configure it to set X-Real-IP or X-Forwarded-For.",
+  "An unsupported client address header was received. Configure the proxy to send client addresses using X-Real-IP or X-Forwarded-For.": "An unsupported client address header was received. Configure the proxy to send client addresses using X-Real-IP or X-Forwarded-For.",
+  "A forwarding header was received more than once. Check which proxies set that header.": "A forwarding header was received more than once. Check which proxies set that header.",
+  "The proxy sent an invalid client address or forwarding chain. Check X-Real-IP and X-Forwarded-For.": "The proxy sent an invalid client address or forwarding chain. Check X-Real-IP and X-Forwarded-For.",
+  "X-Real-IP and X-Forwarded-For identify different clients. Check how each proxy sets these headers.": "X-Real-IP and X-Forwarded-For identify different clients. Check how each proxy sets these headers.",
+  "Client IP address": "Client IP address",
+  "Connection address": "Connection address"
 }

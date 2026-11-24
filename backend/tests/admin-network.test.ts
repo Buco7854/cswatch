@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { FastifyRequest } from 'fastify';
-import { adminNetworkAllowed } from '../src/admin-network.js';
+import { adminNetworkAllowed, adminNetworkDenial } from '../src/admin-network.js';
 import { loadConfig } from '../src/config.js';
 
 test('restricted administration identifies direct clients and resolves trusted edge addresses', () => {
@@ -66,4 +66,52 @@ test('network configuration rejects malformed or ambiguous entries before servin
       () => loadConfig({ APP_URL: 'https://watch.example', ADMIN_ALLOWED_IPS: value }),
       /ADMIN_ALLOWED_IPS/,
     );
+});
+
+test('network diagnostics identify the decision using only canonical socket and verified client addresses', () => {
+  const config = loadConfig({
+    APP_URL: 'https://watch.example',
+    ADMIN_ALLOWED_IPS: '192.168.0.0/16',
+    TRUSTED_PROXY_IPS: '192.168.0.0/16',
+  });
+  function report(
+    remoteAddress: string | undefined,
+    headers: Record<string, string> = {},
+    rawHeaders = Object.entries(headers).flat(),
+  ) {
+    return adminNetworkDenial(
+      { raw: { socket: { remoteAddress }, rawHeaders }, headers } as FastifyRequest,
+      config,
+    );
+  }
+  const proxy = '192.168.1.151';
+  assert.equal(report(proxy), null);
+  assert.equal(report(proxy, { 'x-real-ip': '192.168.5.8' }), null);
+  assert.equal(
+    report(proxy, { 'x-forwarded-for': '203.0.113.9, 192.168.4.1' })?.diagnostic.client,
+    '203.0.113.9',
+  );
+  assert.deepEqual(report('::ffff:172.18.0.2', { 'x-real-ip': '192.168.1.1' })?.diagnostic, {
+    connection: '172.18.0.2',
+    client: null,
+    issue: 'untrusted_proxy',
+  });
+  assert.equal(report(undefined)?.diagnostic.issue, 'socket_unavailable');
+  for (const [headers, issue] of [
+    [{ 'x-forwarded-proto': 'https' }, 'missing_address'],
+    [{ forwarded: 'for=invalid' }, 'unsupported_header'],
+    [{ 'x-real-ip': 'invalid' }, 'invalid_address'],
+    [{ 'x-real-ip': '192.168.8.1', 'x-forwarded-for': '192.168.4.1' }, 'conflicting_addresses'],
+  ] as [Record<string, string>, string][]) {
+    assert.deepEqual(report(proxy, headers)?.diagnostic, {
+      connection: proxy,
+      client: null,
+      issue,
+    });
+  }
+  assert.equal(
+    report(proxy, { 'x-real-ip': '192.168.7.1' }, ['X-Real-IP', 'unknown', 'X-Real-IP', 'unknown'])
+      ?.diagnostic.issue,
+    'duplicate_header',
+  );
 });
