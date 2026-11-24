@@ -134,7 +134,7 @@ test('large maps spread their block budget across distinct static geometries', (
   for (let i = 0; i < data.length; i++) data[i] = i % 3;
   const index = new Uint8BufferAttribute(data, 1),
     material = new MeshBasicMaterial();
-  const objects = [0, 1, 100].map((x) => {
+  const objects = [0, 1, ...Array<number>(8).fill(100)].map((x) => {
     const geometry = new BufferGeometry();
     geometry.setIndex(index);
     geometry.setAttribute(
@@ -154,7 +154,8 @@ test('large maps spread their block budget across distinct static geometries', (
   } as unknown as WebGLRenderer;
   const release = installMapDrawRanges(renderer, scene, scene);
   try {
-    // Three 700k-triangle batches need more than 32,768 fixed 64-triangle blocks.
+    // Seven million triangles exceed the original scan limit. Late off-camera
+    // batches reusing the same three vertex IDs still have their own local bounds.
     for (const mesh of objects)
       renderer.renderBufferDirect(camera, scene, mesh.geometry, material, mesh, null);
     assert.equal(draws, 2);

@@ -1,5 +1,7 @@
 # Feature status
 
+Detailed maps can cull off-camera triangles across larger world meshes while retaining the existing limit on stored bounds. Clip-free maps with large hierarchies reuse static sun shadows until a caster or light changes. [Four-map playback measurements](VERIFICATION.md#high-quality-playback-on-four-official-maps)
+
 Large maps can rebuild a bounded Compact tier when the original mesh simplification exceeds the triangle cap. Native equipment shares compatible packed PBR samples and the cache retains its render resources and authored clip and material evidence after parsing. [Multi-map playback](VERIFICATION.md#multi-map-playback)
 
 The viewer reuses native character animation data and recently displayed equipment during playback. Map and sky rendering skip blocks of triangles outside the camera. Auto responds earlier when repeated long frames dominate playback and can turn off HDR multisampling at its resolution floor. [Measured behavior and remaining stalls](VERIFICATION.md#in-game-playback-stalls)

@@ -1,5 +1,36 @@
 # Verification record
 
+## High quality playback on four official maps
+
+The baseline is `e30f40a`. Both production builds opened the same private recordings and complete desktop packs listed below with identical lighting, native actors and equipment. Chromium 159 used ANGLE Vulkan SwiftShader at 720 × 480, DPR 1, fixed High, 100% resolution, 73.74° vertical FOV and live shadows. The browser played the same combat start once and again after rewind, then sought to three common ticks (start +64, +256 and +512). The fixed measurement starts at the seek input and finishes after the requested frame's GPU fence signals. Submissions include actor shadows, smoke and the final composite. Timed native browsers ran serially. Hardware GPU results and matching historical map revisions are unavailable.
+
+| Map and camera | Fixed seek median (ms) | Fixed median triangles (millions) | Repeat frame p50 (ms) | Repeat frame p95 (ms) | Repeat frames |
+| -------------- | ---------------------: | --------------------------------: | --------------------: | --------------------: | ------------: |
+| Ancient / POV  |          6,985 → 6,010 |                       5.18 → 4.12 |         2,558 → 2,733 |         5,100 → 6,583 |         3 → 9 |
+| Cache / Free   |          3,373 → 6,365 |                       3.04 → 3.04 |         3,200 → 3,067 |         7,183 → 6,883 |        9 → 10 |
+| Cache / POV    |          2,351 → 2,295 |                       1.73 → 1.74 |         2,433 → 1,983 |         4,283 → 6,883 |        6 → 11 |
+| Dust2 / POV    |          1,242 → 1,348 |                       0.91 → 0.91 |         1,308 → 2,775 |         5,633 → 2,966 |         9 → 7 |
+| Nuke / Follow  |          3,807 → 3,011 |                       5.06 → 1.48 |         1,658 → 1,583 |         3,317 → 2,883 |         7 → 8 |
+| Nuke / POV     |          4,757 → 2,573 |                       5.44 → 1.86 |         2,250 → 1,967 |         2,883 → 4,633 |         5 → 7 |
+
+A 12-second requested playback window can contain few detailed frames on this software renderer. The p50 and nearest-rank p95 use intervals between submitted frames. Each build reaches a different set of moving ticks during that window. The three fixed seeks compare the same recorded positions across builds. On the first POV traversal, the slowest observed intervals fell from 9.15 to 7.35 seconds on Ancient, 5.73 to 5.42 on Cache, 3.23 to 3.15 on Dust2 and 5.47 to 3.47 on Nuke. Repeat-traversal tails rose on three of the four POV routes. The traces retain the per-frame target sizes, GPU work and composited PNGs.
+
+The first Cache Free comparison had a slow third seek (3,373 → 6,365 ms) at identical draw and triangle counts. Repeating the complete journey with the build order reversed gave 3,291 → 3,276 ms median over the three seeks, including 3,291 → 3,276 ms on that third tick. The original slowdown did not reproduce. In first person, 11 of 12 fixed seeks across the four maps finished sooner in the candidate.
+
+On Nuke, the map has 8,788 nodes, seven bound prop rigs and zero animation clips. The old 8,192-node cutoff forced a 2,048² sun-shadow render every moving frame. The renderer now inspects the actual casters under the existing resource limits. Stable map shadows reuse their target. Moving a casting bone invalidates it, and the independent 1,536² player-shadow target remains active. In first person each redundant Nuke pass cost 2,130 draws and 3,580,286 triangles.
+
+The static geometry scan now covers up to 12 million triangles within the same 32,768-block limit. A bounded temporary vertex stamp avoids repeated position reads for shared indices in a block. On 19 Ancient camera views, median submitted world triangles fell from 4,880,659 to 3,818,907. All 46,462 indexed draw ranges across 61 views on the four maps agreed with exhaustive vertex reads at the new scan limit. The walking route, source meshes, material selection and texture resolution are identical between builds.
+
+Directional lighting now skips the sun and player-shadow calculation for ordinary PBR fragments whose normal faces away from the sun. The separate clearcoat normal retains its lighting calculation. A valid comparison-depth texture also covers the period before the first player shadow is available. A controlled WebGL comparison matched all 3,456 sampled pixels across standard, baked and clearcoat materials.
+
+A second probe fenced repeated renders after settling at the same paused combat ticks. At three Ancient poses the per-pose median times in milliseconds were 1,893 → 1,775, 3,596 → 3,388 and 5,998 → 5,718. On Cache they were 3,001 → 3,042, 2,235 → 2,216 and 899 → 904. Baselines used three warm control frames per pose and candidates used four. The third Ancient candidate initially exceeded the 20-second fence deadline on the settling frame. Its completed repeat waited for a composited frame before taking the samples. These samples show a consistent improvement for Ancient and little change on Cache.
+
+Two occlusion trials stayed experimental. Conservative CPU occlusion of whole meshes saved a median 352 source triangles per Ancient view and 1,958 on Cache. A separate depth-only draw of large opaque source faces varied from −0.6% to +1.1% in warm median GPU-fenced time over the six poses in this setup. The production build contains neither trial.
+
+The settled 720 × 480 first-person canvas matched the baseline pixel-for-pixel at all three ticks on Ancient, Cache and Dust2. On Nuke, the same two ticks differed between independent baseline sessions. The candidate reproduced all three images from one baseline session exactly. All four cases reported loaded map, landscape and equipped characters.
+
+The backend suite passed 618 tests with one Docker Compose check skipped because Compose was unavailable. All eight graphics verification tests passed. Six production Chromium regressions covered map batching, packed materials, sun lighting, grading and shadow updates. The backend and frontend production builds, formatting and English/French locale checks passed. Private per-frame reports and screenshots remain in the measuring worktree under `var/multi-map/reports` and `var/detailed-perf`.
+
 ## Multi-map playback
 
 Genuine CS2 recordings in a private local Store supplied the camera motion, players, equipment and events. The parser used its required Linux sandbox. The web server served complete official map geometry, both native character rigs and a shared native equipment library. The manual QA packs have verified source hashes. Correspondence to the historical map revision in each recording is unverified.

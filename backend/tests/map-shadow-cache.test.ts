@@ -151,6 +151,28 @@ test('mutable map trees retain ordinary shadow updates without large per-mesh sn
   assert.equal(update(), false);
 });
 
+test('a large static hierarchy with a rig reuses its shadow until a casting pose changes', () => {
+  const { scene, update } = fixture();
+  const source = new Group();
+  // Organizational nodes add no caster signatures. Native Nuke crosses 8,192 nodes.
+  for (let i = 0; i < 8200; i++) source.add(new Group());
+  const bone = new Bone();
+  const skin = new SkinnedMesh(new BoxGeometry(), new MeshStandardMaterial());
+  skin.add(bone);
+  skin.bind(new Skeleton([bone]));
+  source.add(skin);
+  const prepared = prepareMapModel(source).main;
+  scene.add(prepared);
+  assert.equal(update(), true);
+  assert.equal(update(), false);
+  const caster = prepared.getObjectByProperty('isSkinnedMesh', true) as SkinnedMesh;
+  const posedBone = caster.skeleton.bones[0];
+  posedBone.position.y = 1;
+  posedBone.updateWorldMatrix(true, false);
+  assert.equal(update(), true);
+  assert.equal(update(), false);
+});
+
 test('application depth callbacks retain ordinary shadow updates and external update requests survive', () => {
   const { scene, camera, renderer, cache, update } = fixture(),
     mesh = new Mesh(new BoxGeometry());
