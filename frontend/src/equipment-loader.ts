@@ -4,6 +4,7 @@ import { Loader, LoadingManager } from 'three';
 import type { GLTF } from 'three-stdlib';
 import { ModelCache } from './model-cache';
 import { mapModelResources } from './map-model-resources';
+import { packEquipmentJoints } from './equipment-geometry';
 import { loadScopedGLTF } from './scoped-gltf-loader';
 import { retainEquipmentRestGeometry } from './equipment-rest-skin';
 
@@ -48,6 +49,7 @@ function equipmentLoader(
         {
           ...callbacks,
           loaded(gltf) {
+            packEquipmentJoints(gltf.scenes);
             if (url.startsWith('/api/assets/equipment-models/') && !gltf.animations.length)
               retainEquipmentRestGeometry(gltf.scene);
             callbacks.loaded(gltf);
