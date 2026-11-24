@@ -1,5 +1,7 @@
 # Active work
 
+Nuke glass checks now cover two breakable window materials and one breakable brush material. Further map checks should include intact texture coverage, the recorded disappearance and adjacent objects. Source reflections, backlighting and physical GPU frame times remain open. [Glass evidence](../VERIFICATION.md#textured-breakable-glass)
+
 Replay checks now join real captures to the full observed official map inventory. Each recording can carry a reference image, display resolution and frame-time budget. The five-map high-density series covers Cache, Ancient, Dust2, Mirage and Nuke. Nuke and Cache supply verified door sequences. Prepared sources now count moving and breakable entity classes even where the viewer lacks a matching renderable instance. Sliding and parented doors, further destructible classes, additional map recordings and physical Android and desktop GPU measurements remain open. [Display and geometry evidence](../VERIFICATION.md#display-resolution-and-recorded-map-breakables)
 
 Multi-map performance checks now cover moving combat and all three player camera modes. A frame-time budget includes delays before the first frame and after the last one. The remaining hardware check is detailed playback on a desktop GPU. [Four-map results and settings](../VERIFICATION.md#multi-map-playback)

@@ -66,6 +66,27 @@ test('a verified dust mask transmits the view through a door pane and keeps its 
     const oblique = color();
     glass.visible = false;
     const unobstructed = color();
+    const pixels = new T.DataTexture(new Uint8Array([255, 255, 255, 0, 255, 255, 255, 192]), 2, 1);
+    pixels.needsUpdate = true;
+    const textured = new T.MeshStandardMaterial({
+      map: pixels,
+      transparent: true,
+      depthWrite: false,
+      metalness: 0,
+    });
+    textured.userData.cswatch = { texturedGlass: { schemaVersion: 1, castsShadow: false } };
+    applyPreparedGlass(textured);
+    const gradient = new T.Mesh(surface, textured);
+    scene.add(gradient);
+    gl.render(scene, camera);
+    const sample = (x: number) => {
+      const rgba = new Uint8Array(4);
+      gl.readRenderTargetPixels(target, x, 32, 1, 1, rgba);
+      return rgba[1];
+    };
+    const texturedSamples = [sample(16), sample(48)];
+    pixels.dispose();
+    textured.dispose();
     const group = new T.Group();
     group.add(glass, new T.Mesh(surface, leaf), new T.Mesh(surface, [material, leaf]));
     const [pane, frame, mixed] = cloneMapModel(group).children;
@@ -74,6 +95,7 @@ test('a verified dust mask transmits the view through a door pane and keeps its 
       after,
       oblique,
       unobstructed,
+      texturedSamples,
       alpha: material.opacity,
       fallback: [
         legacy.opacity,
@@ -95,5 +117,7 @@ test('a verified dust mask transmits the view through a door pane and keeps its 
     0.96 * (1 - Math.pow(1 - Math.cos(Math.PI * 0.4), 5)) * (1 - 13 / 255);
   expect(result.oblique / result.unobstructed).toBeCloseTo(obliqueTransmission, 2);
   expect(result.fallback).toEqual([1, true, true, true, 1]);
+  expect(result.texturedSamples[0] / result.unobstructed).toBeCloseTo(0.96, 2);
+  expect(result.texturedSamples[1] / result.unobstructed).toBeCloseTo(0.96 * (1 - 192 / 255), 2);
   expect(result.shadows).toEqual([false, true, true]);
 });

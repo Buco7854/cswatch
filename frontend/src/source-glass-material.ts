@@ -1,20 +1,21 @@
 import { Material, MeshPhysicalMaterial, MeshStandardMaterial } from 'three';
 
 export function preparedGlass(material: Material) {
-  const data = material.userData.cswatch?.constantGlass;
+  const glass = material.userData.cswatch;
+  const data = glass?.texturedGlass ?? glass?.constantGlass;
   return data?.schemaVersion === 1 && typeof data.castsShadow === 'boolean'
     ? (data as { castsShadow: boolean })
     : undefined;
 }
 
 /** The pack contains linear dust color, its opacity and a dielectric material.
- * Its verified constant white transmission needs no background render target. */
+ * Its verified neutral transmission needs no background render target. */
 export function applyPreparedGlass(material: MeshStandardMaterial) {
   if (
     !preparedGlass(material) ||
     material instanceof MeshPhysicalMaterial ||
     !material.transparent ||
-    material.map ||
+    (material.map && !material.userData.cswatch?.texturedGlass) ||
     material.alphaMap ||
     material.metalness !== 0 ||
     material.onBeforeCompile !== Material.prototype.onBeforeCompile ||
@@ -34,6 +35,6 @@ export function applyPreparedGlass(material: MeshStandardMaterial) {
        #include <opaque_fragment>`,
     );
   };
-  material.customProgramCacheKey = () => 'cswatch-constant-glass';
+  material.customProgramCacheKey = () => 'cswatch-source-glass';
   material.needsUpdate = true;
 }
