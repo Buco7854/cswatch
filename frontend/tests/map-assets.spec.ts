@@ -418,7 +418,7 @@ test('known and unknown map names without instance packs show localized unavaila
   }
 });
 
-test('the same library link keeps its position and keyboard focus from demo processing to Cache discovery', async ({
+test('the same library link keeps its position and keyboard focus through demo processing, discovery and Cache preparation', async ({
   page,
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE) || Boolean(process.env.E2E_SETUP));
@@ -438,7 +438,25 @@ test('the same library link keeps its position and keyboard focus from demo proc
   const discovery = Promise.withResolvers<void>();
   await page.route('**/api/demos/' + id + '/map-assets', async (route) => {
     await discovery.promise;
-    await route.fulfill({ json: manualMapAssets({ model: null, mobile: null, overview: null }) });
+    await route.fulfill({
+      json: {
+        ...manualMapAssets({ model: null, mobile: null, overview: null }),
+        resolution: {
+          status: 'latest',
+          selection: {
+            map: 'de_cache',
+            appId: 730,
+            depotId: 2347770,
+            manifest: '12345678901234567890',
+            sha1: 'c'.repeat(40),
+            bytes: 128000,
+          },
+          inventoryUpdatedAt: 1795000000,
+          source: null,
+        },
+        acquisition: 'processing',
+      },
+    });
   });
   try {
     await page.goto('/library');
@@ -457,6 +475,13 @@ test('the same library link keeps its position and keyboard focus from demo proc
       { timeout: 10000 },
     );
     await expect(loading.getByText('cache', { exact: true })).toBeVisible();
+    expect(await back.boundingBox()).toEqual(position);
+    expect((await panel.boundingBox())?.y).toBe(panelTop);
+    await expect(back).toBeFocused();
+    discovery.resolve();
+    await expect(loading.getByRole('heading')).toHaveText('Préparation des ressources de la carte');
+    await expect(loading).toContainText('Sa géométrie peut différer de cet enregistrement.');
+    await expect(loading.getByRole('button', { name: 'Ouvrir la chronologie' })).toBeInViewport();
     expect(await back.boundingBox()).toEqual(position);
     expect((await panel.boundingBox())?.y).toBe(panelTop);
     await expect(back).toBeFocused();
