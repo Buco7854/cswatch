@@ -343,7 +343,10 @@ function Model({
     [prepared],
   );
   const { gl, scene } = useThree();
-  useLayoutEffect(() => installMapDrawRanges(gl, scene, prepared.main), [gl, scene, prepared]);
+  useLayoutEffect(
+    () => installMapDrawRanges(gl, scene, prepared.main, prepared.sky),
+    [gl, scene, prepared],
+  );
   useLayoutEffect(() => {
     if (prepared.sun) return playerLighting?.receivers(prepared.main);
   }, [prepared, playerLighting]);
