@@ -62,6 +62,8 @@ Inventory failures log a fixed safe `phase`, `code` and `retryAt`, with a bounde
 
 Administration also shows the web image's immutable source revision and UTC build time from `/api/config`. CI supplies these at build time and verifies the running image against the expected revision; absent local-build fields remain unknown. Pulling a new web image alone does not update the asset worker's separate image or existing immutable prepared assets.
 
+Detailed packs can restore per-texel transparency on supported native glass. The worker checks the compiled shader, the dust and neutral transmission textures, opacity remap and UV channel. Prepared masks share the existing map texture budget. A pane can keep its printed markings, transmit the scene behind it and disappear on its own recorded break. Compact omits these transparent materials. [Measurements on Nuke](VERIFICATION.md#textured-breakable-glass)
+
 ## Graphics coverage for the official map inventory
 
 The asset worker records a graphics audit in each prepared desktop and mobile tier. It inventories exported primitive definitions by Source shader, material treatment and feature. It picks up to 24 camera poses on actual triangles in glTF metres, giving distinct features a turn before choosing more materials from one family. A future map can use these paths as soon as the worker sees it in a Valve depot manifest. New shader families appear as unknown. Omitted materials remain in the inventory. Source-backed entries identify a recovered property, such as constant glass opacity. They do not certify the rest of that material or map.

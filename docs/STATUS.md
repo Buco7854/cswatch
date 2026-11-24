@@ -1,5 +1,7 @@
 # Feature status
 
+Detailed packs restore the verified source opacity and printed markings on supported glass. Three native Nuke materials now use per-pixel coverage in the existing transparency pass. [Window measurements](VERIFICATION.md#textured-breakable-glass)
+
 New broadcast replays can drive rotating doors and native damage stages. Nuke shows the same panel dented, perforated, removed and restored on rewind. Cache shows its door swinging and its grates disappearing separately. Nuke also supplies verified individual window removals using both prop and brush entities. The source map supplies the hinge and meshes. [Door verification](VERIFICATION.md#recorded-doors-and-progressive-damage)
 
 Textured mobile maps use a bounded high-density render target and stronger filtering on opaque angled surfaces. Auto restores the configured resolution on pause. Explicit High can use up to three physical pixels per CSS pixel on a small high-density screen. Newly parsed recordings can hide independently identified destructible props on the recorded tick and restore them on rewind or at the next round. Two Cache vents have a verified viewer sequence; the desktop and mobile Nuke packs also identify a skinned grate. [Measurements and coverage](VERIFICATION.md#display-resolution-and-recorded-map-breakables)

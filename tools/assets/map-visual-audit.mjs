@@ -56,7 +56,10 @@ function describe(material, preparedWater) {
   } else if (action === 'verified_atmosphere' || action === 'fog_surface') {
     feature = 'atmosphere';
     coverage = 'source_backed';
-  } else if (feature === 'glass' && extras?.cswatch?.constantGlass?.schemaVersion === 1) {
+  } else if (
+    feature === 'glass' &&
+    (extras?.cswatch?.texturedGlass ?? extras?.cswatch?.constantGlass)?.schemaVersion === 1
+  ) {
     coverage = 'source_backed';
   }
   const name = native?.Name || material?.getName() || '';

@@ -1,5 +1,7 @@
 # Current handoff
 
+When checking a breakable window, measure the intact surface over two different backgrounds, seek across its recorded break and keep the adjacent pane in frame. A successful visibility toggle alone can miss an opaque exported material. [Nuke window measurements](VERIFICATION.md#textured-breakable-glass)
+
 For a moving or damaged door, compare the recorded model and closed pivot with one prepared map entity. Check the chosen mesh, yaw, camera collision and shadow invalidation on forward play, direct seek and rewind. The capture report identifies absent or ambiguous matches. Nuke supplies three observed damage stages and a deletion, and Cache supplies a 90-degree swing. [Verified sequences](VERIFICATION.md#recorded-doors-and-progressive-damage)
 
 For a blurry replay, capture the world render target, composited display pixels and moving frame times at the device’s actual pixel ratio. For a missing destruction, use a freshly parsed recording and a revision 8 map, and compare the tick before deletion, the deletion tick, rewind and round reset. An existing replay needs a new import to collect the network tracks; preserve the original demo and its notes. [Display and breakable checks](VERIFICATION.md#display-resolution-and-recorded-map-breakables)

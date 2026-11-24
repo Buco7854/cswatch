@@ -1,5 +1,22 @@
 # Verification record
 
+## Textured breakable glass
+
+The official Nuke pack supplied two breakable window materials and a breakable brush material with spatially varying dust opacity. The 93 × 76 window uses a 1024² texture with alpha values from 24 to 255. The second window uses a 2048² texture and a compiled opacity remap. The separate brush texture has alpha values of 5 and 6. The worker verified each native material and its two texture references against the selected pack. Two independent builds produced the same six geometry files across the detailed and Compact tiers.
+
+In Chrome 159 on SwiftShader, a fixed 720 × 480 camera faced the genuine observation windows and neighboring props. With the exported material, a pixel in the intact left pane read RGB (206, 210, 213) over both a dark and a green background. With the prepared texture those readings were (64, 76, 95) and (184, 199, 152). At the recorded break, the same pixel again showed the original background (156, 168, 173), while the neighboring pane retained its texture. The red printed notice on each intact pane became legible. An unchanged-pack control reproduced all pixels.
+
+| Selected native geometry, 24 alternating warm frames per version | Original p50 / p95 | Updated p50 / p95 | Draws, intact / removed |
+| ---------------------------------------------------------------- | ------------------ | ----------------- | ----------------------- |
+| Desktop                                                          | 13.4 / 14.9 ms     | 14.4 / 17.1 ms    | 22 / 21                 |
+| Mobile                                                           | 11.9 / 12.5 ms     | 12.8 / 14.9 ms    | 19 / 18                 |
+
+Both versions submitted identical triangle counts at each tick. The two mobile pane masks added 506,736 bytes to the selected area's model and 8 MiB of base RGBA texture memory. Compact still omits these transparent surfaces and its files were byte-identical. Timing includes GPU completion for the selected geometry. The shader approximates reflections and backlighting. No matched CS2 client or hardware GPU measurement is available for these windows.
+
+A whole-map production check reopened the 19k-tick Nuke recording at tick 11459 with the same living player, camera, native Glock, seven player rigs, sky, lighting and Low settings. Three verified glass materials were applied to the retained full mobile pack and the texture-budget writer repacked the map. The texture count rose from 677 to 680 while both packs used 268,177,456 base RGBA bytes under a 256 MiB limit. Only 273 of 345,600 display pixels differed by more than four levels at this distant viewpoint. This check covers loading and budget behavior. The isolated window comparisons above distinguish opacity from other texture-budget decisions.
+
+The combined production build, 64 affected Chromium cases, 21 offline graphics checks, formatting and locales passed. Asset preparation passed 334 tests with one optional external fixture skip. The preceding parser/door revision passed 631 backend tests with four skips.
+
 ## Recorded doors and progressive damage
 
 Two Nuke broadcast recordings contain 13 observed model changes on living door entities. In one 123,188,178-byte recording (SHA-256 `a11744048a5a8f08771c9fdcdc59c8500008a896695fe9d57767d7e6573ab1d9`), the same metal door at Source position `[257,-1310,-416]` was intact at tick 11209. Its model changed at 11210, 11236 and 11268, it disappeared at 12017 and returned intact by 13331. An authenticated production capture at 11236 showed the exact second damaged model. Two other recorded doors were outside that selected map subset and were reported as missing. A separate authenticated session exercised seven seeks across the first damage stage at 83545 and the round reset at 86993 in the other recording.

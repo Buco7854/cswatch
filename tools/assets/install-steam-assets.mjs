@@ -679,7 +679,7 @@ export async function installSteamAssets(options, adapters = {}) {
           shaderPreflights,
           sourceImagePreparation: sourceImages,
           bakedLighting: { source: baked.proof, tiers: lightingTiers },
-          ...(glass.proof.length ? { constantGlass: glass.proof } : {}),
+          ...(glass.proof.length ? { sourceGlass: glass.proof } : {}),
           resourceCoverage: {
             complete:
               closure.unknown.filter((resource) => resource !== `${environment.skyMap}_c`)

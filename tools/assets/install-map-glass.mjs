@@ -1,26 +1,41 @@
+import { createHash } from 'node:crypto';
 import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { readAtmosphereGlb } from './atmosphere-glb.mjs';
 import { regularFile } from './toolchain-security.mjs';
 import { source2References } from './source2-dependencies.mjs';
-import { constantGlassInputs } from './prepare-map-glass.mjs';
+import { sourceGlassInputs } from './prepare-map-glass.mjs';
 
 // One pixel can occupy a whole 4 × 4 compression block. Inspect the texture
 // header before launching the native decode, including depth and display rect.
-function constantHeader(text) {
+function textureHeader(text, allowImage) {
   const field = (name) =>
     Number(new RegExp('^' + name + '\\s*=\\s*(\\d+)\\s*$', 'm').exec(text)?.[1]);
-  return (
-    field('VTEX Version') === 1 &&
-    [1, 4].includes(field('Width')) &&
-    [1, 4].includes(field('Height')) &&
-    (field('Width') === 1 || field('DisplayRectW') === 1) &&
-    (field('Height') === 1 || field('DisplayRectH') === 1) &&
-    field('Depth') === 1 &&
-    field('NumMipLevels') === 1 &&
-    /^Flags\s*=\s*0x0+\s*$/m.test(text)
-  );
+  const width = field('Width'),
+    height = field('Height'),
+    mips = field('NumMipLevels');
+  if (field('VTEX Version') !== 1 || field('Depth') !== 1 || !/^Flags\s*=\s*0x0+\s*$/m.test(text))
+    return;
+  if (
+    [1, 4].includes(width) &&
+    [1, 4].includes(height) &&
+    (width === 1 || field('DisplayRectW') === 1) &&
+    (height === 1 || field('DisplayRectH') === 1) &&
+    mips === 1
+  )
+    return { width: 1, height: 1 };
+  if (
+    allowImage &&
+    width >= 8 &&
+    width <= 2048 &&
+    height >= 8 &&
+    height <= 2048 &&
+    mips >= 1 &&
+    mips <= 1 + Math.floor(Math.log2(Math.max(width, height))) &&
+    /^Format\s*=\s*\d+ \(VTEX_FORMAT_(?:BC7|DXT5|RGBA8888)\)\s*$/m.test(text)
+  )
+    return { width, height };
 }
 
 // S2V's raw GLB extras select candidates. Its independently decoded, CRC-checked
@@ -30,11 +45,7 @@ function matchingGlassData(text, row) {
     return false;
   const field = (name) =>
     new RegExp('^\\s*' + name + '\\s*=\\s*"([^"\\r\\n]+)"\\s*$', 'm').exec(text)?.[1];
-  if (
-    field('m_shaderName') !== 'csgo_glass.vfx' ||
-    field('m_materialName') !== row.name ||
-    !/^\s*m_floatParams\s*=\s*\[\s*\]\s*$/m.test(text)
-  )
+  if (field('m_shaderName') !== 'csgo_glass.vfx' || field('m_materialName') !== row.name)
     return false;
   const ints = text.match(/^\s*m_intParams\s*=([\s\S]*?)^\s*m_floatParams\s*=/m)?.[1];
   if (!ints) return false;
@@ -44,6 +55,24 @@ function matchingGlassData(text, row) {
     settings[match[1]] = Number(match[2]);
   }
   if (Object.keys(settings).length !== [...ints.matchAll(/m_name\s*=/g)].length) return false;
+  const floatBlock = /m_floatParams\s*=\s*\[([\s\S]*?)\]\s*(?:,|$)/m.exec(text)?.[1];
+  if (
+    floatBlock === undefined ||
+    (floatBlock.trim() &&
+      !/^\s*\{\s*m_name\s*=\s*"g_flModelTintAmount"\s+m_flValue\s*=\s*1(?:\.0+)?\s*\},?\s*$/.test(
+        floatBlock,
+      ))
+  )
+    return false;
+  const vectors = {};
+  const block = text.match(/^\s*m_vectorParams\s*=([\s\S]*?)^\s*m_textureParams\s*=/m)?.[1] ?? '';
+  for (const match of block.matchAll(
+    /m_name\s*=\s*"([A-Za-z_0-9]+)"\s+m_value\s*=\s*\[([^\]]+)\]/g,
+  )) {
+    if (Object.hasOwn(vectors, match[1])) return false;
+    vectors[match[1]] = match[2].split(',').map(Number);
+  }
+  if (Object.keys(vectors).length !== [...block.matchAll(/m_name\s*=/g)].length) return false;
   const maps = {};
   for (const match of text.matchAll(
     /m_name\s*=\s*"(g_tGlassDust|g_tGlassTintColor)"\s+m_pValue\s*=\s*resource:"([^"\r\n]+)"/g,
@@ -51,7 +80,7 @@ function matchingGlassData(text, row) {
     if (Object.hasOwn(maps, match[1])) return false;
     maps[match[1]] = match[2];
   }
-  const checked = constantGlassInputs({
+  const checked = sourceGlassInputs({
     alphaMode: 'BLEND',
     extras: {
       vmat: {
@@ -59,33 +88,38 @@ function matchingGlassData(text, row) {
         ShaderName: 'csgo_glass.vfx',
         TextureParams: maps,
         IntParams: settings,
+        VectorParams: vectors,
       },
     },
   });
   return (
     checked?.castsShadow === row.castsShadow &&
     checked.dust === row.dust &&
-    checked.tint === row.tint
+    checked.tint === row.tint &&
+    checked.plainUv === row.plainUv &&
+    checked.remap.every((n, i) => Math.abs(n - row.remap[i]) < 0.000001)
   );
 }
 
 export async function prepareInstalledGlass({ input, stage, getBanks, execute, s2v }) {
   const { document } = await readAtmosphereGlb(input);
-  const vertexTints = new Set();
+  const vertexTints = new Set(),
+    missingUv = new Set();
   for (const mesh of document.meshes ?? []) {
     for (const primitive of mesh.primitives ?? []) {
+      if (primitive.attributes?.TEXCOORD_0 === undefined) missingUv.add(primitive.material);
       if (primitive.attributes?.COLOR_0 !== undefined) vertexTints.add(primitive.material);
     }
   }
   const candidates = document.materials
     .flatMap((m, index) => {
-      const row = !vertexTints.has(index) && constantGlassInputs(m);
-      return row ? [{ ...row, index }] : [];
+      const row = !vertexTints.has(index) && sourceGlassInputs(m);
+      return row ? [{ ...row, index, textured: row.plainUv && !missingUv.has(index) }] : [];
     })
     .slice(0, 32);
   if (!candidates.length) return { args: [], proof: [] };
   const banks = await getBanks(),
-    folder = join(stage, 'constant-glass');
+    folder = join(stage, 'source-glass');
   await mkdir(folder, { mode: 0o700 });
   async function verified(resource, limit) {
     const key = resource + '_c',
@@ -108,75 +142,107 @@ export async function prepareInstalledGlass({ input, stage, getBanks, execute, s
     }
   }
   const textures = new Map(),
+    images = new Map(),
     rows = [],
     proof = [];
-  async function pixel(resource) {
-    if (textures.has(resource)) return textures.get(resource);
+  let decodedPixels = 0,
+    savedPixels = 0,
+    savedBytes = 0;
+  async function texture(resource, allowImage) {
+    const cacheKey = resource + (allowImage ? ':image' : ':pixel');
+    if (textures.has(cacheKey)) return textures.get(cacheKey);
     if (textures.size >= 32) return;
     const id = textures.size;
-    textures.set(resource, undefined);
-    const compiled = await verified(resource, 64 * 1024);
+    textures.set(cacheKey, undefined);
+    const compiled = await verified(resource, allowImage ? 6 * 1024 ** 2 : 64 * 1024);
     if (!compiled) return;
     const source = join(folder, id + '.vtex_c'),
-      image = join(folder, id + '.png');
+      png = join(folder, id + '.png');
     await writeFile(source, compiled.data, { flag: 'wx', mode: 0o600 });
     try {
       const header = await execute(s2v, ['-i', source, '--block', 'DATA'], 'glass-header-' + id, {
         allowFailure: true,
       });
-      if (header.code !== 0 || !constantHeader(header.stdout)) return;
+      if (header.code !== 0) return;
+      const size = textureHeader(header.stdout, allowImage);
+      if (!size || decodedPixels + size.width * size.height > 16 * 1024 ** 2) return;
+      decodedPixels += size.width * size.height;
       const decoded = await execute(
         s2v,
         ['-i', source, '--decompile', '-o', folder, '--quiet'],
-        'glass-pixel-' + id,
+        'glass-image-' + id,
         { allowFailure: true },
       );
       if (decoded.code !== 0) return;
       let output;
       try {
-        output = await regularFile(image, 8192);
-      } catch (error) {
-        if (error.code === 'ENOENT') return;
-        throw error;
+        output = await regularFile(png, size.width === 1 ? 8192 : 20 * 1024 ** 2);
+      } catch (e) {
+        if (e.code === 'ENOENT') return;
+        throw e;
       }
-      const { handle } = output;
       let data;
       try {
-        data = await handle.readFile();
+        data = await output.handle.readFile();
       } finally {
-        await handle.close();
+        await output.handle.close();
       }
-      // Inspect IHDR before decoding: S2V may preserve the padded encoded
-      // dimensions even for an input with a one-pixel display rect.
       if (
         data.length < 33 ||
         data.readUInt32BE(0) !== 0x89504e47 ||
         data.toString('ascii', 12, 16) !== 'IHDR' ||
-        data.readUInt32BE(16) !== 1 ||
-        data.readUInt32BE(20) !== 1
+        data.readUInt32BE(16) !== size.width ||
+        data.readUInt32BE(20) !== size.height
       )
         return;
-      let rgba;
+      let result;
       try {
-        const decoded = await sharp(data, { limitInputPixels: 1 })
-          .ensureAlpha()
-          .raw()
-          .toBuffer({ resolveWithObject: true });
-        if (decoded.info.width !== 1 || decoded.info.height !== 1 || decoded.info.channels !== 4)
-          return;
-        rgba = decoded.data;
+        const image = sharp(data, { limitInputPixels: size.width * size.height }),
+          meta = await image.metadata();
+        if (!meta.hasAlpha || meta.depth !== 'uchar' || meta.channels !== 4) return;
+        const rgba = await image.raw().toBuffer();
+        if (rgba.length !== size.width * size.height * 4) return;
+        if (size.width === 1) result = { rgba: [...rgba] };
+        else result = { size, data, rgbaBytes: rgba };
       } catch {
         return;
-      } // Only the in-memory decode of the optional PNG failed.
-      const result = { rgba: [...rgba], crc32: compiled.crc32 };
-      textures.set(resource, result);
+      }
+      result.crc32 = compiled.crc32;
+      textures.set(cacheKey, result);
       return result;
     } finally {
       await unlink(source);
-      await unlink(image).catch((e) => {
+      await unlink(png).catch((e) => {
         if (e.code !== 'ENOENT') throw e;
       });
     }
+  }
+
+  // The Source shader applies the opacity remap after the dust lookup.
+  // For ordinary UV0 sampling the linear remap commutes with filtering. Bake
+  // it once into the 8-bit alpha channel so glTF and the viewer share one map.
+  async function spatialBinding(dust, row) {
+    const key = JSON.stringify([row.dust, row.remap]);
+    if (images.has(key)) return images.get(key);
+    const [lo, hi] = row.remap;
+    const pixels = dust.size.width * dust.size.height;
+    if (savedPixels + pixels > 16 * 1024 ** 2) return;
+    let png = dust.data;
+    if (lo !== 0 || hi !== 1) {
+      const rgba = Buffer.from(dust.rgbaBytes);
+      for (let i = 3; i < rgba.length; i += 4) rgba[i] = Math.round(lo * 255 + (hi - lo) * rgba[i]);
+      png = await sharp(rgba, { raw: { ...dust.size, channels: 4 } })
+        .png()
+        .toBuffer();
+    }
+    if (savedBytes + png.length > 32 * 1024 ** 2) return;
+    savedBytes += png.length;
+    savedPixels += pixels;
+    const file = 'dust-' + images.size + '.png';
+    await writeFile(join(folder, file), png, { flag: 'wx', mode: 0o600 });
+    const image = { file, ...dust.size, sha256: createHash('sha256').update(png).digest('hex') };
+    images.set(key, image);
+    return image;
   }
   for (const row of candidates) {
     const material = await verified(row.name, 256 * 1024);
@@ -198,18 +264,29 @@ export async function prepareInstalledGlass({ input, stage, getBanks, execute, s
       await unlink(compiled);
     }
     if (!matches) continue;
-    const dust = await pixel(row.dust),
-      tint = await pixel(row.tint);
-    // Colored transmission requires destination-color blending, and cannot use
-    // this ordinary alpha pass. Leave unsupported materials as exported.
-    if (!dust || !tint?.rgba.every((n) => n === 255)) continue;
-    rows.push({ ...row, dustRgba: dust.rgba });
+    const tint = await texture(row.tint, false);
+    // Only neutral transmitted RGB can be represented with ordinary alpha
+    // blending. Tint A controls backlighting, independently of dust opacity.
+    if (!tint?.rgba?.slice(0, 3).every((n) => n === 255)) continue;
+    const dust = await texture(row.dust, row.textured);
+    if (!dust) continue;
+    let binding;
+    if (dust.rgba) {
+      const [lo, hi] = row.remap;
+      const [r, g, b, a] = dust.rgba;
+      binding = { dustRgba: [r, g, b, Math.round(lo * 255 + (hi - lo) * a)] };
+    } else {
+      const image = await spatialBinding(dust, row);
+      if (!image) continue;
+      binding = { image };
+    }
+    rows.push({ ...row, ...binding });
     proof.push({
       ...row,
+      ...binding,
       materialCrc32: material.crc32,
       dustCrc32: dust.crc32,
       tintCrc32: tint.crc32,
-      dustRgba: dust.rgba,
       tintRgba: tint.rgba,
     });
   }
