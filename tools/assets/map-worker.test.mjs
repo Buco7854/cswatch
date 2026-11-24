@@ -464,6 +464,7 @@ test('graphics inventory includes new unrequested maps and joins exact published
     verdict: 'not-evaluated',
     visibility: { visible: 1 },
     comparison: { 'no-reference': 1 },
+    visibleComparisons: {},
   });
   capture.views[0].eye[1] += 0.1;
   await write();

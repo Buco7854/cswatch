@@ -10,10 +10,10 @@ import { randomBytes, createHash } from 'node:crypto';
 import { once } from 'node:events';
 import { chromium } from '../frontend/node_modules/playwright/index.mjs';
 import { build } from '../frontend/node_modules/esbuild/lib/main.js';
+import { graphicsLimits, readBoundVisualAudit } from '../tools/assets/map-graphics-contract.mjs';
 import { verifyPreparedGlb } from '../tools/assets/prepared-glb.mjs';
 import { validateTexturePlan } from '../tools/assets/texture-plan-validation.mjs';
 import {
-  auditViews,
   boundedFile,
   captureKind,
   compareView,
@@ -102,16 +102,11 @@ assert(
   outParent !== inputDir && !outParent.startsWith(inputDir + '/'),
   'Capture outside the immutable tier',
 );
-const auditBytes = await boundedFile(o.audit, 128 * 1024),
-  audit = JSON.parse(auditBytes);
-const manifest = JSON.parse(await boundedFile(join(tierDir, 'manifest.json'), 64 * 1024));
-const auditSha256 = digest(auditBytes);
-assert.equal(
-  auditSha256,
-  manifest.visualAuditSha256,
-  'Visual audit differs from published manifest',
-);
-const views = auditViews(audit, manifest);
+const auditBytes = await boundedFile(o.audit, graphicsLimits.bytes);
+const manifest = JSON.parse(await boundedFile(join(tierDir, 'manifest.json'), 16384));
+const audit = readBoundVisualAudit(auditBytes, manifest);
+const auditSha256 = manifest.visualAuditSha256;
+const views = audit.views.map((view, index) => ({ ...view, index }));
 validateTexturePlan(
   manifest,
   await boundedFile(join(tierDir, 'texture-plan.json'), 4 * 1024 ** 2),
@@ -305,13 +300,14 @@ try {
     report.views.push(frame);
   }
   const checks = report.views.flatMap((v) => v.checks);
-  report.verdict = checks.some((c) => c.status === 'fail')
-    ? 'fail'
-    : checks.some((c) => c.status === 'unverified')
-      ? 'unverified'
-      : checks.length
-        ? 'pass'
-        : 'not-evaluated';
+  report.verdict = 'not-evaluated';
+  if (checks.length) report.verdict = 'pass';
+  if (
+    checks.some((check) => check.status === 'unverified') ||
+    (!views.length && Object.values(limits).some((value) => value !== undefined))
+  )
+    report.verdict = 'unverified';
+  if (checks.some((check) => check.status === 'fail')) report.verdict = 'fail';
   await writeFile(join(out, 'capture.json'), JSON.stringify(report, null, 2) + '\n', {
     flag: 'wx',
     mode: 0o600,

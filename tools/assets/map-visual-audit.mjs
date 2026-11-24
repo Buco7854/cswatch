@@ -1,4 +1,4 @@
-import limits from '../../shared/map-graphics.json' with { type: 'json' };
+import { graphicsLimits as limits, graphicsFeatures } from './map-graphics-contract.mjs';
 import { worldMaterialAction } from './map-world-materials.mjs';
 
 // Only classify families whose meaning is known. New Source shaders still get
@@ -35,18 +35,6 @@ const features = new Map(
   ].flatMap(([feature, shaders]) => shaders.map((shader) => [shader + '.vfx', feature])),
 );
 
-const priority = [
-  'unknown',
-  'water',
-  'glass',
-  'foliage',
-  'layered_surface',
-  'lighting',
-  'atmosphere',
-  'decal',
-  'unlit',
-  'helper',
-];
 const maxViews = limits.views;
 
 function describe(material) {
@@ -190,7 +178,7 @@ export function inspectMapGraphics(document) {
   // Allocate one view per feature first so a large family cannot hide a rare
   // effect. Only metadata is emitted; no camera or geometry runs in playback.
   const views = [];
-  const groups = priority.map((feature) =>
+  const groups = graphicsFeatures.map((feature) =>
     [...candidates.values()]
       .filter((v) => v.view.feature === feature)
       .sort((a, b) => b.area2 - a.area2),

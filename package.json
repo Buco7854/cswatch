@@ -4,14 +4,15 @@
   "scripts": {
     "build": "npm --prefix backend run build && npm --prefix frontend run build",
     "test": "npm --prefix backend test",
+    "test:graphics": "node --test scripts/graphics/*.test.mjs",
     "test:assets": "node --test tools/assets/*.test.mjs",
     "dev:web": "npm --prefix backend run dev",
     "dev:ui": "npm --prefix frontend run dev",
     "worker": "npm --prefix backend run worker",
     "test:e2e:email": "node frontend/tests/fixtures/run-email-smtp.mjs",
     "test:e2e": "npm --prefix frontend run test:e2e",
-    "format": "prettier --write backend/src backend/tests backend/scripts/*.mjs frontend/src frontend/tests frontend/playwright.config.ts shared scripts/*.mjs tools/assets/*.mjs tools/transcription/*.mjs tools/transcription/*.json tools/transcription/*.md *.md \"docs/**/*.md\" *.yaml .github",
-    "format:check": "prettier --check backend/src backend/tests backend/scripts/*.mjs frontend/src frontend/tests frontend/playwright.config.ts shared scripts/*.mjs tools/assets/*.mjs tools/transcription/*.mjs tools/transcription/*.json tools/transcription/*.md *.md \"docs/**/*.md\" *.yaml .github",
+    "format": "prettier --write backend/src backend/tests backend/scripts/*.mjs frontend/src frontend/tests frontend/playwright.config.ts shared scripts/*.mjs scripts/graphics tools/assets/*.mjs tools/transcription/*.mjs tools/transcription/*.json tools/transcription/*.md *.md \"docs/**/*.md\" *.yaml .github",
+    "format:check": "prettier --check backend/src backend/tests backend/scripts/*.mjs frontend/src frontend/tests frontend/playwright.config.ts shared scripts/*.mjs scripts/graphics tools/assets/*.mjs tools/transcription/*.mjs tools/transcription/*.json tools/transcription/*.md *.md \"docs/**/*.md\" *.yaml .github",
     "check:locales": "node scripts/check-locales.mjs",
     "test:visual": "node scripts/visual-check.mjs"
   },

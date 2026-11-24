@@ -10,9 +10,9 @@ import { fileURLToPath } from 'node:url';
 import { ALL_EXTENSIONS } from '../../tools/assets/node_modules/@gltf-transform/extensions/dist/index.js';
 import { NodeIO } from '../../tools/assets/node_modules/@gltf-transform/core/dist/index.js';
 import { meshoptMapFixture } from '../../tools/assets/fixtures/meshopt-map.mjs';
+import { readBoundVisualAudit } from '../../tools/assets/map-graphics-contract.mjs';
 import { writeMapTier } from '../../tools/assets/map-tier-output.mjs';
 import {
-  auditViews,
   compareView,
   evaluateLimits,
   coordinateSystem,
@@ -112,9 +112,9 @@ test(
       source: { file: 'grid.glb', bytes: raw.length, sha256: digest(raw) },
     });
     const view = {
-      feature: 'checker',
+      feature: 'unknown',
       shader: 'gltf',
-      action: 'preserve',
+      action: 'surface',
       materialName: 'Original QA surface',
       eye: [0, 12, 10],
       target: [0, 0, 0],
@@ -127,11 +127,21 @@ test(
       sourceSha256: manifest.sourceSha256,
       modelSha256: manifest.outputSha256,
       coordinateSystem,
-      materials: [],
+      materials: ['surface', 'omit_effect'].map((action) => ({
+        feature: view.feature,
+        shader: view.shader,
+        action,
+        coverage: action === 'surface' ? 'unknown' : 'omitted',
+        primitives: 1,
+      })),
       views: [view, { ...view, action: 'omit_effect' }],
     };
-    assert.throws(() => auditViews({ ...audit, views: [{ ...view, target: view.eye }] }, manifest));
-    assert.throws(() => auditViews({ ...audit, views: Array(25).fill(view) }, manifest));
+    const validateAudit = (data) => {
+      const bytes = Buffer.from(JSON.stringify(data));
+      return readBoundVisualAudit(bytes, { ...manifest, visualAuditSha256: digest(bytes) });
+    };
+    assert.throws(() => validateAudit({ ...audit, views: [{ ...view, target: view.eye }] }));
+    assert.throws(() => validateAudit({ ...audit, views: Array(25).fill(view) }));
     const auditBytes = Buffer.from(JSON.stringify(audit)),
       auditPath = join(tierDir, 'visual-audit.json');
     await writeFile(auditPath, auditBytes);
@@ -201,8 +211,8 @@ test(
     );
     assert.equal((await read('regression')).verdict, 'fail');
     await writeFile(auditPath, Buffer.concat([auditBytes, Buffer.from('\n')]));
-    await assert.rejects(run('altered'), /Visual audit differs/);
+    await assert.rejects(run('altered'), /Graphics audit hash mismatch/);
     await writeFile(join(tierDir, 'manifest.json'), JSON.stringify(manifest));
-    await assert.rejects(run('unbound'), /Visual audit differs/);
+    await assert.rejects(run('unbound'), /Graphics audit hash mismatch/);
   },
 );
