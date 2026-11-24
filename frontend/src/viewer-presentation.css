@@ -138,6 +138,7 @@
   overflow-wrap: anywhere;
 }
 .viewer-loading-panel .match-map {
+  display: block;
   text-transform: capitalize;
 }
 .viewer-loading-status {

@@ -289,7 +289,7 @@ export async function readMapJSON(response: Response, maxBytes = 65536): Promise
 }
 export function mapAcquisitionMessage(
   state: DemoMapState,
-): { title: string; description: string } | undefined {
+): { title: string; description: string; preparing?: true } | undefined {
   const info = state.acquisition;
   if (!info || state.status === 'ready') return;
   if (state.requestUnconfirmed)
@@ -306,6 +306,7 @@ export function mapAcquisitionMessage(
     };
   if (state.requesting || (info.canAcquire && info.acquisition === 'unavailable'))
     return {
+      preparing: true,
       title: 'Requesting map preparation',
       description:
         info.resolution === 'latest'
@@ -314,6 +315,7 @@ export function mapAcquisitionMessage(
     };
   if (info.acquisition === 'queued')
     return {
+      preparing: true,
       title: 'Map preparation queued',
       description:
         info.resolution === 'latest'
@@ -322,11 +324,13 @@ export function mapAcquisitionMessage(
     };
   if (info.acquisition === 'processing' && info.code === 'pack_invalid')
     return {
+      preparing: true,
       title: 'Preparing map again',
       description: 'The prepared map is incomplete or damaged. The worker will rebuild it.',
     };
   if (info.acquisition === 'processing')
     return {
+      preparing: true,
       title: 'Preparing map assets',
       description:
         info.resolution === 'latest'

@@ -221,6 +221,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
   const acquisitionNotice = mapAcquisitionMessage(mapAssets);
   const [sceneAttempt, setSceneAttempt] = useState(0);
   const sceneKey = JSON.stringify([id, user?.id, sceneAttempt]);
+  const [earlyReviewScene, setEarlyReviewScene] = useState<string>();
   const [mapReport, setMapReport] = useState<{ key: string; value: MapRenderState }>();
   const reportMap = useCallback(
     (value: MapRenderState) => setMapReport({ key: sceneKey, value }),
@@ -252,9 +253,13 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
         ? mapRender.environment
         : 'pending'
       : 'missing';
-  // A durable conversion can run for minutes. Its in-scene status lets the
-  // member review the timeline and rounds while the worker prepares the map.
-  const mapLoading = Boolean(data && !data.sample && mapStatus === 'pending' && !acquisitionNotice);
+  const preparation = acquisitionNotice?.preparing ? acquisitionNotice : undefined;
+  const mapLoading = Boolean(
+    data &&
+    !data.sample &&
+    earlyReviewScene !== sceneKey &&
+    (preparation || (mapStatus === 'pending' && !acquisitionNotice)),
+  );
   const mapNoticeStatus =
     !using2D &&
     mapStatus === 'ready' &&
@@ -596,6 +601,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
   useEffect(() => {
     const scope = { active: true };
     mutationScope.current = scope;
+    setEarlyReviewScene(undefined);
     setPlaying(false);
     setBookmarks([]);
     setLabel('');
@@ -1414,7 +1420,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
           )}
         </div>
       </header>
-      <div className="viewer-surface">
+      <div className="viewer-surface" inert={mapLoading}>
         {settings.matchScore && !buffering && (
           <MatchScore
             data={data}
@@ -2032,15 +2038,38 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
           key="opening"
           back={returnLink}
           label={
-            mapAssets.status === 'pending'
+            preparation?.title ??
+            (mapAssets.status === 'pending'
               ? 'Loading map assets…'
               : using2D
                 ? 'Loading map overview…'
-                : 'Loading 3D map…'
+                : 'Loading 3D map…')
           }
-          detail={<span className="match-map">{mapName(data.map)}</span>}
-          model={using2D ? undefined : mapRender?.modelProgress}
-        />
+          detail={
+            <>
+              <span className="match-map">{mapName(data.map)}</span>
+              {preparation && t(preparation.description)}
+            </>
+          }
+          model={preparation || using2D ? undefined : mapRender?.modelProgress}
+        >
+          {preparation && (
+            <button
+              className="button"
+              onClick={() => {
+                setEarlyReviewScene(sceneKey);
+                chrome.show();
+                requestAnimationFrame(() =>
+                  playbackDock.current
+                    ?.querySelector<HTMLInputElement>('.timeline-slider')
+                    ?.focus({ preventScroll: true }),
+                );
+              }}
+            >
+              {t('Open timeline')}
+            </button>
+          )}
+        </ViewerLoading>
       )}
     </div>
   );

@@ -1,5 +1,11 @@
 # Verification record
 
+## Map preparation on the viewer opening screen
+
+The production viewer was exercised with a synthetic member replay on Cache and controlled map-worker responses. Across demo processing, discovery and worker preparation, the French library link kept its position and keyboard focus. The queued and processing stages used the shared progress indicator. Opening the timeline moved focus to the seek slider. A seek worked before map delivery, the slider kept focus during a delayed GLB download, and another demo on the same map opened on its own loading screen. Separate cases covered automatic entry into the ready scene and retry after a worker error.
+
+Twelve Chromium captures covered 1440 × 900, 768 × 1024 and 390 × 844, in English and French and both themes, with reduced motion enabled. They show the latest-official-map disclosure and the timeline button. These fixtures exercise the waiting experience independently of the duration of a real Cache conversion.
+
 ## Rendering corrections against matched external scenes
 
 On 2026-11-24 the comparisons below used the same public recordings or reconstructed spawn cameras as the earlier eight-map audit. Local replay captures used production Chromium 159, SwiftShader, High at 720 × 480, matched world FOV and HUD-free browser compositing. Static material probes identify the source mesh, texture, draw and camera independently. No demo or map artwork was uploaded. The public catalogue does not identify the historical Valve map digest for a replay. [Initial comparison and coverage](#visual-comparison-with-csdemotv)

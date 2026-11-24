@@ -155,6 +155,8 @@ test('map discovery overlaps replay loading and preparation waits for a readable
   await install(page, true);
   let resumeManifest!: () => void;
   const manifest = new Promise<void>((resolve) => (resumeManifest = resolve));
+  const preparing = { ...eligible, canAcquire: false, acquisition: 'processing' };
+  let workerFinished = false;
   let reads = 0;
   let requests = 0;
   await page.route('**/api/demos/acquisition-a/playback', async (route) => {
@@ -165,24 +167,48 @@ test('map discovery overlaps replay loading and preparation waits for a readable
     if (route.request().method() === 'POST') requests++;
     else reads++;
     return route.fulfill({
-      json: requests ? { ...eligible, canAcquire: false, acquisition: 'processing' } : eligible,
+      json: workerFinished ? ready : requests ? preparing : eligible,
     });
   });
   await page.goto('/watch/acquisition-a');
   await expect.poll(() => reads).toBe(1);
   expect(requests).toBe(0);
   resumeManifest();
-  await expect(
-    page.locator('.scene').getByRole('status', { name: 'Preparing map assets' }),
-  ).toBeVisible();
-  await expect(page.locator('.viewer-map-loading,.viewer-crosshair,.viewer-scope')).toHaveCount(0);
-  await expect(page.getByRole('link', { name: 'Back to home' })).toBeInViewport();
+  const loading = page.locator('.viewer-map-loading');
+  await expect(loading.getByRole('heading')).toHaveText('Preparing map assets');
+  await expect(loading.getByRole('progressbar')).toHaveAttribute('data-indeterminate', 'true');
+  await expect(page.getByRole('region', { name: 'Playback controls' })).toHaveCount(0);
+  await expect(loading.getByRole('link', { name: 'Back to home' })).toBeInViewport();
+  await loading.getByRole('button', { name: 'Open timeline' }).press('Enter');
+  await expect(loading).toHaveCount(0);
+  await expect(page.locator('.viewer-crosshair,.viewer-scope')).toHaveCount(0);
   const timeline = page.locator('.timeline-slider');
-  await timeline.focus();
+  await expect(timeline).toBeFocused();
   const start = Number(await timeline.inputValue());
   await timeline.press('ArrowRight');
   await expect.poll(async () => Number(await timeline.inputValue())).toBeGreaterThan(start);
+  const modelRequested = Promise.withResolvers<void>();
+  const modelResponse = Promise.withResolvers<void>();
+  await page.route('**/api/map-packs/*/models/*/*/scene.glb', async (route) => {
+    modelRequested.resolve();
+    await modelResponse.promise;
+    await route.fallback();
+  });
+  workerFinished = true;
+  try {
+    await modelRequested.promise;
+    await expect(loading).toHaveCount(0);
+    await expect(timeline).toBeFocused();
+  } finally {
+    modelResponse.resolve();
+  }
+  await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
   expect(requests).toBe(1);
+  await page.route('**/api/demos/acquisition-b/map-assets', (route) =>
+    route.fulfill({ json: preparing }),
+  );
+  await navigate(page, 'acquisition-b');
+  await expect(loading.getByRole('heading')).toHaveText('Preparing map assets');
 });
 
 test('guest-owned demo acquires only its approved immutable pack once and observes queued processing ready status', async ({
@@ -219,11 +245,15 @@ test('guest-owned demo acquires only its approved immutable pack once and observ
   });
   await page.goto('/watch/acquisition-a');
   await expect(
-    page.locator('.scene').getByRole('status', { name: 'Map preparation queued', exact: true }),
+    page
+      .locator('.viewer-map-loading')
+      .getByRole('heading', { name: 'Map preparation queued', exact: true }),
   ).toBeVisible();
   revealProcessing();
   await expect(
-    page.locator('.scene').getByRole('status', { name: 'Preparing map assets', exact: true }),
+    page
+      .locator('.viewer-map-loading')
+      .getByRole('heading', { name: 'Preparing map assets', exact: true }),
   ).toBeVisible();
   revealReady();
   await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
@@ -295,7 +325,9 @@ test('leaving a same-map demo discards its delayed approval and cannot enqueue f
   );
   await page.goto('/watch/acquisition-a');
   await expect(
-    page.locator('.scene').getByRole('status', { name: 'Loading map assets…', exact: true }),
+    page
+      .locator('.viewer-map-loading')
+      .getByRole('heading', { name: 'Loading map assets…', exact: true }),
   ).toBeVisible();
   await navigate(page, 'acquisition-b');
   await expect(page.locator('.map-unavailable p')).toContainText('No operator-approved');
@@ -369,6 +401,9 @@ test('eligible failed jobs require an explicit retry and serialize repeated clic
       deck = await page.locator('.viewer-dock').boundingBox();
     expect(retryBox!.y + retryBox!.height).toBeLessThan(deck!.y - 4);
     await retry.click();
+    const loading = page.locator('.viewer-map-loading');
+    await expect(loading.getByRole('heading')).toHaveText('Requesting map preparation');
+    await loading.getByRole('button', { name: 'Open timeline' }).click();
     await expect(
       page.getByRole('button', { name: 'Requesting map preparation', exact: true }),
     ).toBeDisabled();
@@ -428,7 +463,9 @@ test('failed-job cooldown is checked sparsely and becoming eligible never enqueu
   expect(posts).toBe(0);
   await retry.click();
   await expect(
-    page.locator('.scene').getByRole('status', { name: 'Map preparation queued', exact: true }),
+    page
+      .locator('.viewer-map-loading')
+      .getByRole('heading', { name: 'Map preparation queued', exact: true }),
   ).toBeVisible();
   expect(posts).toBe(1);
 });
