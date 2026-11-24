@@ -26,6 +26,7 @@ import {
 import {
   exists,
   fileHash,
+  fileHashes,
   readableDirectory,
   regular,
   checkStorage,
@@ -290,6 +291,7 @@ export async function installSteamAssets(options, adapters = {}) {
       );
   signal?.throwIfAborted();
   const progress = (stage, extra = {}) => options.onProgress?.({ stage, ...extra });
+  await options.onPhase?.('tools');
   const tools = options.s2v
     ? {
         s2v: resolve(options.s2v),
@@ -385,6 +387,7 @@ export async function installSteamAssets(options, adapters = {}) {
     });
   };
   try {
+    await options.onPhase?.('source');
     const initial = initialSteamFiles(maps);
     await checkStorage(cache, output);
     const listed = await execute(
@@ -418,25 +421,39 @@ export async function installSteamAssets(options, adapters = {}) {
       `Content Manifest for Depot ${STEAM_DEPOT}\n\nManifest ID / date     : ${plan.manifest} / pinned by selective preflight\n`,
       { flag: 'wx', mode: 0o600 },
     );
-    await download(
-      plan.files.map((file) => ({ selector: file.file, bytes: file.bytes })),
-      'initial-selected-files',
-    );
-    for (const file of plan.files)
-      if ((await fileHash(join(game, file.file), 'sha1', file.bytes)) !== file.sha1)
+    const mapFiles = new Set(maps.map((map) => `game/csgo/maps/${map}.vpk`));
+    const selected = plan.files.map(({ file, bytes }) => ({ selector: file, bytes }));
+    // A manifest-scoped cache can already contain this entire batch. Only reuse
+    // it after a fresh official listing and a full check of every listed file.
+    async function verifySelection() {
+      const mapHashes = new Map();
+      for (const { file, bytes, sha1 } of plan.files) {
+        const path = join(game, file);
+        if (!(await exists(path))) return;
+        const stat = await regular(path, Number.MAX_SAFE_INTEGER, 0);
+        if (stat.size !== bytes) return;
+        const needMapHash =
+          mapFiles.has(file) && (options.expectedMapHashes || options.onSourceVerified);
+        const verified = await fileHashes(path, needMapHash ? ['sha1', 'sha256'] : ['sha1'], bytes);
+        if (verified.sha1 !== sha1) return;
+        if (needMapHash) mapHashes.set(file, verified.sha256);
+      }
+      return mapHashes;
+    }
+    let mapHashes = await verifySelection();
+    if (mapHashes) {
+      remember(selected);
+    } else {
+      await download(selected, 'initial-selected-files');
+      mapHashes = await verifySelection();
+      if (!mapHashes)
         throw Object.assign(new Error('A selected Steam file failed its manifest hash check.'), {
           code: 'SOURCE_MAP_MISMATCH',
         });
+    }
     for (const map of maps) {
       const expected = options.expectedMapHashes?.[map];
-      const actualHash =
-        expected || options.onSourceVerified
-          ? await fileHash(
-              join(game, 'game/csgo/maps', `${map}.vpk`),
-              'sha256',
-              steamAssetLimits.selectedBytes,
-            )
-          : undefined;
+      const actualHash = mapHashes.get(`game/csgo/maps/${map}.vpk`);
       if (expected && actualHash !== expected)
         throw Object.assign(
           new Error('Official map content does not match its approved source hash.'),
@@ -490,6 +507,7 @@ export async function installSteamAssets(options, adapters = {}) {
           });
         };
         const sourceDescription = `Valve CS2 app ${STEAM_APP}, depot ${STEAM_DEPOT}, manifest ${plan.manifest}, operator-local S2V export`;
+        await options.onPhase?.('geometry');
         const environment = await (adapters.inspectEnvironment || inspectInstalledEnvironment)({
           map,
           game,
@@ -543,6 +561,7 @@ export async function installSteamAssets(options, adapters = {}) {
           onSourceImages,
           storage: (needed) => checkStorage(cache, output, needed),
         });
+        await options.onPhase?.('environment');
         const overviewExport = join(stage, 'overview-source');
         await mkdir(overviewExport);
         await execute(
@@ -590,6 +609,7 @@ export async function installSteamAssets(options, adapters = {}) {
           ],
         });
         source = atmosphere.path;
+        await options.onPhase?.('lighting');
         const baked = await (adapters.prepareBakedLighting || prepareInstalledBakedLighting)({
           map,
           packageFile,
@@ -627,7 +647,8 @@ export async function installSteamAssets(options, adapters = {}) {
         await checkStorage(cache, output);
         // Separate tiers so the kernel can reclaim the GLB and codec working
         // sets before the next tier starts its geometry transforms.
-        for (const tier of ['desktop', 'mobile', 'compact'])
+        for (const tier of ['desktop', 'mobile', 'compact']) {
+          await options.onPhase?.(tier);
           await execute(
             process.execPath,
             [
@@ -649,6 +670,8 @@ export async function installSteamAssets(options, adapters = {}) {
             ],
             `${map}-pack-${tier}`,
           );
+        }
+        await options.onPhase?.('publishing');
         const lightingTiers = {};
         for (const tier of ['desktop', 'mobile']) {
           const path = join(prepared, map, tier, 'manifest.json');

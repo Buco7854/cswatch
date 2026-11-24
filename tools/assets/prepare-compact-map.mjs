@@ -277,14 +277,6 @@ async function buildCompactMap(input, colors, mode) {
           error: 0.004,
           lockBorder: true,
         }),
-    reorder({ encoder: MeshoptEncoder, target: 'size' }),
-    quantize({
-      pattern: /^(POSITION|COLOR_0)$/,
-      quantizePosition: sharedBorders ? 16 : 14,
-      quantizeColor: 8,
-      quantizationVolume: sharedBorders ? 'scene' : 'mesh',
-    }),
-    prune({ keepAttributes: true }),
   );
   const primitives = document
     .getRoot()
@@ -295,8 +287,21 @@ async function buildCompactMap(input, colors, mode) {
     0,
   );
   if (!triangles) return;
+  // Reordering and quantization preserve index count. A failed simplification
+  // is retried from the original world, so only finalize a tier that fits.
+  if (triangles > limits.triangles) return { document: null };
+  await document.transform(
+    reorder({ encoder: MeshoptEncoder, target: 'size' }),
+    quantize({
+      pattern: /^(POSITION|COLOR_0)$/,
+      quantizePosition: sharedBorders ? 16 : 14,
+      quantizeColor: 8,
+      quantizationVolume: sharedBorders ? 'scene' : 'mesh',
+    }),
+    prune({ keepAttributes: true }),
+  );
   return {
-    document: triangles <= limits.triangles ? document : null,
+    document,
     triangles,
     primitives: primitives.length,
     sourceTriangles: indices / 3,

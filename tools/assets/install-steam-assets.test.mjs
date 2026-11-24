@@ -789,6 +789,7 @@ test('synthetic installer run pins every selective fetch and removes only its ow
       );
     const commands = [],
       scratch = [];
+    const phases = [];
     let verifiedSource;
     const run = async (command, args, context) => {
       commands.push({ command, args: [...args], context });
@@ -869,6 +870,7 @@ test('synthetic installer run pins every selective fetch and removes only its ow
             bytes: content.get(`game/csgo/maps/${template.map}.vpk`).length,
           },
         },
+        onPhase: async (phase) => phases.push(phase),
         onSourceVerified: async (source) => {
           // This callback is before the first native metadata/conversion step.
           assert.ok(commands.every((entry) => entry.command === tool));
@@ -954,6 +956,49 @@ test('synthetic installer run pins every selective fetch and removes only its ow
       content.get(`game/csgo/maps/${template.map}.vpk`),
     );
     assert.ok((await readFile(result.report)).length > 0);
+    assert.deepEqual(phases, [
+      'tools',
+      'source',
+      'geometry',
+      'environment',
+      'lighting',
+      'desktop',
+      'mobile',
+      'compact',
+      'publishing',
+    ]);
+    const packageFile = `game/csgo/maps/${template.map}.vpk`;
+    const sourceChecked = Error('Stop immediately after the exact verified batch.');
+    for (const damage of [false, true]) {
+      if (damage)
+        await writeFile(
+          join(cache, 'steam', packageFile),
+          Buffer.alloc(content.get(packageFile).length),
+        );
+      const start = commands.length;
+      await assert.rejects(
+        installSteamAssets(
+          {
+            maps: [template.map],
+            manifest: '42',
+            cache,
+            output: join(template.root, 'cache-recheck'),
+            s2v: converter,
+            downloader: tool,
+            onSourceVerified(source) {
+              assert.deepEqual(source, verifiedSource);
+              throw sourceChecked;
+            },
+          },
+          { run },
+        ),
+        (error) => error === sourceChecked,
+      );
+      assert.deepEqual(
+        commands.slice(start).map(({ args }) => args[0]),
+        damage ? ['ls', 'track'] : ['ls'],
+      );
+    }
     await assert.rejects(
       installSteamAssets(
         {

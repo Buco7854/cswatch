@@ -1,5 +1,7 @@
 # Current handoff
 
+For a slow map opening, distinguish the server's first conversion from the browser downloading a published pack. Follow the selected request's `map.phase` events in the assets log. Compare times for acquisition, geometry, lighting and tier preparation separately. The demo can be closed once the job is accepted. [Worker status and reuse](product/MAP-ACQUISITION.md)
+
 When checking a breakable window, measure the intact surface over two different backgrounds, seek across its recorded break and keep the adjacent pane in frame. A successful visibility toggle alone can miss an opaque exported material. [Nuke window measurements](VERIFICATION.md#textured-breakable-glass)
 
 For a moving or damaged door, compare the recorded model and closed pivot with one prepared map entity. Check the chosen mesh, yaw, camera collision and shadow invalidation on forward play, direct seek and rewind. The capture report identifies absent or ambiguous matches. Nuke supplies three observed damage stages and a deletion, and Cache supplies a 90-degree swing. [Verified sequences](VERIFICATION.md#recorded-doors-and-progressive-damage)

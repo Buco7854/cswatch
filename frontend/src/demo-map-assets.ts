@@ -1,6 +1,7 @@
 import type {
   DemoMapAssets,
   LatestOfficialSelection,
+  MapPreparationPhase,
   OfficialMapSource,
 } from '../../shared/map-acquisition';
 import { emptyMapAssets, validateMapAssets, type MapAssetState } from './map-assets';
@@ -8,7 +9,7 @@ import { emptyMapAssets, validateMapAssets, type MapAssetState } from './map-ass
 type Resolution = DemoMapAssets['resolution']['status'];
 export type DemoMapSummary = Pick<
   DemoMapAssets,
-  'acquisition' | 'canAcquire' | 'verification' | 'packId' | 'code' | 'readinessReason'
+  'acquisition' | 'canAcquire' | 'verification' | 'packId' | 'code' | 'readinessReason' | 'phase'
 > & {
   resolution: Resolution;
   latest?: {
@@ -53,6 +54,17 @@ const acquisitionStatuses = new Set([
   'ready',
   'failed',
 ]);
+const preparationPhaseLabels = {
+  tools: 'Preparing conversion tools',
+  source: 'Retrieving map files',
+  geometry: 'Converting map geometry',
+  environment: 'Preparing the map environment',
+  lighting: 'Preparing map lighting',
+  desktop: 'Building the desktop map',
+  mobile: 'Building the mobile map',
+  compact: 'Building the compact map',
+  publishing: 'Installing the prepared map',
+} satisfies Record<MapPreparationPhase, string>;
 export const retryableMapFailures = new Set([
   'source_unavailable',
   'storage_limit',
@@ -236,6 +248,11 @@ export function validateDemoMapAssets(value: unknown, map: string): DemoMapState
     acquisition: {
       resolution: resolution.status as Resolution,
       acquisition: input.acquisition as DemoMapAssets['acquisition'],
+      ...(input.acquisition === 'processing' &&
+        typeof input.phase === 'string' &&
+        Object.hasOwn(preparationPhaseLabels, input.phase) && {
+          phase: input.phase as MapPreparationPhase,
+        }),
       canAcquire: input.canAcquire,
       verification: input.verification as DemoMapAssets['verification'],
       packId: input.packId as string | null,
@@ -322,21 +339,25 @@ export function mapAcquisitionMessage(
           ? 'The latest official map is waiting for the preparation worker. Its layout may differ from this recording.'
           : 'The approved map is waiting for the preparation worker. You can leave this viewer and return later.',
     };
-  if (info.acquisition === 'processing' && info.code === 'pack_invalid')
+  if (info.acquisition === 'processing') {
+    const repairing = info.code === 'pack_invalid';
+    const latest = info.resolution === 'latest';
     return {
       preparing: true,
-      title: 'Preparing map again',
-      description: 'The prepared map is incomplete or damaged. The worker will rebuild it.',
-    };
-  if (info.acquisition === 'processing')
-    return {
-      preparing: true,
-      title: 'Preparing map assets',
-      description:
-        info.resolution === 'latest'
+      title: info.phase
+        ? preparationPhaseLabels[info.phase]
+        : repairing
+          ? 'Preparing map again'
+          : 'Preparing map assets',
+      description: repairing
+        ? latest && info.phase
+          ? 'The worker is rebuilding the incomplete or damaged map. The latest official layout may differ from this recording.'
+          : 'The prepared map is incomplete or damaged. The worker will rebuild it.'
+        : latest
           ? 'The worker is preparing the latest official map. Its layout may differ from this recording.'
           : 'The worker is downloading and converting the approved map. You can leave this viewer and return later.',
     };
+  }
   if (info.code === 'queue_full')
     return {
       title: 'Map preparation queue is full',

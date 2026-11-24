@@ -371,7 +371,9 @@ test('latest official source publishes a distinct content-bound immutable pack a
     });
     assert.equal(options.expectedMapHashes, undefined);
     await options.onSourceVerified({ ...f.selection, mapSha256: f.entry.source.mapSha256 });
+    await options.onPhase('lighting');
     const processing = await readMapResult(f.options.jobs, f.packId);
+    assert.equal(processing.phase, 'lighting');
     assert.equal(processing.status, 'processing');
     assert.equal(processing.assetPackId, f.assetPackId);
     await originalPack(options.output, f.entry);
@@ -379,6 +381,7 @@ test('latest official source publishes a distinct content-bound immutable pack a
   await processOneMapRequest(f.options, { prepare });
   const result = await readMapResult(f.options.jobs, f.packId);
   assert.equal(result.status, 'ready');
+  assert.equal(result.phase, undefined);
   assert.notEqual(f.packId, f.assetPackId);
   assert.equal(result.assetPackId, f.assetPackId);
   assert.deepEqual(result.source, f.entry.source);

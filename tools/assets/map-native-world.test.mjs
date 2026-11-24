@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { Document } from '@gltf-transform/core';
 import { inspectWorldLightmaps } from './install-map-baked-lighting.mjs';
@@ -6,7 +9,12 @@ import { inspectGradientFog, inspectSunShadowChannel } from './environment-metad
 import { filterMapWorldMaterials } from './map-world-materials.mjs';
 import { preserveAlphaCoverage } from './texture-budget.mjs';
 import { bindVertexLighting } from './prepare-baked-lighting.mjs';
-import { embeddedMapDraws, nativeMaterialLightmapSlot } from './native-map-lighting-layout.mjs';
+import {
+  decodeLayoutBatch,
+  discoverNativeMapLighting,
+  embeddedMapDraws,
+  nativeMaterialLightmapSlot,
+} from './native-map-lighting-layout.mjs';
 
 test('lightmaps use the actual world atlas and authored stationary sun slot', () => {
   const prefix = 'maps/de_original';
@@ -218,7 +226,7 @@ test('a compiled COLOR1 stream binds irradiance while ordinary vertex tint stays
   assert.equal(unverified.getMaterial(), material);
 });
 
-test('compiled draw metadata distinguishes a third lightmap UV from a second ordinary UV', () => {
+function compiledLayoutFixture() {
   const slot = (name, type, index, format) => ({ name, type, index, format });
   const input = [
     slot('vPosition', 'POSITION', 0, 6),
@@ -254,6 +262,11 @@ test('compiled draw metadata distinguishes a third lightmap UV from a second ord
       }),
     )
     .join('')}\t]`;
+  return { control, mesh, signature };
+}
+
+test('compiled draw metadata distinguishes a third lightmap UV from a second ordinary UV', () => {
+  const { control, mesh, signature } = compiledLayoutFixture();
   const { records } = embeddedMapDraws(control, mesh);
   assert.deepEqual(embeddedMapDraws(control + '\n' + mesh).records, records);
   assert.deepEqual(embeddedMapDraws(mesh + '\n' + control).records, records);
@@ -286,4 +299,154 @@ test('compiled draw metadata distinguishes a third lightmap UV from a second ord
     ).records[0].vertex,
     undefined,
   );
+});
+
+test('bounded layout dumps keep each model and signature tied to its source, with per-file overflow recovery', async () => {
+  const { control, mesh, signature } = compiledLayoutFixture();
+  const directory = '/qa/layout',
+    files = [directory + '/first', directory + '/second'];
+  const options = { s2v: 's2v', directory, files };
+  const body = (path) =>
+    path === files[0] ? signature : signature.replace('vLightmapUV', 'unrelatedUV');
+  const shuffled = await decodeLayoutBatch({
+    ...options,
+    block: 'INSG',
+    execute: async (_tool, args) => {
+      assert.ok(args.includes('--recursive'));
+      return {
+        code: 0,
+        stdout: [...files]
+          .reverse()
+          .map((p, i) => `[${i + 1}/2] ${p}\n${body(p)}`)
+          .join('\n'),
+      };
+    },
+  });
+  assert.equal(shuffled.get(files[0]), 3);
+  assert.equal(shuffled.get(files[1]), undefined);
+  for (const failure of ['partial', 'duplicate', 'size', 'exit']) {
+    const calls = [];
+    const nativeError = Object.assign(new Error('over limit'), { code: 'ASSET_OUTPUT_LIMIT' });
+    const rows = await decodeLayoutBatch({
+      ...options,
+      block: 'CTRL,MDAT',
+      execute: async (_tool, args) => {
+        const input = args[1],
+          block = args[3];
+        calls.push([input, block]);
+        if (input === directory) {
+          if (failure === 'size') throw nativeError;
+          if (failure === 'exit') return { code: 3 };
+          return {
+            code: 0,
+            stdout:
+              failure === 'partial'
+                ? '[1/2] ' + files[0]
+                : '[1/2] ' + files[0] + '\n[2/2] ' + files[0],
+          };
+        }
+        if (input === files[1]) return { code: 1, stdout: '' };
+        if (block === 'CTRL,MDAT') throw nativeError;
+        return { code: 0, stdout: block === 'CTRL' ? control : mesh };
+      },
+    });
+    assert.deepEqual(rows.get(files[0]), embeddedMapDraws(control, mesh));
+    assert.equal(rows.get(files[1]), undefined);
+    assert.equal(calls.length, 5);
+  }
+  const stopped = Error('confinement refused');
+  await assert.rejects(
+    decodeLayoutBatch({
+      ...options,
+      block: 'INSG',
+      execute: async () => {
+        throw stopped;
+      },
+    }),
+    stopped,
+  );
+});
+
+test('at the shared 32 MiB boundary, earlier draw materials keep priority over later models', async (t) => {
+  const folder = await mkdtemp(join(tmpdir(), 'native-layout-limit-'));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  const { control, mesh, signature } = compiledLayoutFixture();
+  const material = (i) => 'materials/qa/test_' + i + '.vmat';
+  const model = (i) => 'maps/de_qa/worldnodes/world_' + i + '.vmdl_c';
+  const ordinals = Array.from({ length: 33 }, (_, i) => i);
+  const entries = new Map(
+    ordinals.flatMap((i) => [
+      [model(i), { length: i === 32 ? 65536 : 1024 * 1024, preloadBytes: 0, ordinal: i }],
+      [material(i) + '_c', { length: 65536, preloadBytes: 0, ordinal: i }],
+    ]),
+  );
+  const reads = new Set();
+  const bank = {
+    entries,
+    readEntry: async (key) => {
+      const row = entries.get(key);
+      reads.add(key);
+      return Buffer.alloc(row.length, row.ordinal);
+    },
+  };
+  const document = {
+    asset: { version: '2.0' },
+    meshes: ordinals.map((i) => ({
+      name: 'world_' + i + '.meshset_0',
+      primitives: [{ material: i, indices: 1, attributes: { POSITION: 0, TEXCOORD_1: 0 } }],
+    })),
+    materials: ordinals.map((i) => ({
+      extras: { vmat: { Name: material(i), ShaderName: 'csgo_complex.vfx' } },
+    })),
+    accessors: [{ count: 8 }, { count: 12 }],
+  };
+  const json = Buffer.from(JSON.stringify(document)),
+    glb = Buffer.alloc(28 + json.length);
+  glb.write('glTF');
+  glb.writeUInt32LE(2, 4);
+  glb.writeUInt32LE(glb.length, 8);
+  glb.writeUInt32LE(json.length, 12);
+  glb.writeUInt32LE(0x4e4f534a, 16);
+  json.copy(glb, 20);
+  glb.writeUInt32LE(0x004e4942, 24 + json.length);
+  const input = join(folder, 'world.glb');
+  await writeFile(input, glb);
+  async function execute(_command, args) {
+    const [path, block] = [args[1], args[3]],
+      batch = args.includes('--recursive');
+    const paths = batch ? (await readdir(path)).map((p) => join(path, p)) : [path];
+    const bodies = await Promise.all(
+      paths.map(async (file, j) => {
+        const i = (await readFile(file))[0],
+          prefix = batch ? `[${j + 1}/${paths.length}] ${file}\n` : '';
+        return (
+          prefix +
+          (block === 'INSG'
+            ? signature
+            : control + '\n' + mesh.replace('materials/qa/plaster.vmat', material(i)))
+        );
+      }),
+    );
+    return { code: 0, stdout: bodies.join('\n') };
+  }
+  const out = await discoverNativeMapLighting({
+    input,
+    source: bank,
+    banks: [bank],
+    map: 'de_qa',
+    folder,
+    s2v: 'fixture',
+    execute,
+    includeAtlas: true,
+  });
+  const admitted = [...ordinals.slice(0, 30), 32];
+  assert.equal(reads.size, admitted.length * 2);
+  assert.ok(admitted.every((i) => reads.has(model(i)) && reads.has(material(i) + '_c')));
+  assert.equal(out.models, 33);
+  assert.equal(out.materials, 31);
+  assert.deepEqual(
+    Object.keys(out.bindings),
+    admitted.map((i) => 'world_' + i + '.meshset_0:' + material(i) + ':12:8'),
+  );
+  assert.ok(Object.values(out.bindings).every((slot) => slot === 2));
 });
