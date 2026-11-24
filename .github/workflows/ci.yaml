@@ -43,6 +43,8 @@ jobs:
         run: node tools/transcription/verify-transcription.mjs --model var/transcription-models/whisper-tiny --keep-job var/transcription-jfk-job
       - run: npm audit --prefix backend --omit=dev --audit-level=high && npm audit --prefix frontend --omit=dev --audit-level=high && npm audit --prefix tools/assets --omit=dev --audit-level=high && npm audit --prefix tools/transcription --audit-level=high
       - run: npx --prefix frontend playwright install --with-deps chromium
+      - name: Check graphics captures with original test artwork
+        run: npm run test:graphics
       - run: npm run test:e2e
       - name: Verify email signup and password recovery with a loopback SMTP relay
         run: npm run test:e2e:email

@@ -33,53 +33,6 @@ export async function boundedFile(path, max) {
   }
 }
 
-export function auditViews(audit, manifest) {
-  assert(
-    audit.schemaVersion === 1 &&
-      audit.coordinateSystem === coordinateSystem &&
-      manifest.schemaVersion === 1 &&
-      /^[a-zA-Z0-9_-]{1,80}$/.test(audit.map) &&
-      audit.map === manifest.map &&
-      audit.tier === manifest.tier &&
-      ['desktop', 'mobile'].includes(audit.tier),
-    'Invalid audit/map tier identity',
-  );
-  assert(
-    sha(audit.modelSha256) &&
-      audit.modelSha256 === manifest.outputSha256 &&
-      sha(audit.sourceSha256) &&
-      audit.sourceSha256 === manifest.sourceSha256 &&
-      text(audit.assetVersion, 100) &&
-      audit.assetVersion.length &&
-      audit.assetVersion === manifest.assetVersion,
-    'Audit provenance mismatch',
-  );
-  assert(
-    Array.isArray(audit.materials) && Array.isArray(audit.views) && audit.views.length <= 24,
-    'Invalid audit material/view list',
-  );
-  return audit.views.map((view, index) => {
-    const { feature, shader, action, materialName = '', eye, target } = view;
-    assert(
-      text(feature, 256) &&
-        feature.length &&
-        text(shader, 128) &&
-        text(action, 80) &&
-        text(materialName, 1024),
-      'Invalid view identity',
-    );
-    const point = (v) =>
-      Array.isArray(v) &&
-      v.length === 3 &&
-      v.every((x) => Number.isFinite(x) && Math.abs(x) <= 1e6);
-    assert(
-      point(eye) && point(target) && Math.hypot(...eye.map((v, i) => v - target[i])) > 1e-6,
-      'Invalid view pose',
-    );
-    return { index, feature, shader, action, materialName, eye, target };
-  });
-}
-
 export async function rgbMetrics(a, b, width, height) {
   async function decode(bytes) {
     assert(

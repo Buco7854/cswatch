@@ -3,7 +3,8 @@ import test from 'node:test';
 import { Document } from '@gltf-transform/core';
 import { inspectMapGraphics } from './map-visual-audit.mjs';
 import { filterMapWorldMaterials } from './map-world-materials.mjs';
-import { visualAuditSchema } from '../../backend/dist/map-visual-audit.js';
+import { readBoundVisualAudit } from './map-graphics-contract.mjs';
+import { createHash } from 'node:crypto';
 
 function setup() {
   const doc = new Document(),
@@ -61,18 +62,22 @@ test('unknown future shaders remain explicit alongside omitted, authored and app
   assert.equal(audit.views.length, 3);
   filterMapWorldMaterials(doc);
   assert.equal(inspectMapGraphics(doc).materials.length, 2);
-  assert.ok(
-    visualAuditSchema.safeParse({
-      schemaVersion: 1,
-      map: 'de_future',
-      assetVersion: 'source',
-      sourceSha256: '1'.repeat(64),
-      modelSha256: '2'.repeat(64),
-      tier: 'mobile',
-      coordinateSystem: 'gltf-meters-y-up',
-      ...audit,
-    }).success,
-  );
+  const metadata = {
+    schemaVersion: 1,
+    map: 'de_future',
+    tier: 'mobile',
+    assetVersion: 'source',
+    sourceSha256: '1'.repeat(64),
+    modelSha256: '2'.repeat(64),
+    coordinateSystem: 'gltf-meters-y-up',
+  };
+  const bytes = Buffer.from(JSON.stringify({ ...metadata, ...audit }));
+  const manifest = {
+    ...metadata,
+    outputSha256: metadata.modelSha256,
+    visualAuditSha256: createHash('sha256').update(bytes).digest('hex'),
+  };
+  assert.deepEqual(readBoundVisualAudit(bytes, manifest).views, audit.views);
 });
 
 test('world-space cameras face the rendered side of mirrored, instanced indexed geometry', () => {

@@ -11,7 +11,7 @@ import {
 } from '../../backend/dist/map-jobs.js';
 import { inspectManagedPack, mapQueueIds } from '../../backend/dist/map-removals.js';
 import { withDirectory, regularFile, bytesFrom } from '../../backend/dist/map-asset-files.js';
-import { visualAuditBytes, readBoundVisualAudit } from '../../backend/dist/map-visual-audit.js';
+import { graphicsLimits, readBoundVisualAudit } from './map-graphics-contract.mjs';
 
 async function readBytes(dir, name, limit) {
   const file = await regularFile(dir, name, 2, limit);
@@ -50,7 +50,8 @@ export function captureSummary(report, audit, sha256) {
   )
     return invalid;
   const visibility = {},
-    comparison = {};
+    comparison = {},
+    visibleComparisons = {};
   for (const [index, view] of audit.views.entries()) {
     const actual = report.views[index];
     if (
@@ -62,8 +63,17 @@ export function captureSummary(report, audit, sha256) {
       return invalid;
     visibility[actual.visibility.status] = (visibility[actual.visibility.status] ?? 0) + 1;
     comparison[actual.comparison.status] = (comparison[actual.comparison.status] ?? 0) + 1;
+    if (actual.visibility.status === 'visible' && actual.comparison.status.startsWith('matched-'))
+      visibleComparisons[actual.comparison.status] =
+        (visibleComparisons[actual.comparison.status] ?? 0) + 1;
   }
-  return { status: 'captured', visibility, comparison, verdict: report.verdict };
+  return {
+    status: 'captured',
+    visibility,
+    comparison,
+    visibleComparisons,
+    verdict: report.verdict,
+  };
 }
 
 async function tierReport(assets, captures, pack, tier) {
@@ -78,8 +88,17 @@ async function tierReport(assets, captures, pack, tier) {
         manifest.assetVersion !== pack.assetVersion
       )
         return;
+      if (
+        !Number.isSafeInteger(manifest.bytes) ||
+        manifest.bytes < 24 ||
+        manifest.bytes > 2 * 1024 ** 3
+      )
+        return;
+      const model = await regularFile(dir, 'scene.glb', manifest.bytes, manifest.bytes);
+      if (!model) return;
+      await model.close();
       const audit = readBoundVisualAudit(
-        await readBytes(dir, 'visual-audit.json', visualAuditBytes),
+        await readBytes(dir, 'visual-audit.json', graphicsLimits.bytes),
         manifest,
       );
       let capture;
@@ -153,9 +172,11 @@ export async function graphicsInventory({
   };
   // Historical approvals and the currently observed depot manifest have different
   // identities. A successful comparison for one must never cover the other.
-  const approved = [];
+  const approved = [],
+    requests = new Map();
   for (const id of await mapQueueIds(jobs, 'requests')) {
     const request = await readMapRequest(jobs, id);
+    requests.set(id, request);
     if (request?.approval)
       approved.push({
         map: request.approval.identity.map,
@@ -176,7 +197,9 @@ export async function graphicsInventory({
     const id = latestMapRequestId(selection);
     maps.push({
       ...entry,
-      ...(await mapState(jobs, assets, captures, await readMapRequest(jobs, id), id)),
+      ...(requests.has(id) && !requests.get(id)
+        ? { status: 'unavailable' }
+        : await mapState(jobs, assets, captures, requests.get(id), id)),
     });
   }
   return {

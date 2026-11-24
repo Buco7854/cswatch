@@ -2,7 +2,7 @@
 import { createHash } from 'node:crypto';
 import { mkdir, rm, statfs, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
-import limits from '../../shared/map-graphics.json' with { type: 'json' };
+import { graphicsLimits as limits } from './map-graphics-contract.mjs';
 import { inspectMapGraphics } from './map-visual-audit.mjs';
 import { batchMapMeshes } from './batch-map-meshes.mjs';
 import { applyTextureBudget } from './texture-budget.mjs';
