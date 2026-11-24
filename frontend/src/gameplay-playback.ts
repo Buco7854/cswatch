@@ -60,6 +60,7 @@ export class GameplayPlayback {
     scope: string,
     locate: (cue: GameplaySoundCue) => { x: number; y: number; z: number } | undefined,
     ownActor?: string,
+    rounds: readonly { tick: number }[] = [],
   ) {
     const context = this.audio.context;
     if (
@@ -78,33 +79,27 @@ export class GameplayPlayback {
     if (!this.gain) return;
     this.gain.gain.value = Math.max(0, Math.min(1, volume));
     const allowed = new Set(categories);
-    const plan = this.timeline.plan(cues, tick, rate, speed, performance.now());
+    const plan = this.timeline.plan(
+      cues,
+      tick,
+      rate,
+      speed,
+      performance.now(),
+      (cue) =>
+        allowed.has(cue.category) && cue.volume !== 0 && Boolean(this.catalog.items[cue.soundId]),
+    );
     if (plan.reset) this.flush();
     const generation = this.generation;
     // Warm only nearby known samples. The cache serializes at two decodes and
     // keeps at most sixteen pending requests, including this prefetch window.
-    const prefetch = new Set<string>();
-    for (const cue of cues) {
-      if (
-        cue.tick >= tick &&
-        cue.tick <= tick + rate * speed &&
-        allowed.has(cue.category) &&
-        cue.volume !== 0 &&
-        this.catalog.items[cue.soundId]
-      ) {
-        prefetch.add(cue.soundId);
-        if (prefetch.size >= 16) break;
-      }
-    }
-    for (const id of prefetch) void this.buffers.get(id).catch(() => {});
+    for (const id of plan.prefetch) void this.buffers.get(id).catch(() => {});
     for (const { cue, delay } of plan.sounds) {
-      if (!allowed.has(cue.category) || cue.volume === 0 || !this.catalog.items[cue.soundId])
-        continue;
       const start = context.currentTime + delay;
+      const nextRound =
+        cue.category === 'round' ? rounds.find((round) => round.tick > cue.tick) : undefined;
+      const endTick = Math.min(cue.endTick ?? Infinity, nextRound?.tick ?? Infinity);
       const end =
-        cue.endTick === undefined
-          ? undefined
-          : context.currentTime + (cue.endTick - tick) / rate / speed;
+        endTick === Infinity ? undefined : context.currentTime + (endTick - tick) / rate / speed;
       void this.buffers
         .get(cue.soundId)
         .then((buffer) => {
@@ -136,7 +131,7 @@ export class GameplayPlayback {
             ownActor !== undefined &&
             cue.actor === ownActor &&
             ['weapon', 'reload', 'footstep'].includes(cue.category);
-          const position = cue.position || locate(cue);
+          const position = cue.category === 'round' ? undefined : cue.position || locate(cue);
           if (spatial && position && !localAction) {
             panner = context.createPanner();
             panner.panningModel = 'equalpower';
