@@ -306,6 +306,13 @@ const gameplaySoundCueSchema = z
     soundId: z.string().max(60),
     category: z.enum(['weapon', 'footstep', 'reload', 'utility', 'objective', 'round']),
     eventName: z.string().min(1).max(128).optional(),
+    shotAngles: z
+      .object({
+        pitch: z.number().finite().min(-90).max(90),
+        yaw: z.number().finite().min(-360).max(360),
+      })
+      .strict()
+      .optional(),
     evidence: z.enum(['game-event', 'network-sound']),
     selection: z.enum(['representative', 'recorded']),
     actor: speaker.optional(),
@@ -317,7 +324,12 @@ const gameplaySoundCueSchema = z
   .refine(
     (cue) =>
       Object.hasOwn(gameplaySoundRegistry.items, cue.soundId) &&
-      gameplaySoundRegistry.items[cue.soundId].category === cue.category,
+      gameplaySoundRegistry.items[cue.soundId].category === cue.category &&
+      (!cue.shotAngles ||
+        (cue.evidence === 'game-event' &&
+          cue.category === 'weapon' &&
+          cue.soundId.endsWith('-fire') &&
+          Boolean(cue.actor && cue.position))),
     'Unknown sound or category',
   );
 const soundCoverage = z.enum(['available', 'partial', 'unavailable']);

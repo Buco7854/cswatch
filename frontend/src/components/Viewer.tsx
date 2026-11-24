@@ -1,5 +1,6 @@
 import { PlaybackClock } from '../playback-clock';
 import { useViewerAudio, type ListenerPose } from '../viewer-audio';
+import type { WallTrace } from '../shot-wall-audio';
 import { useGameplayAudio } from '../useGameplayAudio';
 import { captureFocusReturn, focusMovedSince, type FocusReturnContext } from '../focus-return';
 import i18n, { t, setLanguage } from '../i18n';
@@ -126,8 +127,10 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
   const concealed = useWorkspaceConcealed();
   const audio = useViewerAudio(audioIdentity, concealed);
   const audioCameraReady = useRef(false);
+  const audioWallTrace = useRef<WallTrace | undefined>(undefined);
   const cameraAudio = useCallback(
-    (pose: ListenerPose | null) => {
+    (pose: ListenerPose | null, trace?: WallTrace) => {
+      audioWallTrace.current = pose ? trace : undefined;
       audioCameraReady.current = Boolean(pose);
       if (pose) audio.setListener(pose);
     },
@@ -323,6 +326,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     mode: using2D ? '2d' : mode,
     settings,
     cameraReady: audioCameraReady,
+    wallTrace: audioWallTrace,
   });
   const enableAudio = useCallback(() => {
     if ((settings.gameSounds || settings.voice) && !settings.audioMuted) void audio.unlock();

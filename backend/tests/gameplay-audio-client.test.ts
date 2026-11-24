@@ -24,6 +24,48 @@ const cue = (id: string, tick: number): GameplaySoundCue => ({
   evidence: 'network-sound',
   selection: 'representative',
 });
+test('only nearby rendered triangles produce a spatial contact from a recorded shot', async () => {
+  const { Group, BoxGeometry, Mesh, MeshBasicMaterial } =
+    await import('../../frontend/node_modules/three/build/three.module.js');
+  const { followObstruction } = await import('../../frontend/src/follow-obstruction.js');
+  const { nearWallContact } = await import('../../frontend/src/shot-wall-audio.js');
+  const world = new Group();
+  const box = new Mesh(new BoxGeometry(2, 4, 0.2), new MeshBasicMaterial());
+  box.position.set(0, 0, -6);
+  world.add(box);
+  const cue = {
+    id: 'fire',
+    tick: 12,
+    actor: '1',
+    category: 'weapon',
+    soundId: 'ak47-fire',
+    selection: 'representative',
+    evidence: 'game-event',
+    position: { x: 0, y: 0, z: 0 },
+    shotAngles: { pitch: 0, yaw: 90 },
+  } as const;
+  const trace = followObstruction(world).fork(0);
+  const hit = nearWallContact(cue, trace);
+  assert.ok(
+    hit &&
+      Math.abs(hit.y - 5.9 / 0.0254) < 0.001 &&
+      Math.abs(hit.x) < 0.001 &&
+      Math.abs(hit.z) < 0.001,
+  );
+  assert.equal(nearWallContact({ ...cue, shotAngles: { pitch: 0, yaw: 0 } }, trace), undefined);
+  assert.equal(nearWallContact({ ...cue, position: { x: 0, y: -1000, z: 0 } }, trace), undefined);
+  assert.throws(() =>
+    validateGameplaySoundCues([{ ...cue, shotAngles: { pitch: 0, yaw: Infinity } }]),
+  );
+  assert.throws(() => validateGameplaySoundCues([{ ...cue, actor: undefined }]));
+  assert.deepEqual(validateGameplaySoundCues([cue]), [cue]);
+  const clock = new GameplayAudioTimeline();
+  const plan = clock.plan([cue], 0, 64, 1, 0, () => true, 'impact-default-impact-bullet1');
+  assert.ok(plan.prefetch.has('impact-default-impact-bullet1'));
+  box.geometry.dispose();
+  box.material.dispose();
+});
+
 test('game sound timeline de-duplicates chunk boundaries and discards historical cues after seeks and speed changes', () => {
   const timeline = new GameplayAudioTimeline(),
     sounds = [cue('a', 4), cue('b', 10), cue('c', 100), cue('d', 104)];

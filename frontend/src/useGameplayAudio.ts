@@ -5,6 +5,7 @@ import { frameAt, type ViewerSettings } from './playback';
 import { GameplayPlayback } from './gameplay-playback';
 import { fetchGameplaySoundCatalog, gameplaySoundCategories } from './gameplay-sound-assets';
 import { ViewerAudio, useViewerAudioState } from './viewer-audio';
+import type { WallTrace } from './shot-wall-audio';
 
 export const soundCategorySettings = {
   weapon: 'soundWeapons',
@@ -37,6 +38,7 @@ export function useGameplayAudio({
   mode,
   settings,
   cameraReady,
+  wallTrace,
 }: {
   identity: string;
   audio: ViewerAudio;
@@ -48,6 +50,7 @@ export function useGameplayAudio({
   mode: string;
   settings: ViewerSettings;
   cameraReady: MutableRefObject<boolean>;
+  wallTrace: MutableRefObject<WallTrace | undefined>;
 }): GameplayAudioReport {
   const audioState = useViewerAudioState(audio);
   const [assets, setAssets] = useState<{
@@ -227,6 +230,7 @@ export function useGameplayAudio({
       },
       mode === 'pov' ? selected : undefined,
       data.rounds,
+      mode === '2d' ? undefined : wallTrace.current,
     );
   }, [
     active,
@@ -239,6 +243,7 @@ export function useGameplayAudio({
     settings.gameVolume,
     settings.spatialAudio,
     audio,
+    wallTrace,
     current.catalog,
   ]);
   const missing = useMemo(

@@ -7,7 +7,8 @@ import type {
   GameplaySoundCategory,
 } from '../../shared/gameplay-sounds.js';
 import { gameplaySoundRegistry } from './gameplay-sound-registry.js';
-import { packedSoundPosition, soundTokenHash } from './sound-event-tokens.js';
+import { observeShotContacts } from './shot-contacts.js';
+import { packedSoundPosition, soundPosition, soundTokenHash } from './sound-event-tokens.js';
 export const gameplaySoundLimits = {
   samples: 100000,
   chunkSamples: 4096,
@@ -22,15 +23,12 @@ const categories: GameplaySoundCategory[] = [
   'round',
 ];
 const known = gameplaySoundRegistry.items;
+const silentBulletImpact = soundTokenHash('Silent.BulletImpact');
 const weaponAliases: Record<string, string> = {
   m4a1_silencer: 'm4a1silencer',
   usp_silencer: 'uspsilencer',
   p2000: 'hkp2000',
 };
-const point = (x: unknown, y: unknown, z: unknown) =>
-  [x, y, z].every((v) => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= 1e7)
-    ? { x: x as number, y: y as number, z: z as number }
-    : undefined;
 const positionKey = (position: NonNullable<GameplaySoundCue['position']>) =>
   `${position.x},${position.y},${position.z}`;
 
@@ -114,7 +112,8 @@ export function eventGameplaySounds(events: GameEvent[], actors: ReadonlySet<str
         ? event.user_steamid
         : undefined;
     const position =
-      point(event.x, event.y, event.z) ?? point(event.user_X, event.user_Y, event.user_Z);
+      soundPosition(event.x, event.y, event.z) ??
+      soundPosition(event.user_X, event.user_Y, event.user_Z);
     cues.push({
       id: `event-sound-${index}`,
       tick: event.tick,
@@ -145,6 +144,7 @@ export function observeGameplaySounds(
     { name: string; definition: NonNullable<typeof gameplaySoundRegistry.events>[string] }
   >();
   const stopped = new Map<number, GameplaySoundCue>();
+  const shotContacts = observeShotContacts(reader, actors, lastTick, gameplaySoundLimits.samples);
   for (const [name, definition] of Object.entries(gameplaySoundRegistry.events || {})) {
     if (!Object.hasOwn(known, definition.soundId))
       throw Error('Unknown native sound event sample.');
@@ -172,7 +172,7 @@ export function observeGameplaySounds(
       tokenIds.get(message.sound.toLowerCase());
     if (!record) return;
     const { name, definition } = record,
-      position = point(message.origin_x, message.origin_y, message.origin_z);
+      position = soundPosition(message.origin_x, message.origin_y, message.origin_z);
     append({
       tick: reader.currentTick,
       soundId: definition.soundId,
@@ -187,6 +187,10 @@ export function observeGameplaySounds(
   });
   reader.on('GE_SosStartSoundEvent', (message) => {
     if (!Number.isInteger(message.soundevent_hash)) return;
+    if (message.soundevent_hash === silentBulletImpact) {
+      shotContacts.silence();
+      return;
+    }
     const record = hashes.get(message.soundevent_hash!);
     if (!record) return;
     const position = packedSoundPosition(message.packed_params ?? new Uint8Array());
@@ -247,6 +251,7 @@ export function observeGameplaySounds(
           );
         }),
     );
+    if (shotContacts.apply(sounds, events, fallback)) truncated = true;
     let all = [...fallback, ...sounds].sort((a, b) => a.tick - b.tick || a.id.localeCompare(b.id));
     const buckets = new Map<number, number>();
     all = all.filter((cue) => {

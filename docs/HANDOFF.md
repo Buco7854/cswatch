@@ -1,6 +1,6 @@
 # Current handoff
 
-For missing bullet hits or steps, check a freshly processed recording and the current sound bank. The asset worker logs `sound.ready` after checking the bank. Existing replay chunks contain the events recognized when they were parsed. [Three-map audio checks](VERIFICATION.md#recorded-hits-and-steps)
+For missing bullet hits or steps, check a freshly processed recording and the current sound bank. The asset worker logs `sound.ready` after checking the bank. Existing replay chunks contain the events recognized when they were parsed. For a missing wall sound, distinguish a recorded impact from a nearby 3D contact reconstructed from a firearm message. Check the loaded map tier and tick. [Three-map audio checks](VERIFICATION.md#nearby-wall-impacts)
 
 For a Nuke passage that appears closed, use revision 9 map packs. The preparer preserves the initial visibility supplied by the source entity. A newly parsed broadcast can enable a matching placement at the recorded tick. Collect the match, tick, player, tier and pack identity when comparing a particular doorway. [Mode geometry and playback checks](VERIFICATION.md#mode-geometry-and-playback)
 

@@ -50,3 +50,8 @@ export function packedSoundPosition(bytes: unknown): {
   }
   return { valid: true, ...(position ? { position } : {}) };
 }
+
+export const soundPosition = (x: unknown, y: unknown, z: unknown) =>
+  [x, y, z].every((v) => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= 1e7)
+    ? { x: x as number, y: y as number, z: z as number }
+    : undefined;

@@ -1,5 +1,21 @@
 # Verification record
 
+## Nearby wall impacts
+
+Nine confined recording probes checked the native bullet, effect-dispatch and decal messages. The Nuke and Cache broadcasts contained muzzle origins and shot directions. Their emitted decal groups resolved to wounds, blood and scorch marks. None supplied a named bullet sound against a wall. The operator’s official depot 2347770, manifest 5924479096069937098, supplied the decal group definitions and CS2’s default bullet-impact sound.
+
+Fresh production parses and retained official Compact map packs gave the following results. The geometry probe used the viewer's actual world transform and breakable/door state at each shot tick. Query timings measure Node CPU time for one ray against that geometry on the Linux test host.
+
+| Replay | Eligible recorded rays | Contacts within 12 m | Median / p95 query |
+| ------ | ---------------------: | -------------------: | -----------------: |
+| Nuke   |                    439 |                   92 |     0.28 / 0.61 ms |
+| Cache  |                  1,183 |                  119 |     0.18 / 0.38 ms |
+| Mirage |                    851 |                  243 |     0.15 / 0.26 ms |
+
+The production Chromium viewer at 720 × 480 with SwiftShader started the approved, decoded impact WAV during normal playback on all three maps. The WebAudio panner position matched a measured contact within 2 cm on each test passage. The browser used routed local replay/map metadata, the generated PCM bank and real map GLBs. Earlier probes using raw glTF coordinates selected some shots that missed in the displayed world. Repeating the calculation with the viewer’s map rotation and recorded entity state corrected the test oracle.
+
+An individual query reached 10.25 ms on the test host. The scheduler starts at most four optional queries per update and stops launching further ones after two milliseconds. Existing audio limits and seek resets still apply. Tests cover a reported impact point, named and silent surfaces, player-hit precedence, ambiguous or stale shot handles, an unobstructed ray and a surface beyond reach. The calculated contacts are estimates against the displayed map. This measures spatial sample playback and query cost. It does not establish the original client’s exact impact, material mix or hardware frame rate.
+
 ## Recorded hits and steps
 
 The production parser ran under Linux Landlock/seccomp on three local 5v5 demos. Counts below use unique cue IDs across overlapping chunks. The movement column includes newly recognized surface steps, jump takeoffs and landings.

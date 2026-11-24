@@ -24,6 +24,7 @@ export class GameplayAudioTimeline {
     speed: number,
     wall: number,
     playable: (cue: GameplaySoundCue) => boolean = () => true,
+    wallSample?: string,
   ) {
     if (![tick, rate, speed, wall].every(Number.isFinite) || rate <= 0 || speed <= 0) {
       this.reset();
@@ -66,7 +67,10 @@ export class GameplayAudioTimeline {
     for (let i = low; i < this.ordered.length && this.ordered[i].tick <= horizon; i++) {
       const cue = this.ordered[i];
       if (!playable(cue)) continue;
-      if (cue.tick >= tick && prefetch.size < 16) prefetch.add(cue.soundId);
+      if (cue.tick >= tick && prefetch.size < 16) {
+        prefetch.add(cue.soundId);
+        if (wallSample && cue.shotAngles && prefetch.size < 16) prefetch.add(wallSample);
+      }
       // Give the global winner announcement the full one-second audio clock
       // horizon, even when the next visual frame arrives late.
       if (cue.category !== 'round' && cue.tick > end) continue;

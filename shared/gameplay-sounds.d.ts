@@ -15,6 +15,8 @@ export type GameplaySoundCue = {
   eventName?: string;
   actor?: string;
   position?: { x: number; y: number; z: number };
+  /** Native firearm pitch/yaw in degrees at the recorded origin. A map contact is reconstructed at playback. */
+  shotAngles?: { pitch: number; yaw: number };
   volume?: number;
   pitch?: number;
 };

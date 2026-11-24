@@ -27,6 +27,12 @@ import { managedSoundDirectory } from '../../shared/gameplay-sound-bank.mjs';
 import { inspectGameplayAudio } from '../../shared/gameplay-sound-files.mjs';
 import { sample } from '../../frontend/src/sample.js';
 import { writeReplay, validateReplayArtifacts } from '../src/replay.js';
+function soundReader(currentTick: number) {
+  const handlers = new Map<string, (message: any) => void>();
+  const on = (name: string, callback: (message: any) => void) => handlers.set(name, callback);
+  const reader = { currentTick, on, gameEvents: { on } };
+  return { reader, handlers };
+}
 function wav(samples = 800, rate = 8000) {
   const data = Buffer.alloc(44 + samples * 2);
   data.write('RIFF');
@@ -251,11 +257,7 @@ test('native sound tokens distinguish event/parameter seeds and reject malformed
   assert.equal(packedSoundPosition(Buffer.alloc(257)).valid, false);
 });
 test('recorded native surface/reload cues retain exact names and stop evidence without inferring unknown events', () => {
-  const handlers = new Map<string, (value: any) => void>();
-  const reader = {
-    currentTick: 100,
-    on: (name: string, callback: (message: any) => void) => handlers.set(name, callback),
-  };
+  const { handlers, reader } = soundReader(100);
   const finish = observeGameplaySounds(reader as any, 500, new Set(['1']));
   const position = Buffer.alloc(19);
   position.writeUInt32LE(1518128717);
@@ -287,12 +289,81 @@ test('recorded native surface/reload cues retain exact names and stop evidence w
   assert.equal(result.sounds[1].eventName, 'Weapon_AK47.Clipout');
   assert.equal(result.gameplaySounds.coverage.footstep, 'partial');
 });
-test('recorded player hits, surface impacts and steps can share a tick while silent surfaces stay quiet', () => {
-  const handlers = new Map<string, (message: any) => void>();
-  const reader = {
-    currentTick: 100,
-    on: (name: string, fn: (message: any) => void) => handlers.set(name, fn),
+test('bullet contacts prefer recorded points and named impacts before a unique matching aim ray', () => {
+  const { reader, handlers } = soundReader(10);
+  const handle = 0x26c17e;
+  const controller = {
+    steamId: '1',
+    entity: { properties: { 'CCSPlayerController.m_hPlayerPawn': handle } },
   };
+  const finish = observeGameplaySounds(
+    {
+      ...reader,
+      get currentTick() {
+        return reader.currentTick;
+      },
+      getPawn: (index: number) => (index === (handle & 0x3fff) ? { controller } : null),
+    } as any,
+    100,
+    new Set(['1']),
+  );
+  const aim = (overrides = {}) =>
+    handlers.get('GE_FireBulletsId')!({
+      player: handle,
+      angles: { x: 12, y: -65 },
+      origin: { x: -45, y: 200, z: 72 },
+      spread: 0.002,
+      inaccuracy: 0.006,
+      ...overrides,
+    });
+  const point = () => handlers.get('bullet_impact')!({ x: 32, y: -28, z: 88 });
+  function at(tick: number) {
+    reader.currentTick = tick;
+    aim();
+  }
+  at(10);
+  at(20);
+  point();
+  point();
+  at(30);
+  point();
+  handlers.get('GE_SosStartSoundEvent')!({ soundevent_hash: 3181624207 });
+  at(40);
+  aim();
+  at(50);
+  reader.currentTick = 60;
+  aim({ player: handle + 0x4000 });
+  reader.currentTick = 70;
+  aim({ spread: 0.45 });
+  point();
+  at(75);
+  handlers.get('GE_SosStartSoundEvent')!({ soundevent_hash: 349635633 });
+  point();
+  reader.currentTick = 80;
+  aim({ angles: { x: Infinity, y: 0 } });
+  handlers.get('bullet_impact')!({ x: NaN, y: 0, z: 2 });
+  const events = [10, 20, 30, 40, 50, 60, 70, 75, 80].map((tick) => ({
+    type: 'weapon_fire',
+    tick,
+    user_steamid: '1',
+    weapon: 'ak47',
+  }));
+  const { sounds } = finish(true, [...events, { type: 'player_hurt', tick: 51 }]);
+  assert.deepEqual(
+    sounds.filter((c) => c.shotAngles).map((c) => [c.tick, c.position, c.shotAngles]),
+    [[10, { x: -45, y: 200, z: 72 }, { pitch: 12, yaw: -65 }]],
+  );
+  assert.deepEqual(
+    sounds.filter((c) => c.eventName === 'bullet_impact').map((c) => [c.tick, c.position]),
+    [
+      [20, { x: 32, y: -28, z: 88 }],
+      [70, { x: 32, y: -28, z: 88 }],
+    ],
+  );
+  assert.equal(sounds.filter((c) => c.eventName === 'MetalGrate.BulletImpact').length, 1);
+});
+test('recorded player hits, surface impacts and steps can share a tick while silent surfaces stay quiet', () => {
+  const { handlers, reader } = soundReader(100);
   const finish = observeGameplaySounds(reader as any, 500, new Set());
   const start = handlers.get('GE_SosStartSoundEvent')!;
   // Raw Source 2 event hashes keep this independent of the registry under test.
@@ -315,11 +386,7 @@ test('recorded player hits, surface impacts and steps can share a tick while sil
   assert.ok(cues.every((c) => c.tick === 100 && c.evidence === 'network-sound'));
 });
 test('recorded knife swings distinguish light, heavy, gear and impacts at the reported position', () => {
-  const handlers = new Map<string, (value: any) => void>();
-  const reader = {
-    currentTick: 100,
-    on: (name: string, fn: (value: any) => void) => handlers.set(name, fn),
-  };
+  const { handlers, reader } = soundReader(100);
   const finish = observeGameplaySounds(reader as any, 500, new Set());
   const cases = [
     ['Weapon_Knife.Swish.Light', 'knife-swish-light', 0.03],
@@ -341,11 +408,7 @@ test('recorded knife swings distinguish light, heavy, gear and impacts at the re
   assert.deepEqual(cues[1].position, { x: 8, y: 1, z: -12 });
 });
 test('oversized native sound text is rejected before case-folding while known bounded tokens remain usable', () => {
-  const handlers = new Map<string, (value: any) => void>();
-  const reader = {
-    currentTick: 100,
-    on: (name: string, callback: (message: any) => void) => handlers.set(name, callback),
-  };
+  const { handlers, reader } = soundReader(100);
   const finish = observeGameplaySounds(reader as any, 500, new Set());
   const lowercase = String.prototype.toLowerCase;
   let oversizedCalls = 0;
@@ -389,11 +452,7 @@ test('native sound dedup respects known actor and position identity without fabr
 });
 test('native ignition suppresses its same-position fallback while preserving distinct simultaneous fire and primary events', async () => {
   const { soundTokenHash } = await import('../src/sound-event-tokens.js');
-  const handlers = new Map<string, (value: any) => void>();
-  const reader = {
-    currentTick: 100,
-    on: (name: string, callback: (message: any) => void) => handlers.set(name, callback),
-  };
+  const { handlers, reader } = soundReader(100);
   const finish = observeGameplaySounds(reader as any, 500, new Set(['1', '2']));
   const position = Buffer.alloc(19);
   position.writeUInt32LE(1518128717);
@@ -430,11 +489,7 @@ test('native ignition suppresses its same-position fallback while preserving dis
   assert.deepEqual(primary, original);
 });
 test('dense optional sound evidence caps and reports truncation independently of primary replay events', () => {
-  const handlers = new Map<string, (value: any) => void>();
-  const reader = {
-    currentTick: 100,
-    on: (name: string, callback: (message: any) => void) => handlers.set(name, callback),
-  };
+  const { handlers, reader } = soundReader(100);
   const finish = observeGameplaySounds(reader as any, 500, new Set());
   for (let i = 0; i < 1000; i++)
     handlers.get('CS_UM_WeaponSound')!({ sound: 'Weapon_AK47.Clipout' });
@@ -587,11 +642,7 @@ test('payload admission remains bounded until responses finish, then releases sl
 
 test('native plant completion suppresses only its redundant representative fallback and preserves simultaneous distinct grenade actions', async () => {
   const { soundTokenHash } = await import('../src/sound-event-tokens.js');
-  const handlers = new Map<string, (value: any) => void>(),
-    reader = {
-      currentTick: 100,
-      on: (name: string, callback: (value: any) => void) => handlers.set(name, callback),
-    };
+  const { handlers, reader } = soundReader(100);
   const finish = observeGameplaySounds(reader as any, 500, new Set(['1']));
   const position = (x: number, y: number, z: number) => {
     const bytes = Buffer.alloc(19);

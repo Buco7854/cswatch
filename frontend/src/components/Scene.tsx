@@ -18,6 +18,7 @@ import {
 } from 'react';
 import type { ReactNode } from 'react';
 import type { ListenerPose } from '../viewer-audio';
+import type { WallTrace } from '../shot-wall-audio';
 import {
   AdaptiveResolution,
   adaptiveDetailDpr,
@@ -707,7 +708,7 @@ function World({
   utilityState: UtilityPresentation;
   items: PresentItem[];
   onSmokeUnavailable: (unavailable: boolean) => void;
-  onAudioListener?: (pose: ListenerPose | null) => void;
+  onAudioListener?: (pose: ListenerPose | null, wallTrace?: WallTrace) => void;
   overlays?: ActorOverlay;
   overlayLayout?: ActorOverlayLayout;
 }) {
@@ -734,7 +735,15 @@ function World({
     setFollowModel(map);
     return () => setFollowModel((current) => (current === map ? null : current));
   }, []);
+  const traceWallAudio =
+    Boolean(data.gameplaySounds && data.gameplaySounds.coverage.weapon !== 'unavailable') &&
+    !preview &&
+    Boolean(onAudioListener) &&
+    settings.gameSounds &&
+    settings.soundWeapons &&
+    !settings.audioMuted;
   const traceMap =
+    traceWallAudio ||
     !shadows ||
     Boolean(agents.ct || agents.t) ||
     mode === 'follow' ||
@@ -745,6 +754,10 @@ function World({
   const followTrace = useMemo(
     () => (traceMap && followModel ? followObstruction(followModel) : null),
     [traceMap, followModel],
+  );
+  const wallAudioTrace = useMemo(
+    () => (traceWallAudio ? followTrace?.fork(0) : undefined),
+    [followTrace, traceWallAudio],
   );
   const tracerTrace = useMemo(
     () => (tracers ? followTrace?.fork() : undefined),
@@ -1105,11 +1118,14 @@ function World({
     if (!onAudioListener) return;
     camera.getWorldDirection(audioForward.current);
     audioUp.current.set(0, 1, 0).applyQuaternion(camera.quaternion);
-    onAudioListener({
-      position: camera.position.toArray(),
-      forward: audioForward.current.toArray(),
-      up: audioUp.current.toArray(),
-    });
+    onAudioListener(
+      {
+        position: camera.position.toArray(),
+        forward: audioForward.current.toArray(),
+        up: audioUp.current.toArray(),
+      },
+      wallAudioTrace,
+    );
   });
   useEffect(() => () => onAudioListener?.(null), [onAudioListener]);
   const showPovEquipment =
@@ -1491,7 +1507,7 @@ export default function Scene({
   assetScope?: string;
   onMapStatus?: (state: MapRenderState) => void;
   focus?: SceneFocus;
-  onAudioListener?: (pose: ListenerPose | null) => void;
+  onAudioListener?: (pose: ListenerPose | null, wallTrace?: WallTrace) => void;
   overlayLayout?: ActorOverlayLayout;
 }) {
   const actorOverlay = useMemo(createActorOverlay, []);
@@ -1500,8 +1516,8 @@ export default function Scene({
   const currentListenerScope = useRef(listenerScope);
   currentListenerScope.current = listenerScope;
   const reportAudioListener = useCallback(
-    (pose: ListenerPose | null) => {
-      if (currentListenerScope.current === listenerScope) onAudioListener?.(pose);
+    (pose: ListenerPose | null, wallTrace?: WallTrace) => {
+      if (currentListenerScope.current === listenerScope) onAudioListener?.(pose, wallTrace);
     },
     [listenerScope, onAudioListener],
   );

@@ -133,6 +133,23 @@ export function validateGameplaySoundCues(
       )
         throw new Error('Invalid sound position');
     }
+    if (item.shotAngles !== undefined) {
+      const { pitch, yaw } = record(item.shotAngles);
+      if (
+        item.evidence !== 'game-event' ||
+        item.category !== 'weapon' ||
+        !item.actor ||
+        !item.position ||
+        !item.soundId.endsWith('-fire') ||
+        typeof pitch !== 'number' ||
+        !Number.isFinite(pitch) ||
+        Math.abs(pitch) > 90 ||
+        typeof yaw !== 'number' ||
+        !Number.isFinite(yaw) ||
+        Math.abs(yaw) > 360
+      )
+        throw new Error('Invalid recorded shot direction');
+    }
     seen.add(item.id);
     return item as unknown as GameplaySoundCue;
   });

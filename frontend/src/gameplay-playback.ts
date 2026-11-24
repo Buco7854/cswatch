@@ -6,9 +6,9 @@ import type {
 import { GameplayAudioTimeline } from './gameplay-audio-timeline';
 import { GameplaySoundBuffers } from './gameplay-sound-assets';
 import { ViewerAudio } from './viewer-audio';
+import { nearWallContact, wallImpactSample, type WallTrace } from './shot-wall-audio';
 
-/** Reconstructed native one-shots. No synthesized actions, loops, wall
- * acoustics or guessed sample selection are added by the browser. */
+/** Recorded gameplay and optional nearby wall contacts share the playback clock and source limits. */
 export class GameplayPlayback {
   private timeline = new GameplayAudioTimeline();
   private buffers: GameplaySoundBuffers;
@@ -61,6 +61,7 @@ export class GameplayPlayback {
     locate: (cue: GameplaySoundCue) => { x: number; y: number; z: number } | undefined,
     ownActor?: string,
     rounds: readonly { tick: number }[] = [],
+    wallTrace?: WallTrace,
   ) {
     const context = this.audio.context;
     if (
@@ -79,6 +80,8 @@ export class GameplayPlayback {
     if (!this.gain) return;
     this.gain.gain.value = Math.max(0, Math.min(1, volume));
     const allowed = new Set(categories);
+    const wallSample =
+      wallTrace && this.catalog.items[wallImpactSample] ? wallImpactSample : undefined;
     const plan = this.timeline.plan(
       cues,
       tick,
@@ -87,12 +90,39 @@ export class GameplayPlayback {
       performance.now(),
       (cue) =>
         allowed.has(cue.category) && cue.volume !== 0 && Boolean(this.catalog.items[cue.soundId]),
+      wallSample,
     );
     if (plan.reset) this.flush();
     const generation = this.generation;
     // Warm only nearby known samples. The cache serializes at two decodes and
     // keeps at most sixteen pending requests, including this prefetch window.
     for (const id of plan.prefetch) void this.buffers.get(id).catch(() => {});
+    if (wallTrace && wallSample) {
+      // A stalled render frame can schedule a burst. Keep optional geometry
+      // queries bounded and leave the original sounds on their normal clock.
+      const contacts = [];
+      let queries = 0;
+      const deadline = performance.now() + 2;
+      for (const { cue, delay } of plan.sounds) {
+        if (!cue.shotAngles) continue;
+        if (++queries > 4 || performance.now() > deadline) break;
+        const position = nearWallContact(cue, wallTrace);
+        if (position)
+          contacts.push({
+            cue: {
+              id: cue.id + '-wall',
+              tick: cue.tick,
+              category: cue.category,
+              soundId: wallImpactSample,
+              selection: cue.selection,
+              evidence: cue.evidence,
+              position,
+            },
+            delay,
+          });
+      }
+      plan.sounds.push(...contacts);
+    }
     for (const { cue, delay } of plan.sounds) {
       const start = context.currentTime + delay;
       const nextRound =

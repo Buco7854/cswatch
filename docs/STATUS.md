@@ -24,7 +24,7 @@ Official map coverage can be inspected by Steam manifest, shader family, prepare
 
 Map surfaces with packed occlusion, roughness and metalness can read all three channels in one texture lookup. Mirage and Dust2 use this layout across hundreds of native materials. [Playback measurements](VERIFICATION.md#packed-world-materials)
 
-Recorded body, head and armor hits, named bullet impacts, surface footsteps, jump takeoffs and landings use the native sound bank. The replay determines which events are available. [Audio verification](VERIFICATION.md#recorded-hits-and-steps)
+Recorded body, head and armor hits, named bullet impacts, surface footsteps, jump takeoffs and landings use the native sound bank. The 3D viewer can also position a representative impact where a recorded shot meets nearby opaque map geometry. [Player hits and steps](VERIFICATION.md#recorded-hits-and-steps) · [Wall impacts](VERIFICATION.md#nearby-wall-impacts)
 
 Classic CT and T announcements use the recorded winner and play centrally across listener perspectives. Catalog discovery can finish during playback. The approved sound bank has no MVP music. [Round audio checks](VERIFICATION.md#recorded-round-announcements)
 
