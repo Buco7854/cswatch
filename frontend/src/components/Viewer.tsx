@@ -673,7 +673,10 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
           ? skipDeadTime(state.data, advanced, state.autoSkip, last)
           : advanced;
       const next = Math.min(requested, ceiling, last);
-      if (next !== advanced) playbackClock.current.reset(next, now);
+      if (next !== advanced) {
+        audio.flush();
+        playbackClock.current.reset(next, now);
+      }
       setTick(next);
       if (next >= last) {
         setPlaying(false);
@@ -682,6 +685,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       frame = requestAnimationFrame(animate);
     };
     const visibility = () => {
+      audio.flush();
       cancelAnimationFrame(frame);
       playbackClock.current.reset(currentTick.current, performance.now());
       if (!document.hidden) frame = requestAnimationFrame(animate);
@@ -692,7 +696,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       cancelAnimationFrame(frame);
       document.removeEventListener('visibilitychange', visibility);
     };
-  }, [playing, Boolean(data), buffering, rate, speed, last, id, user?.id]);
+  }, [playing, Boolean(data), buffering, rate, speed, last, id, user?.id, audio]);
   useEffect(() => {
     function keys(e: KeyboardEvent) {
       const target = e.target as HTMLElement;
