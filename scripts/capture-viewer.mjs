@@ -33,6 +33,7 @@ const options = Object.fromEntries(
     'port',
     'reference',
     'max-mae',
+    'play-seconds',
   ].map((k) => [k, { type: 'string' }]),
 );
 const { values: o } = parseArgs({
@@ -40,7 +41,7 @@ const { values: o } = parseArgs({
 });
 if (o.help) {
   console.log(
-    'node scripts/capture-viewer.mjs --demo FILE.dem --assets MAP_ASSETS_DIR --player STEAM_ID --tick N --out NEW_DIR [--quality low|high --width W --height H --fov V --port PORT --software --reference FILE --max-mae N]',
+    'node scripts/capture-viewer.mjs --demo FILE.dem --assets MAP_ASSETS_DIR --player STEAM_ID --tick N --out NEW_DIR [--quality low|high --width W --height H --fov V --port PORT --software --reference FILE --max-mae N --play-seconds N]',
   );
   process.exit(0);
 }
@@ -68,6 +69,7 @@ const viewport = {
 };
 const port = numeric('port', 4672, 1024, 65535),
   origin = 'http://127.0.0.1:' + port;
+const playSeconds = o['play-seconds'] === undefined ? 0 : numeric('play-seconds', 0, 3, 30);
 const quality = o.quality ?? 'high';
 assert(['high', 'low'].includes(quality), 'Unsupported quality');
 const maxMae = o['max-mae'] === undefined ? undefined : numeric('max-mae', 0, 0, 255, false);
@@ -319,7 +321,7 @@ try {
   await canvas.evaluate((element) => element.setAttribute('data-frame-target', ''));
   // Keep the production backdrop for transparent WebGL fragments and exclude HUD paint
   // without changing layout, the R3F drawing buffer or its camera aspect.
-  await page.addStyleTag({
+  const hudMask = await page.addStyleTag({
     content: `
       *:not([data-frame-target]):not(:has([data-frame-target])),
       *::before, *::after { visibility: hidden !important; }
@@ -443,6 +445,30 @@ try {
         : report.comparison.metrics.mae > maxMae
           ? 'fail'
           : 'pass';
+  if (playSeconds) {
+    await hudMask.evaluate((node) => node.remove());
+    const review = page.getByRole('dialog', { name: 'Round review' });
+    if (await review.isVisible()) {
+      await page.keyboard.press('Escape');
+      await review.waitFor({ state: 'hidden' });
+    }
+    const play = page.getByRole('button', { name: 'Play', exact: true });
+    await play.waitFor({ state: 'visible' });
+    const pacing = await play.evaluate(
+      (button, seconds) => window.measureViewerPlayback(button, seconds),
+      playSeconds,
+    );
+    assert.equal(pacing.startTick, tick, 'Unexpected playback start');
+    const pause = page.getByRole('button', { name: 'Pause', exact: true });
+    if (await pause.isVisible()) await pause.evaluate((button) => button.click());
+    const advanced =
+      pacing.endTick > tick && pacing.submittedFrames >= 2 && pacing.cameraMode === 'pov';
+    report.playbackTiming = {
+      ...pacing,
+      requestedSeconds: playSeconds,
+      status: advanced ? 'measured' : 'insufficient-data',
+    };
+  }
   await writeFile(join(out, 'frame.png'), image, { flag: 'wx', mode: 0o600 });
   await writeFile(join(out, 'frame.json'), JSON.stringify(report, null, 2) + '\n', {
     flag: 'wx',
