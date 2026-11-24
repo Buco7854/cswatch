@@ -1,5 +1,7 @@
 # Current handoff
 
+Use matched textured scenes to evaluate rendering changes. Ancient tick 21140 isolates a loss of moss in an authored environment-blend material. Cache tick 2145 exposes wall and floor wear. Nuke tick 16188 compares the silhouette of a smoke cloud against a fixed building. Preserve the source material, camera, chosen pack and frame evidence for each comparison. [External visual comparisons](VERIFICATION.md#visual-comparison-with-csdemotv)
+
 Measure detailed maps with a fixed desktop tier and live shadows. For clip-free prop rigs, the shadow cache budgets the actual casters and their inputs. A large organizational hierarchy can be cheap to track. Keep the moved-bone regression when changing shadow invalidation. [Detailed-world checks](VERIFICATION.md#high-quality-playback-on-four-official-maps)
 
 Benchmark moving playback across independent recordings and native map packs. Record the selected tier, rendered frames, long gaps, software or hardware renderer and whether the historical source matches. A missing Compact tier can silently send Auto to a much larger textured model. [Multi-map measurements](VERIFICATION.md#multi-map-playback)

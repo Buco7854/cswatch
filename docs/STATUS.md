@@ -1,5 +1,7 @@
 # Feature status
 
+The textured viewer has verified appearance differences from csdemo.tv at the same recorded tick and player. Confirmed examples include missing stone-and-moss layers on Ancient, wear on Cache, outdoor smoke on Nuke and sunlit stone on Mirage. The external textured catalogue covers eight maps in the observed 42-file Valve inventory. [Side-by-side verification](VERIFICATION.md#visual-comparison-with-csdemotv)
+
 Detailed maps can cull off-camera triangles across larger world meshes while retaining the existing limit on stored bounds. Clip-free maps with large hierarchies reuse static sun shadows until a caster or light changes. [Four-map playback measurements](VERIFICATION.md#high-quality-playback-on-four-official-maps)
 
 Large maps can rebuild a bounded Compact tier when the original mesh simplification exceeds the triangle cap. Native equipment shares compatible packed PBR samples and the cache retains its render resources and authored clip and material evidence after parsing. [Multi-map playback](VERIFICATION.md#multi-map-playback)
