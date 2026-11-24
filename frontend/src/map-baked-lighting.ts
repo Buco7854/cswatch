@@ -18,12 +18,27 @@ import {
 } from './map-material-layers';
 
 // The baked mask covers the sun. Local burst and muzzle lights still reach shade.
-const lightLoop = ShaderChunk.lights_fragment_begin.replace(
-  'getDirectionalLightInfo( directionalLight, directLight );',
-  `getDirectionalLightInfo( directionalLight, directLight );
-    directLight.color *=
-      bakedSun * step(1e-6, dot(nonPerturbedNormal, directLight.direction));`,
-);
+const lightLoop = ShaderChunk.lights_fragment_begin
+  // The source sun mask and backface gate can remove all direct sun, even in
+  // a program that receives both map and live player shadows. Keep the light
+  // reads inside the gate so fully shaded fragments only compute indirect light.
+  .replace(
+    /(getDirectionalLightInfo\( directionalLight, directLight \);)([\s\S]*?RE_Direct\([^;]+;)/,
+    `if (bakedSun > 0.0 && dot(nonPerturbedNormal, directionalLight.direction) >= 1e-6) {
+       $1
+       directLight.color *= bakedSun;
+       $2
+     }`,
+  )
+  // A burst light stays in the program between flashes. At zero intensity or
+  // beyond its finite radius its direct contribution is exactly zero.
+  .replace(
+    /(getPointLightInfo\( pointLight, geometryPosition, directLight \);)([\s\S]*?RE_Direct\([^;]+;)/,
+    `if (any(notEqual(pointLight.color, vec3(0.0)))) {
+       $1
+       if (directLight.visible) { $2 }
+     }`,
+  );
 const nativeIndirect = `
   irradiance = vec3(0.0);
   iblIrradiance = PI * bakedIrradiance;
