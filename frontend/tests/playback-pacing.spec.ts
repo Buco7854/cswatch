@@ -81,17 +81,38 @@ test('Auto reduces the actual 3D drawing buffer in response to slow continuous p
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE));
   await page.setViewportSize({ width: 800, height: 600 });
+  // Observe actual offscreen HDR color resolves at the current drawing-buffer size.
+  await page.addInitScript(() => {
+    const proto = WebGL2RenderingContext.prototype;
+    const blit = proto.blitFramebuffer;
+    const widths: number[] = [];
+    Object.assign(window, { gradeResolves: widths });
+    proto.blitFramebuffer = function (...args) {
+      if (args[8] & this.COLOR_BUFFER_BIT && args[2] === this.drawingBufferWidth) {
+        widths.push(args[2]);
+      }
+      return blit.apply(this, args);
+    };
+  });
   await fixture(page, 'adaptive-quality', false, 'auto');
   await page.goto('/watch/adaptive-quality');
   const scene = page.locator('.scene');
   const canvas = scene.locator('canvas');
   await expect(scene).toHaveAttribute('data-map-model-state', 'ready');
   const before = await canvas.evaluate((element) => element.width);
+  const resolves = () =>
+    page.evaluate(() => (window as Window & { gradeResolves: number[] }).gradeResolves);
+  await expect.poll(resolves).toContain(before);
   await page.clock.install();
   await page.clock.pauseAt(new Date(Date.now() + 1000));
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   for (let frame = 0; frame < 65; frame++) await page.clock.fastForward(50);
   await expect.poll(() => canvas.evaluate((element) => element.width)).toBeLessThan(before);
+  for (let frame = 0; frame < 28; frame++) await page.clock.fastForward(200);
+  await expect(scene).toHaveAttribute('data-render-resolution', '50');
+  const floor = await canvas.evaluate((element) => element.width);
+  expect(floor).toBeLessThan(before);
+  expect(await resolves()).not.toContain(floor);
   await page.getByRole('button', { name: 'Pause', exact: true }).click();
   const paused = await scene.getAttribute('data-render-resolution');
   await page.clock.fastForward(5000);
