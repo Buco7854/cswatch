@@ -26,7 +26,7 @@ const body = (tick: number, overrides = {}): ItemSample => ({
 
 test('recorded item lookup is seek-safe across hide/show and serial reuse, retaining unknown rotation', () => {
   const samples = [
-    body(0),
+    body(4),
     body(8),
     { id: 'item:34:6:0', tick: 10, present: false } as ItemSample,
     body(16, { kind: 'projectile', x: 160 }),
@@ -35,29 +35,42 @@ test('recorded item lookup is seek-safe across hide/show and serial reuse, retai
   ];
   const index = indexItems(validateItemSamples(samples, 20));
   assert.deepEqual(itemsAt(index, -1), []);
-  assert.equal(itemsAt(index, 4)[0].x, 4);
+  assert.equal(itemsAt(index, 6)[0].x, 6);
   assert.equal(itemsAt(index, 9)[0].x, 8, 'removal does not invent movement');
   assert.deepEqual(itemsAt(index, 10), []);
   assert.deepEqual(itemsAt(index, 15), []);
   assert.equal(itemsAt(index, 18)[0].x, 180);
-  assert.equal(itemsAt(index, 4)[0].x, 4, 'backward seek does not use a future lifetime');
+  assert.equal(itemsAt(index, 6)[0].x, 6, 'backward seek does not use a future lifetime');
   assert.equal(itemsAt(index, 20).length, 2, 'reused entity index has a separate serial identity');
   assert.equal(itemPose(itemsAt(index, 4)[0]).rotation, null);
+});
+
+test('dropped equipment stays at rest through omitted samples and only moves over the final sample interval', () => {
+  const drop = { kind: 'dropped', equipment: 'deagle', pitch: 0, yaw: 350, roll: 90 };
+  const resting = body(1, { ...drop, x: 100 });
+  const moved = body(1800, { ...drop, x: 140, yaw: 10 });
+  const index = indexItems([resting, moved, { id: resting.id, tick: 1802, present: false }]);
+  for (const tick of [1, 1796, 800]) assert.equal(itemsAt(index, tick)[0], resting);
+  assert.equal(itemsAt(index, 1798)[0].x, 120);
+  assert.equal(itemsAt(index, 1798)[0].yaw, 360);
+  assert.deepEqual(itemsAt(index, 1802), []);
+  assert.equal(itemsAt(index, 1800)[0], moved);
+  assert.equal(itemsAt(index, 1)[0], resting);
 });
 
 test('recorded item angles interpolate through wrap and Source forward maps consistently into viewer coordinates', () => {
   const index = indexItems([
     body(0, { pitch: 10, yaw: 350, roll: 20 }),
-    body(10, { pitch: 10, yaw: 10, roll: 20 }),
+    body(4, { pitch: 10, yaw: 10, roll: 20 }),
   ]);
-  const middle = itemsAt(index, 5)[0];
+  const middle = itemsAt(index, 2)[0];
   assert.equal(middle.yaw, 360);
   const pose = itemPose(middle),
     forward = new Vector3(1, 0, 0).applyEuler(new Euler(...pose.rotation!, 'YZX'));
   assert.ok(Math.abs(forward.x - Math.cos(Math.PI / 18)) < 1e-6);
   assert.ok(Math.abs(forward.y + Math.sin(Math.PI / 18)) < 1e-6);
   assert.ok(Math.abs(forward.z) < 1e-6);
-  assert.deepEqual(pose.position, [5 * 0.0254, 80 * 0.0254, -40 * 0.0254]);
+  assert.deepEqual(pose.position, [2 * 0.0254, 80 * 0.0254, -40 * 0.0254]);
 });
 
 test('client item validation rejects stale identity changes, duplicate samples, unknown equipment and partial transforms', () => {
