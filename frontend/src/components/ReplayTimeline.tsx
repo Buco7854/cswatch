@@ -5,7 +5,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type ReactNode,
   type RefObject,
 } from 'react';
@@ -61,6 +60,36 @@ function TimelineOptionsDialog({ close, children }: { close: () => void; childre
 
 // A moving playhead only changes the slider and clock. Marker menus and their
 // localized labels depend on the event window and the available track width.
+const TimelineRounds = memo(function TimelineRounds({
+  segments,
+  roundNumber,
+  width,
+}: {
+  segments: (Playback['rounds'][number] & { start: number; span: number })[];
+  roundNumber: number;
+  width: number;
+}) {
+  useTranslation();
+  if (!segments.length) return null;
+  return (
+    <div className="timeline-round-lane" role="group" aria-label={t('Round timeline')}>
+      {segments.map((segment) => (
+        <span
+          key={segment.number}
+          className="timeline-round-segment"
+          data-winner={segment.winner}
+          aria-current={roundNumber === segment.number ? 'step' : undefined}
+          aria-label={t('Round {{round}}', { round: segment.number })}
+          title={t('Round {{round}}', { round: segment.number })}
+          style={{ left: `${segment.start * 100}%`, width: `${segment.span * 100}%` }}
+        >
+          {segment.span * width >= 15 ? segment.number : ''}
+        </span>
+      ))}
+    </div>
+  );
+});
+
 const TimelineEvents = memo(function TimelineEvents({
   visible,
   start,
@@ -265,30 +294,10 @@ export default function ReplayTimeline({
         <span className="timeline-time num">{clock((tick - first) / data.tickRate)}</span>
         <span className="timeline-duration num">{clock((last - first) / data.tickRate)}</span>
       </div>
-      {segments.length > 0 && (
-        <div className="timeline-round-lane" role="group" aria-label={t('Round timeline')}>
-          {segments.map((segment) => (
-            <span
-              key={segment.number}
-              className="timeline-round-segment"
-              data-winner={segment.winner}
-              aria-current={round.number === segment.number ? 'step' : undefined}
-              aria-label={t('Round {{round}}', { round: segment.number })}
-              title={t('Round {{round}}', { round: segment.number })}
-              style={{ left: `${segment.start * 100}%`, width: `${segment.span * 100}%` }}
-            >
-              {segment.span * width >= 15 ? segment.number : ''}
-            </span>
-          ))}
-        </div>
-      )}
-      <div
-        className={'replay-timeline-plot' + (!visible.length ? ' is-empty' : '')}
-        ref={plot}
-        style={{ '--timeline-progress': `${progress}%` } as CSSProperties}
-      >
+      <TimelineRounds segments={segments} roundNumber={round.number} width={width} />
+      <div className={'replay-timeline-plot' + (!visible.length ? ' is-empty' : '')} ref={plot}>
         <div className="timeline-track-line" aria-hidden="true">
-          <i />
+          <i style={{ width: `${progress}%` }} />
         </div>
         <TimelineEvents
           visible={visible}

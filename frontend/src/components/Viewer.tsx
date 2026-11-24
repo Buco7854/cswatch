@@ -32,7 +32,6 @@ import {
   FastForward,
   Users,
   ListVideo,
-  ScanLine,
   X,
   Sun,
   Moon,
@@ -104,7 +103,12 @@ import { scopedVerticalFov } from '../pov-camera';
 import TacticalPlot from './TacticalPlot';
 import ManageDemo from './ManageDemo';
 import AccountMenu from './AccountMenu';
-import { ActionMenu, SelectControl, type MenuAction } from './Controls';
+import {
+  ViewerCameraControls,
+  ViewerSpeedControls,
+  ViewerTimelineScope,
+} from './ViewerPlaybackControls';
+import { ActionMenu, type MenuAction } from './Controls';
 import { useConfirm } from './Confirmation';
 const loadScene = () => import('./Scene');
 const Scene = memo(lazy(loadScene));
@@ -132,11 +136,11 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
   const [cameraNotice, setCameraNotice] = useState(false);
   const cameraNoticeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(cameraNoticeTimer.current), []);
-  function cueCameraChange() {
+  const cueCameraChange = useCallback(() => {
     clearTimeout(cameraNoticeTimer.current);
     setCameraNotice(true);
     cameraNoticeTimer.current = setTimeout(() => setCameraNotice(false), 900);
-  }
+  }, []);
   const query = new URLSearchParams(location.search);
   const tickParam = query.get('tick');
   const linkedTick = tickParam && /^\d+$/.test(tickParam) ? Number(tickParam) : undefined;
@@ -823,6 +827,28 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       window.removeEventListener('blur', blur);
     };
   }, [scoreboardOpen]);
+  const changeCamera = useCallback(
+    (value: string) => {
+      deathFollow.current.reset();
+      setGrenadeFocus(undefined);
+      if (
+        value !== '2d' &&
+        using2D &&
+        (mapRender?.failure === 'model' || mapRender?.failure === 'webgl')
+      )
+        setSceneAttempt((attempt) => attempt + 1);
+      setMode(value);
+      cueCameraChange();
+    },
+    [using2D, mapRender?.failure, cueCameraChange],
+  );
+  const changeSpeed = useCallback(
+    (value: number) => {
+      audio.flush();
+      setSpeed(value);
+    },
+    [audio],
+  );
   const seekEvent = useCallback(
     (value: number) => {
       setPlaying(false);
@@ -1255,55 +1281,8 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       ? [{ id: 'sign-in', label: t('Sign in'), onSelect: signIn, separatorBefore: true }]
       : []),
   ];
-  const cameraOptions = [
-    ...(fallbackCamera
-      ? [{ value: 'fallback', label: t('2D map fallback'), compactLabel: '2D', disabled: true }]
-      : []),
-    {
-      value: 'orbit',
-      label: t('Free camera'),
-      compactLabel: t('Free'),
-      disabled: !has3DMap,
-    },
-    {
-      value: 'tactical',
-      label: t('Overhead'),
-      compactLabel: t('Overhead'),
-      disabled: !has3DMap,
-    },
-    { value: '2d', label: t('2D tactical · low power'), compactLabel: '2D' },
-    {
-      value: 'follow',
-      label: t('Third-person follow'),
-      compactLabel: t('Follow'),
-      disabled: !has3DMap,
-    },
-    {
-      value: 'pov',
-      label: t('Player perspective'),
-      compactLabel: 'POV',
-      disabled: !has3DMap,
-    },
-  ];
-  function changeCamera(value: string) {
-    deathFollow.current.reset();
-    setGrenadeFocus(undefined);
-    if (
-      value !== '2d' &&
-      using2D &&
-      (mapRender?.failure === 'model' || mapRender?.failure === 'webgl')
-    )
-      setSceneAttempt((attempt) => attempt + 1);
-    setMode(value);
-    cueCameraChange();
-  }
-  function changeSpeed(value: number) {
-    audio.flush();
-    setSpeed(value);
-  }
   const nextRound = data.rounds.find((round) => round.number > reviewRound.number);
   const previousRound = data.rounds.filter((round) => round.number < reviewRound.number).at(-1);
-  const speeds = [0.25, 0.5, 1, 2, 4];
   const radarInterval = Math.max(1, Math.floor((rate * speed) / 12));
   return (
     <div
@@ -1404,39 +1383,11 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
           className="viewer-global-actions viewer-camera-tools"
           data-camera-changed={cameraNotice}
         >
-          <span className="visually-hidden" role="status">
-            {cameraNotice
-              ? t('Camera changed to {{mode}}', {
-                  mode: cameraOptions.find((option) => option.value === activeCamera)?.label,
-                })
-              : ''}
-          </span>
-          <div className="viewer-camera-row" role="group" aria-label={t('Camera mode')}>
-            {['pov', 'follow', 'orbit', 'tactical', '2d'].map((value) => {
-              const option = cameraOptions.find((item) => item.value === value)!;
-              return (
-                <button
-                  type="button"
-                  key={value}
-                  aria-pressed={activeCamera === value || (fallbackCamera && value === '2d')}
-                  disabled={option.disabled}
-                  aria-label={option.label}
-                  data-fallback={fallbackCamera && value === '2d' ? true : undefined}
-                  title={option.label}
-                  onClick={() => changeCamera(value)}
-                >
-                  {option.compactLabel}
-                </button>
-              );
-            })}
-          </div>
-          <SelectControl
-            label={t('Camera mode')}
-            className="camera-select"
-            icon={<Eye size={16} />}
-            value={activeCamera}
-            onValueChange={changeCamera}
-            options={cameraOptions}
+          <ViewerCameraControls
+            activeCamera={activeCamera}
+            has3DMap={has3DMap}
+            cameraNotice={cameraNotice}
+            changeCamera={changeCamera}
           />
           <button
             ref={optionsTrigger}
@@ -1776,35 +1727,13 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
           />
           <div className="viewer-controlbar">
             <div className="viewer-timeline-navigation">
-              <SelectControl
-                label={t('Timeline range')}
-                className="timeline-scope-control"
-                value={timelineScope}
-                onValueChange={(value) => setTimelineScope(value === 'round' ? 'round' : 'match')}
-                icon={<ScanLine size={16} />}
-                options={[
-                  { value: 'match', label: t('All match'), compactLabel: t('Match') },
-                  {
-                    value: 'round',
-                    label: t('Current round'),
-                    compactLabel: t('Round'),
-                    disabled: !data.rounds.length,
-                  },
-                ]}
+              <ViewerTimelineScope
+                timelineScope={timelineScope}
+                hasRounds={!!data.rounds.length}
+                setTimelineScope={setTimelineScope}
               />
             </div>
-            <div className="viewer-speed-row" role="group" aria-label={t('Playback speed')}>
-              {speeds.map((value) => (
-                <button
-                  type="button"
-                  key={value}
-                  aria-pressed={speed === value}
-                  onClick={() => changeSpeed(value)}
-                >
-                  {value.toLocaleString(i18n.language)}×
-                </button>
-              ))}
-            </div>
+            <ViewerSpeedControls speed={speed} changeSpeed={changeSpeed} />
             <div className="viewer-transport">
               <button
                 className="icon-button transport-round"
@@ -1873,16 +1802,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
               >
                 <SkipForward size={18} />
               </button>
-              <SelectControl
-                label={t('Playback speed')}
-                className="speed-select"
-                value={String(speed)}
-                onValueChange={(value) => changeSpeed(Number(value))}
-                options={speeds.map((value) => ({
-                  value: String(value),
-                  label: value.toLocaleString(i18n.language) + '×',
-                }))}
-              />
+              <ViewerSpeedControls speed={speed} changeSpeed={changeSpeed} dropdown />
             </div>
             <div className="viewer-panel-controls">
               <button
