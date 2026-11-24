@@ -312,9 +312,16 @@
   outline: 2px solid var(--signal);
   outline-offset: 3px;
 }
-:is(.app-shell, .viewer-shell, .member-dialog, .public-site) .button.primary:focus-visible {
-  outline: 2px solid var(--signal);
-  outline-offset: 3px;
+/* Route and dialog headings receive focus for announcements. They have no action. */
+[data-theme] :is(h1, h2, h3)[tabindex='-1']:focus {
+  outline: none;
+}
+[data-theme]
+  :is(
+    input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file']),
+    textarea
+  ):focus-visible {
+  outline-offset: -1px;
 }
 :is(.app-shell, .viewer-shell, .member-dialog) :where(p, .muted) {
   color: var(--muted);
@@ -415,7 +422,11 @@
   border-radius: 6px;
 }
 .app-shell .search:focus-within {
-  border-color: var(--signal);
+  outline: 2px solid var(--signal);
+  outline-offset: -1px;
+}
+.app-shell .search input:focus {
+  outline: none;
 }
 .app-shell .search svg {
   flex-shrink: 0;

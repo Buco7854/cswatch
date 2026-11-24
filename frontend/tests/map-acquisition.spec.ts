@@ -77,12 +77,13 @@ const latestReady = {
   },
   verification: 'latest-official',
 };
-async function install(page: Page) {
-  await page.addInitScript(() => {
+async function install(page: Page, controlsHidden = false) {
+  await page.addInitScript((controlsHidden) => {
     localStorage.setItem('cswatch.language', 'en');
     localStorage.setItem(
       'viewer-settings-v2',
       JSON.stringify({
+        controlsHidden,
         autoHideControls: false,
         killReplay: false,
         grenadeLanding: false,
@@ -90,7 +91,7 @@ async function install(page: Page) {
         crosshair: false,
       }),
     );
-  });
+  }, controlsHidden);
   await configForSyntheticAccount(page);
   await page.route('**/api/auth/me', (route) =>
     route.fulfill({
@@ -151,7 +152,7 @@ async function navigate(page: Page, id: string) {
 test('map discovery overlaps replay loading and preparation waits for a readable replay', async ({
   page,
 }) => {
-  await install(page);
+  await install(page, true);
   let resumeManifest!: () => void;
   const manifest = new Promise<void>((resolve) => (resumeManifest = resolve));
   let reads = 0;
@@ -175,6 +176,7 @@ test('map discovery overlaps replay loading and preparation waits for a readable
     page.locator('.scene').getByRole('status', { name: 'Preparing map assets' }),
   ).toBeVisible();
   await expect(page.locator('.viewer-map-loading')).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Back to home' })).toBeInViewport();
   const timeline = page.locator('.timeline-slider');
   await timeline.focus();
   const start = Number(await timeline.inputValue());

@@ -684,9 +684,8 @@ test('personal library search keeps the complete placeholder readable and keyboa
         });
         expect(clearance).toBeGreaterThanOrEqual(1);
         await input.focus();
-        expect(await input.evaluate((element) => getComputedStyle(element).outlineStyle)).not.toBe(
-          'none',
-        );
+        await expect(input).toHaveCSS('outline-style', 'none');
+        await expect(page.locator('label.search')).toHaveCSS('outline-style', 'solid');
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
           true,
         );

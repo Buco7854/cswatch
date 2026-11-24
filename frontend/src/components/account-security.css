@@ -357,11 +357,6 @@
   border-color: var(--auth-control);
 }
 
-:root .auth-page input:focus,
-:root .security-field :is(input, textarea):focus {
-  border-color: var(--signal);
-}
-
 .account-email {
   display: grid;
   justify-items: start;

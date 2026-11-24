@@ -98,6 +98,7 @@ import { flashFeedbackAt } from '../flash-feedback';
 import Communications from './Communications';
 import ViewerOptions from './ViewerOptions';
 import ViewerLoading from './ViewerLoading';
+import { mapName } from './MatchDetails';
 import Crosshair from './Crosshair';
 import { scopedVerticalFov } from '../pov-camera';
 import TacticalPlot from './TacticalPlot';
@@ -420,6 +421,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     playing,
     autoHide: settings.autoHideControls,
     blocked:
+      (mapAssets.status === 'pending' && Boolean(acquisitionNotice)) ||
       Boolean(panel) ||
       options ||
       manage ||
@@ -1042,58 +1044,57 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       if (scope.active) notify((e as Error).message);
     }
   }
-  if (error)
+  const returnLink = (
+    <Link className="button" to={backTo} state={backState}>
+      <ArrowLeft size={16} aria-hidden="true" />
+      {t(backTo === '/' ? 'Back to home' : 'Back to library')}
+    </Link>
+  );
+  if (error || !data) {
+    const failed = demo?.status === 'failed';
+    const loading = !demo || demo.status === 'ready';
+    const label = error
+      ? 'Demo unavailable'
+      : failed
+        ? 'This demo could not be parsed'
+        : loading
+          ? 'Loading demo…'
+          : demo.status === 'processing'
+            ? 'Reading the match…'
+            : 'Your demo is in the queue';
+    const detail =
+      error ||
+      demo?.error ||
+      (!loading &&
+        !failed &&
+        (demo.guest_owned
+          ? 'Keep this link to return to your private demo in this browser before it expires.'
+          : 'You can leave this page. Your match will be ready in the library when processing finishes.'));
     return (
-      <div className="inline-state">
-        <h1>{t('Demo unavailable')}</h1>
-        <p role="alert">{t(error)}</p>
-        <Link className="button" to={backTo} state={backState}>
-          {t(backTo === '/' ? 'Back to home' : 'Back to library')}
-        </Link>
-      </div>
-    );
-  if (!data && (!demo || demo.status === 'ready')) return <ViewerLoading label="Loading demo…" />;
-  if (!data)
-    return (
-      <>
-        <Link className="back-link" to={backTo} state={backState}>
-          <ArrowLeft size={16} />
-          {t(backTo === '/' ? 'Home' : 'Library')}
-        </Link>
-        <div className="processing">
-          <span className={'processing-mark ' + (demo?.status !== 'failed' ? 'spin' : '')}>↻</span>
-          <h1>
-            {demo?.status === 'failed'
-              ? t('This demo could not be parsed')
-              : demo?.status === 'processing'
-                ? t('Reading the match…')
-                : t('Your demo is in the queue')}
-          </h1>
-          <p>
-            {demo?.error
-              ? t(demo.error)
-              : t(
-                  demo?.guest_owned
-                    ? 'Keep this link to return to your private demo in this browser before it expires.'
-                    : 'You can leave this page. Your match will be ready in the library when processing finishes.',
-                )}
-          </p>
-          {demo?.status === 'failed' && <p>{t('Demo reference: {{id}}', { id: demo.id })}</p>}
-          <Link className="button" to={backTo} state={backState}>
-            {t(backTo === '/' ? 'Back to home' : 'Return to library')}
-          </Link>
-          {(demo?.owned || demo?.guest_owned) &&
-            ['queued', 'failed', 'ready'].includes(demo.status) && (
+      <div className="viewer-frame">
+        <ViewerLoading
+          key="opening"
+          label={label}
+          back={returnLink}
+          detail={detail ? t(detail) : undefined}
+          failed={Boolean(error || failed)}
+        >
+          {!error && failed && <p>{t('Demo reference: {{id}}', { id: demo.id })}</p>}
+          {!error &&
+            demo &&
+            (demo.owned || demo.guest_owned) &&
+            ['queued', 'failed'].includes(demo.status) && (
               <button className="button" onClick={() => setManage(true)}>
                 {t(demo.guest_owned ? 'Delete demo' : 'Manage demo')}
               </button>
             )}
-          {manage && demo && (
+          {!error && manage && demo && (
             <ManageDemo demo={demo} onChange={setDemo} close={() => setManage(false)} />
           )}
-        </div>
-      </>
+        </ViewerLoading>
+      </div>
     );
+  }
   function openNote(trigger: HTMLElement | null) {
     if (demo?.guest_owned) return;
     panelTrigger.current = trigger;
@@ -1337,7 +1338,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
                 data.sample ? t('Interactive sample · original scene & synthetic data') : demo?.name
               }
             >
-              {data.sample ? t('Training courtyard') : data.map.replace('de_', '')}
+              {data.sample ? t('Training courtyard') : mapName(data.map)}
             </h1>
             <div className="viewer-context">
               {data.sample && <span>{t('Interactive sample')}</span>}
@@ -2114,6 +2115,8 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       />
       {mapLoading && (
         <ViewerLoading
+          key="opening"
+          back={returnLink}
           label={
             mapAssets.status === 'pending'
               ? 'Loading map assets…'
@@ -2121,7 +2124,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
                 ? 'Loading map overview…'
                 : 'Loading 3D map…'
           }
-          map={data.map.replace(/^de_/, '')}
+          detail={<span className="match-map">{mapName(data.map)}</span>}
           model={using2D ? undefined : mapRender?.modelProgress}
         />
       )}
