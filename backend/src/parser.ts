@@ -17,8 +17,8 @@ import { createGunzip } from 'node:zlib';
 import { pipeline } from 'node:stream/promises';
 import { Transform } from 'node:stream';
 import { Decompress } from 'fzstd';
-import { parseHeader, parseTicks, parseEvent, parseGrenades } from '@laihoe/demoparser2';
-import type { Playback, GameEvent, Grenade } from '../../shared/playback.js';
+import { parseHeader, parseTicks, parseGrenades } from '@laihoe/demoparser2';
+import type { Playback, Grenade } from '../../shared/playback.js';
 import { expandBzip2 } from './bzip2.js';
 import { validateMagic } from './demo-format.js';
 import { collectColumnFrameState } from './frame-state.js';
@@ -26,13 +26,8 @@ import { writeReplay } from './replay.js';
 import { playerColumns, readPlayerColumns, recordedCameraFov } from './parser-fields.js';
 import { replayCapabilities } from './player-input.js';
 import { readCommunications } from './communications.js';
-import {
-  collectThrowInputs,
-  eventInputFields,
-  readEventRows,
-  removeEventInputExtras,
-} from './throw-input.js';
-import type { EventAvailability } from '../../shared/match-state.js';
+import { collectThrowInputs, removeEventInputExtras } from './throw-input.js';
+import { readGameEvents } from './parser-events.js';
 import { performanceFile } from './match-performance.js';
 import { classifyParserFailure } from './parser-failure.js';
 import { recordedRoundWinner } from './rounds.js';
@@ -190,58 +185,7 @@ export async function parse(folder: string, maxExpanded: number) {
   const header = parseHeader(source),
     tickRate = 64;
   const { frames, players, deadTimes } = readFrames(source, readSampledTicks(source));
-  const warnings: string[] = [];
-  const events: GameEvent[] = [];
-  const eventAvailability: EventAvailability = { player_death: false, player_hurt: false };
-  for (const kind of [
-    'player_death',
-    'player_hurt',
-    'weapon_fire',
-    'grenade_thrown',
-    'round_start',
-    'round_freeze_end',
-    'round_end',
-    'bomb_planted',
-    'bomb_beginplant',
-    'bomb_abortplant',
-    'bomb_begindefuse',
-    'bomb_abortdefuse',
-    'bomb_defused',
-    'bomb_exploded',
-    'smokegrenade_detonate',
-    'smokegrenade_expired',
-    'flashbang_detonate',
-    'hegrenade_detonate',
-    'inferno_startburn',
-    'inferno_expire',
-  ]) {
-    try {
-      let parsed: any[];
-      if (kind === 'weapon_fire' || kind === 'grenade_thrown') {
-        parsed = readEventRows(
-          (fields) => parseEvent(source, kind, fields),
-          [
-            ['X', 'Y', 'Z'],
-            eventInputFields.filter((field) => !field.startsWith('usercmd_')),
-            eventInputFields.filter((field) => field.startsWith('usercmd_')),
-          ],
-        );
-      } else if (kind === 'player_death' || kind === 'player_hurt') {
-        parsed = readEventRows((fields) => parseEvent(source, kind, fields), [['team_num']]);
-        eventAvailability[kind] = true;
-      } else if (kind.startsWith('bomb_')) {
-        try {
-          parsed = parseEvent(source, kind, ['has_defuser'], ['game_time']);
-        } catch {
-          parsed = parseEvent(source, kind);
-        }
-      } else parsed = parseEvent(source, kind);
-      for (const r of parsed) events.push({ ...r, type: kind, tick: r.tick });
-    } catch {
-      warnings.push(`Event ${kind} is unavailable.`);
-    }
-  }
-  events.sort((a, b) => a.tick - b.tick);
+  const { events, warnings, eventAvailability } = readGameEvents(source);
   const throwInputs = collectThrowInputs(events, players);
   removeEventInputExtras(events);
   if (!throwInputs.complete) warnings.push('Throw input metadata reached the processing limit.');
