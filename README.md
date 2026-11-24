@@ -169,6 +169,7 @@ The local data directory defaults to `../var` relative to `backend/`. Environmen
 node scripts/fetch-test-demo.mjs   # checksum-pinned public upstream Mirage fixture
 npm test                         # security, replay logic, .dem and .dem.zst parsing
 npm run test:assets               # operator asset acquisition, preparation and output contracts
+npm run test:graphics             # map capture and reference checks with local test artwork
 node scripts/runtime-smoke.mjs    # upload → required sandbox → private chunks → notes/sharing
 npm run test:e2e                  # public journeys; uses an isolated test server
 E2E_PRIVATE=1 E2E_REGISTRATIONS=false npm run test:e2e

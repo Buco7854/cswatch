@@ -1,5 +1,7 @@
 # Active work
 
+Graphics verification covers worker inventory, material handling and private production POV captures. Validate new shader families against their compiled inputs and report missing external references. Hardware frame pacing and native refraction remain open. [Operator procedure](../MAP-ASSETS.md#graphics-coverage-for-the-official-map-inventory)
+
 The shared actor sampler reduces ground stride on curved airborne paths. Uniform climbs and isolated steps lack evidence for that correction. The existing lower-body clips still supply the airborne leg pose. [Verification](../VERIFICATION.md#airborne-arm-and-boot-motion)
 
 Schema 9 adds optional account email verification and recovery. It requires a fresh data directory. New signups verify before using the workspace when delivery is enabled. Steam onboarding collects an address locally. [Operator guide](../ACCESS-SETUP.md#email-delivery-verification-and-password-reset)
