@@ -1,3 +1,4 @@
+import { mapDetailDpr } from '../src/adaptive-resolution';
 import { chooseCameraControl } from './fixtures/viewer-transport';
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { createHash } from 'node:crypto';
@@ -141,11 +142,12 @@ async function renderedPovReady(page: Page) {
       // Its observed container is the current layout requirement.
       const rect = element.parentElement!.getBoundingClientRect(),
         low = element.closest('.scene')?.getAttribute('data-quality') === 'low',
-        dpr = low ? 1 : Math.max(1, Math.min(1.75, devicePixelRatio));
-      return { width: rect.width, height: rect.height, dpr };
+        area = innerWidth * innerHeight;
+      return { width: rect.width, height: rect.height, deviceScale: devicePixelRatio, area, low };
     }),
   ]);
   const aspect = view.projection[5] / view.projection[0];
+  const dpr = mapDetailDpr(canvas.deviceScale, canvas.area, canvas.low ? 'mobile' : 'desktop');
   return (
     view.position.length === 3 &&
     Math.abs(view.position[0] - -512 * 0.0254) < 0.00002 &&
@@ -153,8 +155,8 @@ async function renderedPovReady(page: Page) {
     Math.abs(view.position[2]) < 0.00002 &&
     Number.isFinite(aspect) &&
     Math.abs(aspect - canvas.width / canvas.height) < 0.00001 &&
-    view.drawingBuffer[0] === Math.floor(canvas.width * canvas.dpr) &&
-    view.drawingBuffer[1] === Math.floor(canvas.height * canvas.dpr)
+    view.drawingBuffer[0] === Math.floor(canvas.width * dpr) &&
+    view.drawingBuffer[1] === Math.floor(canvas.height * dpr)
   );
 }
 

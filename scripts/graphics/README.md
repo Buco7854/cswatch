@@ -89,6 +89,8 @@ The runner accepts a 128 KiB audit with up to 24 views, 64–1920 pixels wide by
 
 ## Capture a recorded production POV
 
+A paused capture also reports recorded breakable props, matching map instances and effective visibility at the selected tick. Unmatched, ambiguous and unavailable instances have their own counts. Detail rows prioritize discrepancies and cover up to 32 tracks. The production application receives no added capture instrumentation.
+
 `scripts/capture-viewer.mjs` opens the production watch route at an exact live-player POV. Build the backend, native sandbox and frontend first. Supply a local uncompressed demo, installed map/presentation assets, a numeric recorded tick and a player Steam ID as a string. The input demo is copied to a new private temporary data directory, hashed, and parsed under the required Linux sandbox. The CLI signs into a disposable local instance on loopback (default port 4672). The password stays in memory. The temporary database, session and staged replay are removed when the run finishes.
 
 ```sh
@@ -119,13 +121,15 @@ For moving playback add `--play-seconds 12 --play-camera pov|follow|free` (3–3
 
 Use `--max-p95-ms 33.3` to gate both the nearest-rank p95 of intervals between screen submissions and the time-weighted p95 across the entire measurement. The latter includes the wait before the first submission and after the last one. A 2-second freeze contributes its full duration even when most submitted frames lie in a short burst. A breached budget exits 2. Unverified movement, unsettled or failed models, or fewer than 20 intervals exits 3. Use `--min-intervals N` to change the sample minimum. The report includes the first and final gaps and their maximum along with inter-frame timings. Compare the same device, graphics settings, route and power conditions. The separate static capture command measures fixed poses with a GPU readback.
 
+Use `--device-scale 2` or `3` to exercise a dense display. Width and height are CSS pixels. The composited PNG has the physical dimensions in `imageSize`; `buffer` gives the WebGL resolution used to draw it. During playback, `--min-display-scale 0.75 --max-p95-ms 33.3` requires the world render target and the presented framebuffer to reach at least 75% of the displayed width and height, as well as meeting the timing budget. Choose the budget for the device under test. Report the actual GPU with each measurement. A browser-emulated DPR reproduces the pixel workload on the host GPU.
+
 ### External recorded-frame references
 
 Use `--reference /private/reference.json` for a local CS2 or reference PNG. The manifest uses `schemaVersion: 1` and `kind: "external-replay-frame-reference"`. Supply the following from verifiable capture records.
 
 - `replaySha256`, exact `tick` and string `player`, `cameraMode: "pov"`, `map`, `assetVersion` and `sourceSha256` bind the recording, actor and map revision to the supplied source export. For a managed pack, also declare the matching `mapSource` from independent source provenance.
 - `coordinateSystem: "viewer-meters-y-up"`, `camera.worldMatrix` and `camera.projectionMatrix` declare the world camera. Both matrices have 16 column-major elements in the Three/WebGL convention. `equipmentProjection` supplies the corresponding separate POV lens matrix, or null when the pass was absent. The matrix tolerances are 0.00001 for world pose and 0.000001 for projection.
-- `viewport: {"width": W, "height": H}`, `buffer: [W, H]`, `colorSpace: "srgb"` and `hudFree: true` describe the unscaled RGB frame. `png` names an opaque local file alongside the manifest. `sha256` binds its bytes.
+- `viewport: {"width": W, "height": H}`, `buffer: [W, H]`, `colorSpace: "srgb"` and `hudFree: true` describe the RGB frame. Supply the actual `deviceScale` and physical PNG `imageSize` for high-density captures. `png` names an opaque local file alongside the manifest. `sha256` binds its bytes.
 - `provenance` supplies `producer` (CS2 or reference), `version`, `captureSource`, `renderSettings` and `mapRevisionEvidence`. These are operator attestations. Only supply camera or revision values established for the external image.
 
 Missing HUD/projection evidence, an inferred tick, a mismatched source, or a different actor yields `unverified` and no metrics. Matching external provenance permits a pixel comparison of that one declared view. A genuine game reference remains necessary for a game-parity claim. Local viewer baselines additionally require matching parsed evidence, model, settings and asset states. A requested comparison that cannot be verified exits 3. A breached explicit MAE budget exits 2. Both preserve the frame and result.

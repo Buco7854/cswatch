@@ -18,6 +18,7 @@ import {
 import { MeshoptEncoder, MeshoptSimplifier } from 'meshoptimizer';
 import sharp from 'sharp';
 import { localDirectory, regularFile } from './toolchain-security.mjs';
+import { preparedBreakable } from './recorded-breakable-geometry.mjs';
 import { verifyPreparedGlb } from './prepared-glb.mjs';
 import { compressGlbGeometry, MeshoptDecoder } from './meshopt-glb.mjs';
 import { MapEnvironmentAlbedoExtension } from './map-environment-layer-extension.mjs';
@@ -104,6 +105,7 @@ function compactSource(source) {
   for (const node of nodes) {
     const matrix = node.getWorldMatrix();
     if (!matrix.every(Number.isFinite)) continue;
+    const breakable = preparedBreakable(node.getExtras().cswatchBreakable);
     for (const source of node.getMesh().listPrimitives()) {
       const material = source.getMaterial();
       const position = source.getAttribute('POSITION');
@@ -122,7 +124,7 @@ function compactSource(source) {
       vertices += count;
       indices += indexCount;
       if (vertices > maxSourceVertices || indices > maxSourceIndices) return;
-      entries.push({ matrix, position, material, count, index });
+      entries.push({ matrix, position, material, count, index, breakable });
     }
   }
   return { entries, vertices, indices };
@@ -144,7 +146,7 @@ async function buildCompactMap(input, colors, mode) {
   document.getRoot().setDefaultScene(world);
   const samples = new Map(),
     cells = new Map();
-  for (const { matrix, position, material, count, index } of entries) {
+  for (const { matrix, position, material, count, index, breakable } of entries) {
     if (!colors.has(material)) colors.set(material, await colorOf(material, samples));
     const color = colors.get(material);
     const encodedColor = new Uint8Array(count * 3);
@@ -193,19 +195,33 @@ async function buildCompactMap(input, colors, mode) {
       max = positions.getMax([]);
     if (![...min, ...max].every((value) => Number.isFinite(value) && Math.abs(value) <= 100_000))
       throw new Error('Invalid compact source bounds.');
-    const key = [
-      Boolean(twoSided),
-      ...min.map((value, axis) => Math.floor((value + max[axis]) / 2 / cellSize)),
-    ].join(':');
-    const batch = cells.get(key) ?? [];
-    batch.push(primitive);
-    cells.set(key, batch);
+    const key = breakable
+      ? 'entity/' + breakable.hammerId + '/' + Boolean(twoSided)
+      : [
+          Boolean(twoSided),
+          ...min.map((value, axis) => Math.floor((value + max[axis]) / 2 / cellSize)),
+        ].join(':');
+    if (!cells.has(key)) cells.set(key, { breakable, batch: [] });
+    cells.get(key).batch.push(primitive);
   }
   if (!cells.size || cells.size > limits.primitives) return;
-  for (const [key, batch] of cells) {
+  const entityMeshes = new Map();
+  for (const [key, { breakable, batch }] of cells) {
     const primitive = batch.length === 1 ? batch[0] : joinPrimitives(batch);
     if (batch.length > 1) for (const source of batch) source.dispose();
-    world.addChild(document.createNode(key).setMesh(document.createMesh().addPrimitive(primitive)));
+    // Keep both sidedness groups under a single independently visible entity, even
+    // though the compact geometry's positions have already been baked into world space.
+    let mesh = breakable && entityMeshes.get(breakable.hammerId);
+    if (!mesh) {
+      mesh = document.createMesh();
+      const node = document.createNode(key).setMesh(mesh);
+      if (breakable) {
+        node.setExtras({ cswatchBreakable: breakable });
+        entityMeshes.set(breakable.hammerId, mesh);
+      }
+      world.addChild(node);
+    }
+    mesh.addPrimitive(primitive);
   }
   await document.transform(
     prune({ keepAttributes: true }),

@@ -22,6 +22,8 @@ import type { GaitHistory } from '../../shared/agent-gait-history.mjs';
 import { encodeGaitHistory, validGaitHistory } from './replay-gait-history.js';
 import type { AgentDeathAnchor } from '../../shared/agent-deaths.mjs';
 import { replayAgentDeaths, validAgentDeaths } from './replay-agent-deaths.js';
+import type { MapBreakable } from '../../shared/map-breakables.mjs';
+import { validMapBreakables } from './map-breakables-wire.js';
 import { validInfernoBank } from './inferno-state-wire.js';
 import type { InfernoBank } from '../../shared/inferno-state.mjs';
 import { replayStride } from './replay-stride.js';
@@ -395,6 +397,7 @@ export const manifestSchema = z
     events: z.array(event).max(100000),
     smokeTracks: z.custom<SmokeTrack[]>().optional(),
     infernos: z.custom<InfernoBank>().optional(),
+    mapBreakables: z.custom<MapBreakable[]>().optional(),
     deadTimes: z
       .array(
         z
@@ -837,7 +840,12 @@ async function writeReplayCore(
   }
   if (!validSmokeTracks(manifest.smokeTracks, manifest.lastTick)) delete manifest.smokeTracks;
   if (!validInfernoBank(manifest.infernos, manifest.lastTick)) delete manifest.infernos;
+  if (!validMapBreakables(manifest.mapBreakables, manifest.lastTick)) delete manifest.mapBreakables;
   let json = replayJSON(manifest);
+  if (manifest.mapBreakables && Buffer.byteLength(json) > replayLimits.manifestBytes) {
+    delete manifest.mapBreakables;
+    json = replayJSON(manifest);
+  }
   if (manifest.gaitHistory && Buffer.byteLength(json) > replayLimits.manifestBytes) {
     delete manifest.gaitHistory;
     json = replayJSON(manifest);
@@ -888,6 +896,11 @@ export function validateReplayArtifacts(folder: string): {
     !validSmokeTracks(manifest.smokeTracks, manifest.lastTick)
   )
     throw new Error('Invalid recorded smoke bank');
+  if (
+    manifest.mapBreakables !== undefined &&
+    !validMapBreakables(manifest.mapBreakables, manifest.lastTick)
+  )
+    throw new Error('Invalid recorded map breakables');
   if (manifest.infernos !== undefined && !validInfernoBank(manifest.infernos, manifest.lastTick))
     throw new Error('Invalid recorded inferno bank');
   if (

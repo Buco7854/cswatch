@@ -24,6 +24,10 @@ export async function compareReplayFrame(frame, bytes, referencePath) {
     'colorSpace',
   ])
     if (!equal(frame[key], ref[key])) reasons.push(key);
+  // A DPR-1 capture with an unscaled framebuffer has identical display and buffer dimensions.
+  const size = frame.imageSize ?? frame.buffer;
+  if (!equal(size, ref.imageSize ?? ref.buffer)) reasons.push('imageSize');
+  if ((ref.deviceScale ?? 1) !== (frame.deviceScale ?? 1)) reasons.push('deviceScale');
   if (frame.mapSource && !equal(ref.mapSource, frame.mapSource)) reasons.push('mapSource');
   // Fixed tolerances permit decimal serialization of independent camera transforms.
   for (const [key, epsilon] of [
@@ -80,8 +84,8 @@ export async function compareReplayFrame(frame, bytes, referencePath) {
     image: bytes,
     ref,
     file: referencePath,
-    width: frame.buffer[0],
-    height: frame.buffer[1],
+    width: size[0],
+    height: size[1],
     external,
     reasons,
   });

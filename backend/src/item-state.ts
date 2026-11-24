@@ -82,7 +82,7 @@ const validTick = (tick: number, last: number) =>
 const round = (value: number) => Math.round(value * 100) / 100;
 
 /** Requires every recorded cell/offset component. Missing origins never become map origin. */
-export function itemTransform(properties: Record<string, unknown>, className: string) {
+export function recordedEntityTransform(properties: Record<string, unknown>, className: string) {
   const root = `${className}.CBodyComponentBaseAnimGraph.m_skeletonInstance.`;
   const parent = properties[`${root}m_hParent`];
   // Local transforms under an actual parent need that parent's matrix. Never treat them as world coordinates.
@@ -106,7 +106,7 @@ export function itemTransform(properties: Record<string, unknown>, className: st
     )
       return;
     const value = cell * 512 - 16384 + offset;
-    return Math.abs(value) <= itemStateLimits.coordinate ? round(value) : undefined;
+    return Math.abs(value) <= itemStateLimits.coordinate ? value : undefined;
   });
   if (!axes.every((value) => value !== undefined)) return;
   const angles = properties[`${root}m_angRotation`];
@@ -114,9 +114,22 @@ export function itemTransform(properties: Record<string, unknown>, className: st
     Array.isArray(angles) &&
     angles.length === 3 &&
     angles.every((angle) => finite(angle) && Math.abs(angle) <= 1e7)
-      ? { pitch: round(angles[0]), yaw: round(angles[1]), roll: round(angles[2]) }
+      ? { pitch: angles[0], yaw: angles[1], roll: angles[2] }
       : {};
   return { x: axes[0]!, y: axes[1]!, z: axes[2]!, ...rotation };
+}
+
+export function itemTransform(properties: Record<string, unknown>, className: string) {
+  const pose = recordedEntityTransform(properties, className);
+  if (!pose) return;
+  return {
+    x: round(pose.x),
+    y: round(pose.y),
+    z: round(pose.z),
+    ...(pose.pitch !== undefined
+      ? { pitch: round(pose.pitch), yaw: round(pose.yaw!), roll: round(pose.roll!) }
+      : {}),
+  };
 }
 
 /** One existing streaming entity world supplies real ownership and lifecycle evidence. */

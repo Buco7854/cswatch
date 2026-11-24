@@ -7,7 +7,17 @@ const probe = await readFile(new URL('./viewer-probe.js', import.meta.url), 'utf
 const cadence = (count, first = 20) => Array.from({ length: count }, (_, i) => first + 20 * i);
 
 // Drive the shipped observer through its Three scene, pointer, DOM and render interfaces.
-async function measure({ frames, mode = 'pov', allowTurn = true, onFrame }) {
+async function measure({
+  frames,
+  mode = 'pov',
+  allowTurn = true,
+  onFrame,
+  minDisplayScale = null,
+  cssWidth = 400,
+  cssHeight = 300,
+  deviceScale = 2,
+  worldBuffer = null,
+}) {
   let now = 0,
     animation,
     observe;
@@ -36,6 +46,9 @@ async function measure({ frames, mode = 'pov', allowTurn = true, onFrame }) {
     },
   };
   const canvas = {
+    width: Math.floor(cssWidth * deviceScale),
+    height: Math.floor(cssHeight * deviceScale),
+    getBoundingClientRect: () => ({ width: cssWidth, height: cssHeight }),
     dispatchEvent(event) {
       if (allowTurn && event.type === 'pointermove') quaternion.yaw = (event.clientX - 180) / 180;
     },
@@ -50,10 +63,11 @@ async function measure({ frames, mode = 'pov', allowTurn = true, onFrame }) {
     querySelector: (selector) => (selector === '.scene' ? element : slider),
   };
   const scene = { isScene: true };
-  const gl = { domElement: canvas, render() {}, getRenderTarget: () => null };
+  let target = null;
+  const gl = { domElement: canvas, render() {}, getRenderTarget: () => target };
   const state = { scene, gl, camera: { quaternion } };
   scene.__r3f = { root: { getState: () => state } };
-  const window = {};
+  const window = { devicePixelRatio: deviceScale };
   runInNewContext(probe, {
     window,
     document,
@@ -84,9 +98,11 @@ async function measure({ frames, mode = 'pov', allowTurn = true, onFrame }) {
         now = time;
         animation?.(now);
         slider.value = String(100 + Math.floor(now * 0.064));
-        onFrame?.(index, dataset);
+        onFrame?.(index, dataset, canvas);
         observe();
-        gl.render();
+        target = worldBuffer;
+        gl.render(scene, state.camera);
+        target = null;
         gl.render(); // Two passes in one animation frame still count as one submission.
       }
       now = duration;
@@ -98,7 +114,7 @@ async function measure({ frames, mode = 'pov', allowTurn = true, onFrame }) {
   window.__THREE_DEVTOOLS__.dispatchEvent(event);
   return window.measureViewerPlayback(
     { click() {} },
-    { seconds: 3, mode, maxP95Ms: 33.3, minIntervals: 20 },
+    { seconds: 3, mode, maxP95Ms: 33.3, minDisplayScale, minIntervals: 20 },
   );
 }
 
@@ -142,4 +158,40 @@ test('errors during playback, pending exit models and a route change invalidate 
     if (field === 'equipmentErrorCount') assert.ok(result.assetErrors.includes(field));
   }
   assert.equal((await measure({ frames: cadence(20) })).budgetVerdict, 'unverified');
+});
+
+test('a fast replay that drops below the requested display resolution fails the combined budget', async () => {
+  const result = await measure({
+    frames: cadence(150),
+    minDisplayScale: 0.75,
+    onFrame(i, _, canvas) {
+      canvas.width = i === 40 ? 400 : 800;
+    },
+  });
+  assert.equal(result.p95Ms, 20);
+  assert.equal(result.lowestDisplayScale, 0.5);
+  assert.equal(result.budgetVerdict, 'fail');
+});
+
+test('a full-resolution fractional DPR buffer meets a native display gate after integer rounding', async () => {
+  const result = await measure({
+    frames: cadence(150),
+    minDisplayScale: 1,
+    cssWidth: 391,
+    cssHeight: 361,
+    deviceScale: 1.5,
+  });
+  assert.ok(result.lowestDisplayScale < 1);
+  assert.equal(result.budgetVerdict, 'pass');
+});
+
+test('the final fullscreen color pass cannot conceal a low-resolution world render target', async () => {
+  const result = await measure({
+    frames: cadence(150),
+    minDisplayScale: 0.8,
+    worldBuffer: { width: 400, height: 300 },
+  });
+  assert.equal(result.lowestWorldScale, 0.5);
+  assert.equal(result.lowestPresentationScale, 1);
+  assert.equal(result.budgetVerdict, 'fail');
 });

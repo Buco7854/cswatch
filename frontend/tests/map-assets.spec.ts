@@ -1,3 +1,6 @@
+import { selectOptionsCategory } from './fixtures/viewer-options';
+import { chooseSelectOption } from './fixtures/select-control';
+import { installMapBreakableProbe, renderedMapBreakables } from './fixtures/map-breakables';
 import { chooseCameraControl, expectCameraControl } from './fixtures/viewer-transport';
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { manualMapAssets } from './fixtures/map-assets';
@@ -110,30 +113,34 @@ async function open(page: Page, id = 'original-map-fixture') {
   await expect(page.locator('.timeline-slider')).toBeVisible();
   return response;
 }
+async function setRendererEvidence(page: Page, adapter: string) {
+  await page.addInitScript((adapter) => {
+    Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 2 });
+    const gl = WebGL2RenderingContext.prototype;
+    const getExtension = gl.getExtension;
+    const getParameter = gl.getParameter;
+    gl.getExtension = function (name: string) {
+      return name === 'WEBGL_debug_renderer_info'
+        ? { UNMASKED_RENDERER_WEBGL: 0x9246 }
+        : getExtension.call(this, name);
+    } as typeof getExtension;
+    gl.getParameter = function (name: number) {
+      return name === 0x9246 ? adapter : getParameter.call(this, name);
+    };
+  }, adapter);
+}
 for (const profile of [
   { adapter: 'ANGLE (NVIDIA GeForce RTX 4060)', device: 'hardware', tier: 'desktop' },
   { adapter: 'ANGLE (Google, Vulkan SwiftShader Device)', device: 'software', tier: 'compact' },
   { adapter: 'ANGLE (Intel(R) Iris Xe Graphics)', device: 'integrated', tier: 'mobile' },
+  { adapter: 'WebKit WebGL', device: 'unknown', tier: 'mobile' },
 ]) {
   test(`Auto starts with the ${profile.tier} map for ${profile.device} renderer evidence`, async ({
     page,
   }) => {
     test.skip(Boolean(process.env.E2E_PRIVATE));
     await page.setViewportSize({ width: 1280, height: 720 });
-    await page.addInitScript((adapter) => {
-      Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 2 });
-      const gl = WebGL2RenderingContext.prototype;
-      const getExtension = gl.getExtension;
-      const getParameter = gl.getParameter;
-      gl.getExtension = function (name: string) {
-        return name === 'WEBGL_debug_renderer_info'
-          ? { UNMASKED_RENDERER_WEBGL: 0x9246 }
-          : getExtension.call(this, name);
-      } as typeof getExtension;
-      gl.getParameter = function (name: number) {
-        return name === 0x9246 ? adapter : getParameter.call(this, name);
-      };
-    }, profile.adapter);
+    await setRendererEvidence(page, profile.adapter);
     const paths: string[] = [];
     page.on('request', (request) => {
       const path = new URL(request.url()).pathname;
@@ -158,6 +165,85 @@ for (const profile of [
   });
 }
 
+test.describe('dense displays', () => {
+  test.use({ deviceScaleFactor: 3 });
+  test('a phone keeps detailed textures and renders above CSS resolution within its pixel budget on rotation', async ({
+    page,
+  }) => {
+    test.skip(Boolean(process.env.E2E_PRIVATE));
+    await page.setViewportSize({ width: 390, height: 844 });
+    await setRendererEvidence(page, 'ANGLE (Qualcomm, Adreno 740)');
+    await install(
+      page,
+      {
+        model: `/map-assets/${qaMap}/desktop/scene.glb`,
+        mobile: `/map-assets/${qaMap}/mobile/scene.glb`,
+        compact: `/map-assets/${qaMap}/compact/scene.glb`,
+        overview: qaOverview,
+      },
+      { quality: 'auto' },
+    );
+    await open(page);
+    await expect(page.locator('.scene')).toHaveAttribute('data-map-tier', 'mobile');
+    await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
+    const buffer = () =>
+      page.locator('.scene canvas').evaluate((el) => {
+        const gl = (el as HTMLCanvasElement).getContext('webgl2')!;
+        return [gl.drawingBufferWidth, gl.drawingBufferHeight];
+      });
+    for (const [width, height] of [
+      [390, 844],
+      [844, 390],
+      [1280, 720],
+      [390, 400],
+    ]) {
+      await page.setViewportSize({ width, height });
+      const ratio = Math.min(2, Math.sqrt(1024 ** 2 / (width * height)));
+      await expect.poll(buffer).toEqual([Math.floor(width * ratio), Math.floor(height * ratio)]);
+    }
+    await page.getByRole('button', { name: 'Options', exact: true }).click();
+    await selectOptionsCategory(page, 'Performance');
+    await chooseSelectOption(page, 'Rendering quality', 'High · shadows, higher resolution');
+    await expect(page.locator('.scene')).toHaveAttribute('data-map-tier', 'desktop');
+    await expect.poll(buffer).toEqual([1170, 1200]);
+  });
+  test('pausing restores detail after slow playback, and resuming retains the learned resolution', async ({
+    page,
+  }) => {
+    test.skip(Boolean(process.env.E2E_PRIVATE));
+    await page.setViewportSize({ width: 390, height: 400 });
+    await setRendererEvidence(page, 'ANGLE (Qualcomm, Adreno 740)');
+    // Deliver a slow, regular browser frame cadence independently of the test host's GPU.
+    await page.addInitScript(() => {
+      window.requestAnimationFrame = (callback) =>
+        window.setTimeout(() => callback(performance.now()), 160);
+      window.cancelAnimationFrame = (id) => window.clearTimeout(id);
+    });
+    const replay = originalMapReplay();
+    replay.frames[1].tick = 6400;
+    await install(
+      page,
+      { model: null, mobile: `/map-assets/${qaMap}/mobile/scene.glb`, overview: null },
+      { quality: 'auto', playback: replay },
+    );
+    await open(page);
+    const scene = page.locator('.scene');
+    const width = () =>
+      scene
+        .locator('canvas')
+        .evaluate(
+          (canvas) => (canvas as HTMLCanvasElement).getContext('webgl2')!.drawingBufferWidth,
+        );
+    await expect(scene).toHaveAttribute('data-map-model-state', 'ready');
+    await expect.poll(width).toBe(780);
+    await page.getByRole('button', { name: 'Play', exact: true }).click();
+    await expect.poll(width, { timeout: 12000 }).toBeLessThan(780);
+    await page.getByRole('button', { name: 'Pause', exact: true }).click();
+    await expect.poll(width).toBe(780);
+    await page.getByRole('button', { name: 'Play', exact: true }).click();
+    await expect.poll(width).toBeLessThan(780);
+  });
+});
 async function camera(page: Page, value: string) {
   await chooseCameraControl(page, value);
 }
@@ -922,7 +1008,7 @@ test('an explicit camera retries failed WebGL and stale same-map context events 
 test.describe('touch camera recovery', () => {
   test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } });
 
-  test('Auto uses the compact 3D map on phones and retries a detailed map if it fails', async ({
+  test('Auto uses Compact on a software-rendered phone and retries a detailed map if it fails', async ({
     page,
   }) => {
     test.skip(Boolean(process.env.E2E_PRIVATE));
@@ -1633,4 +1719,44 @@ test('paused viewer stops native rendering and camera, held keys, POV seeks and 
     .poll(async () => (await centerPixel(page)).map((value) => value > 100))
     .toEqual([true, false, false]);
   await idle();
+});
+
+test('a recorded world prop opens absent, returns at the round reset and restores on a backward seek', async ({
+  page,
+}) => {
+  const pose = {
+    modelId: '7001',
+    origin: [3, 5, 7] as [number, number, number],
+    angles: [0, 90, 0] as [number, number, number],
+  };
+  const replay = originalMapReplay();
+  replay.mapBreakables = [{ ...pose, hidden: [[192, 384]] }];
+  replay.rounds.push({ number: 2, tick: 384 });
+  const mesh = originalMapGLB(false, undefined, undefined, undefined, false, {
+    cswatchBreakable: {
+      ...pose,
+      hammerId: '44',
+      className: 'prop_dynamic',
+      model: 'models/original.vmdl',
+    },
+  });
+  await installMapBreakableProbe(page);
+  const { id } = await install(
+    page,
+    { model: `/map-assets/${qaMap}/desktop/scene.glb`, mobile: null, overview: qaOverview },
+    { playback: replay, model: (r) => r.fulfill({ contentType: 'model/gltf-binary', body: mesh }) },
+  );
+  await page.goto('/watch/' + id + '?tick=256');
+  await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
+  await expect.poll(() => renderedMapBreakables(page)).toEqual({ '44': false });
+  for (const [tick, visible] of [
+    [384, true],
+    [191, true],
+    [192, false],
+    [383, false],
+    [384, true],
+  ] as const) {
+    await page.locator('.timeline-slider').fill(String(tick));
+    await expect.poll(() => renderedMapBreakables(page)).toEqual({ '44': visible });
+  }
 });

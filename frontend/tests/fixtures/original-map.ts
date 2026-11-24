@@ -103,6 +103,7 @@ export function originalMapGLB(
   landscape?: 'tagged' | 'untagged',
   black?: 'exact' | 'name-only',
   vertexLighting = false,
+  mainExtras?: Record<string, unknown>,
 ) {
   const positions: number[] = [],
     normals: number[] = [],
@@ -150,7 +151,7 @@ export function originalMapGLB(
       { nodes: [0, ...(engineLight ? [1] : []), ...(landscape ? [engineLight ? 2 : 1] : [])] },
     ],
     nodes: [
-      { mesh: 0 },
+      { mesh: 0, ...(mainExtras && { extras: mainExtras }) },
       ...(engineLight
         ? [
             {

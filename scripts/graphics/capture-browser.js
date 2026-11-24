@@ -35,7 +35,7 @@ window.prepareCapture = async ({ tier, projection, settings }) => {
   assertMapBaseColorTextures(gltf);
   applyEnvironmentAlbedo(gltf);
   reusePackedSceneSamples(gltf.scenes);
-  if (tier === 'desktop') improveMapTextureDetail(gltf.scenes);
+  improveMapTextureDetail(gltf.scenes, tier);
   const { main } = prepareMapModel(gltf.scene, gltf.animations);
   const scene = new T.Scene();
   scene.add(

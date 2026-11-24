@@ -1,4 +1,5 @@
 /** Trusted offline environment conversion. No Steam, HTTP or application-server access. */
+import { tagBreakableGeometry } from './recorded-breakable-geometry.mjs';
 import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, rm, statfs, writeFile } from 'node:fs/promises';
 import { dirname, extname, join, resolve } from 'node:path';
@@ -318,6 +319,7 @@ export async function prepareEnvironment(config) {
         .some((node) => node.getExtras()?.cswatch?.kind === 'skybox')
     )
       throw new Error('Main geometry already contains a prepared sky landscape.');
+    const breakableInstances = tagBreakableGeometry(mainDocument, mainEntities);
     if (sourceSky) {
       onProgress('read-sky');
       const skyDocument = await io.read(sourceSky.path);
@@ -390,6 +392,7 @@ export async function prepareEnvironment(config) {
       map,
       assetVersion,
       mainEnvironment: main,
+      breakableInstances,
       skyCamera: camera,
       effectiveEnvironment: effective,
       material,

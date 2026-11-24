@@ -1,5 +1,7 @@
 # Feature status
 
+Textured mobile maps use a bounded high-density render target and stronger filtering on opaque angled surfaces. Auto restores the configured resolution on pause. Explicit High can use up to three physical pixels per CSS pixel on a small high-density screen. Newly parsed recordings can hide independently identified destructible props on the recorded tick and restore them on rewind or at the next round. Two Cache vents have a verified viewer sequence; the desktop and mobile Nuke packs also identify a skinned grate. [Measurements and coverage](VERIFICATION.md#display-resolution-and-recorded-map-breakables)
+
 The viewer lights the playable world with its own authored sun. Detailed tiers restore supported tint masks and native metalness switches. Desktop materials can also recover painted albedos and their authored colour correction. The recorded first-person rigs, smoke and selected surfaces have matched-camera measurements across eight maps. [Rendering corrections](VERIFICATION.md#rendering-corrections-against-matched-external-scenes)
 
 Detailed maps can cull off-camera triangles across larger world meshes while retaining the existing limit on stored bounds. Clip-free maps with large hierarchies reuse static sun shadows until a caster or light changes. [Four-map playback measurements](VERIFICATION.md#high-quality-playback-on-four-official-maps)

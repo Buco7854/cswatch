@@ -23,6 +23,7 @@ for (const name of [
   'roles',
   'smoke-state',
   'inferno-state',
+  'map-breakables',
   'stride-distance',
   'aim-track',
   'agent-deaths',

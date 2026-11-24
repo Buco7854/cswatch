@@ -11,6 +11,7 @@ import {
   type Texture,
   type WebGLRenderer,
 } from 'three';
+import { mapBreakableVisibility } from './map-breakables';
 import { StaticMapGroup } from './static-map-group';
 
 type Slot = object | string | number | boolean | null | undefined;
@@ -193,6 +194,7 @@ export class MapShadowCache {
       signature.start(stored.values);
       signature.write(object.layers.mask);
       if (staticMap) {
+        signature.write(mapBreakableVisibility(object)?.revision);
         if (!object.immutableDescendants) {
           // Animated/unsupported map branches keep the original shadow pass;
           // do not turn a large mutable asset into a per-mesh snapshot cache.
