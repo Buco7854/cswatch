@@ -2,6 +2,8 @@
 import { createHash } from 'node:crypto';
 import { mkdir, rm, statfs, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
+import limits from '../../shared/map-graphics.json' with { type: 'json' };
+import { inspectMapGraphics } from './map-visual-audit.mjs';
 import { batchMapMeshes } from './batch-map-meshes.mjs';
 import { applyTextureBudget } from './texture-budget.mjs';
 import { localDirectory } from './toolchain-security.mjs';
@@ -30,6 +32,7 @@ export async function writeMapTier({
   vertexLighting,
   lightingFallback,
   worldMaterials,
+  graphics = inspectMapGraphics(document),
 }) {
   if (
     !/^[a-zA-Z0-9_-]{1,80}$/.test(map) ||
@@ -67,12 +70,28 @@ export async function writeMapTier({
     const compression = await compressMapDocumentGeometry(io, document);
     const encoded = compression.bytes;
     const bytes = await writePreparedModel(join(output, 'scene.glb'), encoded);
+    const outputSha256 = createHash('sha256').update(encoded).digest('hex');
+    const audit = Buffer.from(
+      JSON.stringify({
+        schemaVersion: 1,
+        map,
+        tier,
+        assetVersion,
+        sourceSha256: source.sha256,
+        modelSha256: outputSha256,
+        coordinateSystem: 'gltf-meters-y-up',
+        ...graphics,
+      }),
+    );
+    if (audit.length > limits.bytes) throw Error('Map graphics audit exceeds its size limit.');
+    await writeTierMetadata(join(output, 'visual-audit.json'), audit);
     const manifest = {
       schemaVersion: 1,
       map,
       tier,
       bytes,
-      outputSha256: createHash('sha256').update(encoded).digest('hex'),
+      outputSha256,
+      visualAuditSha256: createHash('sha256').update(audit).digest('hex'),
       sourceFile: source.file,
       sourceSha256: source.sha256,
       sourceBytes: source.bytes,

@@ -16,6 +16,7 @@ import sharp from 'sharp';
 import { steamAssetLimits, selectedMaps } from './steam-assets-plan.mjs';
 import { checkFreeReserve, fileHash, readableDirectory, regular } from './asset-storage.mjs';
 
+import { visualAuditBytes, readBoundVisualAudit } from '../../backend/dist/map-visual-audit.js';
 import { verifyPreparedGlb } from './prepared-glb.mjs';
 import { mapGradeBytes, mapGradeFile, validMapGrade } from '../../shared/map-grade.mjs';
 import { validPreparedFog, validPreparedGradientFog } from './prepared-environment-fog.mjs';
@@ -152,6 +153,15 @@ export async function validatePreparedMap(prepared, map, assetVersion) {
       path: `${map}/${tier}/manifest.json`,
       bytes: (await lstat(manifest)).size,
       sha256: await fileHash(manifest, 'sha256', 16384),
+    });
+    const auditPath = join(prepared, map, tier, 'visual-audit.json');
+    await regular(auditPath, visualAuditBytes);
+    const auditBytes = await readFile(auditPath);
+    readBoundVisualAudit(auditBytes, data);
+    files.push({
+      path: `${map}/${tier}/visual-audit.json`,
+      bytes: auditBytes.length,
+      sha256: data.visualAuditSha256,
     });
     const texturePlan = join(prepared, map, tier, 'texture-plan.json');
     const info = await regular(texturePlan, 4 * 1024 ** 2);

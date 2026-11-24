@@ -16,8 +16,7 @@ import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
-import { NodeIO } from '@gltf-transform/core';
-import { applyTextureBudget } from './texture-budget.mjs';
+import { writeOriginalMapTier } from './fixtures/original-map-tier.mjs';
 import { triangle } from './fixtures/embedded-glb.mjs';
 import { authoredFog, invalidFogCases } from './fixtures/fog-cases.mjs';
 import { prepareOverview } from './prepare-overview.mjs';
@@ -357,23 +356,7 @@ async function preparedFixture() {
   });
   for (const tier of ['desktop', 'mobile']) {
     const path = join(prepared, map, tier);
-    await mkdir(path, { recursive: true });
-    const model = triangle();
-    const budget = await applyTextureBudget(await new NodeIO().readBinary(model), { tier });
-    await writeFile(join(path, 'scene.glb'), model);
-    await writeFile(join(path, 'texture-plan.json'), budget.planBytes);
-    await writeFile(
-      join(path, 'manifest.json'),
-      JSON.stringify({
-        schemaVersion: 1,
-        map,
-        tier,
-        assetVersion: version,
-        bytes: model.length,
-        outputSha256: createHash('sha256').update(model).digest('hex'),
-        textureBudget: budget.manifest,
-      }),
-    );
+    await writeOriginalMapTier(path, triangle(), map, tier, version);
   }
   const environment = join(prepared, 'environments', map);
   await mkdir(environment, { recursive: true });
@@ -415,13 +398,13 @@ test('publication verifies and installs both tiers, overview and six-face enviro
   const s = await preparedFixture();
   try {
     const inventory = await validatePreparedMap(s.prepared, s.map, s.version);
-    assert.equal(inventory.length, 17);
+    assert.equal(inventory.length, 19);
     const result = await publishPreparedMap(s.prepared, s.output, s.map, s.version, {
       app: '730',
       depot: STEAM_DEPOT,
       manifest: '42',
     });
-    assert.equal(result.files.length, 17);
+    assert.equal(result.files.length, 19);
     assert.deepEqual((await readdir(s.output)).sort(), ['de_fixture', 'environments', 'overviews']);
     assert.deepEqual((await readdir(join(s.output, s.map))).sort(), [
       'desktop',
@@ -523,7 +506,7 @@ test('publication preserves supported authored fog and refuses invalid ranges, m
     const fog = authoredFog();
     for (const valid of [fog, { ...fog, height: null }]) {
       await writeFile(file, JSON.stringify({ ...original, fog: valid }));
-      assert.equal((await validatePreparedMap(s.prepared, s.map, s.version)).length, 17);
+      assert.equal((await validatePreparedMap(s.prepared, s.map, s.version)).length, 19);
     }
     for (const invalid of invalidFogCases()) {
       await writeFile(file, JSON.stringify({ ...original, fog: invalid }));
@@ -854,7 +837,12 @@ test('synthetic installer run pins every selective fetch and removes only its ow
         for (const tier of ['desktop', 'mobile']) {
           const target = join(directory, template.map, tier);
           await mkdir(target, { recursive: true });
-          for (const name of ['scene.glb', 'manifest.json', 'texture-plan.json'])
+          for (const name of [
+            'scene.glb',
+            'manifest.json',
+            'texture-plan.json',
+            'visual-audit.json',
+          ])
             await copyFile(join(template.prepared, template.map, tier, name), join(target, name));
         }
       } else assert.fail('The installer must not invoke an unrelated command.');
