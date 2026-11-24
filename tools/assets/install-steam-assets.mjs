@@ -165,7 +165,12 @@ export async function runAssetProcess(
     const append = (kind, chunk) => {
       bytes += chunk.length;
       if (bytes > steamAssetLimits.logBytes) {
-        failure ||= new Error('Operator asset diagnostics exceeded the output limit.');
+        failure ||= Object.assign(
+          new Error('Operator asset diagnostics exceeded the output limit.'),
+          {
+            code: 'ASSET_OUTPUT_LIMIT',
+          },
+        );
         onOutputAbort?.();
         kill();
         return;
