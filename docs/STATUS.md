@@ -1,5 +1,7 @@
 # Feature status
 
+The viewer reuses native character animation data and recently displayed equipment during playback. Map and sky rendering skip blocks of triangles outside the camera. Auto responds earlier when repeated long frames dominate playback and can turn off HDR multisampling at its resolution floor. [Measured behavior and remaining stalls](VERIFICATION.md#in-game-playback-stalls)
+
 Official map coverage can be inspected by Steam manifest, shader family, prepared tier and capture result. A new map using known material inputs follows the same preparation path. Desktop and mobile support a static approximation of verified Source water. Unsupported water stays listed in the audit. The production viewer can be captured privately at a known player and tick for regression checks. Dropped equipment holds its last resting pose until the recorded movement interval. [Coverage and limitations](VERIFICATION.md#map-graphics-and-recorded-equipment)
 
 Map surfaces with packed occlusion, roughness and metalness can read all three channels in one texture lookup. Mirage and Dust2 use this layout across hundreds of native materials. [Playback measurements](VERIFICATION.md#packed-world-materials)
