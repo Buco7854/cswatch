@@ -1,5 +1,7 @@
 # Feature status
 
+Large maps can rebuild a bounded Compact tier when the original mesh simplification exceeds the triangle cap. Native equipment shares compatible packed PBR samples and the cache retains its render resources and authored clip and material evidence after parsing. [Multi-map playback](VERIFICATION.md#multi-map-playback)
+
 The viewer reuses native character animation data and recently displayed equipment during playback. Map and sky rendering skip blocks of triangles outside the camera. Auto responds earlier when repeated long frames dominate playback and can turn off HDR multisampling at its resolution floor. [Measured behavior and remaining stalls](VERIFICATION.md#in-game-playback-stalls)
 
 Official map coverage can be inspected by Steam manifest, shader family, prepared tier and capture result. A new map using known material inputs follows the same preparation path. Desktop and mobile support a static approximation of verified Source water. Unsupported water stays listed in the audit. The production viewer can be captured privately at a known player and tick for regression checks. Dropped equipment holds its last resting pose until the recorded movement interval. [Coverage and limitations](VERIFICATION.md#map-graphics-and-recorded-equipment)

@@ -7,12 +7,83 @@ import { join } from 'node:path';
 import { Document, NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { getBounds } from '@gltf-transform/functions';
+import { MeshoptSimplifier } from 'meshoptimizer';
+import { compactBoundaryLocks, simplifyCompactBoundaries } from './compact-map-boundaries.mjs';
 import { MeshoptDecoder } from './meshopt-glb.mjs';
-import { prepareCompactMap } from './prepare-compact-map.mjs';
+import { compactSimplificationRatio, prepareCompactMap } from './prepare-compact-map.mjs';
 import { verifyPreparedGlb } from './prepared-glb.mjs';
 import sharp from 'sharp';
 
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
+
+test('large compact maps target the published triangle budget before simplification', () => {
+  assert.equal(compactSimplificationRatio(1_000_000), 0.22);
+  // A native Dust2 input previously retained 602,471 triangles and lost its
+  // whole compact tier at the final 450,000 triangle check.
+  const source = 2_735_787;
+  assert.ok(source * 0.22 > 450_000);
+  assert.ok(source * compactSimplificationRatio(source) < 450_000);
+  // Batch constraints can also overshoot just below the nominal limit.
+  assert.ok(compactSimplificationRatio(2_000_000) < 0.22);
+});
+
+test('compact boundaries pin positions shared by other batches, including repeated material vertices', async () => {
+  await MeshoptSimplifier.ready;
+  const first = new Float32Array([0, 0, 0, 0, 0, 0, 2, 1, 0, 2, 1, 0]);
+  const second = new Float32Array([2, 1, 0, 4, 0, 0, 3, 2, 0]);
+  const third = new Float32Array([4, 0, 0, 6, 0, 0, 5, 2, 0]);
+  assert.deepEqual(
+    compactBoundaryLocks([first, second, third]).map((locks) => [...locks]),
+    [
+      [0, 0, 1, 1],
+      [1, 1, 0],
+      [1, 0, 0],
+    ],
+  );
+});
+
+test('shared-border simplification keeps adjacent batches and their entire common edge', async () => {
+  await MeshoptSimplifier.ready;
+  const document = new Document();
+  const buffer = document.createBuffer();
+  const scene = document.createScene();
+  const length = 16;
+  const batches = [];
+  for (const side of [-1, 1]) {
+    const positions = [],
+      colors = [],
+      indices = [];
+    for (let y = 0; y < length; y++) {
+      positions.push(0, y, 0, side, y, 0);
+      colors.push(80, 100, 120, 80, 100, 120);
+      const i = y * 2;
+      if (y + 1 < length) indices.push(i, i + 1, i + 2, i + 1, i + 3, i + 2);
+    }
+    const attribute = (type, array) =>
+      document.createAccessor().setBuffer(buffer).setType(type).setArray(array);
+    const primitive = document
+      .createPrimitive()
+      .setIndices(attribute('SCALAR', Uint16Array.from(indices)))
+      .setAttribute('POSITION', attribute('VEC3', Float32Array.from(positions)))
+      .setAttribute('COLOR_0', attribute('VEC3', Uint8Array.from(colors)).setNormalized(true));
+    scene.addChild(document.createNode().setMesh(document.createMesh().addPrimitive(primitive)));
+    batches.push(primitive);
+  }
+  simplifyCompactBoundaries(document, 0.1);
+  for (const primitive of batches) {
+    assert.ok(primitive.getIndices().getCount() >= 3);
+    const points = primitive.getAttribute('POSITION');
+    const ys = new Set();
+    for (let i = 0; i < points.getCount(); i++) {
+      const [x, y] = points.getElement(i, []);
+      if (x === 0) ys.add(y);
+    }
+    assert.deepEqual(
+      [...ys].sort((a, b) => a - b),
+      Array.from({ length }, (_, i) => i),
+    );
+  }
+});
 
 test('a compact tier binds its prepared source and retains placed opaque surfaces and colors', async () => {
   const root = await mkdtemp(join(tmpdir(), 'cswatch-compact-test-'));

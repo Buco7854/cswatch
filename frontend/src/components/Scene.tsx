@@ -1471,11 +1471,15 @@ export default function Scene({
     () => ({ identity: equipmentIdentity, report: reportAgent }),
     [equipmentIdentity, reportAgent],
   );
-  const agentCounts = Object.entries(
-    agentStatuses.identity === equipmentIdentity ? agentStatuses.items : {},
-  )
-    .filter(([id]) => !id.startsWith('death:'))
-    .map(([, status]) => status);
+  const agentCounts = useMemo(() => {
+    const counts = { ready: 0, pending: 0, error: 0 };
+    if (agentStatuses.identity === equipmentIdentity)
+      for (const [id, status] of Object.entries(agentStatuses.items)) {
+        // Only living actors contribute to the live roster. Every mounted rig must finish loading.
+        if (status !== 'ready' || !id.startsWith('death:')) counts[status]++;
+      }
+    return counts;
+  }, [agentStatuses, equipmentIdentity]);
   const currentPlayers = frameAt(data, tick).frame.players;
   const viewedAgentId =
     currentPlayers.find((player) => player.id === selected)?.id || currentPlayers[0]?.id;
@@ -1519,9 +1523,16 @@ export default function Scene({
       ),
     [itemIndex, tick, data.itemState],
   );
-  const equipmentCounts = Object.values(
-    equipmentStatuses.identity === equipmentIdentity ? equipmentStatuses.items : {},
-  );
+  const equipmentCounts = useMemo(() => {
+    const counts = { ready: 0, pending: 0, error: 0 };
+    const readyInstances: string[] = [];
+    if (equipmentStatuses.identity === equipmentIdentity)
+      for (const [id, status] of Object.entries(equipmentStatuses.items)) {
+        counts[status]++;
+        if (status === 'ready') readyInstances.push(id);
+      }
+    return { ...counts, readyInstances: readyInstances.sort().join(',') };
+  }, [equipmentStatuses, equipmentIdentity]);
   const [fallbackLow, setFallbackLow] = useState(
     () =>
       window.matchMedia('(max-width:780px),(pointer:coarse)').matches ||
@@ -1711,11 +1722,9 @@ export default function Scene({
     },
     [rendererAttempt],
   );
-  const equipmentReady = equipmentCounts.filter((status) => status === 'ready').length;
+  const equipmentReady = equipmentCounts.ready;
   const equipmentFailed =
-    equipmentAssets.status === 'error'
-      ? expectedEquipment.length
-      : equipmentCounts.filter((status) => status === 'error').length;
+    equipmentAssets.status === 'error' ? expectedEquipment.length : equipmentCounts.error;
   const equipmentUnavailable =
     equipmentAssets.status === 'pending' || equipmentAssets.status === 'error'
       ? 0
@@ -1734,10 +1743,7 @@ export default function Scene({
     equipmentAssets.status === 'pending'
       ? expectedEquipment.length
       : equipmentActive
-        ? Math.max(
-            0,
-            expectedEquipment.length - equipmentReady - equipmentFailed - equipmentUnavailable,
-          )
+        ? equipmentCounts.pending
         : 0;
   const smokeEnabled = surface === '3d' && !preview && settings.utilities;
   const smokeFailed = smokeEnabled && smokeUnavailable;
@@ -1868,24 +1874,17 @@ export default function Scene({
       data-render-resolution={resolution}
       data-live-shadows={shadows}
       data-agent-model-state={agentAssets.status}
-      data-agent-ready-count={agentCounts.filter((status) => status === 'ready').length}
-      data-agent-fallback-count={Math.max(
-        0,
-        visibleAgentCount - agentCounts.filter((status) => status === 'ready').length,
-      )}
-      data-agent-error-count={agentCounts.filter((status) => status === 'error').length}
+      data-agent-ready-count={agentCounts.ready}
+      data-agent-pending-count={agentCounts.pending}
+      data-agent-fallback-count={Math.max(0, visibleAgentCount - agentCounts.ready)}
+      data-agent-error-count={agentCounts.error}
       data-equipment-model-state={equipmentAssets.status}
       data-equipment-expected-count={expectedEquipment.length}
+      data-equipment-pending-count={equipmentPending}
       data-equipment-unavailable-count={unavailableEquipment}
-      data-equipment-ready-count={equipmentCounts.filter((status) => status === 'ready').length}
-      data-equipment-error-count={equipmentCounts.filter((status) => status === 'error').length}
-      data-equipment-ready-instances={Object.entries(
-        equipmentStatuses.identity === equipmentIdentity ? equipmentStatuses.items : {},
-      )
-        .filter(([, status]) => status === 'ready')
-        .map(([id]) => id)
-        .sort()
-        .join(',')}
+      data-equipment-ready-count={equipmentReady}
+      data-equipment-error-count={equipmentCounts.error}
+      data-equipment-ready-instances={equipmentCounts.readyInstances}
       data-recorded-world-item-count={liveItems.length}
       data-recorded-item-rotation-count={
         liveItems.filter((item) => item.pitch !== undefined).length

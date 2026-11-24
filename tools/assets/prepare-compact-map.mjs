@@ -25,9 +25,13 @@ import { writeTierMetadata } from './map-tier-output.mjs';
 import { writePreparedModel } from './prepared-model-output.mjs';
 import limits from '../../shared/compact-map.json' with { type: 'json' };
 
+import { simplifyCompactBoundaries } from './compact-map-boundaries.mjs';
+
 const cellSize = 32;
-const maxSourceVertices = 4_000_000;
-const maxSourceIndices = 12_000_000;
+const maxLockedPassVertices = 4_000_000;
+const maxLockedPassIndices = 12_000_000;
+const maxSourceVertices = 6_000_000;
+const maxSourceIndices = 18_000_000;
 const maxSourceBytes = 512 * 1024 ** 2;
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const linear = (value) => (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
@@ -74,8 +78,13 @@ function supportedNode(node, animated) {
   return true;
 }
 
-/** Derive a texture-free, spatially batched world from a prepared Source map. */
-async function buildCompactMap(source) {
+// The simplifier targets each spatial batch independently. Locked borders and
+// the geometric error limit can leave more triangles than the requested ratio.
+export function compactSimplificationRatio(sourceTriangles, budgetFraction = 0.85) {
+  return Math.min(0.22, (limits.triangles * budgetFraction) / sourceTriangles);
+}
+
+function compactSource(source) {
   const original = source.getRoot(),
     scene = original.getDefaultScene() ?? original.listScenes()[0];
   if (!scene) return;
@@ -88,19 +97,7 @@ async function buildCompactMap(source) {
   scene.traverse((node) => {
     if (node.getMesh() && supportedNode(node, animated)) nodes.push(node);
   });
-  const document = new Document(),
-    buffer = document.createBuffer(),
-    world = document.createScene('Compact world'),
-    opaque = document.createMaterial('Opaque surfaces').setRoughnessFactor(1).setMetallicFactor(0),
-    sided = document
-      .createMaterial('Two-sided surfaces')
-      .setRoughnessFactor(1)
-      .setMetallicFactor(0)
-      .setDoubleSided(true);
-  document.getRoot().setDefaultScene(world);
-  const samples = new Map(),
-    colors = new Map(),
-    cells = new Map();
+  const entries = [];
   let vertices = 0,
     indices = 0;
   for (const node of nodes) {
@@ -124,52 +121,84 @@ async function buildCompactMap(source) {
       vertices += count;
       indices += indexCount;
       if (vertices > maxSourceVertices || indices > maxSourceIndices) return;
-      if (!colors.has(material)) colors.set(material, await colorOf(material, samples));
-      const color = colors.get(material);
-      const encodedColor = new Uint8Array(count * 3);
-      const c = color.slice(0, 3).map((value) => Math.round(Math.min(1, Math.max(0, value)) * 255));
-      for (let vertex = 0; vertex < count; vertex++) encodedColor.set(c, vertex * 3);
-      const positions = document
-        .createAccessor()
-        .setBuffer(buffer)
-        .setType('VEC3')
-        .setArray(position.getArray().slice())
-        .setNormalized(position.getNormalized());
-      const indexArray = index
-        ? Uint32Array.from(index)
-        : Uint32Array.from({ length: count }, (_, i) => i);
-      if (indexArray.some((entry) => entry >= count))
-        throw new Error('Invalid compact source index.');
-      const twoSided = material?.getDoubleSided();
-      const primitive = document
-        .createPrimitive()
-        .setMaterial(twoSided ? sided : opaque)
-        .setAttribute('POSITION', positions)
-        .setAttribute(
-          'COLOR_0',
-          document
-            .createAccessor()
-            .setBuffer(buffer)
-            .setType('VEC3')
-            .setArray(encodedColor)
-            .setNormalized(true),
-        )
-        .setIndices(
-          document.createAccessor().setBuffer(buffer).setType('SCALAR').setArray(indexArray),
-        );
-      transformPrimitive(primitive, matrix);
-      const min = positions.getMin([]),
-        max = positions.getMax([]);
-      if (![...min, ...max].every((value) => Number.isFinite(value) && Math.abs(value) <= 100_000))
-        throw new Error('Invalid compact source bounds.');
-      const key = [
-        Boolean(twoSided),
-        ...min.map((value, axis) => Math.floor((value + max[axis]) / 2 / cellSize)),
-      ].join(':');
-      const batch = cells.get(key) ?? [];
-      batch.push(primitive);
-      cells.set(key, batch);
+      entries.push({ matrix, position, material, count, index });
     }
+  }
+  return { entries, vertices, indices };
+}
+
+/** Derive a texture-free, spatially batched world from a prepared Source map. */
+async function buildCompactMap(input, colors, mode) {
+  const { entries, indices } = input;
+  const sharedBorders = mode === 'shared';
+  const document = new Document(),
+    buffer = document.createBuffer(),
+    world = document.createScene('Compact world'),
+    opaque = document.createMaterial('Opaque surfaces').setRoughnessFactor(1).setMetallicFactor(0),
+    sided = document
+      .createMaterial('Two-sided surfaces')
+      .setRoughnessFactor(1)
+      .setMetallicFactor(0)
+      .setDoubleSided(true);
+  document.getRoot().setDefaultScene(world);
+  const samples = new Map(),
+    cells = new Map();
+  for (const { matrix, position, material, count, index } of entries) {
+    if (!colors.has(material)) colors.set(material, await colorOf(material, samples));
+    const color = colors.get(material);
+    const encodedColor = new Uint8Array(count * 3);
+    const c = color.slice(0, 3).map((value) => Math.round(Math.min(1, Math.max(0, value)) * 255));
+    for (let vertex = 0; vertex < count; vertex++) encodedColor.set(c, vertex * 3);
+    const positions = document
+      .createAccessor()
+      .setBuffer(buffer)
+      .setType('VEC3')
+      .setArray(position.getArray().slice())
+      .setNormalized(position.getNormalized());
+    const indexArray = index
+      ? Uint32Array.from(index)
+      : Uint32Array.from({ length: count }, (_, i) => i);
+    if (indexArray.some((entry) => entry >= count))
+      throw new Error('Invalid compact source index.');
+    const twoSided = material?.getDoubleSided();
+    const primitive = document
+      .createPrimitive()
+      .setMaterial(twoSided ? sided : opaque)
+      .setAttribute('POSITION', positions)
+      .setAttribute(
+        'COLOR_0',
+        document
+          .createAccessor()
+          .setBuffer(buffer)
+          .setType('VEC3')
+          .setArray(encodedColor)
+          .setNormalized(true),
+      )
+      .setIndices(
+        document.createAccessor().setBuffer(buffer).setType('SCALAR').setArray(indexArray),
+      );
+    transformPrimitive(primitive, matrix);
+    if (mode !== 'original') {
+      // After the world transform, adjacent source meshes can disagree by a
+      // few micrometres. Align positions before welding within each colored
+      // spatial batch. Canonical zero also matches across spatial batches.
+      const coordinates = positions.getArray();
+      for (let i = 0; i < coordinates.length; i++) {
+        const aligned = Math.round(coordinates[i] / 0.0001) * 0.0001;
+        coordinates[i] = sharedBorders && aligned === 0 ? 0 : aligned;
+      }
+    }
+    const min = positions.getMin([]),
+      max = positions.getMax([]);
+    if (![...min, ...max].every((value) => Number.isFinite(value) && Math.abs(value) <= 100_000))
+      throw new Error('Invalid compact source bounds.');
+    const key = [
+      Boolean(twoSided),
+      ...min.map((value, axis) => Math.floor((value + max[axis]) / 2 / cellSize)),
+    ].join(':');
+    const batch = cells.get(key) ?? [];
+    batch.push(primitive);
+    cells.set(key, batch);
   }
   if (!cells.size || cells.size > limits.primitives) return;
   for (const [key, batch] of cells) {
@@ -180,9 +209,21 @@ async function buildCompactMap(source) {
   await document.transform(
     prune({ keepAttributes: true }),
     weld(),
-    simplify({ simplifier: MeshoptSimplifier, ratio: 0.22, error: 0.004, lockBorder: true }),
+    sharedBorders
+      ? (doc) => simplifyCompactBoundaries(doc, compactSimplificationRatio(indices / 3, 0.875))
+      : simplify({
+          simplifier: MeshoptSimplifier,
+          ratio: compactSimplificationRatio(indices / 3, mode === 'aligned' ? 0.68 : 0.85),
+          error: 0.004,
+          lockBorder: true,
+        }),
     reorder({ encoder: MeshoptEncoder, target: 'size' }),
-    quantize({ pattern: /^(POSITION|COLOR_0)$/, quantizePosition: 14, quantizeColor: 8 }),
+    quantize({
+      pattern: /^(POSITION|COLOR_0)$/,
+      quantizePosition: sharedBorders ? 16 : 14,
+      quantizeColor: 8,
+      quantizationVolume: sharedBorders ? 'scene' : 'mesh',
+    }),
     prune({ keepAttributes: true }),
   );
   const primitives = document
@@ -193,8 +234,13 @@ async function buildCompactMap(source) {
     (sum, primitive) => sum + primitive.getIndices().getCount() / 3,
     0,
   );
-  if (!triangles || triangles > limits.triangles) return;
-  return { document, triangles, primitives: primitives.length, sourceTriangles: indices / 3 };
+  if (!triangles) return;
+  return {
+    document: triangles <= limits.triangles ? document : null,
+    triangles,
+    primitives: primitives.length,
+    sourceTriangles: indices / 3,
+  };
 }
 
 export async function prepareCompactMap({ input, output, map }) {
@@ -234,8 +280,22 @@ export async function prepareCompactMap({ input, output, map }) {
     .registerExtensions([...ALL_EXTENSIONS, MapBakedLightingExtension])
     .registerDependencies({ 'meshopt.decoder': MeshoptDecoder })
     .setAllowNetwork(false);
-  const compact = await buildCompactMap(await io.readBinary(bytes));
-  if (!compact) return;
+  const decoded = await io.readBinary(bytes);
+  const colors = new Map();
+  const geometry = compactSource(decoded);
+  if (!geometry) return;
+  let compact;
+  const large =
+    geometry.vertices > maxLockedPassVertices || geometry.indices > maxLockedPassIndices;
+  // Every retry starts from the original mobile world. Skip the expensive locked passes
+  // when the source exceeds their input budget.
+  if (!large) {
+    compact = await buildCompactMap(geometry, colors, 'original');
+    if (compact?.document === null) compact = await buildCompactMap(geometry, colors, 'aligned');
+  }
+  if (large || compact?.document === null)
+    compact = await buildCompactMap(geometry, colors, 'shared');
+  if (!compact?.document) return;
   const encoded = (await compressGlbGeometry(await io.writeBinary(compact.document))).bytes;
   if (encoded.length > limits.bytes || encoded.length >= verified.bytes) return;
   const manifest = {

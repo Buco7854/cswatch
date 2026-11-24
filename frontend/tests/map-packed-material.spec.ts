@@ -2,13 +2,13 @@ import { expect, test } from '@playwright/test';
 import { build } from 'esbuild';
 import { fileURLToPath } from 'node:url';
 
-test('packed world material keeps all three PBR channels and an independent occlusion UV', async ({
+test('packed world and equipment materials keep all three PBR channels and an independent occlusion UV', async ({
   page,
 }) => {
   const bundle = await build({
     stdin: {
       contents:
-        "export * as T from 'three'; export { reusePackedMapSamples } from './src/map-packed-material';",
+        "export * as T from 'three'; export { reusePackedSceneSamples } from './src/packed-material';",
       resolveDir: fileURLToPath(new URL('../', import.meta.url)),
     },
     bundle: true,
@@ -24,7 +24,7 @@ test('packed world material keeps all three PBR channels and an independent occl
   );
   await page.goto('/__packed_map__/');
   const results = await page.evaluate(async () => {
-    const { T, reusePackedMapSamples } = await import(
+    const { T, reusePackedSceneSamples } = await import(
       /* @vite-ignore */ '/__packed_map__/lib.js' as string
     );
     const renderer = new T.WebGLRenderer({
@@ -42,13 +42,14 @@ test('packed world material keeps all three PBR channels and an independent occl
     shifted.offset.x = 0.5;
     shifted.wrapS = T.RepeatWrapping;
     const results = [];
-    for (const [metal, ao] of [
-      [texture, texture],
-      [texture, shifted],
-      [shifted, texture],
+    for (const [metal, ao, Material] of [
+      [texture, texture, T.MeshStandardMaterial],
+      [texture, shifted, T.MeshStandardMaterial],
+      [shifted, texture, T.MeshStandardMaterial],
+      [texture, texture, T.MeshPhysicalMaterial],
     ]) {
       const scene = new T.Scene();
-      const mat = new T.MeshStandardMaterial({
+      const mat = new Material({
         aoMap: ao,
         roughnessMap: texture,
         metalnessMap: metal,
@@ -79,7 +80,7 @@ test('packed world material keeps all three PBR channels and an independent occl
         return { data, uniforms };
       };
       const before = sample();
-      reusePackedMapSamples([scene]);
+      reusePackedSceneSamples([scene]);
       mat.needsUpdate = true;
       const after = sample();
       results.push({
@@ -106,5 +107,6 @@ test('packed world material keeps all three PBR channels and an independent occl
   expect(results[0].after).toEqual(['roughnessMap']);
   expect(results[1].after).toEqual(['roughnessMap', 'aoMap']);
   expect(results[2].after).toEqual(['roughnessMap', 'metalnessMap', 'aoMap']);
+  expect(results[3].after).toEqual(['roughnessMap']);
   expect(results[0].left).not.toBe(results[1].left);
 });

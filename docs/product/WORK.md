@@ -1,5 +1,7 @@
 # Active work
 
+Multi-map performance checks now cover moving combat and all three player camera modes. A frame-time budget includes delays before the first frame and after the last one. The remaining hardware check is detailed playback on a desktop GPU. [Four-map results and settings](../VERIFICATION.md#multi-map-playback)
+
 Graphics verification covers worker inventory, material handling and private production POV captures. Validate new shader families against their compiled inputs and report missing external references. Hardware frame pacing and native refraction remain open. [Operator procedure](../MAP-ASSETS.md#graphics-coverage-for-the-official-map-inventory)
 
 The shared actor sampler reduces ground stride on curved airborne paths. Uniform climbs and isolated steps lack evidence for that correction. The existing lower-body clips still supply the airborne leg pose. [Verification](../VERIFICATION.md#airborne-arm-and-boot-motion)
