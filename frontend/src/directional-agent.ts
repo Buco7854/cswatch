@@ -184,10 +184,15 @@ export function agentStrideProfile(clips: ClipSet) {
   };
 }
 
-type Track = {
-  bone: Bone;
-  target: 'position' | 'quaternion';
-  interpolant: LinearInterpolant | QuaternionLinearInterpolant;
+type BoneChannel = { bone: string; property: 'position' | 'quaternion' };
+type Curve = {
+  channel: number;
+  values: Float32Array;
+  interpolant: LinearInterpolant | QuaternionLinearInterpolant | null;
+};
+type PoseBank = {
+  bindings: BoneChannel[];
+  curves: Map<DirectionalAgentRole, Curve[]>;
 };
 type Channel = {
   target: Vector3 | Quaternion;
@@ -195,35 +200,54 @@ type Channel = {
   value: Vector3 | Quaternion;
   weight: number;
   masked: boolean;
+  spine: boolean;
 };
 
-function poseTracks(bones: Map<string, Bone>, clip: AnimationClip): Track[] | undefined {
-  const tracks: Track[] = [];
-  const names = new Set<string>();
-  for (const track of clip.tracks) {
-    const match = /^([^\.]+)\.(position|quaternion)$/.exec(track.name);
-    const bone = match && bones.get(match[1]);
-    if (
-      !bone ||
-      !match ||
-      names.has(track.name) ||
-      track.getInterpolation() !== InterpolateLinear ||
-      track.getValueSize() !== (match[2] === 'position' ? 3 : 4) ||
-      track.times.length > 2048 ||
-      !track.validate()
-    )
-      return;
-    names.add(track.name);
-    tracks.push({
-      bone,
-      target: match[2] === 'position' ? 'position' : 'quaternion',
-      interpolant:
-        match[2] === 'position'
-          ? new LinearInterpolant(track.times, track.values, 3)
-          : new QuaternionLinearInterpolant(track.times, track.values, 4),
-    });
+const banks = new WeakMap<ClipSet, PoseBank>();
+function poseBank(clips: ClipSet): PoseBank | undefined {
+  const existing = banks.get(clips);
+  if (existing) return existing;
+  const bank: PoseBank = { bindings: [], curves: new Map() };
+  const indices = new Map<string, number>();
+  for (const [role, { clip }] of clips) {
+    const curves: Curve[] = [];
+    const names = new Set<string>();
+    for (const track of clip.tracks) {
+      let channel = indices.get(track.name);
+      if (channel === undefined) {
+        const match = /^([^\.]+)\.(position|quaternion)$/.exec(track.name);
+        if (!match) return;
+        channel = bank.bindings.length;
+        bank.bindings.push({
+          bone: match[1],
+          property: match[2] === 'position' ? 'position' : 'quaternion',
+        });
+        indices.set(track.name, channel);
+      }
+      const position = bank.bindings[channel].property === 'position';
+      if (
+        names.has(track.name) ||
+        track.getInterpolation() !== InterpolateLinear ||
+        track.getValueSize() !== (position ? 3 : 4) ||
+        track.times.length > 2048 ||
+        !track.validate()
+      )
+        return;
+      names.add(track.name);
+      // Sampling immediately copies the result into a player's pose. Only the
+      // search cursor and scratch result are shared; each time is absolute.
+      const interpolant =
+        track.times.length === 1
+          ? null
+          : position
+            ? new LinearInterpolant(track.times, track.values, 3)
+            : new QuaternionLinearInterpolant(track.times, track.values, 4);
+      curves.push({ channel, values: track.values, interpolant });
+    }
+    bank.curves.set(role, curves);
   }
-  return tracks;
+  banks.set(clips, bank);
+  return bank;
 }
 
 function rigAim(root: Object3D, bones: Map<string, Bone>) {
@@ -264,6 +288,8 @@ function rigAim(root: Object3D, bones: Map<string, Bone>) {
 }
 
 export function createDirectionalAgent(root: Object3D, clips: ClipSet) {
+  const bank = poseBank(clips);
+  if (!bank) return;
   const bones = new Map<string, Bone>();
   root.traverse((node) => {
     if (node instanceof Bone) bones.set(node.name, node);
@@ -272,7 +298,7 @@ export function createDirectionalAgent(root: Object3D, clips: ClipSet) {
   const upper = new Set<Object3D>();
   for (const name of ['spine_0', 'wpnPivot']) bones.get(name)?.traverse((node) => upper.add(node));
   const channels = new Map<string, Channel>();
-  function channelFor(bone: Bone, property: Track['target']) {
+  function channelFor(bone: Bone, property: BoneChannel['property']) {
     const name = bone.name + '.' + property;
     const existing = channels.get(name);
     if (existing) return existing;
@@ -283,19 +309,18 @@ export function createDirectionalAgent(root: Object3D, clips: ClipSet) {
       value: target.clone(),
       weight: 0,
       masked: upper.has(bone),
+      spine: bone.name.startsWith('spine_'),
     };
     channels.set(name, channel);
     return channel;
   }
-  const curves = new Map<DirectionalAgentRole, { track: Track; channel: Channel }[]>();
-  for (const [role, record] of clips) {
-    const tracks = poseTracks(bones, record.clip);
-    if (!tracks) return;
-    curves.set(
-      role,
-      tracks.map((track) => ({ track, channel: channelFor(track.bone, track.target) })),
-    );
+  const bound: Channel[] = [];
+  for (const { bone: name, property } of bank.bindings) {
+    const bone = bones.get(name);
+    if (!bone) return;
+    bound.push(channelFor(bone, property));
   }
+  const curves = bank.curves;
   // A sparse rig can omit an authored key for an aimed joint. Its rest
   // rotation must still be restored before another absolute pose sample.
   if (aim) {
@@ -316,20 +341,23 @@ export function createDirectionalAgent(root: Object3D, clips: ClipSet) {
     else target.lerp(vector.fromArray(data), amount);
   }
   function accumulate(role: DirectionalAgentRole, time: number, weight: number) {
-    for (const { track, channel } of curves.get(role)!) {
-      const data = track.interpolant.evaluate(time);
+    for (const curve of curves.get(role)!) {
+      const channel = bound[curve.channel];
+      const data = curve.interpolant ? curve.interpolant.evaluate(time) : curve.values;
       channel.weight += weight;
       mix(channel.value, data, weight / channel.weight);
     }
   }
   function overlay(role: DirectionalAgentRole, time: number, weight: number, spineWeight = 1) {
-    for (const { track, channel } of curves.get(role)!)
+    for (const curve of curves.get(role)!) {
+      const channel = bound[curve.channel];
       if (channel.masked)
         mix(
           channel.target,
-          track.interpolant.evaluate(time),
-          track.bone.name.startsWith('spine_') ? weight * spineWeight : weight,
+          curve.interpolant ? curve.interpolant.evaluate(time) : curve.values,
+          channel.spine ? weight * spineWeight : weight,
         );
+    }
   }
 
   function carryClass(weapon: string) {

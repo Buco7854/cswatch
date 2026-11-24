@@ -120,6 +120,40 @@ test('requires the complete role set and exact metadata for all authored clips',
   assert.equal(directionalClips(pack.clips, pack.declarations), undefined);
 });
 
+test('shared animation curves bind per actor and sample independently across backward seeks', () => {
+  const { validated } = fixture();
+  const rig = () => {
+    const group = new Group();
+    for (const name of ['root_motion', 'wpnPivot', 'hand_L']) {
+      const bone = new Bone();
+      bone.name = name;
+      group.add(bone);
+    }
+    return group;
+  };
+  const a = rig();
+  const b = rig();
+  const first = createDirectionalAgent(a, validated)!;
+  const second = createDirectionalAgent(b, validated)!;
+  const position = (group: Group) => group.getObjectByName('root_motion')!.position.toArray();
+  const sample = (actor: typeof first, seconds: number) =>
+    actor.sample(seconds, 0, 0, undefined, idle);
+
+  sample(first, 0.15);
+  const early = position(a);
+  sample(second, 0.67);
+  const late = position(b);
+  assert.notDeepEqual(early, late);
+  assert.deepEqual(position(a), early);
+  sample(first, 0.67);
+  sample(second, 0.15);
+  assert.deepEqual(position(a), late);
+  assert.deepEqual(position(b), early);
+  sample(first, 0.15);
+  assert.deepEqual(position(a), early);
+  assert.equal(createDirectionalAgent(new Group(), validated), undefined);
+});
+
 for (const team of ['ct', 't']) {
   test(`${team} sampled pose seeks both ways, carries the weapon rigidly, and clamps death to its last pose`, () => {
     const rig = new Group();
