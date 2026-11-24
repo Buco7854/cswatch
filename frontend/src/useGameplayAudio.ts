@@ -226,6 +226,7 @@ export function useGameplayAudio({
         return at.players.find((player) => player.id === cue.actor);
       },
       mode === 'pov' ? selected : undefined,
+      data.rounds,
     );
   }, [
     active,
