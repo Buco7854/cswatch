@@ -437,6 +437,8 @@ test('graphics inventory includes new unrequested maps and joins exact published
   assert.equal(pack.status, 'ready');
   assert.equal(pack.packId, f.assetPackId);
   assert.equal(pack.environment.sky, true);
+  assert.equal(pack.tiers.compact.status, 'not_found');
+  assert.ok(pack.tiers.desktop.modelBytes >= 24);
   assert.equal(pack.tiers.mobile.capture.status, 'no_capture');
   const auditPath = join(options.assets, pack.tiers.desktop.auditPath);
   const bytes = await readFile(auditPath),
@@ -450,7 +452,7 @@ test('graphics inventory includes new unrequested maps and joins exact published
       ...v,
       index,
       visibility: { status: 'visible' },
-      comparison: { status: 'no-reference' },
+      comparison: { status: 'no-reference', metrics: null },
     })),
     verdict: 'not-evaluated',
   };
@@ -466,6 +468,10 @@ test('graphics inventory includes new unrequested maps and joins exact published
     comparison: { 'no-reference': 1 },
     visibleComparisons: {},
   });
+  capture.views[0].comparison.status = 'matched-external';
+  await write();
+  assert.equal((await desktop()).capture.status, 'invalid_capture');
+  capture.views[0].comparison.status = 'no-reference';
   capture.views[0].eye[1] += 0.1;
   await write();
   assert.equal((await desktop()).capture.status, 'invalid_capture');

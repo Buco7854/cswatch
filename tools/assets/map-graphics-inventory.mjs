@@ -1,4 +1,5 @@
 /** Offline operator inventory for the current preparer and an observed Steam manifest. */
+import compactLimits from '../../shared/compact-map.json' with { type: 'json' };
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { isDeepStrictEqual, parseArgs } from 'node:util';
@@ -32,6 +33,25 @@ const comparisons = new Set([
   'no-reference',
 ]);
 
+function consistentComparison(frame, reference) {
+  const { status, metrics } = frame.comparison;
+  if (status !== 'matched-external' && status !== 'matched-baseline') return metrics === null;
+  const kind =
+    status === 'matched-external' ? 'external-graphics-reference' : 'cswatch-graphics-capture';
+  return (
+    reference?.kind === kind &&
+    /^[a-f0-9]{64}$/.test(frame.comparison.referenceSha256) &&
+    Number.isSafeInteger(metrics?.pixels) &&
+    metrics.pixels > 0 &&
+    Number.isSafeInteger(metrics.changedPixels) &&
+    metrics.changedPixels >= 0 &&
+    metrics.changedPixels <= metrics.pixels &&
+    [metrics.mae, metrics.rmse, metrics.maxError].every(
+      (n) => Number.isFinite(n) && n >= 0 && n <= 255,
+    )
+  );
+}
+
 // Capture reports are local operator evidence. The complete set of planned poses
 // must belong to this exact published tier before counting comparisons.
 export function captureSummary(report, audit, sha256) {
@@ -58,7 +78,8 @@ export function captureSummary(report, audit, sha256) {
       actual?.index !== index ||
       !Object.keys(view).every((key) => isDeepStrictEqual(view[key], actual[key])) ||
       !visibilityStatuses.has(actual.visibility?.status) ||
-      !comparisons.has(actual.comparison?.status)
+      !comparisons.has(actual.comparison?.status) ||
+      !consistentComparison(actual, report.reference)
     )
       return invalid;
     visibility[actual.visibility.status] = (visibility[actual.visibility.status] ?? 0) + 1;
@@ -117,6 +138,8 @@ async function tierReport(assets, captures, pack, tier) {
         auditPath: [...parts, 'visual-audit.json'].join('/'),
         sourceSha256: audit.sourceSha256,
         modelSha256: audit.modelSha256,
+        modelBytes: manifest.bytes,
+        decodedTextureBytes: manifest.textureBudget?.decodedRGBABytes ?? null,
         materialFamilies: audit.materials,
         plannedViews: audit.views.length,
         bakedPrimitives: manifest.bakedLighting?.primitives ?? 0,
@@ -126,6 +149,49 @@ async function tierReport(assets, captures, pack, tier) {
       };
     })) ?? { status: 'audit_unavailable' }
   );
+}
+
+async function compactReport(assets, pack, mobile) {
+  const found = await withDirectory(
+    assets,
+    ['packs', pack.packId, 'maps', pack.map, 'compact'],
+    async (dir) => {
+      try {
+        const data = JSON.parse(await readBytes(dir, 'manifest.json', 16384));
+        if (
+          data.schemaVersion !== 1 ||
+          data.tier !== 'compact' ||
+          data.map !== pack.map ||
+          data.assetVersion !== pack.assetVersion ||
+          mobile.status !== 'audited' ||
+          data.sourceSha256 !== mobile.modelSha256 ||
+          data.sourceBytes !== mobile.modelBytes ||
+          typeof data.outputSha256 !== 'string' ||
+          !/^[a-f0-9]{64}$/.test(data.outputSha256) ||
+          !Number.isSafeInteger(data.triangles) ||
+          data.triangles < 1 ||
+          data.triangles > compactLimits.triangles ||
+          !Number.isSafeInteger(data.bytes) ||
+          data.bytes < 24 ||
+          data.bytes > compactLimits.bytes ||
+          data.bytes >= data.sourceBytes
+        )
+          return { status: 'unavailable' };
+        const model = await regularFile(dir, 'scene.glb', data.bytes, data.bytes);
+        if (!model) return { status: 'unavailable' };
+        await model.close();
+        return {
+          status: 'prepared',
+          modelSha256: data.outputSha256,
+          modelBytes: data.bytes,
+          triangles: data.triangles,
+        };
+      } catch {
+        return { status: 'unavailable' };
+      }
+    },
+  );
+  return found ?? { status: 'not_found' };
 }
 
 async function mapState(jobs, assets, captures, request, id) {
@@ -154,6 +220,7 @@ async function mapState(jobs, assets, captures, request, id) {
   const tiers = {};
   for (const tier of ['desktop', 'mobile'])
     tiers[tier] = await tierReport(assets, captures, pack, tier);
+  tiers.compact = await compactReport(assets, pack, tiers.mobile);
   return { status: 'ready', packId: pack.packId, environment: environment ?? null, tiers };
 }
 

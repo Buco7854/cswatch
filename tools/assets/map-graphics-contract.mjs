@@ -104,6 +104,7 @@ export function readBoundVisualAudit(bytes, manifest) {
   for (const view of audit.views) {
     if (
       !exact(view, ['feature', 'shader', 'action', 'materialName', 'eye', 'target']) ||
+      !['feature', 'shader', 'action'].every((k) => typeof view[k] === 'string') ||
       !keys.has(keyOf(view)) ||
       typeof view.materialName !== 'string' ||
       view.materialName.length > 256 ||
