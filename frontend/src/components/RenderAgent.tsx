@@ -139,6 +139,7 @@ type AgentProps = {
   rate: number;
   speed: number;
   gaitHistory?: GaitHistory;
+  travelMeters?: number;
   directional: DirectionalSample;
   duck: number;
   xrayColor?: string;
@@ -153,6 +154,7 @@ function LoadedAgent({
   url,
   id,
   gaitHistory,
+  travelMeters,
   tick,
   rate,
   speed,
@@ -209,7 +211,19 @@ function LoadedAgent({
   const poseVisible = useMemo(agentPoseVisibility, []);
   useLayoutEffect(() => {
     invalidate();
-  }, [pose, directional, phaseAt, motionAt, tick, rate, speed, duck, invalidate, xrayColor]);
+  }, [
+    pose,
+    directional,
+    phaseAt,
+    motionAt,
+    travelMeters,
+    tick,
+    rate,
+    speed,
+    duck,
+    invalidate,
+    xrayColor,
+  ]);
   useEffect(
     () => () => {
       disposeEquipmentInstance(prepared.root);
@@ -235,7 +249,9 @@ function LoadedAgent({
   useFrame(({ camera }) => {
     if (!poseVisible(camera, prepared.root, xrayEnabled || Boolean(shadowPose))) return;
     const motion = directional.death ? undefined : motionAt?.(tick);
-    const phase = phaseAt?.(tick);
+    const phase =
+      phaseAt?.(tick) ??
+      (travelMeters === undefined ? undefined : travelMeters / strideProfile.referenceStride);
     const actor = prepared.root.parent;
     const lock =
       footLock && actor && motion && motionAt && phaseAt && footPoseAt && phase !== undefined;

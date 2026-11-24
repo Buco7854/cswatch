@@ -20,12 +20,9 @@ export function agentPhaseAt(
   const key = id + ':' + rate + ':' + profile.key;
   let sample = actors.get(key);
   if (!sample) {
-    sample = integrateGait(
-      history.players.find(([actor]) => actor === id)?.[1],
-      rate,
-      profile.strideAt,
-      history.version,
-    );
+    const steps = history.players.find(([actor]) => actor === id)?.[1];
+    if (!steps) return;
+    sample = integrateGait(steps, rate, profile.strideAt, history.version);
     actors.set(key, sample);
   }
   return sample;
@@ -40,7 +37,9 @@ export function agentCenteredMotionAt(history: GaitHistory, id: string, rate: nu
   const key = id + ':' + rate;
   let sample = actors.get(key);
   if (!sample) {
-    sample = centeredGaitMotion(history.players.find(([actor]) => actor === id)?.[1], rate);
+    const steps = history.players.find(([actor]) => actor === id)?.[1];
+    if (!steps) return;
+    sample = centeredGaitMotion(steps, rate);
     actors.set(key, sample);
   }
   return sample;

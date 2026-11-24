@@ -489,6 +489,7 @@ function Agent({
   timing,
   previous,
   gaitHistory,
+  travelMeters,
   action,
 }: {
   position: Position;
@@ -509,6 +510,7 @@ function Agent({
   timing: PoseTiming;
   previous?: PreviousPose;
   gaitHistory?: GaitHistory;
+  travelMeters?: number;
   action?: DirectionalSample['action'];
 }) {
   const pose = playerPose(position, next, alpha, timing);
@@ -565,6 +567,7 @@ function Agent({
           rate={timing.tickRate}
           speed={motion.speed}
           gaitHistory={gaitHistory}
+          travelMeters={travelMeters}
           footPoseAt={footPoseAt}
           floor={contactTrace ?? undefined}
           airborne={airborne}
@@ -1129,6 +1132,7 @@ function World({
                 timing={poseTiming}
                 previous={previousPlayers?.get(p.id)}
                 gaitHistory={gaitHistory}
+                travelMeters={recordedTravel?.(frame, next, p.id, alpha)}
                 action={agentActionAt(
                   agentEvents,
                   draws,
