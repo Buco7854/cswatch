@@ -54,6 +54,7 @@ import {
   frameAt,
   playbackBounds,
   defaultSettings,
+  RENDER_RESOLUTION_MIN,
   shotTracersEnabled,
   type ViewerSettings,
 } from '../playback';
@@ -608,6 +609,7 @@ function Agent({
 function World({
   data,
   low,
+  multisample,
   tick,
   shadows,
   mode,
@@ -637,6 +639,7 @@ function World({
 }: {
   data: Playback;
   low: boolean;
+  multisample: boolean;
   tick: number;
   shadows: boolean;
   mode: string;
@@ -1064,6 +1067,7 @@ function World({
     <SceneGrade
       environment={data.sample ? null : gradeEnvironment}
       low={low}
+      multisample={multisample}
       revision={contextRevision}
       manualWorld={!sky && !showPovEquipment}
     >
@@ -1956,6 +1960,11 @@ export default function Scene({
                       <World
                         data={data}
                         low={low}
+                        multisample={
+                          !adaptive ||
+                          resolution > RENDER_RESOLUTION_MIN ||
+                          resolution === settings.renderResolution
+                        }
                         tick={tick}
                         shadows={shadows}
                         mode={mode}

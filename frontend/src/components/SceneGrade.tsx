@@ -11,12 +11,14 @@ const attachmentBytesPerPixel = 12; // RGBA16F and DEPTH24_STENCIL8
 export default function SceneGrade({
   environment,
   low,
+  multisample,
   revision,
   manualWorld,
   children,
 }: {
   environment: MapEnvironment | null;
   low: boolean;
+  multisample: boolean;
   revision: number;
   manualWorld: boolean;
   children: ReactNode;
@@ -53,7 +55,13 @@ export default function SceneGrade({
   return (
     <MapGradeContext.Provider value={authored?.grade}>
       {renderableFloat && (
-        <GradeFrames key={revision} authored={authored} low={low} manualWorld={manualWorld} />
+        <GradeFrames
+          key={revision}
+          authored={authored}
+          low={low}
+          multisample={multisample}
+          manualWorld={manualWorld}
+        />
       )}
       {children}
     </MapGradeContext.Provider>
@@ -63,10 +71,12 @@ export default function SceneGrade({
 function GradeFrames({
   authored,
   low,
+  multisample,
   manualWorld,
 }: {
   authored?: AuthoredGrade;
   low: boolean;
+  multisample: boolean;
   manualWorld: boolean;
 }) {
   const resources = useRef<{
@@ -78,6 +88,7 @@ function GradeFrames({
     discardAttachments: number[];
     maxEdge: number;
     tested: Vector2;
+    multisample?: boolean;
     usable: boolean;
   }>(null);
   const { gl, invalidate } = useThree();
@@ -141,7 +152,8 @@ function GradeFrames({
     const { target, size, samples, maxEdge } = frame;
     gl.getDrawingBufferSize(size);
     if (!size.x || !size.y) return;
-    if (!frame.tested.equals(size)) {
+    if (!frame.tested.equals(size) || frame.multisample !== multisample) {
+      frame.multisample = multisample;
       // Preserve the selected resolution before spending memory on MSAA.
       // Scale only when a single-sample target would exceed allocation limits.
       const scale = Math.min(
@@ -157,6 +169,7 @@ function GradeFrames({
       frame.intermediate?.dispose();
       frame.intermediate = undefined;
       for (const count of samples) {
+        if (count && !multisample) continue;
         if (width * height * attachmentBytesPerPixel * (count + 1) > attachmentBudget) continue;
         target.dispose();
         target.samples = count;
