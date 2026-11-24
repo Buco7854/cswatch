@@ -3,12 +3,15 @@ import {
   DepthTexture,
   Frustum,
   FrontSide,
+  LessEqualCompare,
+  LinearFilter,
   Matrix4,
   Mesh,
   MeshDepthMaterial,
   MeshStandardMaterial,
   NearestFilter,
   OrthographicCamera,
+  RedFormat,
   Scene,
   Sphere,
   ShaderChunk,
@@ -55,6 +58,7 @@ export function playerShadows() {
       alphaTest: material.alphaTest,
       side: material.shadowSide ?? FrontSide,
       visible: material.visible && !material.transparent,
+      colorWrite: false,
     });
     materials.set(material, result);
     return result;
@@ -137,12 +141,18 @@ export function playerShadows() {
         camera.projectionMatrix,
         camera.matrixWorldInverse,
       );
-      target ??= new WebGLRenderTarget(size, size, {
-        depthTexture: new DepthTexture(size, size),
-        minFilter: NearestFilter,
-        magFilter: NearestFilter,
-      });
-      target.texture.name = 'cswatch-player-shadow';
+      if (!target) {
+        const texture = new DepthTexture(size, size);
+        texture.compareFunction = LessEqualCompare;
+        texture.minFilter = texture.magFilter = LinearFilter;
+        target = new WebGLRenderTarget(size, size, {
+          depthTexture: texture,
+          format: RedFormat,
+          minFilter: NearestFilter,
+          magFilter: NearestFilter,
+        });
+        target.texture.name = 'cswatch-player-shadow';
+      }
       depth.cswatchPlayerDepth.value = target.depthTexture;
       depth.cswatchPlayerShadows.value = true;
       const previous = renderer.getRenderTarget();
@@ -203,7 +213,7 @@ export function playerShadows() {
               `#include <common>
               varying vec3 vPlayerWorld;
               uniform bool cswatchPlayerShadows;
-              uniform sampler2D cswatchPlayerDepth;
+              uniform highp sampler2DShadow cswatchPlayerDepth;
               uniform mat4 cswatchPlayerProjection;
               uniform float cswatchPlayerBias;
 
@@ -213,21 +223,14 @@ export function playerShadows() {
                 vec3 uv = clip.xyz * 0.5 + 0.5;
                 if (any(lessThanEqual(uv, vec3(0.0))) || any(greaterThanEqual(uv, vec3(1.0))))
                   return 1.0;
-                vec2 texel = uv.xy * ${size}.0 - 0.5;
-                vec2 fraction = fract(texel);
-                vec2 origin = (floor(texel) + 0.5) / ${size}.0;
-                float threshold = uv.z - cswatchPlayerBias;
-                float a = step(threshold, texture2D(cswatchPlayerDepth, origin).r);
-                float b = step(threshold, texture2D(cswatchPlayerDepth, origin + vec2(1.0, 0.0) / ${size}.0).r);
-                float c = step(threshold, texture2D(cswatchPlayerDepth, origin + vec2(0.0, 1.0) / ${size}.0).r);
-                float d = step(threshold, texture2D(cswatchPlayerDepth, origin + vec2(1.0) / ${size}.0).r);
-                return mix(mix(a, b, fraction.x), mix(c, d, fraction.x), fraction.y);
+                return texture(cswatchPlayerDepth, vec3(uv.xy, uv.z - cswatchPlayerBias));
               }`,
             )
             .replace('#include <lights_fragment_begin>', ShaderChunk.lights_fragment_begin)
             .replace(directional, attenuation);
         };
-        result.customProgramCacheKey = () => material.customProgramCacheKey() + ':player-sun';
+        result.customProgramCacheKey = () =>
+          material.customProgramCacheKey() + ':player-sun-depth-compare';
         clones.set(material, result);
         return result;
       }
