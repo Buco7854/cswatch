@@ -3,7 +3,7 @@ import { accountStatus, configForSyntheticAccount } from './fixtures/account-sta
 import { chooseSelectOption } from './fixtures/select-control';
 import { installMapBreakableProbe, renderedMapBreakables } from './fixtures/map-breakables';
 import { chooseCameraControl, expectCameraControl } from './fixtures/viewer-transport';
-import { fulfillReplayFixture } from './fixtures/streamed-replay';
+import { fulfillReplayFixture, replayFixture } from './fixtures/streamed-replay';
 import { manualMapAssets } from './fixtures/map-assets';
 import { installMemberWorkspace, memberUser } from './fixtures/member-workspace';
 import { installOriginalCameraProbe, originalFloorPixel } from './fixtures/original-camera';
@@ -36,6 +36,7 @@ async function install(
     playback?: ReturnType<typeof originalMapReplay>;
     crosshair?: boolean;
     quality?: string;
+    renderResolution?: number;
   } = {},
 ) {
   const map = options.map || qaMap,
@@ -43,7 +44,7 @@ async function install(
   let discoveries = 0,
     models = 0;
   await page.addInitScript(
-    ({ theme, crosshair, language, quality }) => {
+    ({ theme, crosshair, language, quality, renderResolution }) => {
       localStorage.setItem('theme', theme);
       localStorage.setItem('cswatch.language', language);
       ['viewer-settings-v2', 'viewer-settings-v2-mobile'].forEach((key) =>
@@ -51,6 +52,7 @@ async function install(
           key,
           JSON.stringify({
             quality,
+            renderResolution,
             autoHideControls: false,
             matchScore: false,
             killReplay: false,
@@ -65,6 +67,7 @@ async function install(
       crosshair: options.crosshair ?? false,
       language: options.language || 'en',
       quality: options.quality || 'high',
+      renderResolution: options.renderResolution,
     },
   );
   await page.route(`**/api/demos/${id}`, (route) =>
@@ -214,7 +217,36 @@ test.describe('dense displays', () => {
     const highDpr = Math.sqrt((4 * 1024 ** 2) / (1280 * 720));
     await expect.poll(buffer).toEqual([Math.floor(1280 * highDpr), Math.floor(720 * highDpr)]);
   });
-  test('pausing restores detail after slow playback, and resuming retains the learned resolution', async ({
+  test('the explicit 50% ceiling preserves the same pixel dimensions when playback starts', async ({
+    page,
+  }) => {
+    test.skip(Boolean(process.env.E2E_PRIVATE));
+    await page.setViewportSize({ width: 390, height: 400 });
+    await setRendererEvidence(page, 'ANGLE (Qualcomm, Adreno 740)');
+    const replay = originalMapReplay();
+    replay.frames[1].tick = 6400;
+    await install(
+      page,
+      { model: null, mobile: `/map-assets/${qaMap}/mobile/scene.glb`, overview: null },
+      { quality: 'auto', renderResolution: 50, playback: replay },
+    );
+    await open(page);
+    const scene = page.locator('.scene');
+    await expect(scene).toHaveAttribute('data-map-model-state', 'ready');
+    const width = () =>
+      scene
+        .locator('canvas')
+        .evaluate(
+          (canvas) => (canvas as HTMLCanvasElement).getContext('webgl2')!.drawingBufferWidth,
+        );
+    await expect.poll(width).toBe(390);
+    const timeline = page.locator('.timeline-slider');
+    const first = Number(await timeline.inputValue());
+    await page.getByRole('button', { name: 'Play', exact: true }).click();
+    await expect.poll(async () => Number(await timeline.inputValue())).toBeGreaterThan(first);
+    await expect.poll(width).toBe(390);
+  });
+  test('slow playback keeps its learned resolution while buffering and restores detail on pause', async ({
     page,
   }) => {
     test.skip(Boolean(process.env.E2E_PRIVATE));
@@ -227,13 +259,25 @@ test.describe('dense displays', () => {
       window.cancelAnimationFrame = (id) => window.clearTimeout(id);
     });
     const replay = originalMapReplay();
-    replay.frames[1].tick = 6400;
-    await install(
+    replay.frames = Array.from({ length: 601 }, (_, index) => ({
+      ...replay.frames[0],
+      tick: 4 * index,
+    }));
+    const fixture = await install(
       page,
       { model: null, mobile: `/map-assets/${qaMap}/mobile/scene.glb`, overview: null },
       { quality: 'auto', playback: replay },
     );
-    await open(page);
+    const { manifest, chunks } = await replayFixture(replay);
+    const playbackUrl = `**/api/demos/${fixture.id}/playback`;
+    await page.route(playbackUrl, (route) => route.fulfill({ json: manifest }));
+    const nextChunk = Promise.withResolvers<void>();
+    await page.route(`${playbackUrl}/chunks/*`, async (route) => {
+      const index = Number(new URL(route.request().url()).pathname.split('/').at(-1));
+      if (index === 1) await nextChunk.promise;
+      await route.fulfill({ contentType: 'application/json', body: chunks[index] });
+    });
+    await open(page, fixture.id + '?tick=1400');
     const scene = page.locator('.scene');
     const width = () =>
       scene
@@ -248,6 +292,16 @@ test.describe('dense displays', () => {
     await page.getByRole('button', { name: 'Pause', exact: true }).click();
     await expect.poll(width).toBe(780);
     await page.getByRole('button', { name: 'Play', exact: true }).click();
+    await expect.poll(width).toBeLessThan(780);
+    try {
+      await expect(page.locator('.replay-buffer')).toBeVisible({ timeout: 20000 });
+      await expect.poll(width).toBeLessThan(780);
+    } finally {
+      nextChunk.resolve();
+    }
+    await expect
+      .poll(async () => Number(await page.locator('.timeline-slider').inputValue()))
+      .toBeGreaterThan(manifest.chunks[1].startTick);
     await expect.poll(width).toBeLessThan(780);
   });
 });

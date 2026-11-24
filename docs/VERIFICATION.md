@@ -1,5 +1,29 @@
 # Verification record
 
+## Mode geometry and playback
+
+The official Nuke map from depot 2347770, manifest 5924479096069937098, contained five uniquely placed meshes across the ramp shutter, Secret exit and duct with explicit source-disabled state. Three independent 5v5 recordings did not enable the corresponding entities. Recorded live-player movement intersected each of the three closures. In matched 600 × 360 Chromium SwiftShader views, correcting their initial state changed 50,728, 92,054 and 87,642 pixels respectively by more than four channel levels. The view facing away from them was identical. A synthetic broadcast exercises the enabled interval, deletion, rewind and camera collision. No Wingman recording or matching frame from the reported 0:29 shot was available.
+
+The sandboxed Nuke parse with 80,580 ticks kept 23 stationary entity visibility tracks. Its eight knife sound event names mapped to seven distinct prepared WAVs, including 385 light and 320 heavy swing events. The managed sound bank published all 128 approved samples alongside a pre-existing operator bank. The existing bank retained priority for its own entries. Each of the seven knife samples triggered a source and measurable output through Chromium WebAudio. With additional surface names the same recording yielded 1,821 unique recorded footstep cues, up from 1,168. At tick 10,729 a HE grenade was still held. At 10,730 the projectile appeared and the viewmodel released it. The held state returned on rewind. At tick 2,501 the recorded skeleton-knife slash moved the first-person rig and a second seek to 2,504 reproduced its pose. Both native CT and T third-person banks were also rebuilt with the world knife swing. An installer regression exercises an already managed bank missing that single role. These shots use native rig clips. The choice of light or heavy swing audio comes from the recorded sound name. Recordings can lack the evidence needed to distinguish the animation variants.
+
+Death feedback from two Nuke broadcasts produced a tint at all 239 identified victim events, including four without a same-tick hurt. One broadcast allowed 129 turns toward the recorded attacker. The other set the no-replay flag on 108 of 109 deaths and supplied no eligible turn on the remaining death. The turn is a reconstruction over 0.45 seconds, with a fixed eye and shortest yaw path. Reduced motion keeps the victim’s original view direction. Fresh opening, explicitly requested time, seek and rewind are covered in Chromium. These checks do not measure the game client's exact death camera.
+
+## First-view geometry and display resolution
+
+Six alternating runs per build measured CPU mesh-bound preparation and submission for the first High camera view. All 24 lists of submitted triangle ranges matched across eight orientations per map.
+
+| Map     | Previous median | Updated median |
+| ------- | --------------: | -------------: |
+| Cache   |         99.5 ms |          47 ms |
+| Ancient |        193.5 ms |        27.5 ms |
+| Nuke    |        106.5 ms |          22 ms |
+
+A recorded Cache replay with its native mobile GLB at 390 × 400 CSS pixels and DPR 2 held its second chunk at tick 1920. At the explicit 50% setting, previous playback switched from 390 × 400 to 195 × 200. The corrected drawing buffer stayed 390 × 400 throughout. Auto at 100% retained its learned 487 × 500 through buffering and resumed playback, then restored 780 × 800 on an intentional pause. All 624,000 pixels of the matched paused capture were identical. These measurements used headless Chromium 159 and SwiftShader. They establish the CPU cost and target size on these cases. Physical mobile, RTX 3070, all-map GPU frame times and complete parity with CS2 remain unmeasured.
+
+## Admin network diagnosis
+
+Restricted network tests exercise direct LAN clients, trusted single and multi-hop proxy headers, an untrusted immediate connection, duplicate and conflicting headers, unsupported formats and an outside client. Only a signed-in administrator denied by the network receives the structured diagnostic. Its addresses are the canonical socket address and verified client address where available. The rendered Administration page was checked with synthetic addresses on the production build in English and French, light and dark, at 390, 768 and 1440 pixels. The operator's deployed proxy chain was unavailable.
+
 ## First-time official map preparation
 
 The measurements below cover server conversion. The same inputs were run through the released and updated code on this host. No complete cold Steam-to-ready conversion was timed for this change.

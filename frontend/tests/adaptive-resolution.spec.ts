@@ -67,6 +67,6 @@ test('detailed high-density rendering respects the chosen ceiling and the emerge
   expect(adaptiveDetailDpr(2, 85, 85)).toBe(1.7);
   expect(adaptiveDetailDpr(2, 75, 100)).toBe(1.25);
   expect(adaptiveDetailDpr(2, 50, 100)).toBe(0.5);
-  expect(adaptiveDetailDpr(2, 50, 50)).toBe(0.5);
+  expect(adaptiveDetailDpr(2, 50, 50)).toBe(1);
   expect(adaptiveDetailDpr(1, 75, 100)).toBe(0.75);
 });

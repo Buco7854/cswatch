@@ -99,6 +99,11 @@ export class ModelCache<T> {
       },
     };
   }
+  /** Read an already-loaded asset without requesting or extending its lifetime. */
+  peek(url: string) {
+    const entry = this.current.get(url);
+    return entry?.status === 'ready' ? entry.value : undefined;
+  }
   request(url: string, callbacks: ModelLoadCallbacks<T>): void {
     const entry = this.entry(url);
     entry.used = ++this.clock;

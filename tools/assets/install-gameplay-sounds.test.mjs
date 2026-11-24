@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, writeFile, readFile, rm, symlink, readdir } from 'node:
 import { tmpdir } from 'node:os';
 import { join, basename } from 'node:path';
 import { createHash } from 'node:crypto';
+import { managedSoundDirectory } from '../../shared/gameplay-sound-bank.mjs';
 import { installGameplaySounds } from './install-gameplay-sounds.mjs';
 import { buildNetworkDeny } from './build-network-deny.mjs';
 import { soundRegistryIds, gameplaySoundRegistry } from './prepare-gameplay-sounds.mjs';
@@ -62,6 +63,9 @@ test('selective sound acquisition pins/hash-checks sources and isolates conversi
       output = join(root, 'output');
     await mkdir(cache);
     await mkdir(output);
+    await mkdir(join(output, 'sounds'));
+    await writeFile(join(output, 'sounds/operator-file'), 'operator');
+    const generation = join(output, managedSoundDirectory);
     const networkDeny = buildNetworkDeny(join(root, 'boundary')),
       s2v = join(root, 's2v'),
       downloader = join(root, 'downloader');
@@ -81,13 +85,13 @@ test('selective sound acquisition pins/hash-checks sources and isolates conversi
         networkDeny,
         s2v,
         downloader,
-        items,
+        managed: true,
         beforePublish: async () => {
           publications++;
-          const stages = (await readdir(output)).filter((name) => name.startsWith('.sounds-'));
+          const stages = (await readdir(generation)).filter((name) => name.startsWith('.sounds-'));
           assert.equal(stages.length, 1);
           assert.equal(
-            (await readFile(join(output, stages[0], 'ak47-fire/sound.wav'))).length,
+            (await readFile(join(generation, stages[0], 'ak47-fire/sound.wav'))).length,
             wav().length,
           );
         },
@@ -140,6 +144,15 @@ test('selective sound acquisition pins/hash-checks sources and isolates conversi
         },
       },
     );
+    assert.equal(await readFile(join(output, 'sounds/operator-file'), 'utf8'), 'operator');
+    assert.equal(result.output, join(generation, 'sounds'));
+    assert.deepEqual(
+      await installGameplaySounds(
+        { cache, output, manifest: '456', networkDeny, s2v, downloader, managed: true },
+        { run: () => assert.fail('an installed generation needs no source request') },
+      ),
+      { status: 'installed' },
+    );
     assert.equal(steam, 3);
     assert.equal(conversions, 2);
     assert.equal(publications, 1);
@@ -147,7 +160,8 @@ test('selective sound acquisition pins/hash-checks sources and isolates conversi
     assert.equal(result.report.source.manifest, '123');
     assert.equal(result.report.source.resources.length, 2);
     assert.equal(
-      JSON.parse(await readFile(join(output, 'sounds/ak47-fire/manifest.json'), 'utf8')).durationMs,
+      JSON.parse(await readFile(join(generation, 'sounds/ak47-fire/manifest.json'), 'utf8'))
+        .durationMs,
       100,
     );
   } finally {

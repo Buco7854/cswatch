@@ -28,7 +28,8 @@ import { preparerRevision, viewmodelActionSeconds } from '../../backend/dist/ass
 
 const limits = { idleSeconds: 12, samples: 361, channels: 384 };
 const packedSamples = 181;
-const roles = ['arms', 'weapon', 'idle', 'draw', 'fire', 'reload'];
+const actionsToPack = Object.keys(viewmodelActionSeconds);
+const roles = ['arms', 'weapon', 'idle', ...actionsToPack];
 
 function only(items, name) {
   if (items.length !== 1) throw Error('Expected exactly one ' + name);
@@ -285,7 +286,7 @@ async function prepareViewmodel({ equipment, input, output, manifest, muzzle }) 
     throw Error('The native weapon attachment moved during packing.');
 
   const actions = {};
-  for (const role of ['draw', 'fire', 'reload']) {
+  for (const role of actionsToPack) {
     if (!paths[role]) continue;
     actions[role] = addAction({
       clip: await io.read(paths[role]),

@@ -500,6 +500,54 @@
       "source": "sounds/weapons/usp/usp_unsilenced_01.vsnd_c",
       "category": "weapon",
       "weapon": "uspsilencer"
+    },
+    "footstep-metal-solid": {
+      "source": "sounds/player/footsteps/metal_solid_35.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-chainlink": {
+      "source": "sounds/player/footsteps/metal_chainlink_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-grate": {
+      "source": "sounds/player/footsteps/metal_grate_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-glass": {
+      "source": "sounds/player/footsteps/glass_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-railing": {
+      "source": "sounds/player/footsteps/metal_railing_a_02.vsnd_c",
+      "category": "footstep"
+    },
+    "knife-hit-gear": {
+      "source": "sounds/weapons/knife/knife_swish_gear_cloth_hit_01.vsnd_c",
+      "category": "weapon"
+    },
+    "knife-hit-heavy": {
+      "source": "sounds/weapons/knife/knife_hit_light_01.vsnd_c",
+      "category": "weapon"
+    },
+    "knife-hit-light-backstab": {
+      "source": "sounds/weapons/knife/knife_hit_light_backstab_01.vsnd_c",
+      "category": "weapon"
+    },
+    "knife-hit-slice": {
+      "source": "sounds/weapons/knife/knife_hit_heavy_01.vsnd_c",
+      "category": "weapon"
+    },
+    "knife-swish-gear": {
+      "source": "sounds/weapons/knife/knife_swish_gear_cloth_short_01.vsnd_c",
+      "category": "weapon"
+    },
+    "knife-swish-heavy": {
+      "source": "sounds/weapons/knife/knife_swish_heavy_01.vsnd_c",
+      "category": "weapon"
+    },
+    "knife-swish-light": {
+      "source": "sounds/weapons/knife/knife_swish_light_01.vsnd_c",
+      "category": "weapon"
     }
   },
   "events": {
@@ -1103,6 +1151,139 @@
       "hash": 1991628669,
       "volume": 1,
       "pitch": 1
+    },
+    "CT_Ceiling_Tile.StepLeft": {
+      "soundId": "footstep-5f376e116aae",
+      "channel": "sos",
+      "hash": 2240518199,
+      "volume": 1,
+      "pitch": 0.98
+    },
+    "CT_SolidMetal.StepLeft": {
+      "soundId": "footstep-metal-solid",
+      "channel": "sos",
+      "hash": 1803111098,
+      "volume": 1,
+      "pitch": 0.98
+    },
+    "CT_ChainLink.StepLeft": {
+      "soundId": "footstep-chainlink",
+      "channel": "sos",
+      "hash": 3997353267,
+      "volume": 1,
+      "pitch": 0.98
+    },
+    "CT_MetalGrate.StepLeft": {
+      "soundId": "footstep-metal-grate",
+      "channel": "sos",
+      "hash": 123085364,
+      "volume": 0.9,
+      "pitch": 0.98
+    },
+    "CT_Glass.StepLeft": {
+      "soundId": "footstep-glass",
+      "channel": "sos",
+      "hash": 3753692454,
+      "volume": 1,
+      "pitch": 0.98
+    },
+    "CT_Flesh.StepLeft": {
+      "soundId": "footstep",
+      "channel": "sos",
+      "hash": 1690105992,
+      "volume": 1,
+      "pitch": 0.98
+    },
+    "T_Ceiling_Tile.StepLeft": {
+      "soundId": "footstep-5f376e116aae",
+      "channel": "sos",
+      "hash": 1485322532,
+      "volume": 1
+    },
+    "T_ChainLink.StepLeft": {
+      "soundId": "footstep-chainlink",
+      "channel": "sos",
+      "hash": 1598540856,
+      "volume": 1
+    },
+    "T_Glass.StepLeft": {
+      "soundId": "footstep-glass",
+      "channel": "sos",
+      "hash": 1116700262,
+      "volume": 1
+    },
+    "T_MetalGrate.StepLeft": {
+      "soundId": "footstep-metal-grate",
+      "channel": "sos",
+      "hash": 2026488395,
+      "volume": 0.9
+    },
+    "T_SolidMetal.StepLeft": {
+      "soundId": "footstep-metal-solid",
+      "channel": "sos",
+      "hash": 3952104171,
+      "volume": 1
+    },
+    "CT_MetalRailing.StepLeft": {
+      "soundId": "footstep-metal-railing",
+      "channel": "sos",
+      "hash": 3123711576,
+      "volume": 0.7,
+      "pitch": 1
+    },
+    "T_MetalRailing.StepLeft": {
+      "soundId": "footstep-metal-railing",
+      "channel": "sos",
+      "hash": 1770765328,
+      "volume": 0.7,
+      "pitch": 1
+    },
+    "Weapon_Knife.Hit.Gear": {
+      "soundId": "knife-hit-gear",
+      "channel": "weapon-sound",
+      "volume": 0.07,
+      "pitch": 1.0
+    },
+    "Weapon_Knife.Hit.Heavy": {
+      "soundId": "knife-hit-heavy",
+      "channel": "weapon-sound",
+      "volume": 0.7
+    },
+    "Weapon_Knife.Hit.Light.Backstab": {
+      "soundId": "knife-hit-light-backstab",
+      "channel": "weapon-sound",
+      "volume": 0.55,
+      "pitch": 1.0
+    },
+    "Weapon_Knife.Hit.Slice": {
+      "soundId": "knife-hit-slice",
+      "channel": "weapon-sound",
+      "volume": 0.1,
+      "pitch": 1.0
+    },
+    "Weapon_Knife.Swish.Gear": {
+      "soundId": "knife-swish-gear",
+      "channel": "weapon-sound",
+      "volume": 0.04,
+      "pitch": 1.0
+    },
+    "Weapon_Knife.Swish.Gear.Quiet": {
+      "soundId": "knife-swish-gear",
+      "channel": "weapon-sound",
+      "volume": 0.01,
+      "pitch": 1.0
+    },
+    "Weapon_Knife.Swish.Heavy": {
+      "soundId": "knife-swish-heavy",
+      "channel": "weapon-sound",
+      "volume": 0.04,
+      "pitch": 1.0
+    },
+    "Weapon_Knife.Swish.Light": {
+      "soundId": "knife-swish-light",
+      "channel": "weapon-sound",
+      "volume": 0.03,
+      "pitch": 1.0
     }
   }
 }

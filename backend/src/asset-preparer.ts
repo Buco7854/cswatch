@@ -2,12 +2,19 @@ import { z } from 'zod';
 
 /** Bump to invalidate incompatible worker output without touching operator assets. */
 export const preparerRevision = 2 as const;
-export const mapPreparerRevision = 8 as const;
+export const mapPreparerRevision = 9 as const;
 export const presentationDirectory = `presentation-v${preparerRevision}`;
 
 const MiB = 1024 ** 2;
 const hash = z.string().regex(/^[a-f0-9]{64}$/);
-export const viewmodelActionSeconds = { draw: 2.5, fire: 4, reload: 6 } as const;
+export const viewmodelActionSeconds = {
+  draw: 2.5,
+  fire: 4,
+  reload: 6,
+  throw: 2,
+  underhand: 2,
+  slash: 2,
+} as const;
 const action = (maximum: number) =>
   z
     .object({
@@ -45,6 +52,9 @@ export const viewmodelManifest = z
         draw: action(viewmodelActionSeconds.draw),
         fire: action(viewmodelActionSeconds.fire).optional(),
         reload: action(viewmodelActionSeconds.reload).optional(),
+        throw: action(viewmodelActionSeconds.throw).optional(),
+        underhand: action(viewmodelActionSeconds.underhand).optional(),
+        slash: action(viewmodelActionSeconds.slash).optional(),
       })
       .strict(),
   })

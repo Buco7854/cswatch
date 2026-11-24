@@ -90,6 +90,7 @@ import {
   DeathFollowController,
   indexSpectatorEvents,
   killfeedAt,
+  watchedDeath,
 } from '../spectator-state';
 import DamageFeedback from './DamageFeedback';
 import FlashFeedback from './FlashFeedback';
@@ -156,13 +157,15 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
   const [requestedPlayback, setPlaying] = useState(false),
     [tick, setTick] = useState(0),
     [speed, setSpeed] = useState(1),
-    [mode, setMode] = useState(id === 'sample' ? 'orbit' : 'pov'),
+    [requestedMode, setMode] = useState('pov'),
     [selected, setSelected] = useState(''),
     [tab, setTab] = useState('events'),
     [bookmarks, setBookmarks] = useState<Bookmark[]>([]),
     [label, setLabel] = useState(''),
     [showNote, setShowNote] = useState(false),
     [busy, setBusy] = useState(false);
+  const mode = requestedMode === 'pov' && !selected ? 'tactical' : requestedMode;
+  const openedReplay = useRef<string>(undefined);
   const playing = requestedPlayback && !concealed;
   const {
     data,
@@ -183,14 +186,19 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       setTick(initialTick);
       const player = openingPlayer(replay, initialTick, linkedPlayer);
       setSelected(player);
-      setMode((previous) =>
-        previous === '2d' ? previous : replay.sample ? 'orbit' : player ? 'pov' : 'tactical',
-      );
+      const sameReplay = openedReplay.current === audioIdentity;
+      openedReplay.current = audioIdentity;
+      setMode((previous) => (sameReplay && previous === '2d' ? previous : 'pov'));
       setPlaying(false);
     },
     user?.id,
     linkedTick,
   );
+  useEffect(() => {
+    if (!data || selected || requestedMode !== 'pov' || buffering) return;
+    const player = openingPlayer(data, tick);
+    if (player) setSelected(player);
+  }, [data, selected, requestedMode, buffering, tick]);
   const selectPlayer = useCallback(
     (playerId: string, dismissPicker = false) => {
       if (!data?.players.some((player) => player.id === playerId)) return;
@@ -1183,7 +1191,12 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
         ? 0
         : flashFeedbackAt(data, selected, tick)
       : undefined;
-  const scopeFov = showPovEffects && !buffering ? scopedVerticalFov(selectedPosition) : undefined;
+  const livePov =
+    showPovEffects &&
+    !buffering &&
+    selectedPosition?.alive &&
+    !watchedDeath(data, spectatorEvents?.deaths.get(selected), selected, tick, 3, frame);
+  const scopeFov = livePov ? scopedVerticalFov(selectedPosition) : undefined;
   const playerCrosshairCode =
     !buffering && selectedPosition
       ? recordedCrosshairAt(crosshairTimeline, selected, tick)
@@ -1467,7 +1480,8 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
               data={data}
               tick={tick}
               mobile={mobile}
-              playing={playing && !buffering}
+              playing={playing}
+              buffering={buffering}
               mode={mode}
               selected={selected}
               settings={settings}

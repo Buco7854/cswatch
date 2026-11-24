@@ -1,3 +1,4 @@
+import type { FileHandle } from 'node:fs/promises';
 import type { FastifyInstance } from 'fastify';
 import type { SharedGameplaySoundCatalog } from '../../shared/gameplay-sounds.js';
 import { createHash } from 'node:crypto';
@@ -14,6 +15,15 @@ const { inspectGameplayAudio, gameplayAudioLimits } = (await import(
     import.meta.url,
   ).href
 )) as typeof import('../../shared/gameplay-sound-files.mjs');
+const { managedSoundDirectory }: { managedSoundDirectory: string } = await import(
+  new URL(
+    import.meta.url.endsWith('.ts')
+      ? '../../shared/gameplay-sound-bank.mjs'
+      : './gameplay-sound-bank.mjs',
+    import.meta.url,
+  ).href
+);
+
 const manifestSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -26,54 +36,75 @@ const manifestSchema = z
     channels: z.number().int().min(1).max(2),
   })
   .strict();
-/** Reads every immutable descriptor and payload through one directory descriptor. No stat-only trust. */
-async function readGameplaySound(root: string, id: string, descriptorOnly = false) {
+async function installedBanks(root: string) {
+  const banks = [['sounds'], [managedSoundDirectory, 'sounds']];
+  const present = await Promise.all(
+    banks.map((parts) => withDirectory(root, parts, async () => true)),
+  );
+  return banks.filter((_, i) => present[i]);
+}
+
+/** Prefer operator entries and keep descriptor and payload reads on the same precedence rule.
+ * A broken override masks that sample until repaired. */
+async function readGameplaySound(
+  root: string,
+  banks: string[][],
+  id: string,
+  descriptorOnly = false,
+) {
   if (!Object.hasOwn(gameplaySoundRegistry.items, id)) return;
-  return withDirectory(root, ['sounds', id], async (directory) => {
-    const metadata = await regularFile(directory, 'manifest.json', 2, 4096);
-    if (!metadata) return;
-    let descriptor;
-    try {
-      const version = await fileVersion(metadata);
-      descriptor = manifestSchema.parse(
-        JSON.parse(
-          (await bytesFrom(metadata, (await metadata.stat()).size, 4096)).toString('utf8'),
-        ),
-      );
-      if (version !== (await fileVersion(metadata))) return;
-    } finally {
-      await metadata.close();
-    }
-    if (descriptor.id !== id) return;
-    const file = await regularFile(
-      directory,
-      `sound.${descriptor.extension}`,
-      24,
-      gameplayAudioLimits.bytes,
+  for (const parts of banks) {
+    let found = false;
+    const result = await withDirectory(root, [...parts, id], async (directory) => {
+      found = true;
+      return readBankItem(directory, id, descriptorOnly);
+    });
+    if (found) return result;
+  }
+}
+
+async function readBankItem(directory: FileHandle, id: string, descriptorOnly: boolean) {
+  const metadata = await regularFile(directory, 'manifest.json', 2, 4096);
+  if (!metadata) return;
+  let descriptor;
+  try {
+    const version = await fileVersion(metadata);
+    descriptor = manifestSchema.parse(
+      JSON.parse((await bytesFrom(metadata, (await metadata.stat()).size, 4096)).toString('utf8')),
     );
-    if (!file) return;
-    try {
-      const version = await fileVersion(file),
-        info = await file.stat();
-      if (info.size !== descriptor.bytes) return;
-      if (descriptorOnly)
-        return { data: Buffer.alloc(0), descriptor: { ...descriptor, mime: 'audio/wav' as const } };
-      const data = await bytesFrom(file, info.size, gameplayAudioLimits.bytes),
-        sha256 = createHash('sha256').update(data).digest('hex');
-      if (sha256 !== descriptor.sha256 || version !== (await fileVersion(file))) return;
-      const decoded = inspectGameplayAudio(data);
-      if (
-        decoded.extension !== descriptor.extension ||
-        decoded.sampleRate !== descriptor.sampleRate ||
-        decoded.channels !== descriptor.channels ||
-        Math.abs(decoded.durationMs - descriptor.durationMs) > 0.01
-      )
-        return;
-      return { data, descriptor: { ...descriptor, mime: decoded.mime } };
-    } finally {
-      await file.close();
-    }
-  });
+    if (version !== (await fileVersion(metadata))) return;
+  } finally {
+    await metadata.close();
+  }
+  if (descriptor.id !== id) return;
+  const file = await regularFile(
+    directory,
+    `sound.${descriptor.extension}`,
+    24,
+    gameplayAudioLimits.bytes,
+  );
+  if (!file) return;
+  try {
+    const version = await fileVersion(file),
+      info = await file.stat();
+    if (info.size !== descriptor.bytes) return;
+    if (descriptorOnly)
+      return { data: Buffer.alloc(0), descriptor: { ...descriptor, mime: 'audio/wav' as const } };
+    const data = await bytesFrom(file, info.size, gameplayAudioLimits.bytes),
+      sha256 = createHash('sha256').update(data).digest('hex');
+    if (sha256 !== descriptor.sha256 || version !== (await fileVersion(file))) return;
+    const decoded = inspectGameplayAudio(data);
+    if (
+      decoded.extension !== descriptor.extension ||
+      decoded.sampleRate !== descriptor.sampleRate ||
+      decoded.channels !== descriptor.channels ||
+      Math.abs(decoded.durationMs - descriptor.durationMs) > 0.01
+    )
+      return;
+    return { data, descriptor: { ...descriptor, mime: decoded.mime } };
+  } finally {
+    await file.close();
+  }
 }
 export async function gameplaySoundAssetRoutes(
   app: FastifyInstance,
@@ -83,9 +114,10 @@ export async function gameplaySoundAssetRoutes(
   let activePayloads = 0;
   app.get('/api/sound-assets', async () => {
     const items: SharedGameplaySoundCatalog['items'] = {};
+    const banks = await installedBanks(mapsRoot);
     let bytes = 0;
     for (const id of Object.keys(gameplaySoundRegistry.items)) {
-      const result = await readGameplaySound(mapsRoot, id, true);
+      const result = await readGameplaySound(mapsRoot, banks, id, true);
       if (!result) continue;
       const d = result.descriptor;
       bytes += d.bytes;
@@ -125,7 +157,8 @@ export async function gameplaySoundAssetRoutes(
       reply.raw.once('finish', release);
       reply.raw.once('close', release);
       try {
-        result = match && (await readGameplaySound(mapsRoot, match[1]));
+        result =
+          match && (await readGameplaySound(mapsRoot, await installedBanks(mapsRoot), match[1]));
       } catch (error) {
         reading = false;
         release();

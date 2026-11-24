@@ -33,8 +33,9 @@ export function mapDetailDpr(deviceScale: number, area: number, tier: 'mobile' |
 export function adaptiveDetailDpr(targetDpr: number, resolution: number, ceiling: number) {
   const maxDpr = targetDpr * (ceiling / 100);
   const floor = RENDER_RESOLUTION_MIN / 100;
-  if (resolution <= RENDER_RESOLUTION_MIN) return floor;
+  // An explicit ceiling at 50% still means half of the display target.
   if (resolution >= ceiling) return maxDpr;
+  if (resolution <= RENDER_RESOLUTION_MIN) return floor;
   const headroom = (resolution - RENDER_RESOLUTION_MIN) / (ceiling - RENDER_RESOLUTION_MIN);
   return floor + headroom * (maxDpr - floor);
 }

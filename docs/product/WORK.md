@@ -1,5 +1,7 @@
 # Active work
 
+The Nuke ramp shutter, Secret exit and duct now have source-identified checks on revision 9. A recording of a mode that enables the blockers would extend the existing synthetic activation and 5v5 checks. Frame pacing still needs a repeat on a hardware GPU and a physical phone. [Verification](../VERIFICATION.md#mode-geometry-and-playback)
+
 Official map preparation now reports which operation is running. Cold-cache timing on the deployment still needs a full conversion from Steam acquisition to publication. The Cache and Nuke component measurements identify how much time batching the native lighting reads and reusing texture encodes saved locally. [Preparation measurements](../VERIFICATION.md#first-time-official-map-preparation)
 
 Nuke glass checks now cover two breakable window materials and one breakable brush material. Further map checks should include intact texture coverage, the recorded disappearance and adjacent objects. Source reflections, backlighting and physical GPU frame times remain open. [Glass evidence](../VERIFICATION.md#textured-breakable-glass)

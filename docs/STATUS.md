@@ -1,5 +1,9 @@
 # Feature status
 
+Detailed and Compact map preparation now respects source-disabled brush and prop placements. Replay visibility, matched by class, model and transform, can enable them. New demos open on a living player's POV when one is available. A recorded death can produce the POV vignette even without a hurt event. The spectator view turns toward the attacker when the recording supplies both poses and permits replay. Throw releases, knife actions and surface sounds follow recorded events. [Verification and limits](VERIFICATION.md#mode-geometry-and-playback)
+
+The renderer prepares geometry bounds when first needed and during idle periods. Playback keeps its learned resolution through buffering, and applies an explicit resolution scale once on high-density displays. [Three-map checks](VERIFICATION.md#first-view-geometry-and-display-resolution)
+
 The viewer shows the current worker phase while an official map is being prepared. An intact, manifest-verified source cache can skip the initial Steam transfer. Prepared maps keep the same format and reuse rules. [Operator instructions](product/MAP-ACQUISITION.md)
 
 Detailed packs restore the verified source opacity and printed markings on supported glass. Three native Nuke materials now use per-pixel coverage in the existing transparency pass. [Window measurements](VERIFICATION.md#textured-breakable-glass)

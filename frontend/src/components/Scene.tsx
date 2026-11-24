@@ -1,6 +1,7 @@
 import type { WeaponAnchor } from '../agent-attachment';
 import { recordedFootPose, type FootPoseAt } from '../agent-feet';
 import { recordedAirWeight } from '../agent-vertical';
+import { deathCameraEvidence, deathCameraView, watchedDeath } from '../spectator-state';
 import { playerShadows } from '../player-shadows';
 import { PlayerContactShadow, PlayerSunPass } from './PlayerShadow';
 import { t } from '../i18n';
@@ -98,6 +99,7 @@ import {
   deadAgentsAt,
   indexAgentDraws,
   indexAgentEvents,
+  povActionAt,
 } from '../agent-replay';
 import { encodeGaitHistory, type GaitHistory } from '../../../shared/agent-gait-history.mjs';
 import { streamedReplayViews } from '../replay-cache';
@@ -298,11 +300,13 @@ function Model({
   playerLighting,
   mapBreakables,
   mapDoors,
+  mapVisibility,
   tick,
 }: {
   url: string;
   mapBreakables: Playback['mapBreakables'];
   mapDoors: Playback['mapDoors'];
+  mapVisibility: Playback['mapVisibility'];
   tick: number;
   fogResources: SourceFogReference;
   worldFog: boolean;
@@ -355,7 +359,7 @@ function Model({
       disposeFog,
       disposeSkyFog,
     };
-  }, [gltf, fogResources, worldFog, landscapeFog, mapBreakables, mapDoors]);
+  }, [gltf, fogResources, worldFog, landscapeFog, mapBreakables, mapDoors, mapVisibility]);
   useEffect(
     () => () => {
       prepared.compatibility.dispose();
@@ -368,16 +372,16 @@ function Model({
   const { gl, scene } = useThree();
   const breakables = useRef<ReturnType<typeof bindMapBreakables>>(undefined);
   useLayoutEffect(() => {
-    const index = bindMapBreakables(prepared.main, mapBreakables, mapDoors);
+    const index = bindMapBreakables(prepared.main, mapBreakables, mapDoors, mapVisibility);
     breakables.current = index;
     return () => {
       index?.dispose();
       breakables.current = undefined;
     };
-  }, [prepared.main, mapBreakables, mapDoors]);
+  }, [prepared.main, mapBreakables, mapDoors, mapVisibility]);
   useLayoutEffect(() => {
     breakables.current?.seek(tick);
-  }, [tick, prepared.main, mapBreakables, mapDoors]);
+  }, [tick, prepared.main, mapBreakables, mapDoors, mapVisibility]);
   useLayoutEffect(
     () => installMapDrawRanges(gl, scene, prepared.main, prepared.sky),
     [gl, scene, prepared],
@@ -902,14 +906,22 @@ function World({
   );
   const agentEvents = useMemo(
     () => indexAgentEvents(data),
-    [data.events, data.players, data.sample, data.agentDeaths, data.throwInputs],
+    [data.events, data.players, data.sample, data.agentDeaths, data.throwInputs, data.tickRate],
   );
   const draws = useMemo(() => indexAgentDraws(data), [data.frames, data.rounds, data.tickRate]);
   const reduceAgentMotion = useReducedMotion();
   const round = agentRoundAt(data.rounds, tick);
   const bodies = preview ? [] : deadAgentsAt(data, agentEvents, tick, round, frame);
   const viewedPlayer = frame.players.find((player) => player.id === selected);
-  const scopeFov = mode === 'pov' ? scopedVerticalFov(viewedPlayer) : undefined;
+  const death =
+    mode === 'pov' && !preview
+      ? watchedDeath(data, agentEvents.deaths.get(selected), selected, tick, 3, frame)
+      : undefined;
+  const deathView = useMemo(
+    () => death && deathCameraEvidence(data, death, selected),
+    [data, death, selected],
+  );
+  const scopeFov = mode === 'pov' && !death ? scopedVerticalFov(viewedPlayer) : undefined;
   const fov = scopeFov ?? settings.cameraFov;
   useLayoutEffect(() => {
     if (!(camera instanceof THREE.PerspectiveCamera) || camera.fov === fov) return;
@@ -1044,6 +1056,16 @@ function World({
       camera.lookAt(overheadTarget);
       return;
     }
+    if (deathView && death) {
+      const view = deathCameraView(
+        deathView,
+        (tick - death.tick) / data.tickRate,
+        reduceAgentMotion,
+      );
+      camera.position.fromArray(view.position);
+      camera.lookAt(...view.target);
+      return;
+    }
     const p = viewedPlayer;
     if (!p) return;
     const n = nextPlayers.get(p.id);
@@ -1094,7 +1116,8 @@ function World({
     !preview &&
     mode === 'pov' &&
     scopeFov === undefined &&
-    viewedPlayer &&
+    viewedPlayer?.alive &&
+    !death &&
     (data.sample || modelReady);
 
   return (
@@ -1146,6 +1169,7 @@ function World({
                   registerFollowModel={registerFollowModel}
                   mapBreakables={data.mapBreakables}
                   mapDoors={data.mapDoors}
+                  mapVisibility={data.mapVisibility}
                   tick={tick}
                   playerLighting={low ? null : playerLighting}
                 />
@@ -1228,6 +1252,9 @@ function World({
             trace={followTrace}
           >
             <PovViewmodel
+              agentModel={viewedPlayer.team === 3 ? agents.ct : agents.t}
+              gaitHistory={gaitHistory}
+              action={povActionAt(agentEvents, viewedPlayer, tick, data.tickRate, round?.tick ?? 0)}
               native={!data.sample}
               airborne={airAt(viewedPlayer.id)}
               history={data}
@@ -1442,6 +1469,7 @@ export default function Scene({
   preview = false,
   mobile = false,
   playing = false,
+  buffering = false,
   settings = defaultSettings,
   mapAssets,
   assetScope = 'public',
@@ -1457,6 +1485,7 @@ export default function Scene({
   preview?: boolean;
   mobile?: boolean;
   playing?: boolean;
+  buffering?: boolean;
   settings?: ViewerSettings;
   mapAssets: MapResources;
   assetScope?: string;
@@ -1994,7 +2023,9 @@ export default function Scene({
               {!probingGpu && adaptive && (
                 <MeasureRenderCadence
                   key={`${data.map}:${model}:${mode}`}
-                  active={playing && (Boolean(data.sample) || modelStatus === 'ready')}
+                  active={
+                    playing && !buffering && (Boolean(data.sample) || modelStatus === 'ready')
+                  }
                   resolution={resolution}
                   ceiling={settings.renderResolution}
                   shadows={shadows}

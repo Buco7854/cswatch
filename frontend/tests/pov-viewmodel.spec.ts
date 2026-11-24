@@ -194,6 +194,15 @@ test('turn lag uses the shortest recorded angle and preserves the pose at shared
   expect(povMovement(actor, wrapped, 1, timing, undefined, 7)).toEqual(before);
 });
 
+test('walking and running follow the visible agent’s native gait phase', () => {
+  const next = { ...actor, x: actor.x + 12 };
+  const timing = { fromTick: 4, nextTick: 8, tickRate: 64 };
+  const phaseAt = (travel: number, phase: number) =>
+    povMovement(actor, next, 0.5, timing, undefined, travel, 0, 0, phase)!;
+  expect(phaseAt(1, 0.25)).toEqual(phaseAt(2, 0.25));
+  expect(phaseAt(1, 0.75).side).toBeLessThan(phaseAt(1, 0.25).side);
+});
+
 test('optional draw samples actual contiguous weapon switches, including in overlap', () => {
   const frames = [
     sample(4, { weapon: 'weapon_awp' }),

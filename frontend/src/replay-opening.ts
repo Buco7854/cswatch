@@ -38,6 +38,17 @@ export function openingPlayer(data: Playback, tick: number, requested?: string) 
   return data.players.find(({ id }) => alive.has(id))?.id ?? '';
 }
 
+/** A live-round marker can arrive before the first living pawn in the slice. */
+export function firstPovTick(data: Playback, start: number) {
+  if (openingPlayer(data, start)) return start;
+  const roster = new Set(data.players.map(({ id }) => id));
+  return (
+    data.frames.find(
+      (frame) => frame.tick > start && frame.players.some((p) => p.alive && roster.has(p.id)),
+    )?.tick ?? start
+  );
+}
+
 export function playerShortcut(index: number) {
   return index >= 0 && index < 10 ? String((index + 1) % 10) : undefined;
 }

@@ -7,6 +7,7 @@ import { recordedEntityTransform } from './item-state.js';
 const bodies = {
   CDynamicProp: 'CBodyComponentBaseAnimGraph',
   CBreakable: 'CBodyComponentBaseModelEntity',
+  CFuncBrush: 'CBodyComponentBaseModelEntity',
 } as const;
 type RecordedClass = keyof typeof bodies;
 const skeletonRoot = (name: RecordedClass) => `${name}.${bodies[name]}.m_skeletonInstance.`;
@@ -22,11 +23,12 @@ function poseFieldsFor(skeleton: string) {
 const poseFields = {
   CDynamicProp: poseFieldsFor(skeletonRoot('CDynamicProp')),
   CBreakable: poseFieldsFor(skeletonRoot('CBreakable')),
+  CFuncBrush: poseFieldsFor(skeletonRoot('CFuncBrush')),
 };
 
 /** Read the decoder table carried by THIS recording. The cs2parser 2.8 decoder
  * IDs 10 and 20 select unsigned varint and qangle_precise respectively. */
-function hasWirePoseCodec(reader: DemoReader, className: RecordedClass) {
+export function hasWirePoseCodec(reader: DemoReader, className: RecordedClass) {
   const fields = poseFields[className];
   const names = reader.propIdToName,
     decoders = reader.propIdToDecoder;
@@ -60,7 +62,7 @@ function hasWirePoseCodec(reader: DemoReader, className: RecordedClass) {
   return seen.size === fields.size;
 }
 
-function identity(
+export function mapEntityPose(
   props: Record<string, unknown>,
   className: RecordedClass,
 ): Omit<MapBreakable, 'hidden'> | undefined {
@@ -193,7 +195,7 @@ export function observeMapBreakables(reader: DemoReader, lastTick: number, event
         tick > lastTick
       )
         continue;
-      const pose = identity(e.properties, life.className),
+      const pose = mapEntityPose(e.properties, life.className),
         key = pose && breakableKey(pose);
       if (!key || !pose || (life.key && life.key !== key)) {
         if (life.key) {
@@ -246,7 +248,8 @@ export function observeMapBreakables(reader: DemoReader, lastTick: number, event
     delete track.owner;
     if (!life.props || !Number.isSafeInteger(tick) || tick < 0 || tick > lastTick || unconfirmed)
       return;
-    if (breakableKey(identity(life.props, life.className)) === life.key) track.missingSince = tick;
+    if (breakableKey(mapEntityPose(life.props, life.className)) === life.key)
+      track.missingSince = tick;
   });
   return (complete: boolean): MapBreakable[] | undefined => {
     if (!complete || stopped) return;

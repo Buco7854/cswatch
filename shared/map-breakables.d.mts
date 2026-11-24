@@ -10,6 +10,16 @@ export type MapBreakable = MapPropPose & {
   className?: 'func_breakable';
   poseCodec?: typeof breakablePoseCodec;
 };
+export type MapVisibility = MapPropPose & {
+  className: 'prop_dynamic' | 'func_brush';
+  poseCodec?: typeof breakablePoseCodec;
+  visible: [number, number][];
+};
+export function validMapVisibility(rows: unknown, lastTick: number): rows is MapVisibility[];
+export function uniqueVisibilityNodes<Node>(
+  tracks: readonly MapVisibility[] | undefined,
+  visit: (accept: (node: Node, tag: unknown) => void) => void,
+): Map<string, Node | null>;
 export const breakableLimits: Readonly<{ active: number; tracks: number; intervals: number }>;
 export function breakableKey(row: unknown): string | undefined;
 export function validMapBreakables(rows: unknown, lastTick: number): rows is MapBreakable[];

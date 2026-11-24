@@ -1122,6 +1122,7 @@ export async function prepareIdleGameplaySounds(options, manifest, adapters = {}
   const cache = await sourceCache(options, manifest);
   return (adapters.install || installGameplaySounds)(
     {
+      managed: true,
       cache,
       output: options.assets,
       toolchainCache: join(options.cache, 'tools'),

@@ -1,6 +1,7 @@
 import {
   Box3,
   Frustum,
+  InterleavedBufferAttribute,
   Matrix4,
   Mesh,
   MeshBasicMaterial,
@@ -19,8 +20,180 @@ const maxVisitedVertices = 600_000;
 const blocksPerRegion = 8;
 const maxGapsPerDraw = 4;
 const maxBlocks = 32_768;
+const idleSliceIndices = 8192;
 
 type Bounds = { blocks: Box3[]; regions: Box3[] };
+
+/** Measure the exact local boxes before a batch is first drawn. Idle periods
+ * prepare boxes outside the current view ahead of later turns and seeks. */
+function prepareBounds(candidates: Map<BufferGeometry, number>, indicesPerBlock: number) {
+  const bounds = new WeakMap<BufferGeometry, Bounds>();
+  const point = new Vector3();
+  let visited = new Uint32Array(0);
+  let stamp = 0;
+  // Keep admission independent of the first camera position: visibility only
+  // affects *when* bounds are measured, never their triangle or memory budgets.
+  let reservedBlocks = 0;
+  let reservedTriangles = 0;
+  for (const [geometry, count] of candidates) {
+    const length = Math.ceil(count / indicesPerBlock);
+    if (
+      reservedBlocks + length > maxBlocks ||
+      reservedTriangles + count / 3 > maxIndexedTriangles
+    ) {
+      candidates.delete(geometry);
+      continue;
+    }
+    reservedBlocks += length;
+    reservedTriangles += count / 3;
+  }
+
+  function* measure(geometry: BufferGeometry, count: number): Generator<void, Bounds | undefined> {
+    const position = geometry.attributes.position;
+    const index = geometry.index;
+    const stampVertices = index && position.count <= maxVisitedVertices;
+    if (stampVertices && visited.length < position.count) visited = new Uint32Array(position.count);
+    const interleaved = position instanceof InterleavedBufferAttribute;
+    // Prepared desktop and mobile maps use unnormalized FLOAT positions. Read
+    // interleaved xyz together; leave other encodings to Three's accessors.
+    const coordinates =
+      !position.normalized && position.array instanceof Float32Array ? position.array : undefined;
+    const stride = interleaved ? position.data.stride : position.itemSize;
+    const offset = interleaved ? position.offset : 0;
+    const indices =
+      index &&
+      !(index instanceof InterleavedBufferAttribute) &&
+      !index.normalized &&
+      index.itemSize === 1 &&
+      (index.array instanceof Uint16Array ||
+        index.array instanceof Uint32Array ||
+        index.array instanceof Uint8Array)
+        ? index.array
+        : undefined;
+    function expand(box: Box3, start: number, end: number, blockStamp: number) {
+      if (coordinates && indices && stampVertices) {
+        const min = box.min,
+          max = box.max;
+        let x0 = min.x,
+          y0 = min.y,
+          z0 = min.z,
+          x1 = max.x,
+          y1 = max.y,
+          z1 = max.z;
+        for (let i = start; i < end; i++) {
+          const vertex = indices[i];
+          if (visited[vertex] === blockStamp) continue;
+          visited[vertex] = blockStamp;
+          const at = vertex * stride + offset;
+          const x = coordinates[at],
+            y = coordinates[at + 1],
+            z = coordinates[at + 2];
+          x0 = Math.min(x0, x);
+          x1 = Math.max(x1, x);
+          y0 = Math.min(y0, y);
+          y1 = Math.max(y1, y);
+          z0 = Math.min(z0, z);
+          z1 = Math.max(z1, z);
+        }
+        min.set(x0, y0, z0);
+        max.set(x1, y1, z1);
+        return;
+      }
+      for (let i = start; i < end; i++) {
+        const vertex = index ? index.getX(i) : i;
+        if (stampVertices) {
+          if (visited[vertex] === blockStamp) continue;
+          visited[vertex] = blockStamp;
+        }
+        box.expandByPoint(point.fromBufferAttribute(position, vertex));
+      }
+    }
+
+    const boxes: Box3[] = [];
+    let nextYield = idleSliceIndices;
+    for (let first = 0; first < count; first += indicesPerBlock) {
+      const box = new Box3();
+      const end = Math.min(first + indicesPerBlock, count);
+      const blockStamp = ++stamp;
+      for (let cursor = first; cursor < end;) {
+        const sliceEnd = Math.min(nextYield, end);
+        expand(box, cursor, sliceEnd, blockStamp);
+        cursor = sliceEnd;
+        if (sliceEnd === nextYield) {
+          nextYield += idleSliceIndices;
+          yield;
+        }
+      }
+      const magnitude = Math.max(box.min.length(), box.max.length());
+      if (!Number.isFinite(magnitude)) return;
+      // GPU vertex transforms use float precision. Retain boundary triangles.
+      boxes.push(box.expandByScalar(0.001 + magnitude * 1e-5));
+    }
+    const regions: Box3[] = [];
+    if (boxes.length >= blocksPerRegion * 2) {
+      for (let b = 0; b < boxes.length; b += blocksPerRegion) {
+        const region = boxes[b].clone();
+        for (let j = b + 1; j < Math.min(b + blocksPerRegion, boxes.length); j++)
+          region.union(boxes[j]);
+        regions.push(region);
+        if (regions.length % 256 === 0) yield;
+      }
+    }
+    return { blocks: boxes, regions };
+  }
+
+  let active: { geometry: BufferGeometry; work: ReturnType<typeof measure> } | undefined;
+  function finish(geometry: BufferGeometry, result?: Bounds) {
+    if (result) bounds.set(geometry, result);
+    candidates.delete(geometry);
+    if (active?.geometry === geometry) active = undefined;
+    if (!candidates.size) visited = new Uint32Array(0);
+  }
+  function getBounds(geometry: BufferGeometry) {
+    const existing = bounds.get(geometry);
+    if (existing || !candidates.size) return existing;
+    const count = candidates.get(geometry);
+    if (count === undefined) return;
+    // A newly visible batch gets precise clipping on its very first draw,
+    // including a partly measured batch from the preceding idle period.
+    const work = active?.geometry === geometry ? active.work : measure(geometry, count);
+    let part = work.next();
+    while (!part.done) part = work.next();
+    finish(geometry, part.value);
+    return part.value;
+  }
+
+  // A camera turn or seek can reveal another district. Prepare the remaining
+  // batches while the browser is idle, yielding even inside very large meshes.
+  const remaining = candidates.entries();
+  let idle: number | undefined;
+  function prepareIdle(deadline: IdleDeadline) {
+    idle = undefined;
+    const stop = performance.now() + 3;
+    while (deadline.timeRemaining() >= 1 && performance.now() < stop) {
+      if (!active) {
+        const entry = remaining.next();
+        if (entry.done) return;
+        const [geometry, count] = entry.value;
+        active = { geometry, work: measure(geometry, count) };
+      }
+      const part = active.work.next();
+      if (part.done) finish(active.geometry, part.value);
+    }
+    if (candidates.size) idle = requestIdleCallback(prepareIdle);
+  }
+  if (typeof requestIdleCallback === 'function' && candidates.size)
+    idle = requestIdleCallback(prepareIdle);
+
+  return {
+    getBounds,
+    dispose() {
+      if (idle !== undefined) cancelIdleCallback(idle);
+      active = undefined;
+      candidates.clear();
+    },
+  };
+}
 
 /** Prepared map batches often span several streets. Submit their visible ranges
  * in source order, splitting only around large, wholly off-camera regions. */
@@ -31,7 +204,6 @@ export function installMapDrawRanges(
   sky?: Scene | null,
 ) {
   const meshes = new WeakSet<Object3D>();
-  const bounds = new WeakMap<BufferGeometry, Bounds>();
   const candidates = new Map<BufferGeometry, number>();
   let totalTriangles = 0;
   function inspect(object: Object3D) {
@@ -58,52 +230,7 @@ export function installMapDrawRanges(
   const budget = maxBlocks - candidates.size;
   const width = budget > 0 ? Math.ceil(Math.min(totalTriangles, maxIndexedTriangles) / budget) : 0;
   const indicesPerBlock = 3 * Math.max(minimumBlockTriangles, width);
-  const point = new Vector3();
-  let visited = new Uint32Array(0);
-  let stamp = 0;
-  let blocks = 0,
-    scanned = 0;
-  for (const [geometry, count] of candidates) {
-    const length = Math.ceil(count / indicesPerBlock);
-    if (blocks + length > maxBlocks || scanned + count / 3 > maxIndexedTriangles) continue;
-    scanned += count / 3;
-    const position = geometry.attributes.position,
-      index = geometry.index;
-    // Indexed map geometry reuses vertices repeatedly inside each block. Reading
-    // a shared position once per box bounds the load cost of covering large maps.
-    const stampVertices = index && position.count <= maxVisitedVertices;
-    if (stampVertices && visited.length < position.count) visited = new Uint32Array(position.count);
-    const boxes: Box3[] = [];
-    for (let first = 0; first < count; first += indicesPerBlock) {
-      const box = new Box3();
-      const end = Math.min(first + indicesPerBlock, count);
-      stamp++;
-      for (let i = first; i < end; i++) {
-        const vertex = index ? index.getX(i) : i;
-        if (stampVertices) {
-          if (visited[vertex] === stamp) continue;
-          visited[vertex] = stamp;
-        }
-        box.expandByPoint(point.fromBufferAttribute(position, vertex));
-      }
-      const magnitude = Math.max(box.min.length(), box.max.length());
-      if (!Number.isFinite(magnitude)) break;
-      // GPU vertex transforms use float precision. Retain boundary triangles.
-      boxes.push(box.expandByScalar(0.001 + magnitude * 1e-5));
-    }
-    if (boxes.length !== length) continue;
-    const regions: Box3[] = [];
-    if (length >= blocksPerRegion * 2) {
-      for (let b = 0; b < length; b += blocksPerRegion) {
-        const region = boxes[b].clone();
-        for (let j = b + 1; j < Math.min(b + blocksPerRegion, length); j++) region.union(boxes[j]);
-        regions.push(region);
-      }
-    }
-    bounds.set(geometry, { blocks: boxes, regions });
-    blocks += length;
-  }
-  candidates.clear();
+  const measurement = prepareBounds(candidates, indicesPerBlock);
 
   const draw = renderer.renderBufferDirect;
   const frustum = new Frustum();
@@ -130,7 +257,7 @@ export function installMapDrawRanges(
       ('displacementMap' in material && material.displacementMap)
     )
       return draw.call(renderer, camera, scene, geometry, material, object, group);
-    const data = bounds.get(geometry);
+    const data = measurement.getBounds(geometry);
     if (!data) return draw.call(renderer, camera, scene, geometry, material, object, group);
     const { blocks: boxes, regions } = data;
     const newView = frame !== renderer.info.render.frame || cameraId !== camera.id;
@@ -187,6 +314,7 @@ export function installMapDrawRanges(
   };
   renderer.renderBufferDirect = render;
   return () => {
+    measurement.dispose();
     if (renderer.renderBufferDirect === render) renderer.renderBufferDirect = draw;
   };
 }

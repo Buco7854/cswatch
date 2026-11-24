@@ -23,7 +23,7 @@ import { prepareAgentModel } from '../agent-model';
 import {
   createDirectionalAgent,
   agentStrideProfile,
-  directionalClips,
+  agentModelClips,
   type DirectionalSample,
 } from '../directional-agent';
 import type { GaitHistory } from '../../../shared/agent-gait-history.mjs';
@@ -132,15 +132,9 @@ class AgentBoundary extends Component<
     return this.state.error ? this.props.fallback : this.props.children;
   }
 }
-// The loader owns immutable clip data. Players and corpses using the same
-// loaded model can bind its validated curves to their own independent bones.
-const sourceClips = new WeakMap<object, NonNullable<ReturnType<typeof directionalClips>>>();
 function clipsForModel(gltf: ReturnType<typeof useEquipmentGLTF>) {
-  const resolved = sourceClips.get(gltf);
-  if (resolved) return resolved;
-  const clips = directionalClips(gltf.animations, gltf.parser.json.animations);
+  const clips = agentModelClips(gltf);
   if (!clips) throw Error('Agent model requires the complete directional animation set.');
-  sourceClips.set(gltf, clips);
   return clips;
 }
 

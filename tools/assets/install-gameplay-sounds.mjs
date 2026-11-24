@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /** Optional asset-service/operator-only bounded native audio acquisition. Never runs in HTTP/parser. */
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { pathToFileURL, fileURLToPath } from 'node:url';
@@ -11,6 +11,7 @@ import { readVpkDirectory } from './source2-dependencies.mjs';
 import { parseSteamListing, checkedBatch } from './steam-assets-plan.mjs';
 import { localDirectory } from './toolchain-security.mjs';
 import { regular, fileHash, checkStorage, checkFreeReserve, exists } from './asset-storage.mjs';
+import { managedSoundDirectory } from '../../shared/gameplay-sound-bank.mjs';
 import { prepareToolchain } from './prepare-toolchain.mjs';
 import { markSteamRateLimit } from './official-map-inventory.mjs';
 import {
@@ -30,6 +31,7 @@ export async function installGameplaySounds(options, adapters = {}) {
     throw Error('Explicit cache/output/manifest and both tools or neither are required.');
   const ids = options.items ?? soundRegistryIds;
   if (
+    (options.managed && options.items !== undefined) ||
     !Array.isArray(ids) ||
     !ids.length ||
     ids.length > 128 ||
@@ -57,8 +59,20 @@ export async function installGameplaySounds(options, adapters = {}) {
   });
   if (probe.error || probe.status !== 0)
     throw Error('Required sound conversion confinement is unavailable.');
-  if (await exists(join(output, 'sounds'))) {
-    await localDirectory(join(output, 'sounds'));
+  let bankRoot = output;
+  if (options.managed) {
+    bankRoot = join(output, managedSoundDirectory);
+    // A different web-service UID must be able to traverse the final bank.
+    try {
+      await mkdir(bankRoot, { mode: 0o755 });
+      await chmod(bankRoot, 0o755);
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+    }
+    await localDirectory(bankRoot);
+  }
+  if (await exists(join(bankRoot, 'sounds'))) {
+    await localDirectory(join(bankRoot, 'sounds'));
     return { status: 'installed' };
   }
   const tools = options.s2v
@@ -229,7 +243,7 @@ export async function installGameplaySounds(options, adapters = {}) {
     }
     return await prepareGameplaySoundBank({
       input: converted,
-      output,
+      output: bankRoot,
       items: ids,
       networkDeny: options.networkDeny,
       beforePublish: options.beforePublish,

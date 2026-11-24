@@ -6,6 +6,7 @@ export const {
   doorKey,
   doorLimits,
   validMapDoors,
+  validMapVisibility,
 } = (await import(
   new URL(
     import.meta.url.endsWith('.ts') ? '../../shared/map-breakables.mjs' : './map-breakables.mjs',

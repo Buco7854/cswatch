@@ -31,6 +31,10 @@ The optional `mapBreakables` manifest field records half-open tick intervals for
 
 The viewer joins a prepared breakable node to its decimal 64-bit model resource ID, Source position and rotation. It requires one matching node. When the recording declares the supported position and angle encodings, the parser records `poseCodec` and the viewer compares both poses at that wire precision (1/32 Source inch and 20 bits per turn). Half-step ties, two source candidates in the same bin and conflicting recorded tracks remain unbound. Other encodings require exact pose agreement, allowing full turns. Entity indices and serials identify lifetimes only inside the recording. The same intervals drive visibility, map shadows and camera obstruction on playback and seeking. Previously processed demos need a fresh parse to acquire this optional field. Importing the original creates a new library entry.
 
+## Recorded visibility of mode-specific geometry
+
+The optional `mapVisibility` field describes explicit visible intervals for stationary, unparented broadcast `prop_dynamic` and `func_brush` entities. It uses the bounded pose matching and half-open interval representation of recorded breakables. When the prepared map identifies a source-disabled placement, the viewer can enable the unique matching mesh during its recorded intervals. Missing, ambiguous or moving placements retain their source state. Incomplete parses and exceeded limits omit the track set. Opening an existing replay with a revision 9 map already applies the authored default. A fresh parse is needed to acquire the additional recorded intervals and new native sound events.
+
 ## Recorded rotating doors
 
 The optional `mapDoors` field contains an intact model ID, Source coordinates and closed angles for each accepted broadcast door. Its sparse channels carry relative yaw, half-open removal intervals and observed replacement model IDs. The parser bounds collection to 64 live entities, 256 tracks and 65,536 entries in the existing confined media pass. A partial parse or exhausted collection budget drops this field.

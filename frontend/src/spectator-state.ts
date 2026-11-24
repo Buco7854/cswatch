@@ -1,7 +1,8 @@
-import type { GameEvent, Playback, Position } from './types';
+import type { Frame, GameEvent, Playback, Position } from './types';
 import { frameAt } from './playback';
 import { eventPlayer } from './review-events';
-import { playerPose } from './player-pose';
+import { playerPose, shortestAngle } from './player-pose';
+import { firstPersonView, recordedEyePosition } from './pov-camera';
 
 type ParticipantEvents = Map<string, GameEvent[]>;
 type SpectatorEvents = {
@@ -80,14 +81,82 @@ function recordedAmount(event: GameEvent) {
 }
 export type DamageFeedbackState = { opacity: number; direction?: number };
 
-/** A deliberately approximate spectator cue derived only from recorded hurt
- * events. Demo-time decay makes pause, speed and backward seek deterministic. */
+export function watchedDeath(
+  data: Playback,
+  deaths: GameEvent[] | undefined,
+  selected: string,
+  tick: number,
+  seconds: number,
+  frame?: Frame,
+) {
+  if (!deaths?.length || !data.frames.length || !(data.tickRate > 0)) return;
+  const death = deaths[preceding(deaths, tick)];
+  if (!death || tick - death.tick >= data.tickRate * seconds) return;
+  const current = frame ?? frameAt(data, tick).frame;
+  if (current.tick > death.tick && current.players.some((p) => p.id === selected && p.alive))
+    return;
+  if (data.rounds.some((r) => r.tick > death.tick && r.tick <= tick)) return;
+  return death;
+}
+
+/** Anchor the spectator turn to both players at the elimination, even if the
+ * attacker moves or the victim's pawn vanishes before the next camera frame. */
+export function deathCameraEvidence(data: Playback, death: GameEvent, selected: string) {
+  const attacker = eventPlayer(data, death, 'attacker');
+  if (!attacker || attacker.id === selected || death.noreplay === true) return;
+  if (
+    !data.frames.length ||
+    death.tick < data.frames[0].tick ||
+    death.tick > data.frames.at(-1)!.tick
+  )
+    return;
+  const { frame, previous } = frameAt(data, death.tick);
+  const recent = (sample: Frame) =>
+    death.tick - sample.tick <= data.tickRate * 0.25 &&
+    !data.rounds.some((r) => r.tick > sample.tick && r.tick <= death.tick);
+  if (!recent(frame)) return;
+  const killer = at(data, attacker.id, death.tick);
+  let victim = at(data, selected, death.tick);
+  if (!victim?.alive && previous && recent(previous))
+    victim = previous.players.find((p) => p.id === selected);
+  if (!killer?.alive || !victim?.alive) return;
+  const eye = recordedEyePosition(victim),
+    target = recordedEyePosition(killer);
+  const dx = target[0] - eye[0],
+    dy = target[1] - eye[1],
+    dz = target[2] - eye[2];
+  if (Math.hypot(dx, dy, dz) < 0.0254) return;
+  return {
+    victim,
+    yaw: (Math.atan2(-dz, dx) * 180) / Math.PI,
+    pitch: (-Math.atan2(dy, Math.hypot(dx, dz)) * 180) / Math.PI,
+  };
+}
+
+export function deathCameraView(
+  evidence: NonNullable<ReturnType<typeof deathCameraEvidence>>,
+  ageSeconds: number,
+  reducedMotion: boolean,
+) {
+  const t = reducedMotion ? 0 : Math.min(1, Math.max(0, ageSeconds / 0.45));
+  const blend = t * t * (3 - 2 * t);
+  return firstPersonView({
+    ...evidence.victim,
+    yaw: evidence.victim.yaw + shortestAngle(evidence.victim.yaw, evidence.yaw) * blend,
+    pitch: evidence.victim.pitch + (evidence.pitch - evidence.victim.pitch) * blend,
+  });
+}
+
+/** A deliberately approximate spectator cue derived from recorded damage and deaths. Demo-time decay makes pause, speed and backward seek deterministic. */
 export function damageFeedbackAt(
   data: Playback,
   timeline: SpectatorEvents,
   selected: string,
   tick: number,
 ): DamageFeedbackState | undefined {
+  const fatalSeconds = 1.15;
+  const death = watchedDeath(data, timeline.deaths.get(selected), selected, tick, fatalSeconds);
+  if (death) return { opacity: 0.96 * (1 - (tick - death.tick) / (data.tickRate * fatalSeconds)) };
   const events = timeline.damage.get(selected);
   if (!events || !Number.isFinite(data.tickRate) || data.tickRate <= 0) return;
   const current = preceding(events, tick);
