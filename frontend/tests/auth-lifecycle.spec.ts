@@ -3073,3 +3073,55 @@ test('a changed guest capability between status and configuration conceals the o
     release.resolve();
   }
 });
+
+test('a denied administrator sees the connection address and the specific proxy error on the admin page', async ({
+  page,
+}, testInfo) => {
+  await installAdminDetail(page);
+  await page.route('**/api/config', (route) =>
+    route.fulfill({
+      json: {
+        ...memberConfig,
+        admin_access: false,
+        admin_network_denial: 'unknown_client',
+        admin_network_diagnostic: {
+          connection: '172.18.0.2',
+          client: null,
+          issue: 'missing_address',
+        },
+      },
+    }),
+  );
+  await page.goto('/admin');
+  for (const language of ['en', 'fr']) {
+    for (const theme of ['dark', 'light']) {
+      await page.evaluate(
+        ({ language, theme }) => {
+          localStorage.setItem('cswatch.language', language);
+          localStorage.setItem('theme', theme);
+        },
+        { language, theme },
+      );
+      await page.reload();
+      const alert = page.getByRole('alert').filter({ hasText: '172.18.0.2' });
+      await expect(alert).toContainText(
+        language === 'fr' ? 'sans adresse cliente' : 'without a client address',
+      );
+      await expect(alert).toContainText(language === 'fr' ? 'Non vérifiée' : 'Unverified');
+      for (const [width, height] of [
+        [390, 844],
+        [768, 1024],
+        [1440, 900],
+      ]) {
+        await page.setViewportSize({ width, height });
+        await expect(alert).toBeInViewport();
+        expect(await alert.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+        if (process.env.CSWATCH_CAPTURE_NETWORK)
+          await page.screenshot({
+            path: testInfo.outputPath('network-' + language + '-' + theme + '-' + width + '.png'),
+          });
+      }
+    }
+  }
+  await expect(page).toHaveURL(/\/admin$/);
+});

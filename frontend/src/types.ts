@@ -1,3 +1,4 @@
+import type { AdminNetworkDiagnostic } from '../../shared/admin-network';
 import type { Role } from '../../shared/roles.mjs';
 
 export type User = {
@@ -21,6 +22,7 @@ export type User = {
 };
 export type Config = {
   admin_access: boolean;
+  admin_network_diagnostic?: AdminNetworkDiagnostic;
   admin_network_denial?: 'outside_network' | 'unknown_client';
   email_delivery_enabled: boolean;
   build?: { revision: string | null; builtAt: string | null };

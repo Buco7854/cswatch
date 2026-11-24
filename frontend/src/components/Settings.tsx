@@ -1,3 +1,4 @@
+import type { AdminAddressIssue } from '../../../shared/admin-network';
 import { t, locale } from '../i18n';
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
@@ -138,9 +139,25 @@ export function Account({
     </>
   );
 }
+const adminAddressMessages: Record<AdminAddressIssue, string> = {
+  socket_unavailable: 'The server could not read the connection address.',
+  untrusted_proxy:
+    'The connection forwarded client information but its address is outside TRUSTED_PROXY_IPS. Check the address of your reverse proxy.',
+  missing_address:
+    'The proxy forwarded request information without a client address. Configure it to set X-Real-IP or X-Forwarded-For.',
+  unsupported_header:
+    'An unsupported client address header was received. Configure the proxy to send client addresses using X-Real-IP or X-Forwarded-For.',
+  duplicate_header:
+    'A forwarding header was received more than once. Check which proxies set that header.',
+  invalid_address:
+    'The proxy sent an invalid client address or forwarding chain. Check X-Real-IP and X-Forwarded-For.',
+  conflicting_addresses:
+    'X-Real-IP and X-Forwarded-For identify different clients. Check how each proxy sets these headers.',
+};
 function AdminAccessNotice() {
   const { config, user } = useApp();
   const admin = hasPermission(user?.role, 'admin');
+  const diagnostic = config.admin_network_diagnostic;
   return (
     <div className="notice" role="alert">
       <strong>
@@ -157,12 +174,20 @@ function AdminAccessNotice() {
           )}
         </p>
       )}
-      {admin && config.admin_network_denial === 'unknown_client' && (
-        <p>
-          {t(
-            'The server could not verify your client address. Ask the operator to check TRUSTED_PROXY_IPS and the X-Real-IP or X-Forwarded-For header.',
-          )}
-        </p>
+      {admin && diagnostic && (
+        <>
+          {diagnostic.issue && <p>{t(adminAddressMessages[diagnostic.issue])}</p>}
+          <dl className="security-metadata">
+            <div>
+              <dt>{t('Client IP address')}</dt>
+              <dd>{diagnostic.client ?? t('Unverified')}</dd>
+            </div>
+            <div>
+              <dt>{t('Connection address')}</dt>
+              <dd>{diagnostic.connection ?? t('Unavailable')}</dd>
+            </div>
+          </dl>
+        </>
       )}
     </div>
   );

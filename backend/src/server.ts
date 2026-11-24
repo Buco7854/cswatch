@@ -504,7 +504,9 @@ export async function createApp(
       return {
         build: buildInfo,
         admin_access: adminAccess,
-        ...(denial ? { admin_network_denial: denial } : {}),
+        ...(denial
+          ? { admin_network_denial: denial.reason, admin_network_diagnostic: denial.diagnostic }
+          : {}),
         ...Object.fromEntries(Object.keys(flagDefaults).map((k) => [k, db.flag(c, k as Flag)])),
         guest_uploads_enabled: guestUploadsEnabled(db, c),
         email_delivery_enabled: emailDeliveryEnabled(db, c),

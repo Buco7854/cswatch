@@ -1,5 +1,6 @@
 import { BlockList, isIP } from 'node:net';
 import type { FastifyRequest } from 'fastify';
+import type { AdminAddressIssue, AdminNetworkDiagnostic } from '../../shared/admin-network.js';
 import type { Config } from './config.js';
 
 export function canonicalAddress(text: string) {
@@ -71,51 +72,74 @@ export function trustProxyAddress(config: Config, ip: string) {
   return host !== null && contains(networkPolicy(config).proxies, host);
 }
 
-export function adminClientAddress(request: FastifyRequest, config: Config) {
-  const { proxies } = networkPolicy(config);
+const forwardingHeader = (name: string) =>
+  /^(?:forwarded$|x-forwarded-|x-real-ip$|cf-connecting-ip$|true-client-ip$|x-client-ip$)/i.test(
+    name,
+  );
+
+function resolveAddress(
+  request: FastifyRequest,
+  config: Config,
+): { connection: HostAddress | null; client: HostAddress | null; issue?: AdminAddressIssue } {
   const socketIp = request.raw.socket.remoteAddress;
-  let peer = socketIp && canonicalAddress(socketIp);
-  if (!peer) return null;
+  const connection = socketIp ? canonicalAddress(socketIp) : null;
+  const unknown = (issue: AdminAddressIssue) => ({ connection, client: null, issue });
+  if (!connection) return unknown('socket_unavailable');
   const headers = request.headers;
-  const forwardedName = (name: string) =>
-    /^(?:forwarded$|x-forwarded-|x-real-ip$|cf-connecting-ip$|true-client-ip$|x-client-ip$)/i.test(
-      name,
-    );
-  if (!Object.keys(headers).some(forwardedName)) return peer;
-  if (!contains(proxies, peer)) return null;
-  const real = headers['x-real-ip'];
-  // A trusted single-hop proxy can overwrite X-Real-IP instead of sending a chain.
-  const forwarded = headers['x-forwarded-for'] ?? real;
-  const forwardingHeaders = new Set<string>();
+  if (!Object.keys(headers).some(forwardingHeader)) return { connection, client: connection };
+  const { proxies } = networkPolicy(config);
+  if (!contains(proxies, connection)) return unknown('untrusted_proxy');
+  const seen = new Set<string>();
   const rawHeaders = request.raw.rawHeaders;
   for (let i = 0; i < rawHeaders.length; i += 2) {
     const name = rawHeaders[i].toLowerCase();
-    if (!forwardedName(name)) continue;
-    if (forwardingHeaders.has(name)) return null;
-    forwardingHeaders.add(name);
+    if (!forwardingHeader(name)) continue;
+    if (seen.has(name)) return unknown('duplicate_header');
+    seen.add(name);
   }
   if (
-    typeof forwarded !== 'string' ||
-    forwarded.length > 2048 ||
-    headers.forwarded !== undefined ||
-    headers['cf-connecting-ip'] !== undefined ||
-    headers['true-client-ip'] !== undefined ||
-    headers['x-client-ip'] !== undefined
+    ['forwarded', 'cf-connecting-ip', 'true-client-ip', 'x-client-ip'].some(
+      (name) => headers[name] !== undefined,
+    )
   )
-    return null;
-  const chain = forwarded.split(',').map((item) => canonicalAddress(item.trim()));
-  if (chain.length > 32 || chain.some((item) => !item)) return null;
-  for (let i = chain.length - 1; i >= 0 && contains(proxies, peer); i--) peer = chain[i]!;
-  if (real !== undefined && (typeof real !== 'string' || canonicalAddress(real)?.ip !== peer.ip))
-    return null;
-  return peer;
+    return unknown('unsupported_header');
+  const real = headers['x-real-ip'];
+  const forwarded = headers['x-forwarded-for'] ?? real;
+  if (forwarded === undefined) return unknown('missing_address');
+  if (typeof forwarded !== 'string' || forwarded.length > 2048) return unknown('invalid_address');
+  const chain = forwarded.split(',');
+  if (chain.length > 32) return unknown('invalid_address');
+  let client = connection;
+  for (let i = chain.length - 1; i >= 0; i--) {
+    const hop = canonicalAddress(chain[i].trim());
+    if (!hop) return unknown('invalid_address');
+    if (contains(proxies, client)) client = hop;
+  }
+  if (real !== undefined) {
+    const realIp = typeof real === 'string' && canonicalAddress(real);
+    if (!realIp) return unknown('invalid_address');
+    if (realIp.ip !== client.ip) return unknown('conflicting_addresses');
+  }
+  return { connection, client };
+}
+
+export function adminClientAddress(request: FastifyRequest, config: Config) {
+  return resolveAddress(request, config).client;
 }
 
 export function adminNetworkDenial(request: FastifyRequest, config: Config) {
   if (!config.adminAllowedIps.length) return null;
-  const client = adminClientAddress(request, config);
-  if (!client) return 'unknown_client';
-  return contains(networkPolicy(config).allowed, client) ? null : 'outside_network';
+  const { connection, client, issue } = resolveAddress(request, config);
+  if (client && contains(networkPolicy(config).allowed, client)) return null;
+  const diagnostic: AdminNetworkDiagnostic = {
+    connection: connection?.ip ?? null,
+    client: client?.ip ?? null,
+    ...(issue && { issue }),
+  };
+  return {
+    reason: client ? ('outside_network' as const) : ('unknown_client' as const),
+    diagnostic,
+  };
 }
 
 export function adminNetworkAllowed(request: FastifyRequest, config: Config) {
