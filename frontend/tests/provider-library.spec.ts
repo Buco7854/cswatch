@@ -272,7 +272,7 @@ test('FACEIT pagination, viewer return, filter, fallback and recovery preserve t
   await expect(page.getByText('Previous fixture league')).toBeVisible();
   await page.getByRole('link', { name: 'Open Processing…' }).click();
   await expect(page).toHaveURL('/watch/member-design-1');
-  await page.getByRole('link', { name: 'Library', exact: true }).click();
+  await page.getByRole('link', { name: 'Back to library', exact: true }).click();
   await expect(page.getByText('Previous fixture league')).toBeVisible();
   await page.getByRole('button', { name: 'Previous page' }).click();
   await expect(page.getByText('Middle fixture league')).toBeVisible();
