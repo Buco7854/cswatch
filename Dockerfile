@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:24-bookworm-slim AS frontend
+FROM node:25-bookworm-slim AS frontend
 WORKDIR /build/frontend
 COPY frontend/package*.json ./
 RUN npm ci
@@ -7,7 +7,7 @@ COPY frontend/ ./
 COPY shared/ /build/shared/
 RUN npm run build
 
-FROM node:24-bookworm-slim AS backend
+FROM node:25-bookworm-slim AS backend
 ARG CSWATCH_REVISION=
 ARG CSWATCH_BUILD_TIMESTAMP=
 WORKDIR /build/backend
@@ -21,7 +21,7 @@ RUN npm run build && npm prune --omit=dev
 
 # Optional operator asset tooling. This target never contains the app's native
 # parser, database/auth/provider dependencies or proprietary game resources.
-FROM node:24-bookworm-slim AS asset-build
+FROM node:25-bookworm-slim AS asset-build
 WORKDIR /build
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev && rm -rf /var/lib/apt/lists/*
 COPY tools/assets/package*.json ./tools/assets/
@@ -32,7 +32,7 @@ COPY shared/map-previews.json shared/equipment-models.json shared/map-baked-ligh
 RUN node tools/assets/build-network-deny.mjs --output tools/assets/bin/asset-network-deny \
     && node -e "const fs=require('node:fs'); for (const name of fs.readdirSync('tools/assets')) if (name.endsWith('.test.mjs')) fs.unlinkSync('tools/assets/'+name)"
 
-FROM node:24-bookworm-slim AS assets
+FROM node:25-bookworm-slim AS assets
 ARG CSWATCH_REVISION=
 ARG CSWATCH_BUILD_TIMESTAMP=
 LABEL org.opencontainers.image.source="https://github.com/Buco7854/cswatch" \
@@ -56,7 +56,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s CMD node --input-type
 CMD ["node", "tools/assets/map-worker.mjs"]
 
 # Keep the application runtime last: an ordinary docker build remains the web image.
-FROM node:24-bookworm-slim AS runtime
+FROM node:25-bookworm-slim AS runtime
 ARG CSWATCH_REVISION=
 ARG CSWATCH_BUILD_TIMESTAMP=
 LABEL org.opencontainers.image.source="https://github.com/Buco7854/cswatch" \
