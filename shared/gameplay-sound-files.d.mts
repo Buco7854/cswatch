@@ -1,4 +1,5 @@
 export const gameplayAudioLimits: Readonly<{
+  bankItems: number;
   bytes: number;
   durationMs: number;
   sampleRate: number;

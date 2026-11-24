@@ -1,5 +1,19 @@
 # Verification record
 
+## Recorded hits and steps
+
+The production parser ran under Linux Landlock/seccomp on three local 5v5 demos. Counts below use unique cue IDs across overlapping chunks. The movement column includes newly recognized surface steps, jump takeoffs and landings.
+
+| Recording | Newly recognized movement cues | Player hit or fatal impact cues | Other named bullet impacts |
+| --------- | -----------------------------: | ------------------------------: | -------------------------: |
+| Nuke      |                          1,400 |                             230 |                          0 |
+| Mirage    |                            796 |                             218 |                    2 flesh |
+| Cache     |                          5,556 |                             394 |                          0 |
+
+The managed asset installer prepared all 210 registered PCM samples from depot 2347770, manifest 5924479096069937098. The 28,764,192-byte bank yielded a 52,068-byte catalog. Headless Chromium played nine individual cues taken directly from the three parsed matches through the production catalog route, buffer loader, scheduler and spatial audio graph. A synthetic listener one metre from each recorded origin measured exactly one source start and a nonzero peak RMS for every cue (0.014 to 0.436). This covers body armor and head hits, a named flesh impact, plastic, gravel, wet concrete, rubber, a jump and a metal landing. World-surface collision tests include a named grate impact and an authored silent surface. The three recordings supplied no named grate impact. Browser measurements used a local test listener and software audio output. Physical speakers, exact Source 2 variation selection and the game-client mix remain unverified.
+
+The production `/watch` route also played three short passages using the parsed manifests and chunks, the real sound catalog and the generated WAVs. A fresh browser context per match started the expected decoded sample during normal playback: Nuke armor at tick 2,645, Cache gravel at 1,811 and a Mirage flesh impact at 33,883. Each passage produced measurable mixed output. The probe matched the decoded sample’s SHA-256 to the published descriptor. Playback used a routed test identity and replay metadata, with map artwork unavailable.
+
 ## Mode geometry and playback
 
 The official Nuke map from depot 2347770, manifest 5924479096069937098, contained five uniquely placed meshes across the ramp shutter, Secret exit and duct with explicit source-disabled state. Three independent 5v5 recordings did not enable the corresponding entities. Recorded live-player movement intersected each of the three closures. In matched 600 × 360 Chromium SwiftShader views, correcting their initial state changed 50,728, 92,054 and 87,642 pixels respectively by more than four channel levels. The view facing away from them was identical. A synthetic broadcast exercises the enabled interval, deletion, rewind and camera collision. No Wingman recording or matching frame from the reported 0:29 shot was available.

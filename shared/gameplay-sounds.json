@@ -548,6 +548,334 @@
     "knife-swish-light": {
       "source": "sounds/weapons/knife/knife_swish_light_01.vsnd_c",
       "category": "weapon"
+    },
+    "hit-kevlar-01": {
+      "source": "sounds/player/kevlar_01.vsnd_c",
+      "category": "weapon"
+    },
+    "hit-mud-impact-bullet1": {
+      "source": "sounds/physics/surfaces/mud_impact_bullet1.vsnd_c",
+      "category": "weapon"
+    },
+    "hit-headshot-noarmor-01": {
+      "source": "sounds/player/headshot_noarmor_01.vsnd_c",
+      "category": "weapon"
+    },
+    "hit-headshot-armor-e1": {
+      "source": "sounds/player/headshot_armor_e1.vsnd_c",
+      "category": "weapon"
+    },
+    "hit-player-damagebody-04": {
+      "source": "sounds/player/player_damagebody_04.vsnd_c",
+      "category": "weapon"
+    },
+    "hit-player-damagebody-05": {
+      "source": "sounds/player/player_damagebody_05.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-default-impact-bullet1": {
+      "source": "sounds/physics/surfaces/default_impact_bullet1.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-flesh-impact-bullet1": {
+      "source": "sounds/physics/flesh/flesh_impact_bullet1.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-bullet-metal-solid-01": {
+      "source": "sounds/physics/metal/bullet_metal_solid_01.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-bullet-hit-shield-01": {
+      "source": "sounds/physics/shield/bullet_hit_shield_01.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-bullet-metal-auto-01": {
+      "source": "sounds/physics/metal/bullet_metal_auto_01.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-bullet-metal-barrel-01": {
+      "source": "sounds/physics/metal/bullet_metal_barrel_01.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-dirt-impact-bullet-01": {
+      "source": "sounds/physics/surfaces/dirt_impact_bullet_01.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-bullet-metal-grate-01": {
+      "source": "sounds/physics/metal/bullet_metal_grate_01.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-tile-impact-bullet2": {
+      "source": "sounds/physics/surfaces/tile_impact_bullet2.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-underwater-impact-bullet1": {
+      "source": "sounds/physics/surfaces/underwater_impact_bullet1.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-glass-impact-bullet1": {
+      "source": "sounds/physics/glass/glass_impact_bullet1.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-glass-pottery-break1": {
+      "source": "sounds/physics/glass/glass_pottery_break1.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-metal-computer-impact-bullet1": {
+      "source": "sounds/physics/metal/metal_computer_impact_bullet1.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-concrete-impact-bullet1": {
+      "source": "sounds/physics/concrete/concrete_impact_bullet1.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-metal-chainlink-05": {
+      "source": "sounds/player/footsteps/metal_chainlink_05.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-chain-impact-hard1": {
+      "source": "sounds/physics/metal/chain_impact_hard1.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-carpet-impact-bullet-01": {
+      "source": "sounds/physics/surfaces/carpet_impact_bullet_01.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-sand-impact-bullet-01": {
+      "source": "sounds/physics/surfaces/sand_impact_bullet_01.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-flesh-squishy-impact-hard1": {
+      "source": "sounds/physics/flesh/flesh_squishy_impact_hard1.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-metal-sheet-impact-bullet1": {
+      "source": "sounds/physics/metal/metal_sheet_impact_bullet1.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-glass-bottle-break1": {
+      "source": "sounds/physics/glass/glass_bottle_break1.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-soda-can-impact-hard1": {
+      "source": "sounds/physics/metal/soda_can_impact_hard1.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-ceiling-tile-impact-bullet1": {
+      "source": "sounds/physics/plaster/ceiling_tile_impact_bullet1.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-metal-barrel-sand-impact-bullet1": {
+      "source": "sounds/physics/metal/metal_barrel_sand_impact_bullet1.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-cardboard-box-impact-bullet1": {
+      "source": "sounds/physics/cardboard/cardboard_box_impact_bullet1.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-plastic-barrel-impact-bullet1": {
+      "source": "sounds/physics/plastic/plastic_barrel_impact_bullet1.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-plastic-box-impact-bullet1": {
+      "source": "sounds/physics/plastic/plastic_box_impact_bullet1.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-rubber-tire-impact-bullet1": {
+      "source": "sounds/physics/rubber/rubber_tire_impact_bullet1.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-wood-solid-impact-bullet1": {
+      "source": "sounds/physics/wood/wood_solid_impact_bullet1.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-wood-box-impact-bullet1": {
+      "source": "sounds/physics/wood/wood_box_impact_bullet1.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-metal-box-impact-bullet1": {
+      "source": "sounds/physics/metal/metal_box_impact_bullet1.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-ball-impact-a-01": {
+      "source": "sounds/physics/rubber/ball_impact_a_01.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-snow-impact-bullet1": {
+      "source": "sounds/physics/snow/snow_impact_bullet1.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-defuser-bulletimpact-02": {
+      "source": "sounds/physics/weapons/defuser_bulletimpact_02.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-tape-impact-bullet-01": {
+      "source": "sounds/physics/plastic/tape_impact_bullet_01.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-foliage-impact-bullet-01": {
+      "source": "sounds/physics/wood/foliage_impact_bullet_01.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-grass-impact-bullet-01": {
+      "source": "sounds/physics/surfaces/grass_impact_bullet_01.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-drywall-impact-hard1": {
+      "source": "sounds/physics/plaster/drywall_impact_hard1.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-fruit-impact-01": {
+      "source": "sounds/physics/fruit/fruit_impact_01.vsnd_c",
+      "category": "weapon"
+    },
+    "footstep-jump-launch-01": {
+      "source": "sounds/player/footsteps/jump_launch_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land2": {
+      "source": "sounds/player/land2.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-tile-01": {
+      "source": "sounds/player/footsteps/land_tile_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-wood-02": {
+      "source": "sounds/player/footsteps/wood_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-metal-solid-01": {
+      "source": "sounds/player/footsteps/land_metal_solid_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-metal-grate-01": {
+      "source": "sounds/player/footsteps/land_metal_grate_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-metal-vent-01": {
+      "source": "sounds/player/footsteps/land_metal_vent_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-auto-01": {
+      "source": "sounds/player/footsteps/land_auto_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-metal-barrel-01": {
+      "source": "sounds/player/footsteps/land_metal_barrel_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-snow-01": {
+      "source": "sounds/player/footsteps/snow_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-snow-01": {
+      "source": "sounds/player/footsteps/land_snow_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-dirt-01": {
+      "source": "sounds/player/footsteps/land_dirt_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-mud-01": {
+      "source": "sounds/player/footsteps/mud_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-mud-01": {
+      "source": "sounds/player/footsteps/land_mud_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-grass-01": {
+      "source": "sounds/player/footsteps/grass_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-grass-01": {
+      "source": "sounds/player/footsteps/land_grass_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-puddle-01": {
+      "source": "sounds/player/footsteps/puddle_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-basket-01": {
+      "source": "sounds/player/footsteps/land_basket_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-glass-01": {
+      "source": "sounds/player/footsteps/land_glass_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-gravel-01": {
+      "source": "sounds/player/footsteps/gravel_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-gravel-01": {
+      "source": "sounds/player/footsteps/land_gravel_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-body-01": {
+      "source": "sounds/player/footsteps/land_body_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-sand-01": {
+      "source": "sounds/player/footsteps/land_sand_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-glass-bottle-impact-hard1": {
+      "source": "sounds/physics/glass/glass_bottle_impact_hard1.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-cardboard-01": {
+      "source": "sounds/player/footsteps/land_cardboard_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-plastic-barrel-01": {
+      "source": "sounds/player/footsteps/plastic_barrel_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-rubber-03": {
+      "source": "sounds/player/footsteps/rubber_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-rubber-01": {
+      "source": "sounds/player/footsteps/land_rubber_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-grenade-impact-hard1": {
+      "source": "sounds/physics/metal/metal_grenade_impact_hard1.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-weapon-smg-impact-13": {
+      "source": "sounds/physics/weapons/weapon_smg_impact_13.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-carpet-01": {
+      "source": "sounds/player/footsteps/carpet_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-carpet-01": {
+      "source": "sounds/player/footsteps/land_carpet_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-weapon-smg-impact-07": {
+      "source": "sounds/physics/weapons/weapon_smg_impact_07.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-water-splash-01": {
+      "source": "sounds/physics/water/water_splash_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-puddle-small-01": {
+      "source": "sounds/player/footsteps/puddle_small_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-plastic-milkcrates-01": {
+      "source": "sounds/player/footsteps/land_plastic_milkcrates_01.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-metal-railing-01": {
+      "source": "sounds/player/footsteps/land_metal_railing_01.vsnd_c",
+      "category": "footstep"
     }
   },
   "events": {
@@ -1284,6 +1612,1030 @@
       "channel": "weapon-sound",
       "volume": 0.03,
       "pitch": 1.0
+    },
+    "Player.DamageBodyArmor.Onlooker": {
+      "soundId": "hit-kevlar-01",
+      "channel": "sos",
+      "hash": 524041390,
+      "volume": 0.7,
+      "pitch": 1.3
+    },
+    "Player.DamageBody.Onlooker": {
+      "soundId": "hit-mud-impact-bullet1",
+      "channel": "sos",
+      "hash": 2447320252,
+      "volume": 1,
+      "pitch": 1.3
+    },
+    "Player.DamageHeadShot.Onlooker": {
+      "soundId": "hit-headshot-noarmor-01",
+      "channel": "sos",
+      "hash": 2284698275,
+      "volume": 0.5,
+      "pitch": 1
+    },
+    "Player.DamageHeadShotArmor.Onlooker": {
+      "soundId": "hit-headshot-armor-e1",
+      "channel": "sos",
+      "hash": 3663896169,
+      "volume": 0.5,
+      "pitch": 1
+    },
+    "Player.DeathBody.Onlooker": {
+      "soundId": "hit-player-damagebody-04",
+      "channel": "sos",
+      "hash": 2192712263,
+      "volume": 1,
+      "pitch": 0.8
+    },
+    "Player.DeathBodyArmor.Onlooker": {
+      "soundId": "hit-player-damagebody-04",
+      "channel": "sos",
+      "hash": 3396420465,
+      "volume": 1,
+      "pitch": 0.8
+    },
+    "Player.DeathHeadShot.Onlooker": {
+      "soundId": "hit-headshot-noarmor-01",
+      "channel": "sos",
+      "hash": 2719685137,
+      "volume": 0.5,
+      "pitch": 1
+    },
+    "Player.DeathHeadShotArmor.Onlooker": {
+      "soundId": "hit-player-damagebody-05",
+      "channel": "sos",
+      "hash": 2310318859,
+      "volume": 0.5,
+      "pitch": 1
+    },
+    "Default.BulletImpact": {
+      "soundId": "impact-default-impact-bullet1",
+      "channel": "sos",
+      "hash": 2727749062,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Flesh.BulletImpact": {
+      "soundId": "impact-flesh-impact-bullet1",
+      "channel": "sos",
+      "hash": 3101375008,
+      "volume": 0.7,
+      "pitch": 1
+    },
+    "SolidMetal.BulletImpact": {
+      "soundId": "impact-bullet-metal-solid-01",
+      "channel": "sos",
+      "hash": 310732301,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Shield.BulletImpact": {
+      "soundId": "impact-bullet-hit-shield-01",
+      "channel": "sos",
+      "hash": 3580527461,
+      "volume": 1,
+      "pitch": 1
+    },
+    "MetalVehicle.BulletImpact": {
+      "soundId": "impact-bullet-metal-auto-01",
+      "channel": "sos",
+      "hash": 1930592393,
+      "volume": 1,
+      "pitch": 1
+    },
+    "MetalBarrel.BulletImpact": {
+      "soundId": "impact-bullet-metal-barrel-01",
+      "channel": "sos",
+      "hash": 3679363931,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Dirt.BulletImpact": {
+      "soundId": "impact-dirt-impact-bullet-01",
+      "channel": "sos",
+      "hash": 1146517691,
+      "volume": 1,
+      "pitch": 1
+    },
+    "MetalGrate.BulletImpact": {
+      "soundId": "impact-bullet-metal-grate-01",
+      "channel": "sos",
+      "hash": 3181624207,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Tile.BulletImpact": {
+      "soundId": "impact-tile-impact-bullet2",
+      "channel": "sos",
+      "hash": 190029432,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Water.BulletImpact": {
+      "soundId": "impact-underwater-impact-bullet1",
+      "channel": "sos",
+      "hash": 2690640896,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Underwater.BulletImpact": {
+      "soundId": "impact-underwater-impact-bullet1",
+      "channel": "sos",
+      "hash": 198259238,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Glass.BulletImpact": {
+      "soundId": "impact-glass-impact-bullet1",
+      "channel": "sos",
+      "hash": 2782772594,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Pottery.BulletImpact": {
+      "soundId": "impact-glass-pottery-break1",
+      "channel": "sos",
+      "hash": 1416959415,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Computer.BulletImpact": {
+      "soundId": "impact-glass-impact-bullet1",
+      "channel": "sos",
+      "hash": 2735013313,
+      "volume": 1,
+      "pitch": 1
+    },
+    "WeaponMagazine.BulletImpact": {
+      "soundId": "impact-metal-computer-impact-bullet1",
+      "channel": "sos",
+      "hash": 3359975835,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Concrete.BulletImpact": {
+      "soundId": "impact-concrete-impact-bullet1",
+      "channel": "sos",
+      "hash": 1496559166,
+      "volume": 1,
+      "pitch": 1.1
+    },
+    "ChainLink.BulletImpact": {
+      "soundId": "impact-metal-chainlink-05",
+      "channel": "sos",
+      "hash": 965044335,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Chain.BulletImpact": {
+      "soundId": "impact-chain-impact-hard1",
+      "channel": "sos",
+      "hash": 3897128987,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Carpet.BulletImpact": {
+      "soundId": "impact-carpet-impact-bullet-01",
+      "channel": "sos",
+      "hash": 1691581872,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Sand.BulletImpact": {
+      "soundId": "impact-sand-impact-bullet-01",
+      "channel": "sos",
+      "hash": 1388899781,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Watermelon.BulletImpact": {
+      "soundId": "impact-flesh-squishy-impact-hard1",
+      "channel": "sos",
+      "hash": 767324530,
+      "volume": 1,
+      "pitch": 1
+    },
+    "ArmorFlesh.BulletImpact": {
+      "soundId": "impact-metal-sheet-impact-bullet1",
+      "channel": "sos",
+      "hash": 1860937324,
+      "volume": 1,
+      "pitch": 1
+    },
+    "GlassBottle.BulletImpact": {
+      "soundId": "impact-glass-bottle-break1",
+      "channel": "sos",
+      "hash": 1069128433,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Metal_Barrel.BulletImpact": {
+      "soundId": "impact-metal-sheet-impact-bullet1",
+      "channel": "sos",
+      "hash": 3545376868,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Popcan.BulletImpact": {
+      "soundId": "impact-soda-can-impact-hard1",
+      "channel": "sos",
+      "hash": 2237292931,
+      "volume": 1,
+      "pitch": 1
+    },
+    "ceiling_tile.BulletImpact": {
+      "soundId": "impact-ceiling-tile-impact-bullet1",
+      "channel": "sos",
+      "hash": 4235277267,
+      "volume": 1,
+      "pitch": 1
+    },
+    "SandBarrel.BulletImpact": {
+      "soundId": "impact-metal-barrel-sand-impact-bullet1",
+      "channel": "sos",
+      "hash": 4153819872,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Cardboard.BulletImpact": {
+      "soundId": "impact-cardboard-box-impact-bullet1",
+      "channel": "sos",
+      "hash": 1192803151,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Plastic_Barrel.BulletImpact": {
+      "soundId": "impact-plastic-barrel-impact-bullet1",
+      "channel": "sos",
+      "hash": 2485170585,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Plastic_Box.BulletImpact": {
+      "soundId": "impact-plastic-box-impact-bullet1",
+      "channel": "sos",
+      "hash": 28356767,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Rubber_Tire.BulletImpact": {
+      "soundId": "impact-rubber-tire-impact-bullet1",
+      "channel": "sos",
+      "hash": 525242086,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Wood.BulletImpact": {
+      "soundId": "impact-wood-solid-impact-bullet1",
+      "channel": "sos",
+      "hash": 302739583,
+      "volume": 0.3,
+      "pitch": 1
+    },
+    "Wood_Box.BulletImpact": {
+      "soundId": "impact-wood-box-impact-bullet1",
+      "channel": "sos",
+      "hash": 4168578728,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Wood_Plank.BulletImpact": {
+      "soundId": "impact-wood-box-impact-bullet1",
+      "channel": "sos",
+      "hash": 1450532635,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Wood_Solid.BulletImpact": {
+      "soundId": "impact-wood-solid-impact-bullet1",
+      "channel": "sos",
+      "hash": 3928588101,
+      "volume": 0.7,
+      "pitch": 1
+    },
+    "Wood_Panel.BulletImpact": {
+      "soundId": "impact-wood-box-impact-bullet1",
+      "channel": "sos",
+      "hash": 1092306786,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Metal_Box.BulletImpact": {
+      "soundId": "impact-metal-box-impact-bullet1",
+      "channel": "sos",
+      "hash": 4290842877,
+      "volume": 1,
+      "pitch": 1
+    },
+    "weapon.BulletImpact": {
+      "soundId": "impact-metal-computer-impact-bullet1",
+      "channel": "sos",
+      "hash": 3160030202,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Ball.BulletImpact": {
+      "soundId": "impact-ball-impact-a-01",
+      "channel": "sos",
+      "hash": 3536606269,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Snow.BulletImpact": {
+      "soundId": "impact-snow-impact-bullet1",
+      "channel": "sos",
+      "hash": 2987284460,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Mud.BulletImpact": {
+      "soundId": "hit-mud-impact-bullet1",
+      "channel": "sos",
+      "hash": 520739294,
+      "volume": 1,
+      "pitch": 1
+    },
+    "defuser.BulletImpact": {
+      "soundId": "impact-defuser-bulletimpact-02",
+      "channel": "sos",
+      "hash": 2038285044
+    },
+    "Tape.BulletImpact": {
+      "soundId": "impact-tape-impact-bullet-01",
+      "channel": "sos",
+      "hash": 3899581166,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Foliage.BulletImpact": {
+      "soundId": "impact-foliage-impact-bullet-01",
+      "channel": "sos",
+      "hash": 2701651578,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Grass.BulletImpact": {
+      "soundId": "impact-grass-impact-bullet-01",
+      "channel": "sos",
+      "hash": 885577103,
+      "volume": 1,
+      "pitch": 1
+    },
+    "drywall.BulletImpact": {
+      "soundId": "impact-drywall-impact-hard1",
+      "channel": "sos",
+      "hash": 2820383062,
+      "volume": 0.699707,
+      "pitch": 0.99
+    },
+    "Fruit.BulletImpact": {
+      "soundId": "impact-fruit-impact-01",
+      "channel": "sos",
+      "hash": 3133978967,
+      "volume": 0.799805,
+      "pitch": 1
+    },
+    "Plastic_milkCrate.BulletImpact": {
+      "soundId": "impact-plastic-box-impact-bullet1",
+      "channel": "sos",
+      "hash": 717812184,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Default.WalkJump": {
+      "soundId": "footstep-jump-launch-01",
+      "channel": "sos",
+      "hash": 1543118744,
+      "volume": 0.1,
+      "pitch": 1.1
+    },
+    "Land_Concrete.StepLeft": {
+      "soundId": "footstep-land2",
+      "channel": "sos",
+      "hash": 1016523349,
+      "volume": 1,
+      "pitch": 1.06
+    },
+    "Land_Ceiling_Tile.StepLeft": {
+      "soundId": "footstep-land-tile-01",
+      "channel": "sos",
+      "hash": 3218103073,
+      "volume": 1
+    },
+    "Land_Default.StepLeft": {
+      "soundId": "footstep-land2",
+      "channel": "sos",
+      "hash": 1818046345,
+      "volume": 1
+    },
+    "Land_Wood.StepLeft": {
+      "soundId": "footstep-1b1212d92523",
+      "channel": "sos",
+      "hash": 2302139631,
+      "volume": 1
+    },
+    "CT_Wood_Solid.StepLeft": {
+      "soundId": "footstep-1b1212d92523",
+      "channel": "sos",
+      "hash": 1939055066,
+      "volume": 1,
+      "pitch": 0.98
+    },
+    "Land_Wood_Solid.StepLeft": {
+      "soundId": "footstep-wood-02",
+      "channel": "sos",
+      "hash": 1409986305,
+      "volume": 1
+    },
+    "Land_SolidMetal.StepLeft": {
+      "soundId": "footstep-land-metal-solid-01",
+      "channel": "sos",
+      "hash": 4113422219,
+      "volume": 0.9
+    },
+    "Land_ChainLink.StepLeft": {
+      "soundId": "footstep-chainlink",
+      "channel": "sos",
+      "hash": 3009312615,
+      "volume": 1
+    },
+    "Land_MetalGrate.StepLeft": {
+      "soundId": "footstep-land-metal-grate-01",
+      "channel": "sos",
+      "hash": 782454593,
+      "volume": 1
+    },
+    "Land_Ladder.StepLeft": {
+      "soundId": "footstep-a3a62ecc6884",
+      "channel": "sos",
+      "hash": 3434104102,
+      "volume": 1
+    },
+    "Land_MetalVent.StepLeft": {
+      "soundId": "footstep-land-metal-vent-01",
+      "channel": "sos",
+      "hash": 117596568,
+      "volume": 1
+    },
+    "Land_MetalVehicle.StepLeft": {
+      "soundId": "footstep-land-auto-01",
+      "channel": "sos",
+      "hash": 3460445620,
+      "volume": 1
+    },
+    "Land_MetalBarrel.StepLeft": {
+      "soundId": "footstep-land-metal-barrel-01",
+      "channel": "sos",
+      "hash": 2067683805,
+      "volume": 1
+    },
+    "CT_Snow.StepLeft": {
+      "soundId": "footstep-snow-01",
+      "channel": "sos",
+      "hash": 1388885460,
+      "volume": 1,
+      "pitch": 0.98
+    },
+    "Land_Snow.StepLeft": {
+      "soundId": "footstep-land-snow-01",
+      "channel": "sos",
+      "hash": 413358161,
+      "volume": 1
+    },
+    "Land_Dirt.StepLeft": {
+      "soundId": "footstep-land-dirt-01",
+      "channel": "sos",
+      "hash": 3802757032,
+      "volume": 1
+    },
+    "CT_Mud.StepLeft": {
+      "soundId": "footstep-mud-01",
+      "channel": "sos",
+      "hash": 2633527058,
+      "volume": 0.7,
+      "pitch": 0.98
+    },
+    "Land_Mud.StepLeft": {
+      "soundId": "footstep-land-mud-01",
+      "channel": "sos",
+      "hash": 1627020521,
+      "volume": 1
+    },
+    "CT_Slime.StepLeft": {
+      "soundId": "footstep-mud-01",
+      "channel": "sos",
+      "hash": 602548457,
+      "volume": 1,
+      "pitch": 0.98
+    },
+    "Land_Slime.StepLeft": {
+      "soundId": "footstep-land-mud-01",
+      "channel": "sos",
+      "hash": 859178236,
+      "volume": 1
+    },
+    "CT_Grass.StepLeft": {
+      "soundId": "footstep-grass-01",
+      "channel": "sos",
+      "hash": 3749333696,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Land_Grass.StepLeft": {
+      "soundId": "footstep-land-grass-01",
+      "channel": "sos",
+      "hash": 2899365092,
+      "volume": 1
+    },
+    "Land_Tile.StepLeft": {
+      "soundId": "footstep-land-tile-01",
+      "channel": "sos",
+      "hash": 1535891875,
+      "volume": 1
+    },
+    "CT_Water.StepLeft": {
+      "soundId": "footstep-puddle-01",
+      "channel": "sos",
+      "hash": 3368720745,
+      "volume": 1,
+      "pitch": 0.98
+    },
+    "CT_Wood_Basket.StepLeft": {
+      "soundId": "footstep-1b1212d92523",
+      "channel": "sos",
+      "hash": 2790760284,
+      "volume": 1,
+      "pitch": 0.98
+    },
+    "Land_Wood_Basket.StepLeft": {
+      "soundId": "footstep-land-basket-01",
+      "channel": "sos",
+      "hash": 2448803175,
+      "volume": 1,
+      "pitch": 1.06
+    },
+    "Land_Glass.StepLeft": {
+      "soundId": "footstep-land-glass-01",
+      "channel": "sos",
+      "hash": 3666896632,
+      "volume": 1
+    },
+    "CT_Gravel.StepLeft": {
+      "soundId": "footstep-gravel-01",
+      "channel": "sos",
+      "hash": 3166948458,
+      "volume": 0.8,
+      "pitch": 0.98
+    },
+    "Land_Gravel.StepLeft": {
+      "soundId": "footstep-land-gravel-01",
+      "channel": "sos",
+      "hash": 3099536373,
+      "volume": 1
+    },
+    "Land_Flesh.StepLeft": {
+      "soundId": "footstep-land-body-01",
+      "channel": "sos",
+      "hash": 115843229,
+      "volume": 0.4
+    },
+    "Land_Sand.StepLeft": {
+      "soundId": "footstep-land-sand-01",
+      "channel": "sos",
+      "hash": 2546391140,
+      "volume": 1
+    },
+    "CT_GlassBottle.StepLeft": {
+      "soundId": "footstep-glass-bottle-impact-hard1",
+      "channel": "sos",
+      "hash": 515548944,
+      "volume": 1,
+      "pitch": 0.98
+    },
+    "Land_GlassBottle.StepLeft": {
+      "soundId": "footstep-glass-bottle-impact-hard1",
+      "channel": "sos",
+      "hash": 1517575510,
+      "volume": 1
+    },
+    "CT_Drywall.StepLeft": {
+      "soundId": "footstep",
+      "channel": "sos",
+      "hash": 1248619277,
+      "volume": 0.9,
+      "pitch": 1
+    },
+    "Land_Drywall.StepLeft": {
+      "soundId": "footstep-land2",
+      "channel": "sos",
+      "hash": 1395892944,
+      "volume": 1
+    },
+    "CT_Cardboard.StepLeft": {
+      "soundId": "footstep-4d5d4792439e",
+      "channel": "sos",
+      "hash": 2300993891,
+      "volume": 1,
+      "pitch": 0.98
+    },
+    "Land_Cardboard.StepLeft": {
+      "soundId": "footstep-land-cardboard-01",
+      "channel": "sos",
+      "hash": 1183624286,
+      "volume": 1
+    },
+    "CT_Plastic_Barrel.StepLeft": {
+      "soundId": "footstep-plastic-barrel-01",
+      "channel": "sos",
+      "hash": 540697918,
+      "volume": 1,
+      "pitch": 0.98
+    },
+    "CT_Plastic_Box.StepLeft": {
+      "soundId": "footstep-plastic-barrel-01",
+      "channel": "sos",
+      "hash": 2829617974,
+      "volume": 0.7,
+      "pitch": 0.98
+    },
+    "Land_Plastic_Box.StepLeft": {
+      "soundId": "footstep-land-auto-01",
+      "channel": "sos",
+      "hash": 1826799645,
+      "volume": 1
+    },
+    "CT_Rubber.StepLeft": {
+      "soundId": "footstep-rubber-03",
+      "channel": "sos",
+      "hash": 3193435079,
+      "volume": 1,
+      "pitch": 0.98
+    },
+    "Land_Rubber.StepLeft": {
+      "soundId": "footstep-land-rubber-01",
+      "channel": "sos",
+      "hash": 2860219006,
+      "volume": 1
+    },
+    "CT_Grenade.StepLeft": {
+      "soundId": "footstep",
+      "channel": "sos",
+      "hash": 1855038793,
+      "volume": 1,
+      "pitch": 0.98
+    },
+    "Land_Grenade.StepLeft": {
+      "soundId": "footstep-metal-grenade-impact-hard1",
+      "channel": "sos",
+      "hash": 2892812682,
+      "volume": 1
+    },
+    "Land_WoodBox.StepLeft": {
+      "soundId": "footstep-1b1212d92523",
+      "channel": "sos",
+      "hash": 144629619,
+      "volume": 1
+    },
+    "CT_Wood_Crate.StepLeft": {
+      "soundId": "footstep-1b1212d92523",
+      "channel": "sos",
+      "hash": 721782259,
+      "volume": 1,
+      "pitch": 0.98
+    },
+    "Land_Wood_Crate.StepLeft": {
+      "soundId": "footstep-1b1212d92523",
+      "channel": "sos",
+      "hash": 2133235849,
+      "volume": 1
+    },
+    "Land_Wood_Panel.StepLeft": {
+      "soundId": "footstep-1b1212d92523",
+      "channel": "sos",
+      "hash": 819435812,
+      "volume": 1
+    },
+    "CT_Weapon.StepLeft": {
+      "soundId": "footstep-weapon-smg-impact-13",
+      "channel": "sos",
+      "hash": 2804393637,
+      "volume": 0.5,
+      "pitch": 0.98
+    },
+    "Land_Weapon.StepLeft": {
+      "soundId": "footstep-weapon-smg-impact-13",
+      "channel": "sos",
+      "hash": 4222899547,
+      "volume": 0.5
+    },
+    "CT_Foliage.StepLeft": {
+      "soundId": "footstep-grass-01",
+      "channel": "sos",
+      "hash": 1664187801,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Land_Foliage.StepLeft": {
+      "soundId": "footstep-land-grass-01",
+      "channel": "sos",
+      "hash": 2714245023,
+      "volume": 1
+    },
+    "CT_Carpet.StepLeft": {
+      "soundId": "footstep-carpet-01",
+      "channel": "sos",
+      "hash": 1692050905,
+      "volume": 1,
+      "pitch": 0.98
+    },
+    "Land_Carpet.StepLeft": {
+      "soundId": "footstep-land-carpet-01",
+      "channel": "sos",
+      "hash": 961838155,
+      "volume": 1
+    },
+    "CT_SlipperySlime.StepLeft": {
+      "soundId": "footstep-mud-01",
+      "channel": "sos",
+      "hash": 3008782656,
+      "volume": 1,
+      "pitch": 0.98
+    },
+    "Land_SlipperySlime.StepLeft": {
+      "soundId": "footstep-land-mud-01",
+      "channel": "sos",
+      "hash": 2070478448,
+      "volume": 1
+    },
+    "T_Carpet.StepLeft": {
+      "soundId": "footstep-carpet-01",
+      "channel": "sos",
+      "hash": 1557420499,
+      "volume": 1
+    },
+    "T_Drywall.StepLeft": {
+      "soundId": "footstep",
+      "channel": "sos",
+      "hash": 893108375,
+      "volume": 0.9,
+      "pitch": 1.06
+    },
+    "T_Foliage.StepLeft": {
+      "soundId": "footstep-grass-01",
+      "channel": "sos",
+      "hash": 2231399653,
+      "volume": 1,
+      "pitch": 1
+    },
+    "T_GlassBottle.StepLeft": {
+      "soundId": "footstep-glass-bottle-impact-hard1",
+      "channel": "sos",
+      "hash": 2594927130,
+      "volume": 1
+    },
+    "T_Grass.StepLeft": {
+      "soundId": "footstep-grass-01",
+      "channel": "sos",
+      "hash": 1019414932,
+      "volume": 1,
+      "pitch": 1
+    },
+    "T_Gravel.StepLeft": {
+      "soundId": "footstep-gravel-01",
+      "channel": "sos",
+      "hash": 1218015996,
+      "volume": 0.8
+    },
+    "T_Grenade.StepLeft": {
+      "soundId": "footstep",
+      "channel": "sos",
+      "hash": 417910549,
+      "volume": 1
+    },
+    "T_MetalVehicle.StepLeft": {
+      "soundId": "footstep-2530c17a7f0b",
+      "channel": "sos",
+      "hash": 84876002,
+      "volume": 1
+    },
+    "T_Mud.StepLeft": {
+      "soundId": "footstep-mud-01",
+      "channel": "sos",
+      "hash": 2189706910,
+      "volume": 0.7
+    },
+    "T_Plastic_Barrel.StepLeft": {
+      "soundId": "footstep-plastic-barrel-01",
+      "channel": "sos",
+      "hash": 1543034,
+      "volume": 1
+    },
+    "T_Plastic_Box.StepLeft": {
+      "soundId": "footstep-plastic-barrel-01",
+      "channel": "sos",
+      "hash": 892882552,
+      "volume": 0.7
+    },
+    "T_Rubber.StepLeft": {
+      "soundId": "footstep-rubber-03",
+      "channel": "sos",
+      "hash": 70939233,
+      "volume": 1
+    },
+    "T_Slime.StepLeft": {
+      "soundId": "footstep-mud-01",
+      "channel": "sos",
+      "hash": 822973253,
+      "volume": 1
+    },
+    "T_SlipperySlime.StepLeft": {
+      "soundId": "footstep-mud-01",
+      "channel": "sos",
+      "hash": 3797950766,
+      "volume": 1
+    },
+    "T_Snow.StepLeft": {
+      "soundId": "footstep-snow-01",
+      "channel": "sos",
+      "hash": 4203793682,
+      "volume": 1
+    },
+    "T_Water.StepLeft": {
+      "soundId": "footstep-puddle-01",
+      "channel": "sos",
+      "hash": 870100484,
+      "volume": 1
+    },
+    "T_Weapon.StepLeft": {
+      "soundId": "footstep-weapon-smg-impact-07",
+      "channel": "sos",
+      "hash": 935062317,
+      "volume": 0.5
+    },
+    "T_Wood_Crate.StepLeft": {
+      "soundId": "footstep-1b1212d92523",
+      "channel": "sos",
+      "hash": 2333790984,
+      "volume": 1
+    },
+    "T_Wood_Solid.StepLeft": {
+      "soundId": "footstep-1b1212d92523",
+      "channel": "sos",
+      "hash": 1165397261,
+      "volume": 1
+    },
+    "CT_WetTile.StepLeft": {
+      "soundId": "footstep-5f376e116aae",
+      "channel": "sos",
+      "hash": 4084367249,
+      "volume": 1,
+      "pitch": 1.1
+    },
+    "T_WetTile.StepLeft": {
+      "soundId": "footstep-5f376e116aae",
+      "channel": "sos",
+      "hash": 3109879199,
+      "volume": 1,
+      "pitch": 1.1
+    },
+    "Land_WetTile.StepLeft": {
+      "soundId": "footstep-land-tile-01",
+      "channel": "sos",
+      "hash": 2551626319,
+      "volume": 1
+    },
+    "Land_PlayerFlesh.StepLeft": {
+      "soundId": "footstep-land-body-01",
+      "channel": "sos",
+      "hash": 4085076160,
+      "volume": 1
+    },
+    "T_Wood_Ladder.StepLeft": {
+      "soundId": "footstep-eb0d28d23d98",
+      "channel": "sos",
+      "hash": 1661204257,
+      "volume": 1
+    },
+    "Land_Wood_Ladder.StepLeft": {
+      "soundId": "footstep-eb0d28d23d98",
+      "channel": "sos",
+      "hash": 2236021746,
+      "volume": 1
+    },
+    "Land_WaterVol.StepLeft": {
+      "soundId": "footstep-water-splash-01",
+      "channel": "sos",
+      "hash": 585390608,
+      "volume": 0.4
+    },
+    "T_Wet_Sand.StepLeft": {
+      "soundId": "footstep-puddle-small-01",
+      "channel": "sos",
+      "hash": 1194093029,
+      "volume": 0.9,
+      "pitch": 1
+    },
+    "CT_Wet_Sand.StepLeft": {
+      "soundId": "footstep-puddle-small-01",
+      "channel": "sos",
+      "hash": 3755338324,
+      "volume": 0.9,
+      "pitch": 1
+    },
+    "Land_Plastic_Barrel.StepLeft": {
+      "soundId": "footstep-land-auto-01",
+      "channel": "sos",
+      "hash": 4152012084,
+      "volume": 1
+    },
+    "CT_Plastic_milkCrate.StepLeft": {
+      "soundId": "footstep-rubber-03",
+      "channel": "sos",
+      "hash": 757978684,
+      "volume": 0.7,
+      "pitch": 0.98
+    },
+    "T_Plastic_milkCrate.StepLeft": {
+      "soundId": "footstep-rubber-03",
+      "channel": "sos",
+      "hash": 1448154350,
+      "volume": 0.7,
+      "pitch": 0.98
+    },
+    "Land_Plastic_milkCrate.StepLeft": {
+      "soundId": "footstep-land-plastic-milkcrates-01",
+      "channel": "sos",
+      "hash": 2053595705,
+      "volume": 0.7,
+      "pitch": 1
+    },
+    "CT_Plastic_autoCover.StepLeft": {
+      "soundId": "footstep-2530c17a7f0b",
+      "channel": "sos",
+      "hash": 1909915699,
+      "volume": 0.7,
+      "pitch": 0.98
+    },
+    "Land_Plastic_autoCover.StepLeft": {
+      "soundId": "footstep-land-auto-01",
+      "channel": "sos",
+      "hash": 765706800,
+      "volume": 1
+    },
+    "T_Plastic_autoCover.StepLeft": {
+      "soundId": "footstep-2530c17a7f0b",
+      "channel": "sos",
+      "hash": 2722081556,
+      "volume": 0.7,
+      "pitch": 0.98
+    },
+    "Land_MetalRailing.StepLeft": {
+      "soundId": "footstep-land-metal-railing-01",
+      "channel": "sos",
+      "hash": 1540837791,
+      "volume": 0.7,
+      "pitch": 1
+    },
+    "CT_WetConcrete.StepLeft": {
+      "soundId": "footstep",
+      "channel": "sos",
+      "hash": 3184465677,
+      "volume": 1,
+      "pitch": 1.1
+    },
+    "T_WetConcrete.StepLeft": {
+      "soundId": "footstep",
+      "channel": "sos",
+      "hash": 3023174225,
+      "volume": 1,
+      "pitch": 1.1
+    },
+    "CT_WetMud.StepLeft": {
+      "soundId": "footstep-mud-01",
+      "channel": "sos",
+      "hash": 3847761506,
+      "volume": 1,
+      "pitch": 1.1
+    },
+    "T_WetMud.StepLeft": {
+      "soundId": "footstep-mud-01",
+      "channel": "sos",
+      "hash": 1342713723,
+      "volume": 1,
+      "pitch": 1.1
+    },
+    "Land_WetConcrete.StepLeft": {
+      "soundId": "footstep-land-tile-01",
+      "channel": "sos",
+      "hash": 4074593561,
+      "volume": 1
+    },
+    "Land_WetMud.StepLeft": {
+      "soundId": "footstep-land-mud-01",
+      "channel": "sos",
+      "hash": 2162652424,
+      "volume": 1
     }
   }
 }

@@ -287,6 +287,33 @@ test('recorded native surface/reload cues retain exact names and stop evidence w
   assert.equal(result.sounds[1].eventName, 'Weapon_AK47.Clipout');
   assert.equal(result.gameplaySounds.coverage.footstep, 'partial');
 });
+test('recorded player hits, surface impacts and steps can share a tick while silent surfaces stay quiet', () => {
+  const handlers = new Map<string, (message: any) => void>();
+  const reader = {
+    currentTick: 100,
+    on: (name: string, fn: (message: any) => void) => handlers.set(name, fn),
+  };
+  const finish = observeGameplaySounds(reader as any, 500, new Set());
+  const start = handlers.get('GE_SosStartSoundEvent')!;
+  // Raw Source 2 event hashes keep this independent of the registry under test.
+  for (const hash of [
+    524041390, 2719685137, 3181624207, 2829617974, 4113422219, 1543118744, 349635633, 1247386781,
+  ])
+    start({ soundevent_hash: hash });
+  const cues = finish(true, []).sounds;
+  assert.deepEqual(
+    cues.map((c) => [c.soundId, c.category, c.volume, c.pitch]),
+    [
+      ['hit-kevlar-01', 'weapon', 0.7, 1.3],
+      ['hit-headshot-noarmor-01', 'weapon', 0.5, 1],
+      ['impact-bullet-metal-grate-01', 'weapon', 1, 1],
+      ['footstep-plastic-barrel-01', 'footstep', 0.7, 0.98],
+      ['footstep-land-metal-solid-01', 'footstep', 0.9, undefined],
+      ['footstep-jump-launch-01', 'footstep', 0.1, 1.1],
+    ],
+  );
+  assert.ok(cues.every((c) => c.tick === 100 && c.evidence === 'network-sound'));
+});
 test('recorded knife swings distinguish light, heavy, gear and impacts at the reported position', () => {
   const handlers = new Map<string, (value: any) => void>();
   const reader = {

@@ -1,5 +1,7 @@
 # Current handoff
 
+For missing bullet hits or steps, check a freshly processed recording and the current sound bank. The asset worker logs `sound.ready` after checking the bank. Existing replay chunks contain the events recognized when they were parsed. [Three-map audio checks](VERIFICATION.md#recorded-hits-and-steps)
+
 For a Nuke passage that appears closed, use revision 9 map packs. The preparer preserves the initial visibility supplied by the source entity. A newly parsed broadcast can enable a matching placement at the recorded tick. Collect the match, tick, player, tier and pack identity when comparing a particular doorway. [Mode geometry and playback checks](VERIFICATION.md#mode-geometry-and-playback)
 
 For a network-denied administrator, inspect the connection and verified client addresses on the Administration page. The displayed cause distinguishes the immediate peer, missing or repeated headers, invalid addresses and conflicting client identities. [Operator checks](ACCESS-SETUP.md)

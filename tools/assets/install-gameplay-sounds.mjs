@@ -34,7 +34,7 @@ export async function installGameplaySounds(options, adapters = {}) {
     (options.managed && options.items !== undefined) ||
     !Array.isArray(ids) ||
     !ids.length ||
-    ids.length > 128 ||
+    ids.length > soundRegistryIds.length ||
     new Set(ids).size !== ids.length ||
     ids.some((id) => !soundRegistryIds.includes(id))
   )

@@ -4,7 +4,7 @@ import type {
   SharedGameplaySoundCatalog,
 } from '../../shared/gameplay-sounds';
 import registry from '../../shared/gameplay-sounds.json';
-import { inspectGameplayAudio } from '../../shared/gameplay-sound-files.mjs';
+import { gameplayAudioLimits, inspectGameplayAudio } from '../../shared/gameplay-sound-files.mjs';
 import { readMapJSON } from './demo-map-assets';
 
 export const gameplaySoundCategories = [
@@ -26,7 +26,7 @@ const integer = (value: unknown, minimum: number, maximum: number) =>
 export function validateGameplaySoundCatalog(value: unknown): SharedGameplaySoundCatalog {
   const input = record(value),
     items = record(input.items);
-  if (input.schemaVersion !== 1 || Object.keys(items).length > 256)
+  if (input.schemaVersion !== 1 || Object.keys(items).length > gameplayAudioLimits.bankItems)
     throw new Error('Invalid game sound catalog');
   const result: SharedGameplaySoundCatalog = { schemaVersion: 1, items: {} };
   let total = 0;

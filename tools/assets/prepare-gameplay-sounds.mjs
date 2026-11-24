@@ -16,7 +16,7 @@ export const soundRegistryIds = Object.freeze(Object.keys(gameplaySoundRegistry.
 if (
   gameplaySoundRegistry.schemaVersion !== 1 ||
   soundRegistryIds.length < 1 ||
-  soundRegistryIds.length > 128 ||
+  soundRegistryIds.length > gameplayAudioLimits.bankItems ||
   soundRegistryIds.some(
     (id) =>
       !/^[a-z0-9-]{1,60}$/.test(id) ||
@@ -85,7 +85,7 @@ export async function prepareGameplaySoundBank(
   if (
     !Array.isArray(items) ||
     !items.length ||
-    items.length > 128 ||
+    items.length > soundRegistryIds.length ||
     new Set(items).size !== items.length ||
     items.some((id) => !soundRegistryIds.includes(id))
   )

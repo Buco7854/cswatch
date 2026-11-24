@@ -6,15 +6,11 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import { bytesFrom, regularFile, withDirectory, fileVersion } from './map-asset-files.js';
 import { HttpError } from './security.js';
-import { gameplaySoundRegistry } from './gameplay-sound-registry.js';
-const { inspectGameplayAudio, gameplayAudioLimits } = (await import(
-  new URL(
-    import.meta.url.endsWith('.ts')
-      ? '../../shared/gameplay-sound-files.mjs'
-      : './gameplay-sound-files.mjs',
-    import.meta.url,
-  ).href
-)) as typeof import('../../shared/gameplay-sound-files.mjs');
+import {
+  gameplayAudioLimits,
+  gameplaySoundRegistry,
+  inspectGameplayAudio,
+} from './gameplay-sound-registry.js';
 const { managedSoundDirectory }: { managedSoundDirectory: string } = await import(
   new URL(
     import.meta.url.endsWith('.ts')

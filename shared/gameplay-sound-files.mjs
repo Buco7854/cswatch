@@ -1,5 +1,6 @@
 /** Bounded container validation before native/browser decoding. No compressed duration guesses. */
 export const gameplayAudioLimits = Object.freeze({
+  bankItems: 256,
   bytes: 2 * 1024 ** 2,
   durationMs: 10000,
   sampleRate: 48000,

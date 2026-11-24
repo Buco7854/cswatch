@@ -1,5 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { z } from 'zod';
+export const { inspectGameplayAudio, gameplayAudioLimits } = (await import(
+  new URL(
+    import.meta.url.endsWith('.ts')
+      ? '../../shared/gameplay-sound-files.mjs'
+      : './gameplay-sound-files.mjs',
+    import.meta.url,
+  ).href
+)) as typeof import('../../shared/gameplay-sound-files.mjs');
 export const gameplaySoundRegistry = z
   .object({
     schemaVersion: z.literal(1),
@@ -46,5 +54,5 @@ export const gameplaySoundRegistry = z
       ),
     ),
   );
-if (Object.keys(gameplaySoundRegistry.items).length > 128)
+if (Object.keys(gameplaySoundRegistry.items).length > gameplayAudioLimits.bankItems)
   throw Error('Sound registry exceeds its fixed bound.');
