@@ -23,6 +23,7 @@ import { readMapLayerImages } from './prepare-map-layers.mjs';
 import { readNativeLightingBindings } from './native-map-lighting-layout.mjs';
 import { prepareCompactMap } from './prepare-compact-map.mjs';
 import { readGlassBindings, bindPreparedGlass } from './prepare-map-glass.mjs';
+import { inspectMapGraphics } from './map-visual-audit.mjs';
 import { filterMapWorldMaterials } from './map-world-materials.mjs';
 const { values: v } = parseArgs({
   options: {
@@ -114,6 +115,7 @@ for (const tier of tiers.filter((value) => value !== 'compact')) {
   const target = join(root, tier);
   const document = await io.read(input);
   bindPreparedGlass(document, glassBindings);
+  const graphics = inspectMapGraphics(document);
   const worldMaterials = filterMapWorldMaterials(document);
   let bakedLighting, lightingFallback;
   if (v['irradiance-exr'] && v['sun-shadow-png']) {
@@ -163,6 +165,7 @@ for (const tier of tiers.filter((value) => value !== 'compact')) {
     vertexLighting,
     lightingFallback,
     worldMaterials,
+    graphics,
     geometry:
       tier === 'mobile'
         ? 'Source geometry simplified once for mobile'

@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
+import { mapGradeFile } from '../../shared/map-grade.mjs';
 import { regular } from './asset-storage.mjs';
 import {
   mapQueueIds,
@@ -22,13 +23,14 @@ const defaultNetworkDeny = fileURLToPath(new URL('./bin/asset-network-deny', imp
 export function managedMapPaths(map) {
   const files = new Set(['pack.json', '.preparation.json', `maps/${map}/installation.json`]);
   for (const tier of ['desktop', 'mobile'])
-    for (const name of ['scene.glb', 'manifest.json', 'texture-plan.json'])
+    for (const name of ['scene.glb', 'manifest.json', 'texture-plan.json', 'visual-audit.json'])
       files.add(`maps/${map}/${tier}/${name}`);
   for (const name of ['scene.glb', 'manifest.json']) files.add(`maps/${map}/compact/${name}`);
   for (const name of ['overview.png', 'overview.json', 'provenance.json'])
     files.add(`maps/overviews/${map}/${name}`);
   for (const name of [
     'environment.json',
+    mapGradeFile,
     'provenance.json',
     'px.png',
     'nx.png',

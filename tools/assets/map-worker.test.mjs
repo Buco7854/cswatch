@@ -47,7 +47,8 @@ import {
   runMapWorker,
   mapWorkerLimits,
 } from './map-worker.mjs';
-import { applyTextureBudget } from './texture-budget.mjs';
+import { graphicsInventory } from './map-graphics-inventory.mjs';
+import { writeOriginalMapTier } from './fixtures/original-map-tier.mjs';
 import { validatePreparedMap } from './prepared-map-publication.mjs';
 import { buildNetworkDeny } from './build-network-deny.mjs';
 import { refreshOfficialMapInventory } from './official-map-inventory.mjs';
@@ -410,6 +411,69 @@ test('latest official source publishes a distinct content-bound immutable pack a
     ledger,
   );
 });
+test('graphics inventory includes new unrequested maps and joins exact published audits without acquiring anything', async (t) => {
+  const f = await latestFixture(t);
+  const extra = { ...f.inventory.maps[0], map: 'de_tomorrow' };
+  const inventory = { ...f.inventory, maps: [...f.inventory.maps, extra] };
+  await writeOfficialMapInventory(f.options.jobs, inventory);
+  const names = async () => (await readdir(join(f.options.jobs, 'requests'))).sort();
+  const before = await names();
+  const captures = join(f.root, 'captures');
+  const options = { ...f.options, captures, at: inventory.updatedAt };
+  let report = await graphicsInventory(options);
+  const ours = (r) => r.maps.find((row) => row.map === f.selection.map);
+  assert.equal(report.status, 'current');
+  assert.equal(ours(report).status, 'queued');
+  assert.equal(report.maps.find((row) => row.map === extra.map).status, 'not_requested');
+  await processOneMapRequest(f.options, {
+    prepare: async (options) => {
+      await options.onSourceVerified({ ...f.selection, mapSha256: f.entry.source.mapSha256 });
+      await originalPack(options.output, f.entry);
+    },
+  });
+  report = await graphicsInventory({ ...options, at: inventory.updatedAt + 86401 });
+  assert.equal(report.status, 'stale');
+  const pack = ours(report);
+  assert.equal(pack.status, 'ready');
+  assert.equal(pack.packId, f.assetPackId);
+  assert.equal(pack.environment.sky, true);
+  assert.equal(pack.tiers.mobile.capture.status, 'no_capture');
+  const auditPath = join(options.assets, pack.tiers.desktop.auditPath);
+  const bytes = await readFile(auditPath),
+    audit = JSON.parse(bytes);
+  const capture = {
+    ...audit,
+    kind: 'cswatch-graphics-capture',
+    auditSha256: hash(bytes),
+    auditBinding: 'tier-manifest',
+    views: audit.views.map((v, index) => ({
+      ...v,
+      index,
+      visibility: { status: 'visible' },
+      comparison: { status: 'no-reference' },
+    })),
+    verdict: 'not-evaluated',
+  };
+  const dir = join(captures, pack.packId, 'desktop');
+  await mkdir(dir, { recursive: true });
+  const write = () => writeFile(join(dir, 'capture.json'), JSON.stringify(capture));
+  await write();
+  const desktop = async () => ours(await graphicsInventory(options)).tiers.desktop;
+  assert.deepEqual((await desktop()).capture, {
+    status: 'captured',
+    verdict: 'not-evaluated',
+    visibility: { visible: 1 },
+    comparison: { 'no-reference': 1 },
+  });
+  capture.views[0].eye[1] += 0.1;
+  await write();
+  assert.equal((await desktop()).capture.status, 'invalid_capture');
+  await writeFile(auditPath, Buffer.concat([bytes, Buffer.from(' ')]));
+  assert.equal((await desktop()).status, 'audit_unavailable');
+  assert.deepEqual(await names(), before);
+  assert.equal((await graphicsInventory({ ...options, jobs: f.root })).maps, null);
+});
+
 test('latest conversion refuses absent or inconsistent source proof and removed official membership', async (t) => {
   for (const mode of ['absent', 'sha1', 'manifest', 'membership'])
     await t.test(mode, async (t) => {
@@ -502,22 +566,7 @@ async function originalPack(output, entry) {
     assetVersion = versionOf(entry);
   for (const tier of ['desktop', 'mobile']) {
     const directory = join(output, map, tier);
-    await mkdir(directory, { recursive: true });
-    const budget = await applyTextureBudget(await new NodeIO().readBinary(model), { tier });
-    await writeFile(join(directory, 'scene.glb'), model);
-    await writeFile(join(directory, 'texture-plan.json'), budget.planBytes);
-    await writeFile(
-      join(directory, 'manifest.json'),
-      JSON.stringify({
-        schemaVersion: 1,
-        map,
-        tier,
-        assetVersion,
-        bytes: model.length,
-        outputSha256: hash(model),
-        textureBudget: budget.manifest,
-      }),
-    );
+    await writeOriginalMapTier(directory, model, map, tier, assetVersion);
   }
   const overview = join(output, 'overviews', map),
     environment = join(output, 'environments', map);

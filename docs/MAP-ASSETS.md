@@ -62,6 +62,20 @@ Inventory failures log a fixed safe `phase`, `code` and `retryAt`, with a bounde
 
 Administration also shows the web image's immutable source revision and UTC build time from `/api/config`. CI supplies these at build time and verifies the running image against the expected revision; absent local-build fields remain unknown. Pulling a new web image alone does not update the asset worker's separate image or existing immutable prepared assets.
 
+## Graphics coverage for the official map inventory
+
+The asset worker records a graphics audit in each prepared desktop and mobile tier. It inventories exported primitive definitions by Source shader, material treatment and feature. It picks up to 24 camera poses on actual triangles in glTF metres, giving distinct features a turn before choosing more materials from one family. A future map can use these paths as soon as the worker sees it in a Valve depot manifest. New shader families appear as unknown. Omitted materials remain in the inventory. Source-backed entries identify a recovered property, such as constant glass opacity. They do not certify the rest of that material or map.
+
+Read the snapshot on the asset worker using the same volumes and UID as the service.
+
+```sh
+docker compose exec -T assets node tools/assets/map-graphics-inventory.mjs > graphics-inventory.json
+```
+
+Each map in the observed manifest has a row, including unrequested, queued and failed jobs. A missing inventory produces a diagnostic and exit code 1. A stale snapshot retains its observation time. Prepared historical approvals appear separately. For published tiers the report includes the audit path, shader decisions, lighting counts and prepared environment features. Inventory reads leave Steam, the queue and the asset files untouched.
+
+To check a tier on a QA workstation, mount the pack read-only and run the [offline capture procedure](../scripts/graphics/README.md). Give the capture tool a new private output directory. To join these results on a host where the same files are mounted, pass `--captures DIR` to the inventory command and put each report under `DIR/<packId>/<tier>/capture.json`. The join checks the exact tier, model, audit and ordered camera list. Counts distinguish materials shown on screen, missing views, prior viewer baselines and supplied external references. Comparisons use the supplied camera, source revision and projection. A reproducible baseline measures change within cswatch. Comparison to CS2 or the reference viewer requires a corresponding independently captured frame.
+
 ## Automatic landing artwork
 
 After a successful current-inventory refresh, an idle worker first checks for existing operator previews, then can prepare one fixed native 720p Mirage screenshot. The source is exactly `panorama/images/map_icons/screenshots/720p/de_mirage_png.vtex_c` from anonymous app `730`/depot `2347770` at the selected manifest. Package SHA-1, entry CRC and output hashes are verified; only that resource and its package index are selected. It does not download the game or derive artwork from a private demo.
@@ -96,7 +110,7 @@ The renderer uses each map's authored sun direction, supported cubemap fog and u
 
 The preparer can also bind modern materials by matching their exported mesh, material and draw counts to the verified compiled model. Its vertex layout and material input signature establish which glTF coordinate addresses the atlas. The pinned exporter applies the world's atlas scale. Draws with conflicting signatures keep the ordinary material path. The renderer can use indirect light when the compiled draw declares vertex lighting and the verified `COLOR1` layout matches the exported data channel. Foliage tint and wind channels stay separate. Source refractive water requires its native shader and is omitted from the static world pack. [Pinned exporter](https://github.com/ValveResourceFormat/ValveResourceFormat/blob/942df5b37ebbde6153f6c488880b91d4bed003e6/ValveResourceFormat/IO/Gltf/GltfModelExporter.Mesh.cs) [Compiled draw flags](https://github.com/ValveResourceFormat/ValveResourceFormat/blob/942df5b37ebbde6153f6c488880b91d4bed003e6/ValveResourceFormat/Resource/ResourceTypes/Mesh.cs)
 
-Map preparer revision 4 gives approved and latest-official map jobs and packs new identities. Opening a demo can request a new pack through the normal acquisition policy and source checks. The worker publishes to the new identity and preserves earlier pack files, job records and operator-managed assets. Equipment and agent banks have an independent revision.
+Map preparer revision 5 gives approved and latest-official map jobs and packs new identities. Opening a demo can request a new pack through the normal acquisition policy and source checks. The worker publishes to the new identity and preserves earlier pack files, job records and operator-managed assets. Equipment and agent banks have an independent revision.
 
 ## Latest official snapshots
 

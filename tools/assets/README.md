@@ -2,6 +2,8 @@
 
 This is a **trusted operator CPU pipeline**, separate from replay parsing and the HTTP process. The isolated asset worker invokes the same map installer for preferred approved historical sources or disclosed latest official snapshots; see [automatic-map deployment](../../docs/MAP-ASSETS.md). It uses local CS2 content, either selectively downloaded below or provided by an existing installation, and [Source2Viewer-CLI](https://s2v.app/ValveResourceFormat/guides/command-line.html). The web/replay runtime requires neither .NET nor a server GPU. The asset service uses verified native/.NET tools in its private cache for conversion.
 
+List graphics coverage across observed Steam maps with `node tools/assets/map-graphics-inventory.mjs --jobs DIR --assets DIR`. The report includes ready and unprepared maps. [Inventory and capture instructions](../../docs/MAP-ASSETS.md#graphics-coverage-for-the-official-map-inventory)
+
 ## Install selected official maps from Steam
 
 The operator installer can obtain the selected official map VPKs and their required resources without downloading the whole game. It uses anonymous access to fixed CS2 app `730` and content depot `2347770`. An explicit map list is required. There is no full-game fallback, account login or arbitrary URL option. The public map-request endpoint accepts no source selectors and cannot invoke conversion inside the HTTP or replay worker process.

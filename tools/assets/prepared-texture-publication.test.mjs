@@ -120,3 +120,22 @@ test('publication requires texture-plan and model bindings in both tiers', async
   await unlink(join(s.root, s.map, 'desktop', 'texture-plan.json'));
   await assert.rejects(validatePreparedMap(s.root, s.map, s.version));
 });
+
+test('graphics audit publication binds source, model, tier and camera plan', async (t) => {
+  const s = await fixture(t),
+    dir = join(s.root, s.map, 'desktop'),
+    auditPath = join(dir, 'visual-audit.json'),
+    manifestPath = join(dir, 'manifest.json');
+  const bytes = await readFile(auditPath),
+    manifest = JSON.parse(await readFile(manifestPath));
+  await unlink(auditPath);
+  await assert.rejects(validatePreparedMap(s.root, s.map, s.version));
+  await writeFile(auditPath, Buffer.concat([bytes, Buffer.from(' ')]));
+  await assert.rejects(validatePreparedMap(s.root, s.map, s.version), /audit hash/i);
+  const changed = Buffer.from(
+    JSON.stringify({ ...JSON.parse(bytes), sourceSha256: '0'.repeat(64) }),
+  );
+  await writeFile(auditPath, changed);
+  await writeFile(manifestPath, JSON.stringify({ ...manifest, visualAuditSha256: hash(changed) }));
+  await assert.rejects(validatePreparedMap(s.root, s.map, s.version), /does not match/i);
+});

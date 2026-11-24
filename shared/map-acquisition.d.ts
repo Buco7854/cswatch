@@ -41,7 +41,7 @@ export type ApprovedMapEntry = {
 };
 export type MapCatalog = { schemaVersion: 1; entries: ApprovedMapEntry[] };
 type MapJobIdentity = {
-  schemaVersion: 4;
+  schemaVersion: 5;
   /** Queue identity. Latest jobs acquire a separate content pack ID after download. */
   packId: string;
   /** Server-issued retry generation, deliberately independent of pack identity. */
@@ -61,7 +61,7 @@ type MapJobFailureCode =
   | 'worker_interrupted'
   | 'removed_by_admin';
 export type MapJobResult = {
-  schemaVersion: 4;
+  schemaVersion: 5;
   repairing?: true;
   packId: string;
   status: 'processing' | 'ready' | 'failed';
