@@ -111,7 +111,7 @@ test('processing and failed demo pages keep ordinary Tab navigation before a vie
         id: 'unavailable-controls-fixture',
         name: 'Explicit unavailable keyboard fixture',
         status,
-        owned: false,
+        owned: true,
         public: true,
         source: 'synthetic-qa',
         error: status === 'failed' ? 'Explicit safe failure' : null,
@@ -120,12 +120,17 @@ test('processing and failed demo pages keep ordinary Tab navigation before a vie
   );
   for (status of ['processing', 'failed']) {
     await page.goto('/watch/unavailable-controls-fixture');
-    await expect(page.locator('.processing')).toBeVisible();
-    const back = page.locator('.back-link');
-    const returnLink = page.locator('.processing a.button');
+    await expect(
+      page.getByRole('heading', {
+        name: status === 'failed' ? 'This demo could not be parsed' : 'Reading the match…',
+      }),
+    ).toBeVisible();
+    const back = page.getByRole('link', { name: 'Back to home' });
+    await expect(back).toHaveCount(1);
     await back.focus();
     await page.keyboard.press('Tab');
-    await expect(returnLink).toBeFocused();
+    if (status === 'failed')
+      await expect(page.getByRole('button', { name: 'Manage demo' })).toBeFocused();
     await expect(page.getByRole('dialog', { name: 'Scoreboard', exact: true })).toHaveCount(0);
   }
 });

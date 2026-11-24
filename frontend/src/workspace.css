@@ -277,14 +277,6 @@ small {
 .added {
   color: var(--faint);
 }
-.back-link {
-  font-size: 12px;
-  color: var(--muted);
-  margin-bottom: 12px;
-}
-.back-link:hover {
-  color: var(--text);
-}
 [data-theme] .playback {
   background: var(--raised);
   border-radius: 8px;
@@ -447,16 +439,6 @@ summary {
 }
 [data-theme='dark'] .error {
   color: #f0a2a2 !important;
-}
-.processing {
-  min-height: 430px;
-}
-.processing h1 {
-  font-size: 24px;
-}
-.processing p {
-  font-size: 14px;
-  line-height: 1.65;
 }
 .inline-state {
   padding: 28px 0;
@@ -680,10 +662,6 @@ summary {
     grid-row: 1;
     font-size: 11px;
   }
-  .back-link {
-    font-size: 12px;
-    margin-bottom: 10px;
-  }
   .controls {
     padding: 12px 10px;
   }
@@ -788,15 +766,5 @@ summary {
   }
   .toast {
     font-size: 12px !important;
-  }
-  .processing {
-    min-height: 420px;
-  }
-  .processing h1 {
-    font-size: 23px;
-    line-height: 1.25;
-  }
-  .processing p {
-    font-size: 14px;
   }
 }

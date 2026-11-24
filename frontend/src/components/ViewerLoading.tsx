@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { useSyncExternalStore, type ReactNode } from 'react';
 import { t } from '../i18n';
 import type { ModelProgressSource } from '../model-cache';
 
@@ -7,12 +7,18 @@ const noSubscription = () => () => {};
 
 export default function ViewerLoading({
   label,
-  map,
+  back,
+  detail,
+  failed = false,
   model,
+  children,
 }: {
   label: string;
-  map?: string;
+  back: ReactNode;
+  detail?: ReactNode;
+  failed?: boolean;
   model?: ModelProgressSource;
+  children?: ReactNode;
 }) {
   const progress = useSyncExternalStore(
     model?.subscribe ?? noSubscription,
@@ -28,24 +34,32 @@ export default function ViewerLoading({
         );
   return (
     <div className="viewer-map-loading">
-      <div className="viewer-loading-panel">
-        {map && <h1>{map}</h1>}
-        <div className="viewer-loading-status">
-          <span role="status">{description}</span>
-          {percentText && (
-            <span className="viewer-loading-percent" aria-hidden="true">
-              {percentText}
-            </span>
+      {back}
+      <div className="viewer-loading-body">
+        <div className="viewer-loading-panel">
+          <div className="viewer-loading-status">
+            <div role={failed && detail ? undefined : failed ? 'alert' : 'status'}>
+              <h1>{description}</h1>
+            </div>
+            {percentText && (
+              <span className="viewer-loading-percent" aria-hidden="true">
+                {percentText}
+              </span>
+            )}
+          </div>
+          {!failed && (
+            <div
+              className="viewer-loading-track"
+              role="progressbar"
+              aria-label={description}
+              aria-valuenow={percent}
+              data-indeterminate={percent === undefined || undefined}
+            >
+              <span style={percent === undefined ? undefined : { width: `${percent}%` }} />
+            </div>
           )}
-        </div>
-        <div
-          className="viewer-loading-track"
-          role="progressbar"
-          aria-label={description}
-          aria-valuenow={percent}
-          data-indeterminate={percent === undefined || undefined}
-        >
-          <span style={percent === undefined ? undefined : { width: `${percent}%` }} />
+          {detail && <p role={failed ? 'alert' : undefined}>{detail}</p>}
+          {children}
         </div>
       </div>
     </div>

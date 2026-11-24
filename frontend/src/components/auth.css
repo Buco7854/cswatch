@@ -102,12 +102,6 @@
   background: var(--surface);
   color: var(--text);
 }
-.auth-page input:focus {
-  border-color: var(--signal);
-}
-.auth-page input:focus-visible {
-  outline-offset: 2px;
-}
 .auth-page form small {
   margin-top: 7px;
   font-size: 12px;

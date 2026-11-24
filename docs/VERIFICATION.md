@@ -1,5 +1,9 @@
 # Verification record
 
+## Viewer opening screens and form focus
+
+Production Chromium on Linux exercised synthetic member and authentication sessions in English and French at 390 × 844, 768 × 1024 and 1440 × 900 in both themes, with reduced motion. The six journeys traversed parser processing to a held Cache discovery request. In each pair the status panel kept its top edge, the return link kept its bounds and keyboard focus, and Enter reopened the library. Each journey also checked an automatically focused challenge heading, the next keyboard control, an editable sign-in field and the compound library search. Thirty captures cover the two loading stages and the three focus cases. The fixture exercised navigation and presentation with synthetic Cache metadata.
+
 ## LAN administrator access and Steam error logs
 
 Node 24 passed the 60 focused admin network, account, Steam Coordinator, import and provider request cases. With identical trusted and allowed LAN ranges, the admin page, API and navigation accepted both a direct client and a client reported by a trusted proxy through either address header. Requests carrying a malformed or incomplete forwarding chain or a client outside the allowed range were denied. Synthetic SDK responses and deadline expiry exercised the warning stage, reason and numeric Steam result. The operator’s proxy and a live Steam account were outside these checks.

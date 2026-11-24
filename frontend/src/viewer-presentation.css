@@ -98,36 +98,53 @@
   z-index: 50;
   inset: 0;
   display: grid;
-  place-content: center;
-  background: var(--viewer-ground, var(--ground));
-  color: var(--viewer-ink, var(--text));
-  text-align: center;
+  grid-template-rows: auto minmax(0, 1fr);
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+    max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  gap: 12px;
+  background: var(--viewer-ground);
+  color: var(--viewer-ink);
+}
+.viewer-map-loading > .button,
+.viewer-loading-panel > .button {
+  justify-self: start;
+}
+.viewer-loading-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-block-start: max(0px, calc(50dvh - 10rem));
+  overflow: auto;
 }
 .viewer-loading-panel {
-  width: min(360px, calc(100vw - 48px));
+  flex: none;
+  width: min(420px, 100%);
   padding: 20px 24px;
-  border: 1px solid var(--viewer-line, var(--control));
+  border: 1px solid var(--viewer-line);
   border-radius: 8px;
-  background: var(--viewer-plane, var(--surface));
-  text-align: left;
+  background: var(--viewer-plane);
   display: grid;
-  gap: 12px;
-  font-weight: 600;
+  gap: 14px;
 }
 .viewer-loading-panel h1 {
   margin: 0;
-  font-size: 26px;
-  line-height: 32px;
-  text-transform: capitalize;
+  font-size: 22px;
+  line-height: 1.25;
   overflow-wrap: anywhere;
+}
+.viewer-loading-panel p {
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.viewer-loading-panel .match-map {
+  text-transform: capitalize;
 }
 .viewer-loading-status {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-  color: var(--viewer-muted, var(--muted));
-  font-size: 13px;
 }
 .viewer-loading-track {
   height: 5px;

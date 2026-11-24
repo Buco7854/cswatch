@@ -13,17 +13,6 @@
   padding: 0;
   overflow: hidden;
 }
-.viewer-page > .processing,
-.viewer-page > .inline-state {
-  min-height: 100%;
-  padding: 40px 24px;
-}
-.viewer-page > .back-link {
-  position: absolute;
-  top: 24px;
-  left: 24px;
-  z-index: 1;
-}
 .viewer-frame {
   --viewer-toolbar-height: 48px;
   --viewer-edge: 16px;

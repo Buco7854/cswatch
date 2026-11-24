@@ -1,6 +1,7 @@
 import { chooseCameraControl, expectCameraControl } from './fixtures/viewer-transport';
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { manualMapAssets } from './fixtures/map-assets';
+import { installMemberWorkspace } from './fixtures/member-workspace';
 import { installOriginalCameraProbe, originalFloorPixel } from './fixtures/original-camera';
 import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
 import {
@@ -414,6 +415,55 @@ test('known and unknown map names without instance packs show localized unavaila
       language === 'fr' ? 'administrateur' : 'administrator',
     );
     await expect(page.locator('.viewer-frame')).toBeInViewport();
+  }
+});
+
+test('the same library link keeps its position and keyboard focus from demo processing to Cache discovery', async ({
+  page,
+}) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE) || Boolean(process.env.E2E_SETUP));
+  await installMemberWorkspace(page);
+  const id = 'member-design-0';
+  await install(
+    page,
+    { model: null, mobile: null, overview: null },
+    { id, map: 'de_cache', language: 'fr' },
+  );
+  let ready = false;
+  await page.route('**/api/demos/' + id, (route) =>
+    ready
+      ? route.fallback()
+      : route.fulfill({ json: { id, name: 'Cache', status: 'processing', owned: true } }),
+  );
+  const discovery = Promise.withResolvers<void>();
+  await page.route('**/api/demos/' + id + '/map-assets', async (route) => {
+    await discovery.promise;
+    await route.fulfill({ json: manualMapAssets({ model: null, mobile: null, overview: null }) });
+  });
+  try {
+    await page.goto('/library');
+    await page.locator('a[href="/watch/member-design-0"]').click();
+    const loading = page.locator('.viewer-map-loading');
+    await expect(loading.getByRole('heading')).toHaveText('Lecture des données de partie…');
+    const back = loading.getByRole('link', { name: 'Retour à la bibliothèque' });
+    await expect(back).toBeInViewport();
+    await back.focus();
+    const position = await back.boundingBox();
+    const panel = loading.locator('.viewer-loading-panel');
+    const panelTop = (await panel.boundingBox())?.y;
+    ready = true;
+    await expect(loading.getByRole('heading')).toHaveText(
+      'Chargement des ressources de la carte…',
+      { timeout: 10000 },
+    );
+    await expect(loading.getByText('cache', { exact: true })).toBeVisible();
+    expect(await back.boundingBox()).toEqual(position);
+    expect((await panel.boundingBox())?.y).toBe(panelTop);
+    await expect(back).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL('/library');
+  } finally {
+    discovery.resolve();
   }
 });
 

@@ -1,5 +1,7 @@
 # Current handoff
 
+The opening screen is shared by demo processing, map discovery and client-side map loading. Keep its return link at the top left and preserve the link's DOM identity through stage changes so keyboard focus survives. Programmatically focused headings announce navigation and form transitions. Text fields and compound search controls each own one visible focus indicator.
+
 Viewer playback work covers first person, third-person follow and free camera. Static map draws can trim the ends of a batch using bounds for groups of 64 triangles. Keep the draw range local to each draw so shadow and depth passes retain their own camera visibility. Grading shares its MSAA attachments until the final color resolve on supported WebGL contexts. Rigged map props retain live shadow updates. The same map packs work with this renderer. Compare the same recorded ticks and distinguish the first traversal from repeat playback when measuring stutter. [Benchmarks and test conditions](VERIFICATION.md)
 
 Viewer startup now uses precompressed application bundles and direct bitmap decoding for embedded map textures. Camera and terrain queries share bounded triangle-block indices on static geometry. [Local performance evidence](VERIFICATION.md#viewer-opening-and-playback-2026-11-23)

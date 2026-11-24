@@ -79,6 +79,14 @@ test('leaving sign-in still refreshes its session without replacing a newer sign
     await changeRoute(page, '/account');
     await expect(page).toHaveURL(/\/login\?returnTo=%2Faccount$/);
     await form.getByLabel('Username or email', { exact: true }).fill('new_attempt');
+    await expect(form.getByLabel('Username or email', { exact: true })).toHaveCSS(
+      'outline-style',
+      'solid',
+    );
+    await expect(form.getByLabel('Username or email', { exact: true })).toHaveCSS(
+      'outline-offset',
+      '-1px',
+    );
 
     const refreshed = page.waitForResponse(
       async (response) =>
@@ -90,6 +98,10 @@ test('leaving sign-in still refreshes its session without replacing a newer sign
     await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
     await expect(page).toHaveURL(/\/login\?returnTo=%2Faccount$/);
     await expect(page.getByRole('heading', { name: 'Signed in as fixture' })).toBeFocused();
+    await expect(page.getByRole('heading', { name: 'Signed in as fixture' })).toHaveCSS(
+      'outline-style',
+      'none',
+    );
     await expect(form).toHaveCount(0);
     expect(attempts).toBe(1);
     await page.getByRole('button', { name: 'Continue', exact: true }).click();
