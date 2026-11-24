@@ -10,6 +10,7 @@ import { observeCrosshairs } from './crosshairs.js';
 import { observeItemState } from './item-state.js';
 import { observeMapIdentity } from './map-identity.js';
 import { observeSmokeTracks } from './smoke-state.js';
+import { observeMapDoors } from './map-doors.js';
 import { observeMapBreakables } from './map-breakables.js';
 import { observeInfernos } from './inferno-state.js';
 import { observeMatchPerformance } from './match-performance.js';
@@ -33,6 +34,7 @@ export async function readCommunications(
   const finishCrosshairs = observeCrosshairs(reader, lastTick, actors);
   const finishItems = observeItemState(reader, lastTick);
   const finishSmokes = observeSmokeTracks(reader, lastTick, tickRate);
+  const finishDoors = observeMapDoors(reader, lastTick, events);
   const finishBreakables = observeMapBreakables(reader, lastTick, events);
   const finishInfernos = observeInfernos(reader, lastTick);
   observeRecordedEye(reader, frames);
@@ -103,7 +105,7 @@ export async function readCommunications(
   try {
     const result = await reader.parseDemo(path, {
       entities: EntityMode.ALL,
-      entityClasses: ['CDynamicProp'],
+      entityClasses: ['CDynamicProp', 'CBreakable', 'CPropDoorRotating'],
     });
     failed = result.status !== 'complete';
   } catch {
@@ -157,6 +159,7 @@ export async function readCommunications(
     smokeTracks: finishSmokes(!failed),
     infernos: finishInfernos(!failed),
     mapBreakables: finishBreakables(!failed),
+    mapDoors: finishDoors(!failed),
     warnings,
   };
 }

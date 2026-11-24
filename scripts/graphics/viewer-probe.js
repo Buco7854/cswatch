@@ -304,26 +304,35 @@
       throw Error('Recorded paused POV is unavailable');
     // Read the installed map clone, including invisible descendants. This is an
     // offline capture of scene visibility; it makes no frustum or pixel claim.
-    function observedBreakables(scene) {
+    function observedMapGeometry(scene) {
       const text = (value, max) =>
         typeof value === 'string' && value.length <= max ? value : null;
       const triple = (value) =>
         Array.isArray(value) && value.length === 3 && value.every(Number.isFinite) ? value : null;
-      const nodes = [];
-      const stack = [{ node: scene, inMap: false, shown: true }];
+      const nodes = [],
+        doors = [];
+      let breakableLimit = false,
+        doorLimit = false;
+      const unavailable = (reason) => ({
+        observedBreakables: { reason },
+        observedDoors: { reason },
+      });
+      const stack = [{ node: scene, inMap: null, shown: true }];
       let groups = 0,
         visited = 0;
       while (stack.length) {
         const { node, inMap, shown } = stack.pop();
+        if (++visited + stack.length + node.children.length > 65536)
+          return unavailable('node-limit');
         const group =
           typeof node.immutableDescendants === 'boolean' &&
           typeof node.canTrackRigCasters === 'boolean';
-        if (group && ++groups > 1) return { reason: 'multiple-map-groups' };
-        const inside = group || inMap;
+        if (group && ++groups > 1) return unavailable('multiple-map-groups');
+        const inside = group ? node : inMap;
         const visible = shown && node.visible;
         const tag = inside && node.userData.cswatchBreakable;
-        if (tag) {
-          if (nodes.length >= 512) return { reason: 'tag-limit' };
+        if (tag && nodes.length >= 512) breakableLimit = true;
+        else if (tag) {
           nodes.push({
             className: text(tag.className, 64),
             hammerId: text(tag.hammerId, 128),
@@ -334,12 +343,87 @@
             visible,
           });
         }
-        if (++visited + stack.length + node.children.length > 65536)
-          return { reason: 'node-limit' };
+        const door = inside && node.userData.cswatchDoor;
+        if (door && doors.length >= 256) doorLimit = true;
+        else if (door) {
+          // The cloned node's TRS is its authored pose. Door motion is written
+          // to its matrix. Compare in the static map's coordinate system so
+          // this also works for baked Compact vertices and nested transforms.
+          const parentToMap = inside.matrixWorld.clone().invert().multiply(node.parent.matrixWorld);
+          const rest = parentToMap
+            .clone()
+            .multiply(node.matrix.clone().compose(node.position, node.quaternion, node.scale));
+          const delta =
+            Math.abs(rest.determinant()) > 1e-12
+              ? parentToMap.multiply(node.matrix).multiply(rest.invert()).elements
+              : null;
+          let yaw = null;
+          const origin = triple(door.origin);
+          if (origin && delta && delta.every(Number.isFinite)) {
+            const [x, y, z] = [origin[1], origin[2], origin[0]].map((v) => v * 0.0254);
+            // A matching angle applied around another point visibly displaces the door.
+            const pivotError = Math.hypot(
+              delta[0] * x + delta[4] * y + delta[8] * z + delta[12] - x,
+              delta[1] * x + delta[5] * y + delta[9] * z + delta[13] - y,
+              delta[2] * x + delta[6] * y + delta[10] * z + delta[14] - z,
+            );
+            const a = Math.atan2(delta[8], delta[0]),
+              c = Math.cos(a),
+              s = Math.sin(a);
+            if (
+              pivotError < 0.0003 &&
+              [
+                [0, c],
+                [1, 0],
+                [2, -s],
+                [4, 0],
+                [5, 1],
+                [6, 0],
+                [8, s],
+                [9, 0],
+                [10, c],
+              ].every(([i, v]) => Math.abs(delta[i] - v) < 0.0001)
+            )
+              yaw = (a * 180) / Math.PI;
+          }
+          let stages = [];
+          for (const child of node.children) {
+            const stage = child.userData.cswatchDoorStage;
+            if (!stage) continue;
+            if (stages.length >= 5) {
+              stages = null;
+              break;
+            }
+            stages.push({
+              stage: stage.stage,
+              modelId: text(stage.modelId, 20),
+              visible: Boolean(
+                visible &&
+                child.visible &&
+                child.scale.toArray().every((v) => Number.isFinite(v) && v !== 0),
+              ),
+            });
+          }
+          doors.push({
+            className: text(door.className, 64),
+            hammerId: text(door.hammerId, 128),
+            model: text(door.model, 256),
+            modelId: text(door.modelId, 20),
+            origin: triple(door.origin),
+            angles: triple(door.angles),
+            visible,
+            yaw,
+            stages,
+          });
+        }
         for (const child of node.children)
           stack.push({ node: child, inMap: inside, shown: visible });
       }
-      return groups === 1 ? { nodes } : { reason: 'map-group-unavailable' };
+      if (groups !== 1) return unavailable('map-group-unavailable');
+      return {
+        observedBreakables: breakableLimit ? { reason: 'tag-limit' } : { nodes },
+        observedDoors: doorLimit ? { reason: 'tag-limit' } : { nodes: doors },
+      };
     }
     for (const scene of scenes) {
       const state = scene.__r3f?.root.getState();
@@ -417,7 +501,7 @@
                 camera,
                 equipmentProjection,
                 nativePovModel,
-                observedBreakables: observedBreakables(scene),
+                ...observedMapGeometry(scene),
                 status,
                 screenPass,
                 viewport: { width: innerWidth, height: innerHeight },

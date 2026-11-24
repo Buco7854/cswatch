@@ -9,6 +9,7 @@ const TRIANGLES_PER_BLOCK = 64;
 const MAX_BLOCKS = 32_768;
 type Surface = {
   gate?: Object3D;
+  movingVisible?: boolean;
   geometry: Mesh['geometry'];
   bounds: Box3;
   toWorld: Matrix4;
@@ -22,7 +23,8 @@ export function followObstruction(root: Group) {
   const vertex = new Vector3();
   root.updateMatrixWorld(true);
   const breakables = mapBreakableVisibility(root);
-  const add = (object: Object3D, gate?: Object3D) => {
+  const movingSurfaces: { surface: Surface; mesh: Mesh; door: Object3D; localBounds: Box3 }[] = [];
+  const add = (object: Object3D, gate?: Object3D, door?: Object3D) => {
     if (surfaces.length >= MAX_SURFACES || Object.getPrototypeOf(object) !== Mesh.prototype) return;
     const mesh = object as Mesh;
     const { material, geometry } = mesh;
@@ -48,26 +50,35 @@ export function followObstruction(root: Group) {
     if (!geometry.boundingBox)
       for (let i = 0; i < position.count; i++)
         bounds.expandByPoint(vertex.fromBufferAttribute(position, i));
+    const localBounds = door && bounds.clone();
     bounds.applyMatrix4(mesh.matrixWorld);
     if (bounds.isEmpty()) return;
     const toWorld = mesh.matrixWorld.clone();
-    surfaces.push({
+    const surface: Surface = {
       geometry,
       bounds,
       toWorld,
       toLocal: toWorld.clone().invert(),
       triangles,
       gate,
-    });
+    };
+    surfaces.push(surface);
+    if (door && localBounds) movingSurfaces.push({ surface, mesh, door, localBounds });
   };
   if (breakables) {
     // An opening seek may already hide a tagged parent. Index its authored
     // triangles once so all forks can trace them again after a rewind.
-    function visit(node: Object3D, gate?: Object3D) {
-      if (!(breakables!.authored.get(node) ?? node.visible)) return;
+    function visit(node: Object3D, gate?: Object3D, door?: Object3D) {
+      if (breakables!.moving.has(node)) door = node;
+      // Alternate authored door stages can become visible on a later seek.
+      if (
+        !(breakables!.authored.get(node) ?? node.visible) &&
+        !(door && node.userData.cswatchDoorStage)
+      )
+        return;
       if (breakables!.authored.has(node)) gate = node;
-      add(node, gate);
-      for (const child of node.children) visit(child, gate);
+      add(node, gate, door);
+      for (const child of node.children) visit(child, gate, door);
     }
     visit(root);
   } else root.traverseVisible(add);
@@ -97,6 +108,21 @@ export function followObstruction(root: Group) {
     return blocks;
   }
 
+  let geometryRevision: number | undefined;
+  function updateMovingSurfaces() {
+    if (!breakables || geometryRevision === breakables.revision) return;
+    geometryRevision = breakables.revision;
+    // Doors are a small subset of the static world. All forks share the update.
+    for (const { surface, mesh, door, localBounds } of movingSurfaces) {
+      let node: Object3D | null = mesh;
+      while (node && node.visible && node !== door) node = node.parent;
+      surface.movingVisible = node === door && door.visible;
+      if (!surface.movingVisible) continue;
+      surface.toWorld.copy(mesh.matrixWorld);
+      surface.toLocal.copy(mesh.matrixWorld).invert();
+      surface.bounds.copy(localBounds).applyMatrix4(mesh.matrixWorld);
+    }
+  }
   const createTrace = (clearance = CLEARANCE) => {
     const ray = new Ray(),
       localRay = new Ray(),
@@ -123,6 +149,7 @@ export function followObstruction(root: Group) {
       )
         return lastPosition ?? position;
       lastRevision = breakables?.revision;
+      updateMovingSurfaces();
       lastOrigin.copy(ray.origin);
       lastDestination.copy(destination);
       const length = ray.direction.subVectors(destination, ray.origin).length();
@@ -136,7 +163,8 @@ export function followObstruction(root: Group) {
         if (
           distance !== undefined &&
           distance < length + clearance &&
-          surface.gate?.visible !== false
+          surface.gate?.visible !== false &&
+          surface.movingVisible !== false
         )
           candidates.push({ surface, distance });
       }

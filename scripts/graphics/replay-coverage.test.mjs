@@ -24,6 +24,7 @@ test('the official list owns coverage rows and only the same generation and tier
     tick: 123,
     comparison: { status: 'no-reference' },
     verdict: 'not-evaluated',
+    doors: { status: 'partial', matched: 1, missing: 2, stageMatched: 1 },
   };
   const result = replayCoverage(inventory, [
     frame,
@@ -36,6 +37,7 @@ test('the official list owns coverage rows and only the same generation and tier
     [true, false],
   );
   assert.equal(result.maps[0].captures[0].playback, null);
+  assert.deepEqual(result.maps[0].captures[0].doors, frame.doors);
   assert.equal(result.outsideInventory.length, 1);
   assert.deepEqual(result.coverage, {
     listedMaps: 2,

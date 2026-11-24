@@ -180,3 +180,47 @@ test('missing exact identities, moved entities, simultaneous duplicate poses, im
     false,
   );
 });
+
+test('the replay marks wire precision only when all seven live class decoders match the observed schema', () => {
+  const names: Record<number, string> = {};
+  const decoder: Record<number, unknown> = {};
+  let i = 0;
+  for (const axis of ['X', 'Y', 'Z']) {
+    names[++i] = skeleton + 'm_vecOrigin.m_cell' + axis;
+    decoder[i] = 10;
+    names[++i] = skeleton + 'm_vecOrigin.m_vec' + axis;
+    decoder[i] = {
+      type: 0,
+      decoder: {
+        bit_count: 15,
+        low: 0,
+        high: 1023.96875,
+        high_low_mul: 32,
+        dec_mul: 1 / 32767,
+        flags: 0,
+        offset: 1 / 32,
+        no_scale: false,
+      },
+    };
+  }
+  names[++i] = skeleton + 'm_angRotation';
+  decoder[i] = 20;
+  for (const [first, replacement, expected] of [
+    [decoder, null, true],
+    [{ ...decoder, [i]: 17 }, null, false],
+    [decoder, { ...decoder, [2]: 4 }, false],
+  ] as const) {
+    const r = recording();
+    Object.assign(r.source, { propIdToName: names, propIdToDecoder: first });
+    r.present(1, 1, 1, left);
+    if (replacement) {
+      Object.assign(r.source, { propIdToDecoder: replacement });
+      r.source.currentTick = 2;
+      r.source.emit('tickend');
+    }
+    r.remove(4, 1);
+    const result = r.finish(true)!;
+    assert.equal(result.length, 1);
+    assert.equal(result[0].poseCodec, expected ? 'cell32-angle20' : undefined);
+  }
+});

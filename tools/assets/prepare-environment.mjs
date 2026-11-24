@@ -1,4 +1,5 @@
 /** Trusted offline environment conversion. No Steam, HTTP or application-server access. */
+import { attachDoorStages } from './prepare-door-stages.mjs';
 import { tagBreakableGeometry } from './recorded-breakable-geometry.mjs';
 import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, rm, statfs, writeFile } from 'node:fs/promises';
@@ -319,7 +320,15 @@ export async function prepareEnvironment(config) {
         .some((node) => node.getExtras()?.cswatch?.kind === 'skybox')
     )
       throw new Error('Main geometry already contains a prepared sky landscape.');
-    const breakableInstances = tagBreakableGeometry(mainDocument, mainEntities);
+    const sourceClassCounts = new Map();
+    tagBreakableGeometry(mainDocument, mainEntities, sourceClassCounts);
+    let breakableInstances = 0,
+      doorInstances = 0;
+    for (const node of mainDocument.getRoot().listNodes()) {
+      if (node.getExtras().cswatchBreakable) breakableInstances++;
+      if (node.getExtras().cswatchDoor) doorInstances++;
+    }
+    const doorStages = await attachDoorStages(mainDocument, config.doorStages);
     if (sourceSky) {
       onProgress('read-sky');
       const skyDocument = await io.read(sourceSky.path);
@@ -392,7 +401,12 @@ export async function prepareEnvironment(config) {
       map,
       assetVersion,
       mainEnvironment: main,
+      sourceMapObjectClasses: Object.fromEntries(
+        [...sourceClassCounts].sort(([a], [b]) => a.localeCompare(b, 'en')),
+      ),
       breakableInstances,
+      doorInstances,
+      doorStages,
       skyCamera: camera,
       effectiveEnvironment: effective,
       material,

@@ -18,7 +18,8 @@ import {
 import { MeshoptEncoder, MeshoptSimplifier } from 'meshoptimizer';
 import sharp from 'sharp';
 import { localDirectory, regularFile } from './toolchain-security.mjs';
-import { preparedBreakable } from './recorded-breakable-geometry.mjs';
+import { addDoorStage } from './prepare-rigid-door.mjs';
+import { preparedMapEntity } from './recorded-breakable-geometry.mjs';
 import { verifyPreparedGlb } from './prepared-glb.mjs';
 import { compressGlbGeometry, MeshoptDecoder } from './meshopt-glb.mjs';
 import { MapEnvironmentAlbedoExtension } from './map-environment-layer-extension.mjs';
@@ -103,9 +104,34 @@ function compactSource(source) {
   let vertices = 0,
     indices = 0;
   for (const node of nodes) {
+    const holder = node.getParentNode();
+    const stage = holder?.getExtras().cswatchDoorStage;
+    let door;
+    if (stage) {
+      door = preparedMapEntity(
+        holder.getParentNode()?.getExtras().cswatchDoor,
+        'prop_door_rotating',
+      );
+      if (
+        !door ||
+        !Number.isInteger(stage.stage) ||
+        stage.stage < 0 ||
+        stage.stage > 4 ||
+        !/^[1-9]\d{0,19}$/.test(stage.modelId) ||
+        (stage.stage === 0 && stage.modelId !== door.modelId)
+      )
+        continue;
+    }
+    // Capture the hidden stage at its authored scale for Compact world-space baking.
+    const scale = stage && holder.getScale().slice();
+    if (stage && stage.stage !== 0) holder.setScale([1, 1, 1]);
     const matrix = node.getWorldMatrix();
+    if (stage && stage.stage !== 0) holder.setScale(scale);
     if (!matrix.every(Number.isFinite)) continue;
-    const breakable = preparedBreakable(node.getExtras().cswatchBreakable);
+    const tag = node.getExtras().cswatchBreakable;
+    const breakable = ['prop_dynamic', 'func_breakable'].includes(tag?.className)
+      ? preparedMapEntity(tag, tag.className)
+      : undefined;
     for (const source of node.getMesh().listPrimitives()) {
       const material = source.getMaterial();
       const position = source.getAttribute('POSITION');
@@ -124,7 +150,7 @@ function compactSource(source) {
       vertices += count;
       indices += indexCount;
       if (vertices > maxSourceVertices || indices > maxSourceIndices) return;
-      entries.push({ matrix, position, material, count, index, breakable });
+      entries.push({ matrix, position, material, count, index, breakable, door, stage });
     }
   }
   return { entries, vertices, indices };
@@ -146,7 +172,7 @@ async function buildCompactMap(input, colors, mode) {
   document.getRoot().setDefaultScene(world);
   const samples = new Map(),
     cells = new Map();
-  for (const { matrix, position, material, count, index, breakable } of entries) {
+  for (const { matrix, position, material, count, index, breakable, door, stage } of entries) {
     if (!colors.has(material)) colors.set(material, await colorOf(material, samples));
     const color = colors.get(material);
     const encodedColor = new Uint8Array(count * 3);
@@ -195,22 +221,39 @@ async function buildCompactMap(input, colors, mode) {
       max = positions.getMax([]);
     if (![...min, ...max].every((value) => Number.isFinite(value) && Math.abs(value) <= 100_000))
       throw new Error('Invalid compact source bounds.');
-    const key = breakable
-      ? 'entity/' + breakable.hammerId + '/' + Boolean(twoSided)
-      : [
-          Boolean(twoSided),
-          ...min.map((value, axis) => Math.floor((value + max[axis]) / 2 / cellSize)),
-        ].join(':');
-    if (!cells.has(key)) cells.set(key, { breakable, batch: [] });
+    const key = door
+      ? 'door/' + door.hammerId + '/' + stage.stage + '/' + Boolean(twoSided)
+      : breakable
+        ? 'entity/' + breakable.hammerId + '/' + Boolean(twoSided)
+        : [
+            Boolean(twoSided),
+            ...min.map((value, axis) => Math.floor((value + max[axis]) / 2 / cellSize)),
+          ].join(':');
+    if (!cells.has(key)) cells.set(key, { breakable, door, stage, batch: [] });
     cells.get(key).batch.push(primitive);
   }
   if (!cells.size || cells.size > limits.primitives) return;
   const entityMeshes = new Map();
-  for (const [key, { breakable, batch }] of cells) {
+  const doorGroups = new Map();
+  for (const [key, { breakable, door, stage, batch }] of cells) {
     const primitive = batch.length === 1 ? batch[0] : joinPrimitives(batch);
     if (batch.length > 1) for (const source of batch) source.dispose();
     // Keep both sidedness groups under a single independently visible entity, even
     // though the compact geometry's positions have already been baked into world space.
+    if (door) {
+      let group = doorGroups.get(door.hammerId);
+      if (!group) {
+        group = document.createNode('Recorded door').setExtras({ cswatchDoor: door });
+        world.addChild(group);
+        doorGroups.set(door.hammerId, group);
+      }
+      let holder = group
+        .listChildren()
+        .find((child) => child.getExtras().cswatchDoorStage.stage === stage.stage);
+      if (holder) holder.listChildren()[0].getMesh().addPrimitive(primitive);
+      else addDoorStage(document, group, document.createMesh().addPrimitive(primitive), stage);
+      continue;
+    }
     let mesh = breakable && entityMeshes.get(breakable.hammerId);
     if (!mesh) {
       mesh = document.createMesh();

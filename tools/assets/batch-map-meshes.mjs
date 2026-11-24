@@ -23,7 +23,7 @@ export async function batchMapMeshes(document, { cellSize = 64 } = {}) {
       .reduce((n, node) => n + (node.getMesh()?.listPrimitives().length || 0), 0);
   const inAnimatedBranch = (node) => {
     for (let current = node; current; current = current.getParentNode())
-      if (animated.has(current)) return true;
+      if (animated.has(current) || current.getExtras().cswatchDoor) return true;
     return false;
   };
   for (const node of root.listNodes()) {

@@ -89,7 +89,7 @@ The runner accepts a 128 KiB audit with up to 24 views, 64–1920 pixels wide by
 
 ## Capture a recorded production POV
 
-A paused capture also reports recorded breakable props, matching map instances and effective visibility at the selected tick. Unmatched, ambiguous and unavailable instances have their own counts. Detail rows prioritize discrepancies and cover up to 32 tracks. The production application receives no added capture instrumentation.
+A paused capture also reports recorded breakable props, matching map instances and effective visibility at the selected tick. Unmatched, ambiguous and unavailable instances have their own counts. Detail rows prioritize discrepancies and cover up to 32 breakable tracks. The separate door result compares effective visibility, yaw around the native hinge and the active prepared model against the recording. It reports up to 16 detailed tracks and counts unresolved geometry across the whole observed set. A geometric match can be off-camera. Use fixed-view images to confirm the door is actually visible. The production application receives no added capture instrumentation.
 
 `scripts/capture-viewer.mjs` opens the production watch route at an exact live-player POV. Build the backend, native sandbox and frontend first. Supply a local uncompressed demo, installed map/presentation assets, a numeric recorded tick and a player Steam ID as a string. The input demo is copied to a new private temporary data directory, hashed, and parsed under the required Linux sandbox. The CLI signs into a disposable local instance on loopback (default port 4672). The password stays in memory. The temporary database, session and staged replay are removed when the run finishes.
 

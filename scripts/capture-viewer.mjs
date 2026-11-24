@@ -17,6 +17,7 @@ import { reserve } from '../backend/dist/ingestion.js';
 import { processOne } from '../backend/dist/worker.js';
 import { tsImport } from '../backend/node_modules/tsx/dist/esm/api/index.mjs';
 import { boundedFile, decodeOpaqueFrame, digest } from './graphics/capture-report.mjs';
+import { frameDoors } from './graphics/frame-doors.mjs';
 import { frameBreakables } from './graphics/frame-breakables.mjs';
 import { readManagedPack, snapshotManagedPack } from './graphics/managed-pack.mjs';
 import { compareReplayFrame } from './graphics/replay-reference.mjs';
@@ -479,7 +480,7 @@ try {
   const image = shot.image;
   assert(image.length > 0 && image.length <= 16 * 1024 ** 2);
   await decodeOpaqueFrame(image, ...shot.imageSize);
-  const { image: _, committed, observedBreakables, ...observed } = shot;
+  const { image: _, committed, observedBreakables, observedDoors, ...observed } = shot;
   const report = {
     schemaVersion: 1,
     kind: 'cswatch-replay-frame',
@@ -506,6 +507,7 @@ try {
     packId: pack ?? null,
     cameraMode: 'pov',
     settings: committed.settings,
+    doors: frameDoors(manifest.mapDoors, manifest.lastTick, tick, observedDoors),
     breakables: frameBreakables(
       manifest.mapBreakables,
       manifest.lastTick,

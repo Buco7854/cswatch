@@ -37,7 +37,7 @@ export function frameBreakables(tracks, lastTick, tick, observation) {
   report.recorded = tracks.length;
   const matches =
     complete &&
-    uniqueBreakableNodes(new Set(tracks.map(breakableKey)), (accept) => {
+    uniqueBreakableNodes(tracks, (accept) => {
       for (const node of observation.nodes) accept(node, node);
     });
   for (const track of tracks) {
@@ -59,6 +59,7 @@ export function frameBreakables(tracks, lastTick, tick, observation) {
     if (agrees === false) report.disagreed++;
     report.tracks.push({
       key,
+      className: track.className ?? 'prop_dynamic',
       binding,
       hammerId: node?.hammerId ?? null,
       expected: hidden ? 'hidden' : 'shown',

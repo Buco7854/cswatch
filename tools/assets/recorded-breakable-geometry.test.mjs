@@ -71,7 +71,10 @@ test('CS2 resource handles preserve all 64 bits and coupled placement fails clos
     dump('15', 30),
     dump('16', 40, '@OnBreak Once A B'),
   ];
-  assert.equal(tagBreakableGeometry(doc, rows), 1);
+  const counts = new Map();
+  rows.push('====1====\nclassname "func_breakable"\nhealth 1');
+  assert.equal(tagBreakableGeometry(doc, rows, counts), 1);
+  assert.deepEqual(Object.fromEntries(counts), { prop_dynamic: 4, func_breakable: 1 });
   assert.deepEqual(
     tagged(doc).map((n) => n.getExtras().cswatchBreakable.hammerId),
     ['16'],
@@ -90,6 +93,28 @@ test('CS2 resource handles preserve all 64 bits and coupled placement fails clos
     ]),
     0,
   );
+});
+
+test('independently placed brush fragments bind only to matching Source evidence', () => {
+  const rows = [dump('20', 10, 'health 1'), dump('21', 20, 'health 1'), dump('22', 30)];
+  const brushRows = rows.map((text) =>
+    text
+      .replace('prop_dynamic', 'func_breakable')
+      .replace(path, 'maps/de_fixture/entities/grille.vmdl'),
+  );
+  const doc = makeScene();
+  const mesh = doc.getRoot().listMeshes()[0];
+  const node = doc
+    .getRoot()
+    .listNodes()
+    .find((n) => n.getTranslation()[2] === 20 * 0.0254);
+  node.setName('aggregated-world');
+  assert.equal(tagBreakableGeometry(doc, brushRows), 1);
+  const [tag] = tagged(doc).map((n) => n.getExtras().cswatchBreakable);
+  assert.equal(tag.className, 'func_breakable');
+  assert.equal(tag.modelId, modelResourceId('maps/de_fixture/entities/grille.vmdl'));
+  assert.equal(tag.hammerId, '20');
+  assert.ok(node.getMesh() === mesh);
 });
 
 test('a detached skinned mesh belongs only to an exclusively owned, placed armature', () => {
@@ -153,7 +178,7 @@ test('independent instances survive static sibling batching, tier serialization 
     assert.equal(
       tagBreakableGeometry(doc, [
         dump('12', 10, '@OnBreak Once A B'),
-        dump('13', 20, '@OnBreak Once A B'),
+        dump('13', 20, 'health 1').replace('prop_dynamic', 'func_breakable'),
       ]),
       2,
     );

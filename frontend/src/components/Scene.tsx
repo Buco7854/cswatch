@@ -297,10 +297,12 @@ function Model({
   registerFollowModel,
   playerLighting,
   mapBreakables,
+  mapDoors,
   tick,
 }: {
   url: string;
   mapBreakables: Playback['mapBreakables'];
+  mapDoors: Playback['mapDoors'];
   tick: number;
   fogResources: SourceFogReference;
   worldFog: boolean;
@@ -353,7 +355,7 @@ function Model({
       disposeFog,
       disposeSkyFog,
     };
-  }, [gltf, fogResources, worldFog, landscapeFog, mapBreakables]);
+  }, [gltf, fogResources, worldFog, landscapeFog, mapBreakables, mapDoors]);
   useEffect(
     () => () => {
       prepared.compatibility.dispose();
@@ -366,16 +368,16 @@ function Model({
   const { gl, scene } = useThree();
   const breakables = useRef<ReturnType<typeof bindMapBreakables>>(undefined);
   useLayoutEffect(() => {
-    const index = bindMapBreakables(prepared.main, mapBreakables);
+    const index = bindMapBreakables(prepared.main, mapBreakables, mapDoors);
     breakables.current = index;
     return () => {
       index?.dispose();
       breakables.current = undefined;
     };
-  }, [prepared.main, mapBreakables]);
+  }, [prepared.main, mapBreakables, mapDoors]);
   useLayoutEffect(() => {
     breakables.current?.seek(tick);
-  }, [tick, prepared.main, mapBreakables]);
+  }, [tick, prepared.main, mapBreakables, mapDoors]);
   useLayoutEffect(
     () => installMapDrawRanges(gl, scene, prepared.main, prepared.sky),
     [gl, scene, prepared],
@@ -1143,6 +1145,7 @@ function World({
                   landscapeFog={Boolean(environment?.gradientFog?.landscape)}
                   registerFollowModel={registerFollowModel}
                   mapBreakables={data.mapBreakables}
+                  mapDoors={data.mapDoors}
                   tick={tick}
                   playerLighting={low ? null : playerLighting}
                 />

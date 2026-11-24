@@ -89,3 +89,62 @@ test('all identities count while unresolved tracks have priority in bounded fram
   assert.equal(r.omittedTrackDetails, 480);
   assert.ok(Buffer.byteLength(JSON.stringify(r)) < 32 * 1024);
 });
+
+test('declared native wire precision joins the Nuke window through its exact code; no nearest-neighbour search', () => {
+  const wire = {
+    ...a,
+    poseCodec: 'cell32-angle20',
+    origin: [406.28125, -464.5, 117],
+    angles: [11.25, 0, 0],
+  };
+  const native = {
+    ...tag(wire, 'window', false),
+    origin: [406.279175, -464.5, 117.000008],
+    angles: [11.249993, 0, 0],
+  };
+  const at = (rows, nodes) => frameBreakables(rows, 100, 5, { nodes });
+  assert.equal(at([wire], [native]).status, 'matched');
+  const { poseCodec: _, ...unknown } = wire;
+  assert.equal(at([unknown], [native]).missing, 1);
+  assert.equal(at([wire], [{ ...native, origin: [406.26, -464.5, 117] }]).missing, 1);
+  const shared = { ...native, origin: [406.282, -464.5, 117] };
+  assert.equal(at([wire], [native, shared]).ambiguous, 1);
+  // An exact candidate does not override a second authored or recorded identity in the same code.
+  assert.equal(
+    at([wire], [native, { ...native, origin: wire.origin, angles: wire.angles }]).ambiguous,
+    1,
+  );
+  assert.equal(at([wire, { ...wire, origin: [406.28, -464.5, 117] }], [native]).ambiguous, 2);
+  assert.equal(at([wire, { ...unknown, origin: [406.28, -464.5, 117] }], [native]).ambiguous, 2);
+  assert.equal(at([wire], [native, { ...native, origin: [406.265625, -464.5, 117] }]).ambiguous, 1);
+  assert.equal(
+    at([wire], [native, { ...native, angles: [11.25 + 180 / 2 ** 20, 0, 0] }]).ambiguous,
+    1,
+  );
+  assert.equal(at([{ ...wire, poseCodec: 'other-codec' }], [native]).status, 'unavailable');
+});
+
+test('brushes and props at the same pose retain distinct visibility in both join modes', () => {
+  for (const codec of [{}, { poseCodec: 'cell32-angle20' }]) {
+    const prop = { ...a, ...codec };
+    const brush = { ...prop, className: 'func_breakable', hidden: [[7, 9]] };
+    const nodes = [
+      tag(prop, '11', false),
+      { ...tag(brush, '12', true), className: 'func_breakable' },
+    ];
+    const report = frameBreakables([prop, brush], 100, 5, { nodes });
+    assert.equal(report.status, 'matched');
+    assert.deepEqual(
+      report.tracks.map((t) => [t.className, t.hammerId]),
+      [
+        ['prop_dynamic', '11'],
+        ['func_breakable', '12'],
+      ],
+    );
+    assert.equal(frameBreakables([brush], 100, 5, { nodes: [nodes[0]] }).missing, 1);
+    assert.equal(
+      frameBreakables([{ ...brush, className: 'func_rotating' }], 100, 5, { nodes }).status,
+      'unavailable',
+    );
+  }
+});

@@ -1,4 +1,12 @@
-export const { breakableKey, breakableLimits, validMapBreakables } = (await import(
+export const {
+  breakableKey,
+  breakableLimits,
+  breakablePoseCodec,
+  validMapBreakables,
+  doorKey,
+  doorLimits,
+  validMapDoors,
+} = (await import(
   new URL(
     import.meta.url.endsWith('.ts') ? '../../shared/map-breakables.mjs' : './map-breakables.mjs',
     import.meta.url,
