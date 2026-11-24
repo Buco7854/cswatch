@@ -153,7 +153,8 @@ export function indexItems(samples: readonly ItemSample[] = []): ItemIndex {
 const angleAt = (from: number, to: number, alpha: number) =>
   from + (((((to - from) % 360) + 540) % 360) - 180) * alpha;
 
-/** State carries until a recorded removal. Interpolation never crosses a tombstone or item change. */
+/** The parser omits unchanged four-tick samples. Hold those poses up to the last
+ * sampling interval before the next change, including when a chunk starts with a carry. */
 export function itemsAt(index: ItemIndex, tick: number): PresentItem[] {
   if (!Number.isFinite(tick)) return [];
   const live: PresentItem[] = [];
@@ -172,7 +173,12 @@ export function itemsAt(index: ItemIndex, tick: number): PresentItem[] {
       live.push(from);
       continue;
     }
-    const alpha = (tick - from.tick) / (next.tick - from.tick);
+    const start = Math.max(from.tick, next.tick - 4);
+    if (tick <= start) {
+      live.push(from);
+      continue;
+    }
+    const alpha = (tick - start) / (next.tick - start);
     live.push({
       ...from,
       x: from.x + (next.x - from.x) * alpha,
