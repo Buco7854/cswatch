@@ -1,13 +1,10 @@
 import { type MeshStandardMaterial, type Texture, Vector2 } from 'three';
 import format from '../../shared/map-baked-lighting.json' with { type: 'json' };
 
-export type LayerTextureIds = {
-  color: number;
-  blend: number;
-  detail?: number;
-  scale?: [number, number];
-  strength?: number;
-};
+type Detail<T> = { texture: T; scale: [number, number]; strength: number };
+type Layers<T> = { color: T; blend: T; detail?: Detail<T>; secondDetail?: Detail<T> };
+export type LayerTextureIds = Layers<number>;
+export type MaterialLayers = Layers<Texture>;
 
 type TextureId = (value: unknown, channel: number) => number | undefined;
 
@@ -20,40 +17,54 @@ export function readLayerTextureIds(
   const color = textureId(metadata.layerColorTexture, 0);
   const blend = textureId(metadata.layerBlendTexture, 0);
   if (color === undefined || blend === undefined || color === blend) return;
-  const detail = textureId(metadata.layerDetailTexture, 0);
-  const scale = metadata.detailScale;
-  const strength = metadata.detailStrength;
-  if (
-    detail !== undefined &&
-    detail !== color &&
-    detail !== blend &&
-    Array.isArray(scale) &&
-    scale.length === 2 &&
-    scale.every((value) => typeof value === 'number' && value > 0 && value <= 32) &&
-    typeof strength === 'number' &&
-    strength >= 0 &&
-    strength <= 1
-  )
-    return { color, blend, detail, scale: [scale[0], scale[1]], strength };
-  return { color, blend };
+  const readDetail = (
+    id: unknown,
+    scale: unknown,
+    strength: unknown,
+  ): Detail<number> | undefined => {
+    const texture = textureId(id, 0);
+    if (
+      texture === undefined ||
+      texture === color ||
+      texture === blend ||
+      !Array.isArray(scale) ||
+      scale.length !== 2 ||
+      !scale.every((n) => typeof n === 'number' && n > 0 && n <= 32) ||
+      typeof strength !== 'number' ||
+      !Number.isFinite(strength) ||
+      strength < 0 ||
+      strength > 1
+    )
+      return;
+    return { texture, scale: [scale[0], scale[1]], strength };
+  };
+  const detail = readDetail(
+    metadata.layerDetailTexture,
+    metadata.detailScale,
+    metadata.detailStrength,
+  );
+  const secondDetail = readDetail(
+    metadata.secondDetailTexture,
+    metadata.secondDetailScale,
+    metadata.secondDetailStrength,
+  );
+  if (metadata.secondDetailTexture !== undefined && (!detail || !secondDetail)) return;
+  return { color, blend, detail, secondDetail };
 }
 
 type Shader = Parameters<MeshStandardMaterial['onBeforeCompile']>[0];
-export type MaterialLayers = {
-  color: Texture;
-  blend: Texture;
-  detail?: Texture;
-  scale?: [number, number];
-  strength?: number;
-};
-
 export function applyLayerShader(shader: Shader, layers: MaterialLayers) {
   shader.uniforms.cswatchLayerColor = { value: layers.color };
   shader.uniforms.cswatchLayerBlend = { value: layers.blend };
   if (layers.detail) {
-    shader.uniforms.cswatchLayerDetail = { value: layers.detail };
-    shader.uniforms.cswatchDetailScale = { value: new Vector2(...layers.scale!) };
-    shader.uniforms.cswatchDetailStrength = { value: layers.strength };
+    shader.uniforms.cswatchLayerDetail = { value: layers.detail.texture };
+    shader.uniforms.cswatchDetailScale = { value: new Vector2(...layers.detail.scale) };
+    shader.uniforms.cswatchDetailStrength = { value: layers.detail.strength };
+  }
+  if (layers.secondDetail) {
+    shader.uniforms.cswatchSecondDetail = { value: layers.secondDetail.texture };
+    shader.uniforms.cswatchSecondDetailScale = { value: new Vector2(...layers.secondDetail.scale) };
+    shader.uniforms.cswatchSecondDetailStrength = { value: layers.secondDetail.strength };
   }
   shader.vertexShader = shader.vertexShader
     .replace(
@@ -74,6 +85,7 @@ export function applyLayerShader(shader: Shader, layers: MaterialLayers) {
         uniform sampler2D cswatchLayerBlend;
         varying float cswatchSourceBlend;
         ${layers.detail ? 'uniform sampler2D cswatchLayerDetail; uniform vec2 cswatchDetailScale; uniform float cswatchDetailStrength;' : ''}
+        ${layers.secondDetail ? 'uniform sampler2D cswatchSecondDetail; uniform vec2 cswatchSecondDetailScale; uniform float cswatchSecondDetailStrength;' : ''}
       `,
     )
     .replace(
@@ -84,7 +96,21 @@ export function applyLayerShader(shader: Shader, layers: MaterialLayers) {
         float high = min(1.0, maskAndSoftness.x + maskAndSoftness.y);
         float paintedLayer = smoothstep(low, max(high, low + 0.00001), cswatchSourceBlend);
         diffuseColor.rgb = mix(diffuseColor.rgb, texture2D(cswatchLayerColor, vMapUv).rgb * diffuse, paintedLayer);
-        ${layers.detail ? 'diffuseColor.rgb *= mix(vec3(1.0), 2.0 * texture2D(cswatchLayerDetail, vMapUv * cswatchDetailScale).rgb, cswatchDetailStrength);' : ''}
+        ${
+          layers.detail
+            ? `
+          vec3 detailColor = texture2D(cswatchLayerDetail, vMapUv * cswatchDetailScale).rgb;
+          float detailStrength = cswatchDetailStrength;
+          ${
+            layers.secondDetail
+              ? `
+            detailColor = mix(detailColor, texture2D(cswatchSecondDetail, vMapUv * cswatchSecondDetailScale).rgb, paintedLayer);
+            detailStrength = mix(detailStrength, cswatchSecondDetailStrength, paintedLayer);`
+              : ''
+          }
+          diffuseColor.rgb *= mix(vec3(1.0), 2.0 * detailColor, detailStrength);`
+            : ''
+        }
       `,
     );
 }

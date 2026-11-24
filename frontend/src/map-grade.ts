@@ -102,7 +102,9 @@ export function createGradeOutput() {
           / (x * (denominator.x * x + denominator.y) + denominator.z);
         vec3 srgb = sRGBTransferOETF(vec4(clamp(curved, 0.0, 1.0), 1.0)).rgb;
         vec3 uvw = (srgb * (numerator.w - 1.0) + 0.5) / numerator.w;
-        graded = vec4(texture(lut, uvw).rgb, scene.a);
+        // The resolved world already contains the opaque sky or fallback background.
+        // Coverage alpha in this target must not blend the page behind it a second time.
+        graded = vec4(texture(lut, uvw).rgb, 1.0);
       }
     `,
   });

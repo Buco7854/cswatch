@@ -41,7 +41,12 @@ import type { FollowCamera } from './follow-camera';
 export type SmokeSunTrace = (
   ray: Pick<FollowCamera, 'target' | 'position'>,
 ) => FollowCamera['position'];
-export type SmokeDraw = SmokeSample & { key: string; tint: Color; drift: number };
+export type SmokeDraw = SmokeSample & {
+  key: string;
+  tint: Color;
+  drift: number;
+  recorded: boolean;
+};
 
 function upload(field: SmokeField) {
   const texture = new Data3DTexture(field.texels, GRID, GRID, GRID);
@@ -224,6 +229,7 @@ export class SmokeVolumePass {
     sunDirection: { value: new Vector3() },
     fieldMix: { value: 0 },
     amount: { value: 0 },
+    recorded: { value: false },
     fieldScale: { value: 1 },
     drift: { value: 0 },
     stepSize: { value: CELL * 0.3 },
@@ -383,11 +389,11 @@ export class SmokeVolumePass {
     return complete;
   }
 
-  private setBox(smoke: SmokeSample) {
+  private setBox(smoke: SmokeDraw) {
     this.box.min.fromArray(smoke.bounds.min).multiplyScalar(smoke.scale);
     this.box.max.fromArray(smoke.bounds.max).multiplyScalar(smoke.scale);
-    // Displacement moves the envelope outside the original trilinear support.
-    this.box.expandByScalar(BILLOW_SPAN * 0.5 * smoke.scale);
+    // Procedural event clouds can displace their edge beyond the grid's trilinear support.
+    if (!smoke.recorded) this.box.expandByScalar(BILLOW_SPAN * 0.5 * smoke.scale);
     this.box.min.max(this.gridMin.setScalar(-HALF_GRID * smoke.scale));
     this.box.max.min(this.gridMax.setScalar(HALF_GRID * smoke.scale));
     this.box.translate(this.marchUniforms.origin.value.fromArray(smoke.origin));
@@ -477,6 +483,7 @@ export class SmokeVolumePass {
     u.sunVisibility.value = this.sunVisibility(cloud);
     u.tint.value.copy(cloud.tint);
     u.amount.value = cloud.amount;
+    u.recorded.value = cloud.recorded;
     u.fieldMix.value = cloud.mix;
     u.fieldScale.value = cloud.scale;
     u.drift.value = cloud.drift;

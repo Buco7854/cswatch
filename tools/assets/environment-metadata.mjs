@@ -282,7 +282,9 @@ export function inspectGradientFog(input, matrix) {
       end: number(entity.fogend, undefined, 0, 1e7) * scale * 0.0254,
       exponent: number(entity.fogfalloffexponent, undefined, 0, 16),
       height,
-      color: vector(entity.fogcolor, undefined, true).map((channel) => (channel / 255) * strength),
+      color: vector(entity.fogcolor, undefined, true).map(
+        (channel) => srgbToLinear(channel / 255) * strength,
+      ),
       maxOpacity: number(entity.fogmaxopacity, undefined, 0, 1),
     };
     return validPreparedGradientFog(fog) ? { fog } : unsupported;

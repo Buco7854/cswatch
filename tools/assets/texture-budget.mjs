@@ -272,7 +272,7 @@ export async function applyTextureBudget(
       }
       encoded = await resized
         .webp(
-          baked || target.roles.includes('layerBlendTexture')
+          baked || target.roles.includes('layerBlendTexture') || target.roles.includes('baseHeight')
             ? { lossless: true, effort: 4 }
             : { quality: 80, effort: 4 },
         )

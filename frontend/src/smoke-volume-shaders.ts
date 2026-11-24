@@ -27,6 +27,7 @@ export const marchFragment = /* glsl */ `
   uniform mat4 inverseProjection, cameraWorld;
   uniform vec3 origin, boxMin, boxMax, sunDirection, sunColor, tint;
   uniform float fieldMix, amount, fieldScale, drift, stepSize, sunVisibility;
+  uniform bool recorded;
   uniform vec4 blastHoles[${MAX_HOLES}];
   uniform float blastStrength[${MAX_HOLES}];
   varying vec2 localUv;
@@ -85,12 +86,23 @@ export const marchFragment = /* glsl */ `
       vec3 relative = (position - origin) / fieldScale;
       vec3 cell = relative / fieldWidth + 0.5;
       vec2 field = fieldAt(cell);
+      if (recorded && field.r < 0.003 && wallDistance >= 0.58) {
+        lastDensity = 0.0;
+        continue;
+      }
       vec3 p = (relative + vec3(drift * 0.018, -drift * 0.072, drift * 0.031)) / noisePeriod;
       vec4 detail = texture(detailField, p);
       float freedom = mix(0.45, 1.0, awayFromWall) * (1.0 - smoothstep(0.58, 0.86, field.r));
-      vec2 shifted = freedom > 0.015 ? fieldAt(displacedCell(cell, detail, freedom)) : field;
-      float core = field.r * smoothstep(0.50, 0.71, field.r);
-      float density = max(core, billowed(shifted.r, detail));
+      // The journal already describes the density shape, including dilute edge
+      // voxels. Only event-based approximations need a procedural silhouette.
+      float density = field.r;
+      float beam = field.g;
+      if (!recorded) {
+        vec2 shifted = freedom > 0.015 ? fieldAt(displacedCell(cell, detail, freedom)) : field;
+        float core = field.r * smoothstep(0.50, 0.71, field.r);
+        density = max(core, billowed(shifted.r, detail));
+        beam = mix(shifted.g, field.g, 0.45);
+      }
       if (wallDistance < 0.58) {
         // Keep the last interior density just ahead of an opaque surface.
         // Multiplying the carry by the distance avoids a sharp extra layer.
@@ -107,7 +119,6 @@ export const marchFragment = /* glsl */ `
       }
 
       float opacity = 1.0 - exp(-${EXTINCTION} * density * amount * width);
-      float beam = mix(shifted.g, field.g, 0.45);
       vec4 sunDetail = texture(detailField, p + sunDirection * (0.43 / noisePeriod));
       vec3 sunCell = cell + sunDirection * (0.43 / fieldWidth);
       float toward = billowed(fieldAt(displacedCell(sunCell, sunDetail, freedom)).r, sunDetail);
@@ -122,10 +133,7 @@ export const marchFragment = /* glsl */ `
       radiance += transmission * opacity * (ambient + scatter);
       transmission *= 1.0 - opacity;
     }
-    vec3 tinted = radiance * tint;
-    vec3 luma = vec3(0.2126, 0.7152, 0.0722);
-    tinted *= dot(radiance, luma) / max(dot(tinted, luma), 0.000001);
-    gl_FragColor = vec4(tinted, 1.0 - transmission);
+    gl_FragColor = vec4(radiance * tint, 1.0 - transmission);
   }
 `;
 

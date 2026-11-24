@@ -5,6 +5,7 @@ import type { GLTF, GLTFLoader } from 'three-stdlib';
 import { loadScopedGLTF } from './scoped-gltf-loader';
 import { ModelCache, type ModelScope } from './model-cache';
 import { mapModelResources } from './map-model-resources';
+import { applyEnvironmentAlbedo, registerEnvironmentAlbedo } from './environment-albedo';
 import { registerMapBakedLighting } from './map-baked-lighting';
 import { reusePackedSceneSamples } from './packed-material';
 import { improveMapTextureDetail } from './map-texture-detail';
@@ -19,6 +20,7 @@ const inactiveLimit = () =>
  * map images, the bytes already belong to the parser and need no blob URL or fetch. */
 function configureMap(loader: GLTFLoader, ownBitmap: (image: ImageBitmap) => void) {
   registerMapBakedLighting(loader);
+  registerEnvironmentAlbedo(loader);
   loader.register((parser) => ({
     name: 'cswatch-embedded-map-images',
     beforeRoot() {
@@ -71,6 +73,7 @@ const cache = new ModelCache<GLTF>({
       {
         ...callbacks,
         loaded(gltf) {
+          applyEnvironmentAlbedo(gltf);
           reusePackedSceneSamples(gltf.scenes);
           if (url.split('/').at(-2) === 'desktop') improveMapTextureDetail(gltf.scenes);
           callbacks.loaded(gltf);

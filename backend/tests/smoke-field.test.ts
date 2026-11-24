@@ -12,6 +12,7 @@ import {
   indexSmokeBlasts,
   occupiedBounds,
   scenePoint,
+  smokeAlbedo,
   smokeEnvelope,
   smokeTransmittance,
   unionSmokeBounds,
@@ -21,6 +22,16 @@ import { encodeDensity, smokeJournal } from '../../frontend/src/smoke-journal.js
 const index = (x, y, z) => x + GRID * (y + GRID * z);
 const close = (actual, expected, tolerance = 1e-6) =>
   assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} vs ${expected}`);
+
+test('recorded dye absorbs light per channel while event-only smoke stays neutral', () => {
+  assert.deepEqual(smokeAlbedo(), [1, 1, 1]);
+  assert.deepEqual(smokeAlbedo([255, 255, 255]), [1, 1, 1]);
+  assert.deepEqual(smokeAlbedo([0, 0, 0]), [0.25, 0.25, 0.25]);
+  const [red, green, blue] = smokeAlbedo([180, 129, 50]);
+  assert.ok(red > green && green > blue && red < 1);
+  const cool = smokeAlbedo([75, 127, 155]);
+  assert.ok(cool[2] > cool[1] && cool[1] > cool[0]);
+});
 
 test('encoding is linear in simulated concentration and rotates Source axes', () => {
   const raw = new Float32Array(GRID ** 3);

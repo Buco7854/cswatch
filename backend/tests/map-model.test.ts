@@ -99,7 +99,7 @@ test('native sky tags extract complete transformed roots without changing the ca
   assert.equal(mesh.castShadow, true);
 });
 
-test('map preparation retains one sky-only authored sun without adding sky lights or updating the cached source', () => {
+test('a decorative sky-only sun stays scoped to its prefab during map preparation', () => {
   const scene = new Group(),
     sky = new Group(),
     sun = new DirectionalLight();
@@ -120,11 +120,7 @@ test('map preparation retains one sky-only authored sun without adding sky light
       parent: node.parent,
     })),
     prepared = prepareMapModel(scene);
-  assert.ok(prepared.sun, 'The main view retains sun evidence that was authored only in the sky');
-  prepared.sun.directionToSun.forEach((value, index) =>
-    assert.ok(Math.abs(value - [0.5, Math.sqrt(3) / 2, 0][index]) < 1e-10),
-  );
-  assert.deepEqual(prepared.sun.color, [0.7, 0.5, 0.4]);
+  assert.equal(prepared.sun, null);
   assert.equal(prepared.main.getObjectByName(sun.name), undefined);
   const extracted = prepared.sky!.getObjectByName(sun.name)! as DirectionalLight;
   assert.equal(extracted.visible, false);
@@ -148,7 +144,7 @@ test('map preparation retains one sky-only authored sun without adding sky light
   assert.equal(sun.visible, true);
 });
 
-test('main and sky sun conflicts share one fallback decision before sky extraction', () => {
+test('the main world keeps its own sun when a decorative prefab has different lighting', () => {
   const scene = new Group(),
     sky = new Group(),
     mainSun = new DirectionalLight(),
@@ -157,22 +153,22 @@ test('main and sky sun conflicts share one fallback decision before sky extracti
   mainSun.userData.name = skySun.userData.name = 'light_environment';
   mainSun.color.setRGB(0.7, 0.6, 0.4);
   skySun.color.copy(mainSun.color);
-  mainSun.rotation.x = skySun.rotation.x = -0.8;
+  mainSun.rotation.x = skySun.rotation.x = (-61 * Math.PI) / 180;
+  scene.add(mainSun);
+  const expected = prepareMapModel(scene).sun;
+  assert.ok(expected);
   sky.add(skySun);
-  scene.add(mainSun, sky);
-  assert.ok(prepareMapModel(scene).sun, 'Agreeing main and sky suns share authored lighting');
+  scene.add(sky);
+  assert.deepEqual(prepareMapModel(scene).sun, expected);
+  skySun.rotation.x = (-60 * Math.PI) / 180;
+  assert.deepEqual(prepareMapModel(scene).sun, expected);
   skySun.color.g += 0.01;
+  assert.deepEqual(prepareMapModel(scene).sun, expected);
+  scene.add(skySun.clone());
   assert.equal(
     prepareMapModel(scene).sun,
     null,
-    'Reparenting must not hide a source color conflict',
-  );
-  skySun.color.copy(mainSun.color);
-  skySun.rotation.y += 0.1;
-  assert.equal(
-    prepareMapModel(scene).sun,
-    null,
-    'Reparenting must not hide a source pose conflict',
+    'Contradictory lights within the playable world stay ambiguous',
   );
 });
 
