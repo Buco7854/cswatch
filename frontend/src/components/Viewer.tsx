@@ -208,11 +208,11 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     // Download the renderer while the authorized replay manifest and first slice load.
     if (demo?.status === 'ready') void loadScene().catch(() => {});
   }, [demo?.status]);
-  const mapAssets = useDemoMapAssets(
-    data && !data.sample ? id : undefined,
-    data && !data.sample ? data.map : undefined,
-    user?.id,
-  );
+  // The authorized detail already identifies the map while the first replay slice loads.
+  const replayMap = data && !data.sample ? data.map : undefined;
+  const discoveryMap =
+    id !== 'sample' && !error && demo?.status === 'ready' ? (replayMap ?? demo.map) : undefined;
+  const mapAssets = useDemoMapAssets(id, discoveryMap ?? undefined, user?.id, Boolean(replayMap));
   const acquisitionNotice = mapAcquisitionMessage(mapAssets);
   const [sceneAttempt, setSceneAttempt] = useState(0);
   const sceneKey = JSON.stringify([id, user?.id, sceneAttempt]);
@@ -247,7 +247,9 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
         ? mapRender.environment
         : 'pending'
       : 'missing';
-  const mapLoading = Boolean(data && !data.sample && mapStatus === 'pending');
+  // A durable conversion can run for minutes. Its in-scene status lets the
+  // member review the timeline and rounds while the worker prepares the map.
+  const mapLoading = Boolean(data && !data.sample && mapStatus === 'pending' && !acquisitionNotice);
   const mapNoticeStatus =
     !using2D &&
     mapStatus === 'ready' &&

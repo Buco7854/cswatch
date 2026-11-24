@@ -21,13 +21,17 @@ export function useDemoMapAssets(
   id: string | undefined,
   map: string | undefined,
   userId: string | undefined,
+  replayReady: boolean,
 ) {
   const discoverable = Boolean(id && map && /^[a-zA-Z0-9_-]{1,80}$/.test(map));
   const identity = useMemo(() => ({ id, map, userId }), [id, map, userId]);
   const [snapshot, setSnapshot] = useState<{ identity: object; state: DemoMapState }>();
-  const lease = useRef<{ identity: object; retry: () => void; check: () => void } | undefined>(
-    undefined,
-  );
+  const lease = useRef<
+    | { identity: object; retry: () => void; check: () => void; acquireIfReady: () => void }
+    | undefined
+  >(undefined);
+  const canPrepare = useRef(replayReady);
+  canPrepare.current = replayReady;
   const current = useRef(identity);
   current.current = identity;
   useEffect(() => {
@@ -180,7 +184,7 @@ export function useDemoMapAssets(
         if (!live()) return;
         retryBusy = false;
         const state = accept(discovered);
-        if (needsAcquisition(state)) {
+        if (canPrepare.current && needsAcquisition(state)) {
           await requestAcquisition(state);
           return;
         }
@@ -192,6 +196,10 @@ export function useDemoMapAssets(
     }
     lease.current = {
       identity,
+      acquireIfReady: () => {
+        if (live() && !request && !retryBusy && needsAcquisition(latest))
+          void requestAcquisition(latest);
+      },
       check: () => {
         if (!live() || request || retryBusy) return;
         clearTimeout(timeout);
@@ -219,6 +227,11 @@ export function useDemoMapAssets(
       request?.abort();
     };
   }, [identity, id, map, userId, discoverable]);
+  // An early GET may finish before the manifest and initial chunk are valid.
+  // Enqueue only once normal replay initialization has actually succeeded.
+  useEffect(() => {
+    if (replayReady && lease.current?.identity === identity) lease.current.acquireIfReady();
+  }, [identity, replayReady]);
   const state = !discoverable
     ? missingDemoMap
     : snapshot?.identity === identity
