@@ -44,7 +44,6 @@
 .timeline-track-line i {
   display: block;
   height: 100%;
-  width: var(--timeline-progress);
   background: var(--signal);
   border-radius: inherit;
 }
