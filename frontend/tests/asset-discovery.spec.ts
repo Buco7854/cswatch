@@ -9,12 +9,13 @@ async function renderUntil(page: Page, attribute: string, state: string) {
   await expect
     .poll(
       async () => {
-        await page.clock.runFor(16);
+        // Drive several real renderer callbacks per poll while discovery timers stay controlled.
+        await page.clock.runFor(64);
         return page
           .locator('.scene')
           .evaluateAll((scenes, name) => scenes[0]?.getAttribute(name), attribute);
       },
-      { intervals: [32, 64, 100] },
+      { intervals: [16] },
     )
     .toBe(state);
 }

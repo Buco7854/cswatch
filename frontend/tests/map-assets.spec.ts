@@ -1392,8 +1392,9 @@ test('switching demos clears the old map image before delayed discovery resolves
   }, '/watch/' + nextId);
   await expect(page.locator('.viewer-match h1')).toHaveText('other_original_map_qa');
   await expect(page.locator('.tactical-plot image')).toHaveCount(0);
-  await expect(page.locator('.viewer-map-status')).toHaveText('Loading map overview…');
+  await expect(page.locator('.viewer-map-status')).toHaveText('Loading 3D map…');
   release();
+  await camera(page, '2D tactical · low power');
   await expect(page.locator('.tactical-plot')).toHaveAttribute('data-map-image-state', 'ready');
   await expect(page.locator('.tactical-plot image')).toHaveAttribute('href', nextOverview.image);
   await expect(page.locator(`.tactical-plot [data-player-id="${qaActor}"]`)).toHaveAttribute(
