@@ -44,6 +44,24 @@ test('game sound timeline de-duplicates chunk boundaries and discards historical
   timeline.reset();
   assert.deepEqual(timeline.plan(sounds, 105, 64, 1, 200).sounds, []);
 });
+test('a late catalog admits the winner once at its demo tick across overlapping chunks', () => {
+  const timeline = new GameplayAudioTimeline();
+  const winner = { ...cue('result', 8971), category: 'round' as const, soundId: 'round-t-win' };
+  const cues = [winner, cue('unavailable', 8972)];
+  const missing = timeline.plan(cues, 8960, 64, 1, 0, () => false);
+  assert.equal(missing.sounds.length, 0);
+  assert.equal(missing.prefetch.size, 0);
+  const ready = timeline.plan(cues, 8964, 64, 1, 62.5, (c) => c === winner);
+  assert.deepEqual(ready.sounds, [{ cue: winner, delay: 7 / 64 }]);
+  assert.deepEqual([...ready.prefetch], ['round-t-win']);
+  assert.deepEqual(timeline.plan([...cues], 8970, 64, 1, 156.25, (c) => c === winner).sounds, []);
+  timeline.reset();
+  assert.deepEqual(timeline.plan([winner], 9400, 64, 1, 200).sounds, []);
+  assert.deepEqual(timeline.plan([winner], 8891, 64, 2, 300).sounds, [
+    { cue: winner, delay: 80 / 128 },
+  ]);
+});
+
 test('game sound lookahead adapts to slow delivered frames while remaining bounded and never catching up old audio', () => {
   const timeline = new GameplayAudioTimeline(),
     sounds = [cue('old', 16), cue('next', 100), cue('far', 120)];
@@ -207,7 +225,7 @@ test('shared viewer audio stays lazy, survives development effect replay and sto
 });
 
 test(
-  'actor-less recorded positions remain spatial in free camera while known own-POV actions stay centered',
+  'free-camera positions remain spatial while winner announcements stay centered and stop by the next round',
   { timeout: 5000 },
   async () => {
     const originalFetch = globalThis.fetch,
@@ -219,6 +237,7 @@ test(
         positionZ: { value: number };
       }[] = [];
     let started: (() => void) | undefined;
+    let scheduledStop: number | undefined;
     class Source extends EventTarget {
       buffer: unknown;
       playbackRate = { value: 1 };
@@ -227,7 +246,11 @@ test(
       start() {
         started?.();
       }
-      stop() {
+      stop(when?: number) {
+        if (when !== undefined) {
+          scheduledStop = when;
+          return;
+        }
         this.dispatchEvent(new Event('ended'));
       }
     }
@@ -269,6 +292,7 @@ test(
     (globalThis as any).AudioContext = Context;
     const audio = new ViewerAudio(),
       sounds = [
+        { category: 'round' as const, soundId: 'round-t-win' },
         { category: 'weapon' as const, soundId: 'ak47-fire' },
         { category: 'footstep' as const, soundId: 'footstep' },
         { category: 'reload' as const, soundId: 'reload-a99402fc6679' },
@@ -291,6 +315,7 @@ test(
               started = resolve;
             }),
             before = panners.length;
+          scheduledStop = undefined;
           playback.sync(
             [
               {
@@ -310,10 +335,12 @@ test(
             `${category}-${ownActor ?? 'free'}`,
             () => assert.fail('Explicit recorded position must be used'),
             ownActor,
+            [{ tick: 0 }, { tick: 12 }],
           );
           await ready;
-          assert.equal(panners.length - before, ownActor ? 0 : 1, category);
-          if (!ownActor) {
+          assert.equal(scheduledStop, category === 'round' ? 12 / 64 : undefined);
+          assert.equal(panners.length - before, ownActor || category === 'round' ? 0 : 1, category);
+          if (!ownActor && category !== 'round') {
             const panner = panners.at(-1)!;
             assert.deepEqual(
               [panner.positionX.value, panner.positionY.value, panner.positionZ.value],

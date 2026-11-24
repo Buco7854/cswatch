@@ -17,10 +17,17 @@ export class GameplayAudioTimeline {
     this.ordered = [];
     this.cadence = 0.12;
   }
-  plan(cues: GameplaySoundCue[], tick: number, rate: number, speed: number, wall: number) {
+  plan(
+    cues: GameplaySoundCue[],
+    tick: number,
+    rate: number,
+    speed: number,
+    wall: number,
+    playable: (cue: GameplaySoundCue) => boolean = () => true,
+  ) {
     if (![tick, rate, speed, wall].every(Number.isFinite) || rate <= 0 || speed <= 0) {
       this.reset();
-      return { reset: true, sounds: [] as PlannedSound[] };
+      return { reset: true, sounds: [] as PlannedSound[], prefetch: new Set<string>() };
     }
     const previous = this.previous;
     if (previous && wall >= previous.wall)
@@ -45,7 +52,8 @@ export class GameplayAudioTimeline {
     }
     for (const [id, at] of this.seen) if (at < tick - rate) this.seen.delete(id);
     const start = Math.max(this.floor, tick - rate * 0.025),
-      end = tick + rate * speed * Math.min(1, Math.max(0.18, this.cadence * 1.5 + 0.05));
+      end = tick + rate * speed * Math.min(1, Math.max(0.18, this.cadence * 1.5 + 0.05)),
+      horizon = tick + rate * speed;
     let low = 0,
       high = this.ordered.length;
     while (low < high) {
@@ -54,13 +62,18 @@ export class GameplayAudioTimeline {
       else high = middle;
     }
     const sounds: PlannedSound[] = [];
-    for (let i = low; i < this.ordered.length && this.ordered[i].tick <= end; i++) {
+    const prefetch = new Set<string>();
+    for (let i = low; i < this.ordered.length && this.ordered[i].tick <= horizon; i++) {
       const cue = this.ordered[i];
-      if (this.seen.has(cue.id)) continue;
+      if (!playable(cue)) continue;
+      if (cue.tick >= tick && prefetch.size < 16) prefetch.add(cue.soundId);
+      // Give the global winner announcement the full one-second audio clock
+      // horizon, even when the next visual frame arrives late.
+      if (cue.category !== 'round' && cue.tick > end) continue;
+      if (this.seen.has(cue.id) || sounds.length >= 128 || this.seen.size >= 4096) continue;
       this.seen.set(cue.id, cue.tick);
       sounds.push({ cue, delay: (cue.tick - tick) / rate / speed });
-      if (sounds.length >= 128 || this.seen.size >= 4096) break;
     }
-    return { reset, sounds };
+    return { reset, sounds, prefetch };
   }
 }

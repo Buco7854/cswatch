@@ -62,6 +62,30 @@ function prepared(folder: string, id = 'ak47-fire', data = wav()) {
   );
   return path;
 }
+test('only a recorded winning side selects a classic announcement at the round_end tick', () => {
+  const cues = eventGameplaySounds(
+    [
+      { type: 'round_end', tick: 8971, winner: 2, reason: 9 },
+      { type: 'round_mvp', tick: 8971, musickitid: 68, nomusic: 0 },
+      { type: 'round_start', tick: 9419 },
+      { type: 'bomb_defused', tick: 15232 },
+      { type: 'round_end', tick: 15232, winner: 3, reason: 7 },
+      { type: 'round_end', tick: 31197, reason: 8 },
+      { type: 'round_end', tick: 56705, winner: 2, reason: 18 },
+    ],
+    new Set(),
+  );
+  assert.deepEqual(
+    cues.map(({ tick, soundId }) => [tick, soundId]),
+    [
+      [8971, 'round-t-win'],
+      [15232, 'bomb-defuse'],
+      [15232, 'round-ct-win'],
+      [56705, 'round-t-win'],
+    ],
+  );
+});
+
 test('audio containers bound decoded duration/rate and reject truncated or changed MPEG frames before decoding', () => {
   assert.equal(inspectGameplayAudio(wav()).durationMs, 100);
   assert.throws(() => inspectGameplayAudio(wav(80001)), /duration/);
