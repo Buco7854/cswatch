@@ -148,6 +148,41 @@ async function navigate(page: Page, id: string) {
   }, '/watch/' + id);
 }
 
+test('map discovery overlaps replay loading and preparation waits for a readable replay', async ({
+  page,
+}) => {
+  await install(page);
+  let resumeManifest!: () => void;
+  const manifest = new Promise<void>((resolve) => (resumeManifest = resolve));
+  let reads = 0;
+  let requests = 0;
+  await page.route('**/api/demos/acquisition-a/playback', async (route) => {
+    await manifest;
+    await route.fallback();
+  });
+  await page.route('**/api/demos/acquisition-a/map-assets', (route) => {
+    if (route.request().method() === 'POST') requests++;
+    else reads++;
+    return route.fulfill({
+      json: requests ? { ...eligible, canAcquire: false, acquisition: 'processing' } : eligible,
+    });
+  });
+  await page.goto('/watch/acquisition-a');
+  await expect.poll(() => reads).toBe(1);
+  expect(requests).toBe(0);
+  resumeManifest();
+  await expect(
+    page.locator('.scene').getByRole('status', { name: 'Preparing map assets' }),
+  ).toBeVisible();
+  await expect(page.locator('.viewer-map-loading')).toHaveCount(0);
+  const timeline = page.locator('.timeline-slider');
+  await timeline.focus();
+  const start = Number(await timeline.inputValue());
+  await timeline.press('ArrowRight');
+  await expect.poll(async () => Number(await timeline.inputValue())).toBeGreaterThan(start);
+  expect(requests).toBe(1);
+});
+
 test('guest-owned demo acquires only its approved immutable pack once and observes queued processing ready status', async ({
   page,
 }) => {
