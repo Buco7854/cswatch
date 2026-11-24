@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { graphicsLimits } from '../../tools/assets/map-graphics-contract.mjs';
 import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
 import { open } from 'node:fs/promises';
@@ -88,7 +89,7 @@ export async function compareView(report, view, image, reference, file) {
     reference.schemaVersion === 1 &&
       [captureKind, externalKind].includes(reference.kind) &&
       Array.isArray(reference.views) &&
-      reference.views.length <= 24,
+      reference.views.length <= graphicsLimits.views,
     'Invalid reference manifest',
   );
   const candidates = reference.views.filter((v) => v.index === view.index);
