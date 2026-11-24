@@ -1,10 +1,11 @@
 import { selectOptionsCategory } from './fixtures/viewer-options';
+import { accountStatus, configForSyntheticAccount } from './fixtures/account-status';
 import { chooseSelectOption } from './fixtures/select-control';
 import { installMapBreakableProbe, renderedMapBreakables } from './fixtures/map-breakables';
 import { chooseCameraControl, expectCameraControl } from './fixtures/viewer-transport';
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { manualMapAssets } from './fixtures/map-assets';
-import { installMemberWorkspace } from './fixtures/member-workspace';
+import { installMemberWorkspace, memberUser } from './fixtures/member-workspace';
 import { installOriginalCameraProbe, originalFloorPixel } from './fixtures/original-camera';
 import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
 import {
@@ -1731,6 +1732,12 @@ for (const kind of ['prop_dynamic', 'func_breakable'] as const) {
   test(`a recorded ${kind} opens absent, returns at the round reset and restores on rewind`, async ({
     page,
   }) => {
+    if (process.env.E2E_PRIVATE) {
+      await configForSyntheticAccount(page);
+      await page.route('**/api/auth/me', (route) =>
+        route.fulfill({ json: accountStatus({ ...memberUser, role: 'member' }) }),
+      );
+    }
     const pose = {
       modelId: '7001',
       origin: [3.28125, 5, 7] as [number, number, number],
