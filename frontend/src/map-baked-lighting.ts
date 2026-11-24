@@ -7,6 +7,7 @@ import {
   Texture,
 } from 'three';
 import type { GLTF, GLTFLoader } from 'three-stdlib';
+import { applyPreparedGlass } from './source-glass-material';
 import format from '../../shared/map-baked-lighting.json' with { type: 'json' };
 import {
   applyLayerShader,
@@ -181,6 +182,7 @@ export function registerMapBakedLighting(loader: GLTFLoader) {
             ? object.material
             : [object.material]) {
             if (!(material instanceof MeshStandardMaterial)) continue;
+            applyPreparedGlass(material);
             if (material.userData?.cswatch?.vertexLighting === true) {
               vertexMaterials.set(
                 material,

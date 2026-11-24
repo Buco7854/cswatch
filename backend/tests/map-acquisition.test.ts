@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import { mapPreparerRevision } from '../src/asset-preparer.js';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
+import { createHash } from 'node:crypto';
 import {
   mkdtempSync,
   writeFileSync,
@@ -161,6 +162,41 @@ test('full identity catalog is provenance-bound, distinct source manifests are a
     false,
   );
 });
+test('a new map preparer queues the current source without changing the earlier job files', async () => {
+  const f = directory();
+  try {
+    await prepareMapJobs(f.root);
+    const priorId = createHash('sha256')
+      .update('preparer:3:')
+      .update(canonicalMapApproval(approval))
+      .digest('hex');
+    const currentId = mapPackId(approval);
+    assert.notEqual(currentId, priorId);
+    const requestPath = join(f.root, 'requests', priorId + '.json');
+    const request = JSON.stringify({
+      schemaVersion: 3,
+      packId: priorId,
+      generation: '0'.repeat(32),
+      approval,
+    });
+    writeFileSync(requestPath, request);
+    const resultPath = join(f.root, 'results', priorId + '.json');
+    const result = JSON.stringify({
+      schemaVersion: 3,
+      packId: priorId,
+      status: 'ready',
+      updatedAt: 1,
+    });
+    writeFileSync(resultPath, result);
+    assert.equal(await readMapRequest(f.root, priorId), undefined);
+    assert.equal(await enqueueMapRequest(f.root, approval), 'queued');
+    assert.equal((await readMapRequest(f.root, currentId))?.schemaVersion, mapPreparerRevision);
+    assert.equal(readFileSync(requestPath, 'utf8'), request);
+    assert.equal(readFileSync(resultPath, 'utf8'), result);
+  } finally {
+    f.close();
+  }
+});
 test('operator catalog reader bounds files, rejects links/writeable/malformed catalogs and treats absent catalog as unmapped', async () => {
   const fixture = directory(),
     file = join(fixture.root, 'catalog.json');
@@ -196,15 +232,16 @@ test('job requests bind immutable approval hash, coalesce concurrent authorizati
     assert.match(initialRequest?.generation || '', /^[a-f0-9]{32}$/);
     assert.deepEqual(
       { ...initialRequest, generation: undefined },
-      { schemaVersion: 3, packId: id, approval, generation: undefined },
+      { schemaVersion: mapPreparerRevision, packId: id, approval, generation: undefined },
     );
     assert.equal(
-      mapJobRequestSchema.safeParse({ schemaVersion: 3, packId: id, approval }).success,
+      mapJobRequestSchema.safeParse({ schemaVersion: mapPreparerRevision, packId: id, approval })
+        .success,
       false,
     );
     assert.equal(
       mapJobRequestSchema.safeParse({
-        schemaVersion: 3,
+        schemaVersion: mapPreparerRevision,
         packId: id,
         approval,
         generation: 'A'.repeat(32),
@@ -213,7 +250,7 @@ test('job requests bind immutable approval hash, coalesce concurrent authorizati
     );
     assert.equal(
       mapJobRequestSchema.safeParse({
-        schemaVersion: 3,
+        schemaVersion: mapPreparerRevision,
         packId: 'b'.repeat(64),
         approval,
         generation: 'a'.repeat(32),
@@ -221,13 +258,17 @@ test('job requests bind immutable approval hash, coalesce concurrent authorizati
       false,
     );
     assert.equal(
-      mapJobResultSchema.safeParse({ schemaVersion: 3, packId: id, status: 'failed', updatedAt: 1 })
-        .success,
+      mapJobResultSchema.safeParse({
+        schemaVersion: mapPreparerRevision,
+        packId: id,
+        status: 'failed',
+        updatedAt: 1,
+      }).success,
       false,
     );
     assert.equal(
       mapJobResultSchema.safeParse({
-        schemaVersion: 3,
+        schemaVersion: mapPreparerRevision,
         packId: id,
         status: 'ready',
         updatedAt: 1,
@@ -236,14 +277,14 @@ test('job requests bind immutable approval hash, coalesce concurrent authorizati
       false,
     );
     await writeMapJobResult(fixture.root, {
-      schemaVersion: 3,
+      schemaVersion: mapPreparerRevision,
       packId: id,
       status: 'processing',
       updatedAt: 1,
     });
     assert.equal((await readMapResult(fixture.root, id))?.status, 'processing');
     await writeMapJobResult(fixture.root, {
-      schemaVersion: 3,
+      schemaVersion: mapPreparerRevision,
       packId: id,
       status: 'failed',
       updatedAt: 2,
@@ -362,7 +403,7 @@ test('explicit transient retries require cooldown, preserve immutable requests a
       id = mapPackId(approval);
     await enqueueMapRequest(fixture.root, approval);
     const failure = {
-      schemaVersion: 3 as const,
+      schemaVersion: mapPreparerRevision,
       packId: id,
       status: 'failed' as const,
       updatedAt: at - mapJobRetrySeconds + 1,
@@ -443,7 +484,7 @@ test('failed retry removal preserves the terminal result after safely publishing
       previous = await readMapRequest(f.root, id),
       at = 10000;
     const failure = {
-      schemaVersion: 3 as const,
+      schemaVersion: mapPreparerRevision,
       packId: id,
       status: 'failed' as const,
       updatedAt: at - 301,

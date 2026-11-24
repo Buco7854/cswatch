@@ -36,6 +36,7 @@ import { publishPreparedMap } from './prepared-map-publication.mjs';
 import { resolveMapResources, exportMapGltf } from './install-map-resources.mjs';
 import { inspectInstalledEnvironment } from './install-map-environment.mjs';
 import { prepareInstalledAtmosphere } from './install-map-atmosphere.mjs';
+import { prepareInstalledGlass } from './install-map-glass.mjs';
 import { prepareInstalledBakedLighting } from './install-map-baked-lighting.mjs';
 import { localDirectory } from './toolchain-security.mjs';
 export { publishPreparedMap, validatePreparedMap } from './prepared-map-publication.mjs';
@@ -600,6 +601,25 @@ export async function installSteamAssets(options, adapters = {}) {
           sunChannel: environment.sunChannel,
           hasHeadroom: (needed) => hasFreeReserve(cache, output, needed),
         });
+        const glass = await (adapters.prepareGlass || prepareInstalledGlass)({
+          input: source,
+          stage,
+          execute,
+          s2v: tools.s2v,
+          getBanks: async () => {
+            const names = [
+              packageFile,
+              ...(preparedEnvironment.report.selectedPrefab
+                ? [preparedEnvironment.report.selectedPrefab]
+                : []),
+              'game/csgo/pak01_dir.vpk',
+              'game/core/pak01_dir.vpk',
+            ];
+            const banks = [];
+            for (const name of names) banks.push(await index(join(game, name)));
+            return banks;
+          },
+        });
         // The packer checks each actual encoded tier plus the reserve immediately
         // before its exclusive write. Source PNG sizes do not predict GLB bytes.
         await checkStorage(cache, output);
@@ -621,7 +641,7 @@ export async function installSteamAssets(options, adapters = {}) {
               assetVersion,
               '--only-tier',
               tier,
-              ...(tier === 'compact' ? [] : ['--auto-lighting', ...baked.args]),
+              ...(tier === 'compact' ? [] : ['--auto-lighting', ...baked.args, ...glass.args]),
             ],
             `${map}-pack-${tier}`,
           );
@@ -655,6 +675,7 @@ export async function installSteamAssets(options, adapters = {}) {
           shaderPreflights,
           sourceImagePreparation: sourceImages,
           bakedLighting: { source: baked.proof, tiers: lightingTiers },
+          ...(glass.proof.length ? { constantGlass: glass.proof } : {}),
           resourceCoverage: {
             complete:
               closure.unknown.filter((resource) => resource !== `${environment.skyMap}_c`)

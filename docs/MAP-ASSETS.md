@@ -96,7 +96,7 @@ The renderer uses each map's authored sun direction, supported cubemap fog and u
 
 The preparer can also bind modern materials by matching their exported mesh, material and draw counts to the verified compiled model. Its vertex layout and material input signature establish which glTF coordinate addresses the atlas. The pinned exporter applies the world's atlas scale. Draws with conflicting signatures keep the ordinary material path. The renderer can use indirect light when the compiled draw declares vertex lighting and the verified `COLOR1` layout matches the exported data channel. Foliage tint and wind channels stay separate. Source refractive water requires its native shader and is omitted from the static world pack. [Pinned exporter](https://github.com/ValveResourceFormat/ValveResourceFormat/blob/942df5b37ebbde6153f6c488880b91d4bed003e6/ValveResourceFormat/IO/Gltf/GltfModelExporter.Mesh.cs) [Compiled draw flags](https://github.com/ValveResourceFormat/ValveResourceFormat/blob/942df5b37ebbde6153f6c488880b91d4bed003e6/ValveResourceFormat/Resource/ResourceTypes/Mesh.cs)
 
-The map preparer revision is independent of the equipment and agent banks. A completed earlier map job authorizes the same source to be prepared under the new revision. A removed job stays removed. The worker publishes a new pack and preserves the earlier files.
+Map preparer revision 4 gives approved and latest-official map jobs and packs new identities. Opening a demo can request a new pack through the normal acquisition policy and source checks. The worker publishes to the new identity and preserves earlier pack files, job records and operator-managed assets. Equipment and agent banks have an independent revision.
 
 ## Latest official snapshots
 

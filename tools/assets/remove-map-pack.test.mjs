@@ -1,3 +1,4 @@
+import { mapPreparerRevision } from '../../backend/dist/asset-preparer.js';
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -85,7 +86,7 @@ async function fixture(t, latest = false) {
   if (latest) await enqueueLatestMapRequest(jobs, selection);
   else await enqueueMapRequest(jobs, approval);
   await writeMapJobResult(jobs, {
-    schemaVersion: 3,
+    schemaVersion: mapPreparerRevision,
     packId: requestId,
     status: 'ready',
     updatedAt: Math.floor(Date.now() / 1000),
@@ -105,7 +106,7 @@ async function fixture(t, latest = false) {
     JSON.stringify(
       latest
         ? {
-            schemaVersion: 3,
+            schemaVersion: mapPreparerRevision,
             kind: 'latest-official',
             packId,
             requestId,
@@ -114,7 +115,7 @@ async function fixture(t, latest = false) {
             preparedAt: Math.floor(Date.now() / 1000),
           }
         : {
-            schemaVersion: 3,
+            schemaVersion: mapPreparerRevision,
             packId,
             approval: canonicalMapApproval(approval),
             preparedAt: Math.floor(Date.now() / 1000),

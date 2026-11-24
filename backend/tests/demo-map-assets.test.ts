@@ -1,3 +1,4 @@
+import { mapPreparerRevision } from '../src/asset-preparer.js';
 import { fixtureCookie, insertFixtureSession } from './fixtures/member-session.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -241,7 +242,7 @@ async function latestReadyFixture(f: Awaited<ReturnType<typeof fixture>>) {
   writeFileSync(
     join(target, 'pack.json'),
     JSON.stringify({
-      schemaVersion: 3,
+      schemaVersion: mapPreparerRevision,
       kind: 'latest-official',
       packId: assetPackId,
       requestId,
@@ -251,7 +252,7 @@ async function latestReadyFixture(f: Awaited<ReturnType<typeof fixture>>) {
     }),
   );
   await writeMapJobResult(f.jobs, {
-    schemaVersion: 3,
+    schemaVersion: mapPreparerRevision,
     packId: requestId,
     status: 'ready',
     updatedAt: now(),
@@ -415,7 +416,7 @@ test('unavailable historical source may select fresh latest while ready exact an
     const id = mapPackId(approval);
     for (const code of ['source_mismatch', 'approval_removed'] as const) {
       await writeMapJobResult(f.jobs, {
-        schemaVersion: 3,
+        schemaVersion: mapPreparerRevision,
         packId: id,
         status: 'failed',
         code,
@@ -427,7 +428,7 @@ test('unavailable historical source may select fresh latest while ready exact an
       assert.equal(value.canAcquire, false);
     }
     await writeMapJobResult(f.jobs, {
-      schemaVersion: 3,
+      schemaVersion: mapPreparerRevision,
       packId: id,
       status: 'failed',
       code: 'source_unavailable',
@@ -441,7 +442,7 @@ test('unavailable historical source may select fresh latest while ready exact an
     assert.equal((await f.request()).json().resolution.status, 'approved');
     install(join(f.maps, 'packs', id, 'maps'));
     await writeMapJobResult(f.jobs, {
-      schemaVersion: 3,
+      schemaVersion: mapPreparerRevision,
       packId: id,
       status: 'ready',
       updatedAt: now(),
@@ -464,7 +465,7 @@ test('unavailable historical source retains an already-ready latest snapshot wit
     const exactId = mapPackId(approval);
     await enqueueMapRequest(f.jobs, approval);
     await writeMapJobResult(f.jobs, {
-      schemaVersion: 3,
+      schemaVersion: mapPreparerRevision,
       packId: exactId,
       status: 'failed',
       code: 'source_unavailable',
@@ -569,7 +570,7 @@ test('automatic mode never falls back to a same-name manual pack and GET never s
     assert.equal(queued.json().canAcquire, false);
     assert.equal((await f.request(undefined, 'member', 'POST', {})).json().acquisition, 'queued');
     await writeMapJobResult(f.jobs, {
-      schemaVersion: 3,
+      schemaVersion: mapPreparerRevision,
       packId: mapPackId(approval),
       status: 'failed',
       updatedAt: now(),
@@ -655,7 +656,7 @@ test('immutable approved packs require current unambiguous catalog and ready res
     for (const path of [model, overview, face])
       assert.equal((await f.request(path)).statusCode, 404);
     await writeMapJobResult(f.jobs, {
-      schemaVersion: 3,
+      schemaVersion: mapPreparerRevision,
       packId: id,
       status: 'ready',
       updatedAt: now(),
@@ -708,7 +709,7 @@ test('approved pack paths reject symlinked pack ancestors and private instance g
     symlinkSync(outside, join(f.maps, 'packs', id));
     await enqueueMapRequest(f.jobs, approval);
     await writeMapJobResult(f.jobs, {
-      schemaVersion: 3,
+      schemaVersion: mapPreparerRevision,
       packId: id,
       status: 'ready',
       updatedAt: now(),
@@ -750,7 +751,7 @@ test('owner POST retries transient acquisition once after cooldown while permane
     await enqueueMapRequest(f.jobs, approval);
     await writeMapWorkerStatus(f.jobs, { schemaVersion: 1, status: 'idle', updatedAt: now() });
     await writeMapJobResult(f.jobs, {
-      schemaVersion: 3,
+      schemaVersion: mapPreparerRevision,
       packId: id,
       status: 'failed',
       updatedAt: now() - 299,
@@ -759,7 +760,7 @@ test('owner POST retries transient acquisition once after cooldown while permane
     assert.equal((await f.request()).json().canAcquire, false);
     assert.equal((await f.request(undefined, 'member', 'POST', {})).json().acquisition, 'failed');
     await writeMapJobResult(f.jobs, {
-      schemaVersion: 3,
+      schemaVersion: mapPreparerRevision,
       packId: id,
       status: 'failed',
       updatedAt: now() - 301,
@@ -786,7 +787,7 @@ test('owner POST retries transient acquisition once after cooldown while permane
     assert.equal((await f.request(undefined, 'member', 'POST', {})).json().acquisition, 'queued');
     for (const code of ['source_mismatch', 'approval_removed'] as const) {
       await writeMapJobResult(f.jobs, {
-        schemaVersion: 3,
+        schemaVersion: mapPreparerRevision,
         packId: id,
         status: 'failed',
         updatedAt: now() - 1000,
@@ -796,7 +797,7 @@ test('owner POST retries transient acquisition once after cooldown while permane
       assert.equal((await f.request(undefined, 'member', 'POST', {})).json().code, code);
     }
     await writeMapJobResult(f.jobs, {
-      schemaVersion: 3,
+      schemaVersion: mapPreparerRevision,
       packId: id,
       status: 'failed',
       updatedAt: now() - 1000,
