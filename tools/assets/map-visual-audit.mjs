@@ -37,14 +37,14 @@ const features = new Map(
 
 const maxViews = limits.views;
 
-function describe(material) {
+function describe(material, preparedWater) {
   const extras = material?.getExtras();
   const native = extras?.vmat;
   const shader =
     typeof native?.ShaderName === 'string' && /^[a-z0-9_]{1,100}\.vfx$/.test(native.ShaderName)
       ? native.ShaderName
       : 'gltf';
-  const action = worldMaterialAction(material);
+  const action = worldMaterialAction(material, preparedWater);
   let feature = features.get(shader) ?? 'unknown';
   let coverage = feature === 'unknown' ? 'unknown' : 'approximated';
   if (action === 'omit_helper') {
@@ -116,7 +116,7 @@ function representativeTriangle(primitive, matrix, winding) {
   return best;
 }
 
-export function inspectMapGraphics(document) {
+export function inspectMapGraphics(document, preparedWater) {
   const root = document.getRoot();
   const materials = new Map(),
     candidates = new Map(),
@@ -140,7 +140,7 @@ export function inspectMapGraphics(document) {
           matrix[8] * (matrix[1] * matrix[6] - matrix[2] * matrix[5]),
       );
     for (const primitive of mesh.listPrimitives()) {
-      const { materialName, ...row } = describe(primitive.getMaterial());
+      const { materialName, ...row } = describe(primitive.getMaterial(), preparedWater);
       const key = [row.shader, row.action, row.coverage].join(':');
       const aggregate = materials.get(key);
       if (aggregate) aggregate.primitives++;

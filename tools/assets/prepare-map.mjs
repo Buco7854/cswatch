@@ -24,6 +24,8 @@ import { readNativeLightingBindings } from './native-map-lighting-layout.mjs';
 import { prepareCompactMap } from './prepare-compact-map.mjs';
 import { readGlassBindings, bindPreparedGlass } from './prepare-map-glass.mjs';
 import { inspectMapGraphics } from './map-visual-audit.mjs';
+import { bindPreparedWater } from './prepare-map-water.mjs';
+import { readWaterBindings } from './map-water-inputs.mjs';
 import { filterMapWorldMaterials } from './map-world-materials.mjs';
 const { values: v } = parseArgs({
   options: {
@@ -39,6 +41,7 @@ const { values: v } = parseArgs({
     'auto-lighting': { type: 'boolean' },
     'lighting-direction-png': { type: 'string' },
     'layer-images': { type: 'string' },
+    'water-bindings': { type: 'string' },
     'glass-bindings': { type: 'string' },
     'native-lighting-bindings': { type: 'string' },
     'only-tier': { type: 'string' },
@@ -102,6 +105,9 @@ const layers = v['layer-images'] ? await readMapLayerImages(resolve(v['layer-ima
 const glassBindings = v['glass-bindings']
   ? await readGlassBindings(resolve(v['glass-bindings']))
   : [];
+const waterBindings = v['water-bindings']
+  ? await readWaterBindings(resolve(v['water-bindings']))
+  : new Map();
 const nativeBindings = v['native-lighting-bindings']
   ? await readNativeLightingBindings(resolve(v['native-lighting-bindings']))
   : undefined;
@@ -115,8 +121,9 @@ for (const tier of tiers.filter((value) => value !== 'compact')) {
   const target = join(root, tier);
   const document = await io.read(input);
   bindPreparedGlass(document, glassBindings);
-  const graphics = inspectMapGraphics(document);
-  const worldMaterials = filterMapWorldMaterials(document);
+  const water = bindPreparedWater(document, waterBindings);
+  const graphics = inspectMapGraphics(document, water);
+  const worldMaterials = filterMapWorldMaterials(document, water);
   let bakedLighting, lightingFallback;
   if (v['irradiance-exr'] && v['sun-shadow-png']) {
     let atlas;

@@ -36,6 +36,7 @@ import { publishPreparedMap } from './prepared-map-publication.mjs';
 import { resolveMapResources, exportMapGltf } from './install-map-resources.mjs';
 import { inspectInstalledEnvironment } from './install-map-environment.mjs';
 import { prepareInstalledAtmosphere } from './install-map-atmosphere.mjs';
+import { writeWaterBindings } from './map-water-inputs.mjs';
 import { prepareInstalledGlass } from './install-map-glass.mjs';
 import { prepareInstalledBakedLighting } from './install-map-baked-lighting.mjs';
 import { localDirectory } from './toolchain-security.mjs';
@@ -620,6 +621,7 @@ export async function installSteamAssets(options, adapters = {}) {
             return banks;
           },
         });
+        const waterArgs = await writeWaterBindings(stage, shaderPreflights);
         // The packer checks each actual encoded tier plus the reserve immediately
         // before its exclusive write. Source PNG sizes do not predict GLB bytes.
         await checkStorage(cache, output);
@@ -641,7 +643,9 @@ export async function installSteamAssets(options, adapters = {}) {
               assetVersion,
               '--only-tier',
               tier,
-              ...(tier === 'compact' ? [] : ['--auto-lighting', ...baked.args, ...glass.args]),
+              ...(tier === 'compact'
+                ? []
+                : ['--auto-lighting', ...baked.args, ...glass.args, ...waterArgs]),
             ],
             `${map}-pack-${tier}`,
           );

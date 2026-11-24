@@ -3,6 +3,7 @@ import { mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { resourcePath, readVpkDirectory } from './source2-dependencies.mjs';
+import { waterFromMaterialData } from './map-water-inputs.mjs';
 import { regular, checkFreeReserve } from './asset-storage.mjs';
 import { checkedBatch, steamAssetLimits } from './steam-assets-plan.mjs';
 
@@ -44,7 +45,9 @@ export function materialShaderBatch(text, files) {
       header.index + header[0].length,
       headers[index + 1]?.index ?? text.length,
     );
-    results.push({ path, shader: shaderNameFromMaterialData(body) });
+    const shader = shaderNameFromMaterialData(body);
+    const water = shader === 'csgo_water_fancy' && waterFromMaterialData(body);
+    results.push({ path, shader, ...(water ? { water } : {}) });
   }
   return results;
 }
@@ -151,6 +154,7 @@ export async function preflightMaterialShaders({
         sha256: record.sha256,
         bytes: record.bytes,
         shader: decodedMaterial.shader,
+        ...(decodedMaterial.water ? { water: decodedMaterial.water } : {}),
       });
     }
     await rm(join(root, String(batchIndex)), { recursive: true });
