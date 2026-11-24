@@ -175,7 +175,7 @@ test('map discovery overlaps replay loading and preparation waits for a readable
   await expect(
     page.locator('.scene').getByRole('status', { name: 'Preparing map assets' }),
   ).toBeVisible();
-  await expect(page.locator('.viewer-map-loading')).toHaveCount(0);
+  await expect(page.locator('.viewer-map-loading,.viewer-crosshair,.viewer-scope')).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Back to home' })).toBeInViewport();
   const timeline = page.locator('.timeline-slider');
   await timeline.focus();

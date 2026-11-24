@@ -1135,9 +1135,9 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
   const { frame } = frameAt(data, tick);
   const selectedPosition = frame.players.find((player) => player.id === selected);
   const sampledFlash = selectedPosition?.alive ? selectedPosition.flash : undefined;
+  const showPovEffects = mode === 'pov' && !using2D && !acquisitionNotice;
   const recordedFlash =
-    mode === 'pov' &&
-    !using2D &&
+    showPovEffects &&
     !buffering &&
     settings.flashFeedback !== 'off' &&
     sampledFlash !== undefined &&
@@ -1147,8 +1147,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
         ? 0
         : flashFeedbackAt(data, selected, tick)
       : undefined;
-  const scopeFov =
-    mode === 'pov' && !using2D && !buffering ? scopedVerticalFov(selectedPosition) : undefined;
+  const scopeFov = showPovEffects && !buffering ? scopedVerticalFov(selectedPosition) : undefined;
   const playerCrosshairCode =
     !buffering && selectedPosition
       ? recordedCrosshairAt(crosshairTimeline, selected, tick)
@@ -1519,20 +1518,12 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
               overlayLayout={overlayLayout}
             />
           </Suspense>
-          {mode === 'pov' &&
-            !using2D &&
-            !buffering &&
-            settings.flashFeedback !== 'off' &&
-            recordedFlash !== undefined && (
-              <FlashFeedback presentation={settings.flashFeedback} opacity={recordedFlash} />
-            )}
-          {settings.damageFeedback &&
-            mode === 'pov' &&
-            !using2D &&
-            !buffering &&
-            spectatorEvents && (
-              <DamageFeedback value={damageFeedbackAt(data, spectatorEvents, selected, tick)} />
-            )}
+          {recordedFlash !== undefined && settings.flashFeedback !== 'off' && (
+            <FlashFeedback presentation={settings.flashFeedback} opacity={recordedFlash} />
+          )}
+          {settings.damageFeedback && showPovEffects && !buffering && spectatorEvents && (
+            <DamageFeedback value={damageFeedbackAt(data, spectatorEvents, selected, tick)} />
+          )}
           {buffering && (
             <div className="replay-buffer" role={chunkError ? 'alert' : 'status'}>
               <span>{t(chunkError || 'Loading this moment…')}</span>
@@ -1556,8 +1547,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
           {scopeFov === undefined &&
             settings.crosshair &&
             selectedPosition?.alive &&
-            mode === 'pov' &&
-            !using2D &&
+            showPovEffects &&
             (settings.crosshairSource === 'player' ? (
               <RecordedCrosshair code={playerCrosshairCode} />
             ) : (

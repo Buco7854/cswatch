@@ -22,6 +22,7 @@ import {
 import { readMapLayerImages } from './prepare-map-layers.mjs';
 import { readNativeLightingBindings } from './native-map-lighting-layout.mjs';
 import { prepareCompactMap } from './prepare-compact-map.mjs';
+import { readGlassBindings, bindPreparedGlass } from './prepare-map-glass.mjs';
 import { filterMapWorldMaterials } from './map-world-materials.mjs';
 const { values: v } = parseArgs({
   options: {
@@ -37,6 +38,7 @@ const { values: v } = parseArgs({
     'auto-lighting': { type: 'boolean' },
     'lighting-direction-png': { type: 'string' },
     'layer-images': { type: 'string' },
+    'glass-bindings': { type: 'string' },
     'native-lighting-bindings': { type: 'string' },
     'only-tier': { type: 'string' },
     help: { type: 'boolean' },
@@ -96,6 +98,9 @@ const io = new NodeIO()
   .setAllowNetwork(false);
 await MeshoptSimplifier.ready;
 const layers = v['layer-images'] ? await readMapLayerImages(resolve(v['layer-images'])) : undefined;
+const glassBindings = v['glass-bindings']
+  ? await readGlassBindings(resolve(v['glass-bindings']))
+  : [];
 const nativeBindings = v['native-lighting-bindings']
   ? await readNativeLightingBindings(resolve(v['native-lighting-bindings']))
   : undefined;
@@ -108,6 +113,7 @@ for (const tier of tiers.filter((value) => value !== 'compact')) {
   globalThis.gc?.();
   const target = join(root, tier);
   const document = await io.read(input);
+  bindPreparedGlass(document, glassBindings);
   const worldMaterials = filterMapWorldMaterials(document);
   let bakedLighting, lightingFallback;
   if (v['irradiance-exr'] && v['sun-shadow-png']) {

@@ -2,6 +2,8 @@
 
 Demo processing and map loading use one screen with a stable return link. Account titles retain assistive focus, and text fields and library search show one focus outline.
 
+Newly prepared map packs carry source-derived transparency for supported constant glass, including the Nuke door pane. Members can review the timeline while the map worker downloads or converts their selected source. Native actors retain their moving gait on streamed chunks and blend consecutive firing poses. [Viewer checks](VERIFICATION.md#map-preparation-nuke-door-glass-and-native-player-poses)
+
 A LAN administrator can connect directly or behind a trusted proxy on the same subnet. Server-side Steam import diagnostics record the failed stage and any numeric Steam result. [Operator guide](ACCESS-SETUP.md)
 
 During 3D playback, detailed map batches skip triangle blocks outside the camera view. The graded renderer reuses the same multisampled color buffer for sky, map and first-person equipment. Smoke reuses its depth buffer as its screen coverage changes. Timeline markers update when the recorded events or layout change. [Viewer measurements](VERIFICATION.md)

@@ -912,6 +912,7 @@ test('synthetic installer run pins every selective fetch and removes only its ow
             };
           },
         }),
+        prepareGlass: async () => ({ args: [], proof: [] }),
         prepareAtmosphere: async ({ input }) => ({ path: input, report: { applied: false } }),
       },
     );
