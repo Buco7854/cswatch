@@ -1,10 +1,24 @@
-import { Light, Mesh, SkinnedMesh, type Object3D, type Matrix4 } from 'three';
+import { Light, Mesh, SkinnedMesh, type Object3D, type Matrix4, type Skeleton } from 'three';
 import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 
 /** Instances own node visibility and pose. Geometry, materials and images stay cache-owned. */
 export function prepareEquipmentModel(scene: Object3D) {
   const result = clone(scene);
+  // SkeletonUtils clones a palette per mesh even when several glTF primitives
+  // use the same skin. Three uploads a bone texture per palette per render pass.
+  const palettes = new Map<Matrix4[], Skeleton>();
   result.traverse((object) => {
+    if (object instanceof SkinnedMesh) {
+      const skin = object.skeleton;
+      const shared = palettes.get(skin.boneInverses);
+      if (
+        shared &&
+        shared.bones.length === skin.bones.length &&
+        skin.bones.every((bone, index) => shared.bones[index] === bone)
+      )
+        object.skeleton = shared;
+      else palettes.set(skin.boneInverses, skin);
+    }
     if (object instanceof Light) object.visible = false;
     if (object instanceof Mesh) {
       object.castShadow = false;

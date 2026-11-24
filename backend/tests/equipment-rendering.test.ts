@@ -4,6 +4,8 @@ import {
   Group,
   Mesh,
   BoxGeometry,
+  Float32BufferAttribute,
+  Uint16BufferAttribute,
   MeshStandardMaterial,
   DirectionalLight,
   Box3,
@@ -18,6 +20,7 @@ import {
   prepareEquipmentModel,
   disposeEquipmentInstance,
 } from '../../frontend/src/equipment-model.js';
+import { retainEquipmentRestGeometry } from '../../frontend/src/equipment-rest-skin.js';
 import {
   fitPovAttachment,
   staticPovAttachment,
@@ -175,6 +178,80 @@ test('cloned skinned equipment releases only instance bone textures while retain
   mesh.skeleton.dispose();
   geometry.dispose();
   material.dispose();
+});
+
+test('a cloned actor shares bone palettes only across parts bound to the same posed rig', () => {
+  const scene = new Group();
+  const right = new Bone();
+  const left = new Bone();
+  scene.add(right, left);
+  const skin = new Skeleton([right]);
+  const other = new Skeleton([left], skin.boneInverses);
+  for (const binding of [skin, skin, other]) {
+    const part = new SkinnedMesh(new BoxGeometry(), new MeshStandardMaterial());
+    part.bind(binding);
+    scene.add(part);
+  }
+  const instance = prepareEquipmentModel(scene);
+  const [a, b, c] = instance.children.filter((n): n is SkinnedMesh => n instanceof SkinnedMesh);
+  assert.notEqual(a.skeleton, skin);
+  assert.equal(a.skeleton, b.skeleton);
+  assert.notEqual(a.skeleton, c.skeleton);
+  assert.notEqual(a.skeleton.bones[0], right);
+  const another = prepareEquipmentModel(scene);
+  assert.notEqual((another.children[2] as SkinnedMesh).skeleton, a.skeleton);
+});
+
+test('rest geometry keeps world weapon grips, independently moving parts and deformed skins', () => {
+  const scene = new Group();
+  const grip = new Bone();
+  const hand = new Bone();
+  hand.name = 'weapon_hand_l';
+  const deformed = new Bone();
+  scene.add(grip, hand, deformed);
+  const skin = new Skeleton([grip, hand, deformed]);
+  for (const [id, joints] of [
+    ['rigid', [0, 0]],
+    ['left', [0, 1]],
+    ['deformed', [2, 2]],
+  ] as const) {
+    const g = new BoxGeometry();
+    const w: number[] = [];
+    const j: number[] = [];
+    for (let i = 0; i < g.attributes.position.count; i++) {
+      w.push(0.5, 0.5, 0, 0);
+      j.push(...joints, 0, 0);
+    }
+    g.setAttribute('skinIndex', new Uint16BufferAttribute(j, 4));
+    g.setAttribute('skinWeight', new Float32BufferAttribute(w, 4));
+    g.computeBoundingBox();
+    const mesh = new SkinnedMesh(g, new MeshStandardMaterial());
+    mesh.name = id;
+    mesh.bind(skin);
+    scene.add(mesh);
+  }
+  deformed.position.y = 0.02;
+  scene.position.set(12, 4, -5);
+  scene.updateMatrixWorld(true);
+  const original = scene.getObjectByName('rigid') as SkinnedMesh;
+  const expected = original.getVertexPosition(0, new Vector3());
+  const vertices = original.geometry;
+  const order = scene.children.map((n) => n.name);
+  retainEquipmentRestGeometry(scene);
+  const ready = scene.getObjectByName('rigid') as Mesh;
+  assert.equal(ready instanceof SkinnedMesh, false);
+  assert.equal(ready.geometry, vertices);
+  assert.deepEqual(ready.getVertexPosition(0, new Vector3()).toArray(), expected.toArray());
+  assert.deepEqual(
+    scene.children.map((n) => n.name),
+    order,
+  );
+  const articulated = scene.getObjectByName('left') as SkinnedMesh;
+  assert.ok(articulated instanceof SkinnedMesh);
+  assert.ok(scene.getObjectByName('deformed') instanceof SkinnedMesh);
+  hand.position.x = 2;
+  scene.updateMatrixWorld(true);
+  assert.ok(Math.abs(articulated.getVertexPosition(0, new Vector3()).x - expected.x - 1) < 1e-6);
 });
 
 test('portrait static POV attachment retains native scale/depth while moving lateral offset inside the narrower field of view', () => {
