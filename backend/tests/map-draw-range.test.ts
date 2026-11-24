@@ -8,6 +8,7 @@ import {
   PerspectiveCamera,
   Scene,
   Texture,
+  Uint8BufferAttribute,
   MeshStandardMaterial,
   type WebGLRenderer,
 } from '../../frontend/node_modules/three/build/three.module.js';
@@ -120,6 +121,43 @@ test('main and sky keep ordered ranges on either side of an off-camera region, a
     interrupt = true;
     assert.throws(() => render(sky, landscape), /interrupted final range/);
     assert.deepEqual(geometry.drawRange, { start: 0, count: Infinity });
+  } finally {
+    release();
+  }
+});
+
+test('large maps spread their block budget across distinct static geometries', () => {
+  const scene = new Scene(),
+    camera = new PerspectiveCamera(90, 1, 0.1, 20);
+  const triangles = 700_000;
+  const data = new Uint8Array(triangles * 3);
+  for (let i = 0; i < data.length; i++) data[i] = i % 3;
+  const index = new Uint8BufferAttribute(data, 1),
+    material = new MeshBasicMaterial();
+  const objects = [0, 1, 100].map((x) => {
+    const geometry = new BufferGeometry();
+    geometry.setIndex(index);
+    geometry.setAttribute(
+      'position',
+      new Float32BufferAttribute([x, 0, -2, x + 1, 0, -2, x, 1, -2], 3),
+    );
+    const mesh = new Mesh(geometry, material);
+    scene.add(mesh);
+    return mesh;
+  });
+  let draws = 0;
+  const renderer = {
+    renderBufferDirect() {
+      draws++;
+    },
+    info: { render: { frame: 1 } },
+  } as unknown as WebGLRenderer;
+  const release = installMapDrawRanges(renderer, scene, scene);
+  try {
+    // Three 700k-triangle batches need more than 32,768 fixed 64-triangle blocks.
+    for (const mesh of objects)
+      renderer.renderBufferDirect(camera, scene, mesh.geometry, material, mesh, null);
+    assert.equal(draws, 2);
   } finally {
     release();
   }

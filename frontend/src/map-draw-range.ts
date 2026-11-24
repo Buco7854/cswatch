@@ -13,7 +13,8 @@ import {
   type WebGLRenderer,
 } from 'three';
 
-const indicesPerBlock = 64 * 3;
+const minimumBlockTriangles = 64;
+const maxIndexedTriangles = 6_000_000;
 const blocksPerRegion = 8;
 const maxGapsPerDraw = 4;
 const maxBlocks = 32_768;
@@ -30,8 +31,8 @@ export function installMapDrawRanges(
 ) {
   const meshes = new WeakSet<Object3D>();
   const bounds = new WeakMap<BufferGeometry, Bounds>();
-  const point = new Vector3();
-  let blocks = 0;
+  const candidates = new Map<BufferGeometry, number>();
+  let totalTriangles = 0;
   function inspect(object: Object3D) {
     if (object.constructor !== Mesh) return;
     const mesh = object as Mesh;
@@ -39,39 +40,56 @@ export function installMapDrawRanges(
     const position = geometry.attributes.position;
     if (!position || position.itemSize !== 3 || Object.keys(geometry.morphAttributes).length)
       return;
-    const index = geometry.index;
-    const count = index?.count ?? position.count;
+    const count = geometry.index?.count ?? position.count;
     if (count < 3 || count % 3) return;
-    if (!bounds.has(geometry)) {
-      const length = Math.ceil(count / indicesPerBlock);
-      if (blocks + length > maxBlocks) return;
-      const boxes: Box3[] = [];
-      for (let first = 0; first < count; first += indicesPerBlock) {
-        const box = new Box3();
-        const end = Math.min(first + indicesPerBlock, count);
-        for (let i = first; i < end; i++)
-          box.expandByPoint(point.fromBufferAttribute(position, index ? index.getX(i) : i));
-        const magnitude = Math.max(box.min.length(), box.max.length());
-        if (!Number.isFinite(magnitude)) return;
-        // GPU vertex transforms use float precision. Retain boundary triangles.
-        boxes.push(box.expandByScalar(0.001 + magnitude * 1e-5));
-      }
-      const regions: Box3[] = [];
-      if (length >= blocksPerRegion * 2) {
-        for (let b = 0; b < length; b += blocksPerRegion) {
-          const region = boxes[b].clone();
-          for (let j = b + 1; j < Math.min(b + blocksPerRegion, length); j++)
-            region.union(boxes[j]);
-          regions.push(region);
-        }
-      }
-      bounds.set(geometry, { blocks: boxes, regions });
-      blocks += boxes.length;
+    if (!candidates.has(geometry)) {
+      if (candidates.size >= maxBlocks) return;
+      candidates.set(geometry, count);
+      totalTriangles += count / 3;
     }
     meshes.add(mesh);
   }
   root.traverse(inspect);
   sky?.traverse(inspect);
+
+  // Leave room for one partial block per geometry. Large multi-million triangle
+  // maps then receive bounds throughout the level at the same memory limit.
+  const budget = maxBlocks - candidates.size;
+  const width = budget > 0 ? Math.ceil(Math.min(totalTriangles, maxIndexedTriangles) / budget) : 0;
+  const indicesPerBlock = 3 * Math.max(minimumBlockTriangles, width);
+  const point = new Vector3();
+  let blocks = 0,
+    scanned = 0;
+  for (const [geometry, count] of candidates) {
+    const length = Math.ceil(count / indicesPerBlock);
+    if (blocks + length > maxBlocks || scanned + count / 3 > maxIndexedTriangles) continue;
+    scanned += count / 3;
+    const position = geometry.attributes.position,
+      index = geometry.index;
+    const boxes: Box3[] = [];
+    for (let first = 0; first < count; first += indicesPerBlock) {
+      const box = new Box3();
+      const end = Math.min(first + indicesPerBlock, count);
+      for (let i = first; i < end; i++)
+        box.expandByPoint(point.fromBufferAttribute(position, index ? index.getX(i) : i));
+      const magnitude = Math.max(box.min.length(), box.max.length());
+      if (!Number.isFinite(magnitude)) break;
+      // GPU vertex transforms use float precision. Retain boundary triangles.
+      boxes.push(box.expandByScalar(0.001 + magnitude * 1e-5));
+    }
+    if (boxes.length !== length) continue;
+    const regions: Box3[] = [];
+    if (length >= blocksPerRegion * 2) {
+      for (let b = 0; b < length; b += blocksPerRegion) {
+        const region = boxes[b].clone();
+        for (let j = b + 1; j < Math.min(b + blocksPerRegion, length); j++) region.union(boxes[j]);
+        regions.push(region);
+      }
+    }
+    bounds.set(geometry, { blocks: boxes, regions });
+    blocks += length;
+  }
+  candidates.clear();
 
   const draw = renderer.renderBufferDirect;
   const frustum = new Frustum();
@@ -124,7 +142,7 @@ export function installMapDrawRanges(
     while (end > first + 1 && !frustum.intersectsBox(boxes[end - 1])) end--;
     if (!regions.length && !first && end === boxes.length)
       return draw.call(renderer, camera, scene, geometry, material, object, group);
-    // A region covers 512 source triangles. Each skipped interior run costs one
+    // A region covers at least 512 source triangles. Each skipped interior run costs one
     // extra draw; cap this even for adversarially interleaved source geometry.
     const lastRegion = Math.floor((end - 1) / blocksPerRegion);
     let gaps = 0;
