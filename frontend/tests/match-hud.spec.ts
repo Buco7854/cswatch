@@ -1,4 +1,6 @@
 import { expect, test } from '@playwright/test';
+import { accountStatus, configForSyntheticAccount } from './fixtures/account-status';
+import { memberUser } from './fixtures/member-workspace';
 import { installMapFixture } from './fixtures/map-assets';
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { actor, recordedReplay, target } from './fixtures/review-playback';
@@ -105,6 +107,12 @@ test('a new match opens live in POV with the game FOV and the recorded match HUD
 test('a fresh recording opens at the first available living POV while an explicit earlier time is respected', async ({
   page,
 }) => {
+  if (process.env.E2E_PRIVATE) {
+    await configForSyntheticAccount(page);
+    await page.route('**/api/auth/me', (route) =>
+      route.fulfill({ json: accountStatus({ ...memberUser, role: 'member' }) }),
+    );
+  }
   const id = 'delayed-pov-fixture',
     replay = recordedReplay();
   replay.frames[0].players = [];
