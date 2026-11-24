@@ -30,6 +30,14 @@ export const EXTINCTION = 3.05;
 const index = (x: number, y: number, z: number) => x + GRID * (y + GRID * z);
 const inGrid = (i: number) => i >= 0 && i < GRID;
 
+/** Approximate scattering albedo. Neutral suspended particles still scatter
+ * light in each channel; the recorded smoke dye absorbs the remaining share. */
+export function smokeAlbedo(color?: readonly [number, number, number]): XYZ {
+  if (!color) return [1, 1, 1];
+  const channel = (value: number) => 0.25 + 0.75 * (value / 255);
+  return [channel(color[0]), channel(color[1]), channel(color[2])];
+}
+
 export function scenePoint([x, y, z]: readonly number[]): XYZ {
   return [x * INCH, z * INCH, -y * INCH];
 }

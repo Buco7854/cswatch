@@ -900,6 +900,11 @@ test('synthetic installer run pins every selective fetch and removes only its ow
             };
           },
         }),
+        // The converter in this pinning/cleanup fixture deliberately writes a dummy source.
+        prepareBakedLighting: async () => ({
+          args: [],
+          proof: { path: 'pbr', reason: 'synthetic' },
+        }),
         prepareGlass: async () => ({ args: [], proof: [] }),
         prepareAtmosphere: async ({ input }) => ({ path: input, report: { applied: false } }),
       },

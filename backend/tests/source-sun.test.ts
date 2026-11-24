@@ -56,7 +56,7 @@ test('native sun retains linear color and prepared coordinate orientation withou
   assert.equal(Object.isFrozen(result.color), true);
 });
 
-test('native sun accepts agreeing main/sky authoring and fails closed on color or pose conflict', () => {
+test('native sun accepts agreeing lights in the same world and detects color or pose conflicts', () => {
   const source = new Group(),
     first = sun(),
     sky = sun();

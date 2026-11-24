@@ -1,6 +1,6 @@
 import { useContext, useLayoutEffect, useMemo, useRef, type RefObject } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import { Color, Group, PerspectiveCamera, SRGBColorSpace, Vector3 } from 'three';
+import { Color, Group, PerspectiveCamera, Vector3 } from 'three';
 import type { SmokeTrack } from '../../../shared/smoke-state.mjs';
 import type { UtilityZone } from '../utility-state';
 import type { Playback } from '../types';
@@ -14,22 +14,15 @@ import {
   analyticSmokeField,
   indexSmokeBlasts,
   scenePoint,
+  smokeAlbedo,
   smokeEnvelope,
   unionSmokeBounds,
   type SmokeField,
   type SmokeSample,
-  type XYZ,
 } from '../smoke-field';
 import { SmokeVolumePass, type SmokeDraw, type SmokeSunTrace } from '../smoke-volume';
 
 const luminance = (c: Color) => c.r * 0.2126 + c.g * 0.7152 + c.b * 0.0722;
-
-function smokeTint(color: SmokeTrack['color']) {
-  const recorded = new Color().setRGB(...(color.map((c) => c / 255) as XYZ), SRGBColorSpace);
-  const light = luminance(recorded);
-  const neutral = new Color(1, 1, 1);
-  return light > 0.002 ? neutral.lerp(recorded.multiplyScalar(1 / light), 0.055) : neutral;
-}
 
 function VolumePass({
   draws,
@@ -203,7 +196,8 @@ export default function Smoke({
       bounds,
       mix,
       amount: smokeEnvelope(age, (end - tick) / rate, fade),
-      tint: color ? smokeTint(color) : new Color(1, 1, 1),
+      tint: new Color(...smokeAlbedo(color)),
+      recorded: Boolean(density),
       drift: reducedMotion ? 0 : age,
       holes: [],
     };

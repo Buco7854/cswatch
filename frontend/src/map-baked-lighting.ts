@@ -5,6 +5,7 @@ import {
   ShaderChunk,
   SRGBColorSpace,
   Texture,
+  Vector3,
 } from 'three';
 import type { GLTF, GLTFLoader } from 'three-stdlib';
 import { applyPreparedWater } from './source-water-material';
@@ -73,16 +74,28 @@ function configureMaterial(
   direction?: Texture,
   layers?: MaterialLayers,
 ) {
+  // The compiled lightmapped-generic shader uses independent direct and
+  // environment specular features. Its AO never attenuates direct diffuse.
+  const source = material.userData.vmat;
+  const lightmappedGeneric = source?.ShaderName === 'csgo_lightmappedgeneric.vfx';
+  const response = new Vector3(
+    lightmappedGeneric ? 0 : 1,
+    !lightmappedGeneric || source.IntParams?.F_SPECULAR_DIRECT === 1 ? 1 : 0,
+    !lightmappedGeneric || source.IntParams?.F_SPECULAR_INDIRECT === 1 ? 1 : 0,
+  );
   material.lightMap = atlas;
   if (direction) Object.assign(material, { cswatchLightingDirection: direction });
   if (layers)
     Object.assign(material, {
       cswatchLayerColor: layers.color,
       cswatchLayerBlend: layers.blend,
-      cswatchLayerDetail: layers.detail,
+      cswatchLayerDetail: layers.detail?.texture,
+      cswatchSecondDetail: layers.secondDetail?.texture,
     });
   material.onBeforeCompile = (shader) => {
     if (layers) applyLayerShader(shader, layers);
+    shader.uniforms.cswatchBakedResponse = { value: response };
+    shader.fragmentShader = 'uniform vec3 cswatchBakedResponse;\n' + shader.fragmentShader;
     const shading = direction
       ? `
         #ifdef USE_NORMALMAP_TANGENTSPACE
@@ -122,9 +135,11 @@ function configureMaterial(
         '#include <aomap_fragment>',
         `#include <aomap_fragment>
             #ifdef USE_AOMAP
-              reflectedLight.directDiffuse *= ambientOcclusion;
+              reflectedLight.directDiffuse *= mix(1.0, ambientOcclusion, cswatchBakedResponse.x);
               reflectedLight.directSpecular *= ambientOcclusion;
             #endif
+            reflectedLight.directSpecular *= cswatchBakedResponse.y;
+            reflectedLight.indirectSpecular *= cswatchBakedResponse.z;
           `,
       );
   };
@@ -135,6 +150,7 @@ function configureMaterial(
     Boolean(direction),
     Boolean(layers),
     Boolean(layers?.detail),
+    Boolean(layers?.secondDetail),
   ].join(':');
   material.customProgramCacheKey = () => programKey;
 }
@@ -285,13 +301,22 @@ export function registerMapBakedLighting(loader: GLTFLoader) {
             let layers: MaterialLayers | undefined;
             const layer = layerMaterials.get(material);
             if (layer && !ineligibleLayers.has(material)) {
-              const [color, blend, detail] = await Promise.all([
+              const [color, blend, detail, secondDetail] = await Promise.all([
                 layerTexture(layer.color, true),
                 layerTexture(layer.blend),
-                layer.detail === undefined ? undefined : layerTexture(layer.detail),
+                layer.detail && layerTexture(layer.detail.texture),
+                layer.secondDetail && layerTexture(layer.secondDetail.texture),
               ]);
-              if (color && blend)
-                layers = { color, blend, detail, scale: layer.scale, strength: layer.strength };
+              if (color && blend && (!layer.secondDetail || (detail && secondDetail)))
+                layers = {
+                  color,
+                  blend,
+                  detail: detail && layer.detail ? { ...layer.detail, texture: detail } : undefined,
+                  secondDetail:
+                    secondDetail && layer.secondDetail
+                      ? { ...layer.secondDetail, texture: secondDetail }
+                      : undefined,
+                };
             }
             configureMaterial(
               material,

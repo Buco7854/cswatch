@@ -103,9 +103,8 @@ export function embeddedMapDraws(control, meshData = control) {
     const slots = coordinates
       .filter(({ format }) => floatPair.has(format))
       .map(({ index }) => index);
-    const atlas =
-      value(draw, 'm_bHasBakedLightingFromLightMap', 5) === 'true' &&
-      slots.length >= 2 &&
+    const validCoordinates =
+      slots.length >= 1 &&
       slots.length <= 8 &&
       new Set(slots).size === slots.length &&
       slots[0] === 0 &&
@@ -115,6 +114,10 @@ export function embeddedMapDraws(control, meshData = control) {
           field.index !== undefined &&
           (floatPair.has(field.format) || otherTexcoord.has(field.format)),
       );
+    const atlas =
+      value(draw, 'm_bHasBakedLightingFromLightMap', 5) === 'true' &&
+      slots.length >= 2 &&
+      validCoordinates;
     const colors = bound.flatMap(({ fields }) =>
       fields.filter((field) => field.name === '"COLOR"'),
     );
@@ -137,7 +140,7 @@ export function embeddedMapDraws(control, meshData = control) {
       material,
       indices,
       vertices: position[0].count,
-      slots,
+      slots: validCoordinates ? slots : [],
       atlas,
       ...(vertex ? { vertex } : {}),
     });
@@ -148,7 +151,7 @@ export function embeddedMapDraws(control, meshData = control) {
 export const nativeLightingKey = (mesh, material, indices, vertices) =>
   `${mesh}:${material}:${indices}:${vertices}`;
 
-export async function readNativeLightingBindings(path) {
+export async function readNativeLightingBindings(path, { secondary = false } = {}) {
   const { handle } = await regularFile(path, 4 * MiB);
   try {
     const data = JSON.parse(await handle.readFile('utf8'));
@@ -170,7 +173,9 @@ export async function readNativeLightingBindings(path) {
       Object.entries(data).some(
         ([name, slot]) =>
           !candidate(name) ||
-          (slot !== 'vertex' && (!Number.isInteger(slot) || slot < 1 || slot > 7)),
+          (secondary
+            ? !Number.isInteger(slot) || slot < -1 || slot > 7
+            : slot !== 'vertex' && (!Number.isInteger(slot) || slot < 1 || slot > 7)),
       )
     )
       throw Error('Invalid compiled map lighting bindings.');
@@ -210,7 +215,14 @@ export async function discoverNativeMapLighting({
         vertexFamily.test(material.ShaderName) && primitive.attributes._COLOR_1 !== undefined;
       const vertices = document.accessors?.[primitive.attributes.POSITION]?.count;
       const indices = document.accessors?.[primitive.indices]?.count;
-      if (!vertices || !indices || (!atlas && !vertex)) continue;
+      const layerUv =
+        material.ShaderName === 'csgo_environment_blend.vfx' &&
+        [
+          material.IntParams?.g_nUVSet2,
+          material.IntParams?.g_nUVSet3,
+          material.IntParams?.g_nColorOverlayUVSet,
+        ].includes(2);
+      if (!vertices || !indices || (!atlas && !vertex && !layerUv)) continue;
       const row = {
         mesh: mesh.name,
         group: name[2],
@@ -218,6 +230,7 @@ export async function discoverNativeMapLighting({
         vertices,
         indices,
         atlas,
+        layerUv,
         vertex,
       };
       const rows = candidates.get(key[0]) ?? [];
@@ -260,7 +273,8 @@ export async function discoverNativeMapLighting({
     signatures.set(material, channel);
     return channel;
   };
-  const bindings = Object.create(null);
+  const bindings = Object.create(null),
+    secondaryUv = Object.create(null);
   for (const [key, rows] of [...candidates].sort((a, b) => b[1].length - a[1].length)) {
     if (++models > limits.models) break;
     const path = await read(source, key, 'vmdl', limits.modelBytes);
@@ -285,6 +299,10 @@ export async function discoverNativeMapLighting({
       );
       if (!matches.length) continue;
       const binding = nativeLightingKey(row.mesh, row.material, row.indices, row.vertices);
+      if (row.layerUv && matches.every(({ slots }) => slots.length > 0)) {
+        const slots = new Set(matches.map((draw) => draw.slots.indexOf(1)));
+        if (slots.size === 1 && [...slots][0] >= 0) secondaryUv[binding] = [...slots][0];
+      }
       if (row.atlas && matches.every(({ atlas }) => atlas)) {
         const slot = await signature(row.material);
         if (slot !== undefined) {
@@ -300,5 +318,5 @@ export async function discoverNativeMapLighting({
         bindings[binding] = 'vertex';
     }
   }
-  return { bindings, models: Math.min(models, limits.models), materials };
+  return { bindings, secondaryUv, models: Math.min(models, limits.models), materials };
 }

@@ -32,6 +32,19 @@ export function worldMaterialAction(material, preparedWater) {
 }
 
 export function filterMapWorldMaterials(document, preparedWater) {
+  // S2V packs the height texture's metal channel even when the compiled shader
+  // disables metalness. A zero factor keeps the shared roughness and AO intact.
+  for (const material of document.getRoot().listMaterials()) {
+    const vmat = material.getExtras().vmat;
+    const flags = vmat?.IntParams;
+    if (flags?.g_bMetalness1 !== 0) continue;
+    const allLayersDielectric =
+      vmat.ShaderName === 'csgo_environment.vfx' ||
+      (vmat.ShaderName === 'csgo_environment_blend.vfx' &&
+        flags.g_bMetalness2 === 0 &&
+        ((flags.F_ENABLE_LAYER_3 ?? 0) === 0 || flags.g_bMetalness3 === 0));
+    if (allLayersDielectric) material.setMetallicFactor(0);
+  }
   const result = new Map();
   for (const mesh of document.getRoot().listMeshes()) {
     for (const primitive of mesh.listPrimitives()) {

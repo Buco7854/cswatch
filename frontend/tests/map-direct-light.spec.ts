@@ -88,6 +88,43 @@ test('an occluded baked sun still admits a nearby point light and interpolates p
     point.intensity = 0;
     sun.position.z = -3;
     const back = sample();
+    sun.position.z = 3;
+    const occlusion = new T.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);
+    occlusion.needsUpdate = true;
+    const sky = new T.Scene();
+    sky.background = new T.Color(0xffffff);
+    const pmrem = new T.PMREMGenerator(renderer);
+    const environment = pmrem.fromScene(sky, 0, 0.1, 10, { size: 16 });
+    scene.environment = environment.texture;
+    async function sourceResponse(direct: number, indirect: number) {
+      const receiver = new T.MeshStandardMaterial({
+        color: 0x666666,
+        roughness: 0.4,
+        aoMap: occlusion,
+      });
+      receiver.userData.vmat = {
+        ShaderName: 'csgo_lightmappedgeneric.vfx',
+        IntParams: { F_SPECULAR_DIRECT: direct, F_SPECULAR_INDIRECT: indirect },
+      };
+      parser.associations.set(receiver, { materials: 0 });
+      floor.material = receiver;
+      await binding!.afterRoot({ scenes: [scene] });
+      const masked = sample()[2];
+      receiver.aoMapIntensity = 0;
+      const clear = sample()[2];
+      const key = receiver.customProgramCacheKey();
+      receiver.lightMap.dispose();
+      receiver.dispose();
+      return { masked, clear, key };
+    }
+    const matte = await sourceResponse(0, 0);
+    const polished = await sourceResponse(1, 0);
+    const reflective = await sourceResponse(0, 1);
+    scene.environment = null;
+    environment.dispose();
+    pmrem.dispose();
+    occlusion.dispose();
+    floor.material = mat;
     // Same front-facing plane, opposite painted normals, oblique sun. Mark
     // fragments entering the actual shadow receiver in a separate diagnostic pass.
     const normals = new T.DataTexture(new Uint8Array([0, 128, 160, 255, 255, 128, 160, 255]), 2, 1);
@@ -148,8 +185,26 @@ test('an occluded baked sun still admits a nearby point light and interpolates p
     atlas.dispose();
     mat.dispose();
     renderer.dispose();
-    return { sunOnly, both, outOfRange, back, ordinary, painted, coated };
+    return {
+      sunOnly,
+      both,
+      outOfRange,
+      back,
+      ordinary,
+      painted,
+      coated,
+      matte,
+      polished,
+      reflective,
+    };
   });
+  expect(rows.matte.clear).toBeGreaterThan(0);
+  expect(rows.matte.masked).toBe(rows.matte.clear);
+  expect(rows.polished.clear).toBeGreaterThan(rows.matte.clear);
+  expect(rows.polished.masked).toBe(rows.matte.clear);
+  expect(rows.reflective.clear).toBeGreaterThan(rows.matte.clear);
+  expect(rows.matte.key).toBe(rows.polished.key);
+  expect(rows.matte.key).toBe(rows.reflective.key);
   expect(rows.back).toEqual([0, 0, 0]);
   expect(rows.sunOnly[0]).toBe(0);
   expect(rows.sunOnly[1]).toBeGreaterThan(0);

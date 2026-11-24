@@ -39,7 +39,7 @@ function directionToSun(node: Object3D, root: Object3D): Vector3 | null {
 /** Retain native sun pose/color without enabling Source engine light energies.
  * Read prepared.main after its existing coordinate transform. Never mutate
  * cached objects/matrices, infer a sun from arbitrary names, or accept disagreeing
- * main/sky authoring. Missing/unsupported evidence leaves the viewer fallback.
+ * lights within the supplied world. Missing/unsupported evidence leaves the viewer fallback.
  */
 export function readSourceSun(root: Object3D): SourceSun | null {
   const pending = [root];

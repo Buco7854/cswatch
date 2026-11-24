@@ -13,13 +13,16 @@ import { fileHash } from './toolchain-security.mjs';
 import { writeMapTier } from './map-tier-output.mjs';
 import { steamAssetLimits } from './steam-assets-plan.mjs';
 import { MeshoptDecoder } from './meshopt-glb.mjs';
+import { MapEnvironmentAlbedoExtension } from './map-environment-layer-extension.mjs';
 import { MapBakedLightingExtension } from './map-baked-lighting-extension.mjs';
 import {
   bindBakedLighting,
   bindVertexLighting,
   prepareBakedLightingAtlas,
 } from './prepare-baked-lighting.mjs';
+import { bakeMapTintMasks } from './prepare-map-tint.mjs';
 import { readMapLayerImages } from './prepare-map-layers.mjs';
+import { prepareEnvironmentAlbedo } from './map-environment-layers.mjs';
 import { readNativeLightingBindings } from './native-map-lighting-layout.mjs';
 import { prepareCompactMap } from './prepare-compact-map.mjs';
 import { readGlassBindings, bindPreparedGlass } from './prepare-map-glass.mjs';
@@ -44,6 +47,7 @@ const { values: v } = parseArgs({
     'water-bindings': { type: 'string' },
     'glass-bindings': { type: 'string' },
     'native-lighting-bindings': { type: 'string' },
+    'native-layer-uv': { type: 'string' },
     'only-tier': { type: 'string' },
     help: { type: 'boolean' },
   },
@@ -59,7 +63,7 @@ if (v['only-tier'] && !['desktop', 'mobile', 'compact'].includes(v['only-tier'])
   throw new Error('Invalid map preparation tier.');
 if (
   Boolean(v['irradiance-exr']) !== Boolean(v['sun-shadow-png']) ||
-  ((v['lighting-direction-png'] || v['layer-images']) && !v['irradiance-exr'])
+  (v['lighting-direction-png'] && !v['irradiance-exr'])
 )
   throw new Error('Supply both Source irradiance and sun-shadow inputs together.');
 const root = resolve(v.output, v.map);
@@ -97,7 +101,7 @@ if (!v.input) {
 const source = await fileHash(input, steamAssetLimits.modelBytes);
 await MeshoptDecoder.ready;
 const io = new NodeIO()
-  .registerExtensions([...ALL_EXTENSIONS, MapBakedLightingExtension])
+  .registerExtensions([...ALL_EXTENSIONS, MapBakedLightingExtension, MapEnvironmentAlbedoExtension])
   .registerDependencies({ 'meshopt.decoder': MeshoptDecoder })
   .setAllowNetwork(false);
 await MeshoptSimplifier.ready;
@@ -111,6 +115,9 @@ const waterBindings = v['water-bindings']
 const nativeBindings = v['native-lighting-bindings']
   ? await readNativeLightingBindings(resolve(v['native-lighting-bindings']))
   : undefined;
+const secondaryUv = v['native-layer-uv']
+  ? await readNativeLightingBindings(resolve(v['native-layer-uv']), { secondary: true })
+  : undefined;
 // Each tier visits textures once. Avoid retaining libvips conversion state while
 // the GLB writer needs room for a contiguous geometry buffer.
 sharp.cache(false);
@@ -120,8 +127,13 @@ for (const tier of tiers.filter((value) => value !== 'compact')) {
   globalThis.gc?.();
   const target = join(root, tier);
   const document = await io.read(input);
+  await bakeMapTintMasks(document, layers, tier);
   bindPreparedGlass(document, glassBindings);
   const water = bindPreparedWater(document, waterBindings);
+  // Detailed tiers can afford up to four optional material samples. Keep lower tiers on
+  // their existing texture and fragment budgets, including the texture-free Compact world.
+  const environmentAlbedo =
+    tier === 'desktop' ? await prepareEnvironmentAlbedo(document, layers, secondaryUv) : undefined;
   const graphics = inspectMapGraphics(document, water);
   const worldMaterials = filterMapWorldMaterials(document, water);
   let bakedLighting, lightingFallback;
@@ -148,7 +160,7 @@ for (const tier of tiers.filter((value) => value !== 'compact')) {
   const vertexLighting = bindVertexLighting(document, nativeBindings);
   await document.transform(
     dedup(),
-    prune({ keepSolidTextures: Boolean(bakedLighting) }),
+    prune({ keepSolidTextures: Boolean(bakedLighting || environmentAlbedo) }),
     resample(),
     weld(),
   );
@@ -170,6 +182,7 @@ for (const tier of tiers.filter((value) => value !== 'compact')) {
     batchStatic: tier === 'desktop',
     ...(bakedLighting ? { bakedLighting } : {}),
     vertexLighting,
+    environmentAlbedo,
     lightingFallback,
     worldMaterials,
     graphics,

@@ -94,6 +94,38 @@ test('world filtering removes opaque effects from the landscape while preserving
   );
 });
 
+test('height-map metal data obeys all active environment layer switches and preserves packed roughness', () => {
+  const doc = new Document(),
+    orm = doc.createTexture();
+  function metal(shader, flags) {
+    return doc
+      .createMaterial()
+      .setMetallicRoughnessTexture(orm)
+      .setMetallicFactor(0.75)
+      .setExtras({ vmat: { ShaderName: shader, IntParams: flags } });
+  }
+  const single = metal('csgo_environment.vfx', { g_bMetalness1: 0 });
+  const layers = { g_bMetalness1: 0, g_bMetalness2: 0 };
+  const pair = metal('csgo_environment_blend.vfx', layers);
+  const triple = metal('csgo_environment_blend.vfx', {
+    ...layers,
+    F_ENABLE_LAYER_3: 1,
+    g_bMetalness3: 0,
+  });
+  const retained = [
+    metal('csgo_environment_blend.vfx', { ...layers, F_ENABLE_LAYER_3: 1 }),
+    metal('csgo_environment_blend.vfx', { g_bMetalness1: 0 }),
+    metal('csgo_environment.vfx', {}),
+    metal('csgo_simple.vfx', layers),
+  ];
+  filterMapWorldMaterials(doc);
+  for (const m of [single, pair, triple]) {
+    assert.equal(m.getMetallicFactor(), 0);
+    assert.equal(m.getMetallicRoughnessTexture(), orm);
+  }
+  for (const m of retained) assert.equal(m.getMetallicFactor(), 0.75);
+});
+
 test('static gradient fog uses authored distance, color and landscape height', () => {
   const entity = `====0====
 classname "env_gradient_fog"
@@ -115,7 +147,8 @@ fogmaxopacity 0.75
       end: 15000 * 2 * 0.0254,
       exponent: 2,
       height: { start: 200 * 2 * 0.0254 + 3, end: -100 * 2 * 0.0254 + 3, exponent: 1 },
-      color: [256 / 255, 128 / 255, 2],
+      // Decode the authored sRGB bytes before applying the HDR strength.
+      color: [0.4317210002277985, 0.10253891674808648, 2],
       maxOpacity: 0.75,
     },
   });

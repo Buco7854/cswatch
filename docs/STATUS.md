@@ -1,6 +1,6 @@
 # Feature status
 
-The textured viewer has verified appearance differences from csdemo.tv at the same recorded tick and player. Confirmed examples include missing stone-and-moss layers on Ancient, wear on Cache, outdoor smoke on Nuke and sunlit stone on Mirage. The external textured catalogue covers eight maps in the observed 42-file Valve inventory. [Side-by-side verification](VERIFICATION.md#visual-comparison-with-csdemotv)
+The viewer lights the playable world with its own authored sun. Detailed tiers restore supported tint masks and native metalness switches. Desktop materials can also recover painted albedos and their authored colour correction. The recorded first-person rigs, smoke and selected surfaces have matched-camera measurements across eight maps. [Rendering corrections](VERIFICATION.md#rendering-corrections-against-matched-external-scenes)
 
 Detailed maps can cull off-camera triangles across larger world meshes while retaining the existing limit on stored bounds. Clip-free maps with large hierarchies reuse static sun shadows until a caster or light changes. [Four-map playback measurements](VERIFICATION.md#high-quality-playback-on-four-official-maps)
 

@@ -1,7 +1,12 @@
 import { Extension, ExtensionProperty, PropertyType, TextureInfo } from '@gltf-transform/core';
 import format from '../../shared/map-baked-lighting.json' with { type: 'json' };
 
-const layerSlots = ['layerColorTexture', 'layerBlendTexture', 'layerDetailTexture'];
+const layerSlots = [
+  'layerColorTexture',
+  'layerBlendTexture',
+  'layerDetailTexture',
+  'secondDetailTexture',
+];
 
 class BakedLighting extends ExtensionProperty {
   init() {
@@ -25,6 +30,10 @@ class BakedLighting extends ExtensionProperty {
       layerDetailTextureInfo: new TextureInfo(this.graph, 'layerDetailTextureInfo'),
       layerDetailScale: null,
       layerDetailStrength: 0,
+      secondDetailTexture: null,
+      secondDetailTextureInfo: new TextureInfo(this.graph, 'secondDetailTextureInfo'),
+      secondDetailScale: null,
+      secondDetailStrength: 0,
     };
   }
   getTexture() {
@@ -67,13 +76,21 @@ class BakedLighting extends ExtensionProperty {
   getLayerTextureInfo(slot) {
     return this.getRef(slot + 'Info');
   }
-  setLayerDetail(scale, strength) {
-    return this.set('layerDetailScale', scale).set('layerDetailStrength', strength);
+  setLayerDetail(scale, strength, second = false) {
+    return second
+      ? this.set('secondDetailScale', scale).set('secondDetailStrength', strength)
+      : this.set('layerDetailScale', scale).set('layerDetailStrength', strength);
   }
   getLayerDetail() {
     return {
       detailScale: this.get('layerDetailScale'),
       detailStrength: this.get('layerDetailStrength'),
+      ...(this.getLayerTexture('secondDetailTexture')
+        ? {
+            secondDetailScale: this.get('secondDetailScale'),
+            secondDetailStrength: this.get('secondDetailStrength'),
+          }
+        : {}),
     };
   }
 }
@@ -127,7 +144,11 @@ export class MapBakedLightingExtension extends Extension {
       if (extension.layers !== undefined) {
         for (const slot of layerSlots) {
           const info = extension.layers[slot];
-          if (slot === 'layerDetailTexture' && info === undefined) continue;
+          if (
+            (slot === 'layerDetailTexture' || slot === 'secondDetailTexture') &&
+            info === undefined
+          )
+            continue;
           const texture = textureOf(info);
           if (!texture || (info.texCoord ?? 0) !== 0) throw Error('Unsupported map layer texture.');
           lighting.setLayerTexture(slot, texture);
@@ -135,6 +156,15 @@ export class MapBakedLightingExtension extends Extension {
         }
         if (lighting.getLayerTexture('layerDetailTexture'))
           lighting.setLayerDetail(extension.layers.detailScale, extension.layers.detailStrength);
+        if (lighting.getLayerTexture('secondDetailTexture')) {
+          if (!lighting.getLayerTexture('layerDetailTexture'))
+            throw Error('Missing first map detail texture.');
+          lighting.setLayerDetail(
+            extension.layers.secondDetailScale,
+            extension.layers.secondDetailStrength,
+            true,
+          );
+        }
       }
       context.materials[index].setExtension(format.extension, lighting);
     }

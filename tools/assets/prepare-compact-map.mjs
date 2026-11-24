@@ -20,6 +20,7 @@ import sharp from 'sharp';
 import { localDirectory, regularFile } from './toolchain-security.mjs';
 import { verifyPreparedGlb } from './prepared-glb.mjs';
 import { compressGlbGeometry, MeshoptDecoder } from './meshopt-glb.mjs';
+import { MapEnvironmentAlbedoExtension } from './map-environment-layer-extension.mjs';
 import { MapBakedLightingExtension } from './map-baked-lighting-extension.mjs';
 import { writeTierMetadata } from './map-tier-output.mjs';
 import { writePreparedModel } from './prepared-model-output.mjs';
@@ -277,7 +278,11 @@ export async function prepareCompactMap({ input, output, map }) {
     throw new Error('Compact source changed before decoding.');
   await Promise.all([MeshoptDecoder.ready, MeshoptEncoder.ready, MeshoptSimplifier.ready]);
   const io = new NodeIO()
-    .registerExtensions([...ALL_EXTENSIONS, MapBakedLightingExtension])
+    .registerExtensions([
+      ...ALL_EXTENSIONS,
+      MapBakedLightingExtension,
+      MapEnvironmentAlbedoExtension,
+    ])
     .registerDependencies({ 'meshopt.decoder': MeshoptDecoder })
     .setAllowNetwork(false);
   const decoded = await io.readBinary(bytes);

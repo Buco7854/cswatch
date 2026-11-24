@@ -1,6 +1,10 @@
 // Bundled only by the offline CLI. All routes including the model are fulfilled locally.
 import * as T from 'three';
 import { GLTFLoader, MeshoptDecoder } from 'three-stdlib';
+import {
+  applyEnvironmentAlbedo,
+  registerEnvironmentAlbedo,
+} from '../../frontend/src/environment-albedo';
 import { registerMapBakedLighting } from '../../frontend/src/map-baked-lighting';
 import { reusePackedSceneSamples } from '../../frontend/src/packed-material';
 import { improveMapTextureDetail } from '../../frontend/src/map-texture-detail';
@@ -26,8 +30,10 @@ window.prepareCapture = async ({ tier, projection, settings }) => {
     typeof MeshoptDecoder === 'function' ? MeshoptDecoder() : MeshoptDecoder,
   );
   registerMapBakedLighting(loader);
+  registerEnvironmentAlbedo(loader);
   const gltf = await loader.loadAsync('scene.glb');
   assertMapBaseColorTextures(gltf);
+  applyEnvironmentAlbedo(gltf);
   reusePackedSceneSamples(gltf.scenes);
   if (tier === 'desktop') improveMapTextureDetail(gltf.scenes);
   const { main } = prepareMapModel(gltf.scene, gltf.animations);

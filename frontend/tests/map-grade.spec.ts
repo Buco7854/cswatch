@@ -72,12 +72,17 @@ test('WebGL authored and neutral grades match CPU ramp references and sample RGB
       const base = location.origin + '/__qa_grade__/';
       const T = await import(base + 'three.module.js');
       const { createGradeOutput } = await import(base + 'grade.js');
-      const renderer = new T.WebGLRenderer({ antialias: false, preserveDrawingBuffer: true });
+      const renderer = new T.WebGLRenderer({
+        alpha: true,
+        antialias: false,
+        preserveDrawingBuffer: true,
+      });
       renderer.setSize(inputs.length, 1);
       renderer.toneMapping = T.ACESFilmicToneMapping;
       const context = renderer.getContext();
       const source = new T.DataTexture(
-        new Float32Array(inputs.flatMap((x) => [x, x, x, 1])),
+        // Alpha can retain foliage coverage after its RGB was composed on the sky.
+        new Float32Array(inputs.flatMap((x, i) => [x, x, x, (i % 5) / 4])),
         inputs.length,
         1,
         T.RGBAFormat,

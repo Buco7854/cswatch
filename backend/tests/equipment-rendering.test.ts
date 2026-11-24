@@ -118,6 +118,14 @@ test('equipment discovery rejects arbitrary URLs, malformed budgets and attachme
   assert.throws(() => validateEquipmentAssets(unknown));
 });
 
+test('authored first-person rigs keep their reference eye origin; static props retain their clearance', () => {
+  assert.deepEqual(povOffset, { right: 2.5 * 0.0254, up: -1.5 * 0.0254, forward: 0 });
+  const bounds = originalEquipmentCatalog(['ak47']).items.ak47.bounds;
+  const [forward, up] = staticPovAttachment(bounds).position;
+  assert.ok(forward + povOffset.forward >= 0.58);
+  assert.ok(Math.abs(up + bounds.max[1] + povOffset.up + 0.192) < 1e-10);
+});
+
 test('original static POV preset leaves positive eye clearance in every recorded aim orientation', () => {
   const asset = originalEquipmentCatalog(['ak47']).items.ak47,
     preset = staticPovAttachment(asset.bounds);

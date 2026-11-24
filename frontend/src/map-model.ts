@@ -82,10 +82,6 @@ export function prepareMapModel(
   main.rotation.y = Math.PI / 2;
   main.add(copy);
   main.updateMatrixWorld(true);
-  // Read one coherent decision across main and sky authoring, while both still
-  // share the prepared coordinate transform. Reparenting sky geometry must not
-  // lose a sky-only sun or hide conflicting source evidence.
-  const sun = readSourceSun(main);
   main.traverse((object) => {
     const tag = object.userData?.cswatch;
     if (tag?.kind !== 'skybox' || tag.schemaVersion !== 1) return;
@@ -95,7 +91,7 @@ export function prepareMapModel(
   });
   if (!roots.length) {
     main.seal(clips);
-    return { main, sky: null, sun };
+    return { main, sky: null, sun: readSourceSun(main) };
   }
   const sky = new Scene();
   for (const root of roots) {
@@ -113,5 +109,7 @@ export function prepareMapModel(
   }
   sky.updateMatrixWorld(true);
   main.seal(clips);
-  return { main, sky, sun };
+  // The main world's stationary shadow atlas was compiled for its own sun.
+  // Decorative sky prefabs can carry a separately oriented light.
+  return { main, sky, sun: readSourceSun(main) };
 }

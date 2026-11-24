@@ -44,7 +44,7 @@ On compact device profiles, decoded world equipment textures shrink to at most 5
 
 ## Recorded smoke
 
-The optional replay journal supplies recorded seed/rejection changes, color and origin. The browser simulates a bounded density grid off-thread and depth-tests individual instanced cells against world geometry. Event-only recordings render a bounded soft cloud around the detonation, with replay-time growth and fade. The simulated density and shading are approximations. Native noise, bullet cuts and explosive dispersal remain outside supported evidence. [Verification](../VERIFICATION.md#local-viewer-usability-and-presentation-follow-up-2026-11-21)
+The optional replay journal supplies the field changes, color and origin. The viewer builds a bounded density grid off-thread and ray marches its occupied extent up to scene depth. It uses the recorded dye for color and short-lived openings at nearby recorded HE detonations. Event-only recordings use a procedural cloud with replay-time growth and fade. Shading, native noise and bullet trails through smoke remain approximations or unavailable. [Matched Nuke smoke measurements](../VERIFICATION.md#rendering-corrections-against-matched-external-scenes)
 
 ## Renderer and replay roadmap
 

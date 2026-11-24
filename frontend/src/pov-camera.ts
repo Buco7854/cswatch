@@ -6,8 +6,9 @@ const sniperRifles = new Set(['awp', 'ssg08', 'scar20', 'g3sg1']);
 
 export const povNear = 0.025;
 export const povFar = 8;
-// Camera-local metres: right, down and forward from the authored eye origin.
-export const povOffset = { right: 0.0635, up: -0.052, forward: 0.13 };
+// The standard first-person placement is 2.5 Source inches right, zero forward
+// and 1.5 inches down. The authored arms already include their distance from the eye.
+export const povOffset = { right: 2.5 * 0.0254, up: -1.5 * 0.0254, forward: 0 };
 
 /** A 68° horizontal lens at 4:3. Fit at least a square aperture on tall
  * canvases, while retaining their real aspect ratio and undistorted geometry. */
@@ -26,8 +27,8 @@ export function staticPovAttachment(bounds: EquipmentModel['bounds']): Equipment
   const near = Math.max(0.32, height * 2.2, width * 1.3);
   return {
     position: [
-      Math.max(0.45, near - bounds.min[0]),
-      -0.14 - bounds.max[1],
+      0.13 + Math.max(0.45, near - bounds.min[0]),
+      -0.192 - povOffset.up - bounds.max[1],
       0.19 - (bounds.max[2] + bounds.min[2]) / 2,
     ],
     rotation: [0, 0, 0],
