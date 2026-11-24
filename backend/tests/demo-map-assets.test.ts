@@ -765,7 +765,8 @@ test('manual environment-only remnants remain unavailable with an entirely empty
   }
 });
 
-test('owner POST retries transient acquisition once after cooldown while permanent source evidence failures remain terminal', async () => {
+test('owner POST retries transient acquisition once after cooldown while permanent source evidence failures remain terminal', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
   const f = await fixture();
   try {
     const id = mapPackId(approval);
@@ -780,13 +781,7 @@ test('owner POST retries transient acquisition once after cooldown while permane
     });
     assert.equal((await f.request()).json().canAcquire, false);
     assert.equal((await f.request(undefined, 'member', 'POST', {})).json().acquisition, 'failed');
-    await writeMapJobResult(f.jobs, {
-      schemaVersion: mapPreparerRevision,
-      packId: id,
-      status: 'failed',
-      updatedAt: now() - 301,
-      code: 'source_unavailable',
-    });
+    t.mock.timers.tick(1000);
     assert.equal((await f.request()).json().canAcquire, true);
     assert.equal((await f.request(undefined, 'other', 'POST', {})).statusCode, 404);
     assert.equal(
