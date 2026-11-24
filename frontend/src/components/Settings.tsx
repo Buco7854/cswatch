@@ -145,8 +145,6 @@ const adminAddressMessages: Record<AdminAddressIssue, string> = {
     'The connection forwarded client information but its address is outside TRUSTED_PROXY_IPS. Check the address of your reverse proxy.',
   missing_address:
     'The proxy forwarded request information without a client address. Configure it to set X-Real-IP or X-Forwarded-For.',
-  unsupported_header:
-    'An unsupported client address header was received. Configure the proxy to send client addresses using X-Real-IP or X-Forwarded-For.',
   duplicate_header:
     'A forwarding header was received more than once. Check which proxies set that header.',
   invalid_address:

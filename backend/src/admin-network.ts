@@ -72,11 +72,6 @@ export function trustProxyAddress(config: Config, ip: string) {
   return host !== null && contains(networkPolicy(config).proxies, host);
 }
 
-const forwardingHeader = (name: string) =>
-  /^(?:forwarded$|x-forwarded-|x-real-ip$|cf-connecting-ip$|true-client-ip$|x-client-ip$)/i.test(
-    name,
-  );
-
 function resolveAddress(
   request: FastifyRequest,
   config: Config,
@@ -86,26 +81,24 @@ function resolveAddress(
   const unknown = (issue: AdminAddressIssue) => ({ connection, client: null, issue });
   if (!connection) return unknown('socket_unavailable');
   const headers = request.headers;
-  if (!Object.keys(headers).some(forwardingHeader)) return { connection, client: connection };
+  const real = headers['x-real-ip'];
+  const forwarded = headers['x-forwarded-for'] ?? real;
+  if (
+    forwarded === undefined &&
+    !Object.keys(headers).some((name) => name.startsWith('x-forwarded-'))
+  )
+    return { connection, client: connection };
   const { proxies } = networkPolicy(config);
   if (!contains(proxies, connection)) return unknown('untrusted_proxy');
+  if (forwarded === undefined) return unknown('missing_address');
   const seen = new Set<string>();
   const rawHeaders = request.raw.rawHeaders;
   for (let i = 0; i < rawHeaders.length; i += 2) {
     const name = rawHeaders[i].toLowerCase();
-    if (!forwardingHeader(name)) continue;
+    if (name !== 'x-real-ip' && name !== 'x-forwarded-for') continue;
     if (seen.has(name)) return unknown('duplicate_header');
     seen.add(name);
   }
-  if (
-    ['forwarded', 'cf-connecting-ip', 'true-client-ip', 'x-client-ip'].some(
-      (name) => headers[name] !== undefined,
-    )
-  )
-    return unknown('unsupported_header');
-  const real = headers['x-real-ip'];
-  const forwarded = headers['x-forwarded-for'] ?? real;
-  if (forwarded === undefined) return unknown('missing_address');
   if (typeof forwarded !== 'string' || forwarded.length > 2048) return unknown('invalid_address');
   const chain = forwarded.split(',');
   if (chain.length > 32) return unknown('invalid_address');

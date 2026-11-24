@@ -36,7 +36,7 @@ Viewer playback work covers first person, third-person follow and free camera. S
 
 Viewer startup now uses precompressed application bundles and direct bitmap decoding for embedded map textures. Camera and terrain queries share bounded triangle-block indices on static geometry. [Local performance evidence](VERIFICATION.md#viewer-opening-and-playback-2026-11-23)
 
-Administrative IP checks use the socket on direct requests and resolve address headers from trusted proxies even when the client is on the same LAN. [Proxy configuration](ACCESS-SETUP.md#administrative-networks)
+Administrative IP checks use the socket on direct requests and resolve `X-Real-IP` and `X-Forwarded-For` from trusted proxies even when the client is on the same LAN. Nginx can also forward `CF-Connecting-IP` in its shared header configuration. [Proxy configuration](ACCESS-SETUP.md#administrative-networks)
 
 The web port defaults to `0.0.0.0:8000` for reverse proxies on another host. The Compose deployment requires `APP_URL` and forwards optional settings by service. Parser and transcription workers receive processing settings. Supply bootstrap, SMTP and provider credentials to the web service. [Docker deployment](../README.md#docker-deployment)
 

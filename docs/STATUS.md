@@ -32,7 +32,7 @@ Demo processing and map loading use one screen with a stable return link. Accoun
 
 Newly prepared map packs carry source-derived transparency for supported constant glass, including the Nuke door pane. The opening screen shows the worker’s queue or preparation status. Members can open the timeline there while the worker downloads or converts the selected map. Native actors retain their moving gait on streamed chunks and blend consecutive firing poses. [Viewer checks](VERIFICATION.md#map-preparation-nuke-door-glass-and-native-player-poses)
 
-A LAN administrator can connect directly or behind a trusted proxy on the same subnet. Server-side Steam import diagnostics record the failed stage and any numeric Steam result. [Operator guide](ACCESS-SETUP.md)
+A LAN administrator can connect directly or through a trusted proxy that sends `X-Real-IP` or `X-Forwarded-For`, including when the proxy also sends `CF-Connecting-IP`. Server-side Steam import diagnostics record the failed stage and any numeric Steam result. [Operator guide](ACCESS-SETUP.md)
 
 During 3D playback, detailed map batches skip triangle blocks outside the camera view. The graded renderer reuses the same multisampled color buffer for sky, map and first-person equipment. Smoke reuses its depth buffer as its screen coverage changes. Timeline markers update when the recorded events or layout change. [Viewer measurements](VERIFICATION.md)
 

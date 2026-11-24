@@ -87,6 +87,16 @@ test('network diagnostics identify the decision using only canonical socket and 
   const proxy = '192.168.1.151';
   assert.equal(report(proxy), null);
   assert.equal(report(proxy, { 'x-real-ip': '192.168.5.8' }), null);
+  for (const name of ['cf-connecting-ip', 'forwarded', 'true-client-ip', 'x-client-ip']) {
+    assert.deepEqual(report(proxy, { [name]: 'unused' }), report(proxy));
+    assert.deepEqual(report('203.0.113.9', { [name]: '192.168.5.8' }), report('203.0.113.9'));
+    assert.equal(
+      report(proxy, { 'x-forwarded-for': '203.0.113.9', [name]: '192.168.5.8' })?.diagnostic.client,
+      '203.0.113.9',
+    );
+    const headers = { 'x-real-ip': '192.168.5.8', [name]: 'unused' };
+    assert.equal(report(proxy, headers, [...Object.entries(headers).flat(), name, 'unused']), null);
+  }
   assert.equal(
     report(proxy, { 'x-forwarded-for': '203.0.113.9, 192.168.4.1' })?.diagnostic.client,
     '203.0.113.9',
@@ -99,7 +109,6 @@ test('network diagnostics identify the decision using only canonical socket and 
   assert.equal(report(undefined)?.diagnostic.issue, 'socket_unavailable');
   for (const [headers, issue] of [
     [{ 'x-forwarded-proto': 'https' }, 'missing_address'],
-    [{ forwarded: 'for=invalid' }, 'unsupported_header'],
     [{ 'x-real-ip': 'invalid' }, 'invalid_address'],
     [{ 'x-real-ip': '192.168.8.1', 'x-forwarded-for': '192.168.4.1' }, 'conflicting_addresses'],
   ] as [Record<string, string>, string][]) {

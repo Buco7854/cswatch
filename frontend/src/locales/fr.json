@@ -1397,7 +1397,6 @@
   "The server could not read the connection address.": "Le serveur n’a pas pu lire l’adresse de connexion.",
   "The connection forwarded client information but its address is outside TRUSTED_PROXY_IPS. Check the address of your reverse proxy.": "La connexion transmet des informations de proxy, mais son adresse est hors de TRUSTED_PROXY_IPS. Vérifiez l’adresse de votre proxy inverse.",
   "The proxy forwarded request information without a client address. Configure it to set X-Real-IP or X-Forwarded-For.": "Le proxy a transmis des informations sur la requête sans adresse cliente. Configurez-le pour renseigner X-Real-IP ou X-Forwarded-For.",
-  "An unsupported client address header was received. Configure the proxy to send client addresses using X-Real-IP or X-Forwarded-For.": "Le proxy transmet un en-tête d’adresse non pris en charge. Configurez-le pour transmettre les adresses clientes avec X-Real-IP ou X-Forwarded-For.",
   "A forwarding header was received more than once. Check which proxies set that header.": "Un en-tête de proxy a été reçu plusieurs fois. Vérifiez quels proxys le renseignent.",
   "The proxy sent an invalid client address or forwarding chain. Check X-Real-IP and X-Forwarded-For.": "Le proxy a transmis une adresse cliente ou une chaîne de relais invalide. Vérifiez X-Real-IP et X-Forwarded-For.",
   "X-Real-IP and X-Forwarded-For identify different clients. Check how each proxy sets these headers.": "X-Real-IP et X-Forwarded-For désignent deux clients différents. Vérifiez comment chaque proxy renseigne ces en-têtes.",

@@ -22,7 +22,7 @@ A recorded Cache replay with its native mobile GLB at 390 × 400 CSS pixels and 
 
 ## Admin network diagnosis
 
-Restricted network tests exercise direct LAN clients, trusted single and multi-hop proxy headers, an untrusted immediate connection, duplicate and conflicting headers, unsupported formats and an outside client. Only a signed-in administrator denied by the network receives the structured diagnostic. Its addresses are the canonical socket address and verified client address where available. The rendered Administration page was checked with synthetic addresses on the production build in English and French, light and dark, at 390, 768 and 1440 pixels. The operator's deployed proxy chain was unavailable.
+Restricted network tests exercise direct LAN clients, trusted single and multi-hop proxy headers, an untrusted immediate connection, duplicate and conflicting headers, unsupported formats and an outside client. An injected Nginx request with matching `X-Real-IP`, `X-Forwarded-For` and `CF-Connecting-IP` exercises the admin page, users API and access flag with the same trusted and allowed LAN range. Resolver checks cover differing auxiliary header values, repeated auxiliary headers and auxiliary-only requests. Only a signed-in administrator denied by the network receives the structured diagnostic. Its addresses are the canonical socket address and verified client address where available. The rendered Administration page was checked with synthetic addresses on the production build in English and French, light and dark, at 390, 768 and 1440 pixels. The operator's deployed proxy chain was unavailable.
 
 ## First-time official map preparation
 

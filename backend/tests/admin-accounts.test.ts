@@ -320,6 +320,16 @@ test('the admin page and API resolve direct and forwarded LAN clients in the sam
     ['192.168.1.151', {}, true],
     ['192.168.1.10', { 'x-real-ip': '192.168.1.151' }, true],
     ['192.168.1.10', { 'x-forwarded-for': '192.168.1.151, 192.168.1.11' }, true],
+    [
+      '192.168.1.61',
+      {
+        'x-real-ip': '192.168.1.100',
+        'x-forwarded-for': '192.168.1.100',
+        'x-forwarded-proto': 'https',
+        'cf-connecting-ip': '192.168.1.100',
+      },
+      true,
+    ],
     ['192.168.1.10', { 'x-real-ip': '203.0.113.42' }, false],
     ['192.168.1.10', { 'x-forwarded-proto': 'https' }, false],
     ['192.168.1.10', { 'x-real-ip': 'invalid' }, false],
