@@ -5,6 +5,20 @@ import { originalMapReplay } from './fixtures/original-map';
 import { installMapFixture } from './fixtures/map-assets';
 import { originalAnimatedAgentGLB } from './fixtures/original-agent';
 
+async function renderUntil(page: Page, attribute: string, state: string) {
+  await expect
+    .poll(
+      async () => {
+        await page.clock.runFor(16);
+        return page
+          .locator('.scene')
+          .evaluateAll((scenes, name) => scenes[0]?.getAttribute(name), attribute);
+      },
+      { intervals: [32, 64, 100] },
+    )
+    .toBe(state);
+}
+
 async function viewer(page: Page, catalog: (route: Route) => Promise<unknown>) {
   const data = originalMapReplay();
   await page.addInitScript(() => {
@@ -14,7 +28,11 @@ async function viewer(page: Page, catalog: (route: Route) => Promise<unknown>) {
       JSON.stringify({ autoHideControls: false, quality: 'low', gameSounds: false }),
     );
   });
-  await page.clock.install();
+  // Start the viewer with time already paused. Loading a WebGL scene can
+  // outlast the interval between reading the clock and asking it to pause.
+  const start = Date.now();
+  await page.clock.install({ time: start });
+  await page.clock.pauseAt(start + 60_000);
   await page.route('**/api/demos/discovery-fixture', (route) =>
     route.fulfill({
       json: {
@@ -36,9 +54,8 @@ async function viewer(page: Page, catalog: (route: Route) => Promise<unknown>) {
     route.fulfill({ contentType: 'model/gltf-binary', body: originalAnimatedAgentGLB() }),
   );
   await page.goto('/watch/discovery-fixture');
-  await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
+  await renderUntil(page, 'data-map-model-state', 'ready');
   await chooseCameraControl(page, 'Overhead');
-  await page.clock.pauseAt(new Date((await page.evaluate(() => Date.now())) + 100));
 }
 test('newly prepared agents are discovered progressively, preserve a valid partial catalog on transient failure and stop polling when complete', async ({
   page,
@@ -96,10 +113,8 @@ test('unauthorized discovery stops and a mounted empty catalog lease expires aft
     reads++;
     return route.fulfill({ json: { ct: null, t: null } });
   });
-  await page.clock.resume();
   await page.reload();
-  await expect(page.locator('.scene')).toHaveAttribute('data-agent-model-state', 'missing');
-  await page.clock.pauseAt(new Date((await page.evaluate(() => Date.now())) + 100));
+  await renderUntil(page, 'data-agent-model-state', 'missing');
   const before = reads;
   await page.clock.fastForward(45 * 60 * 1000 + 1000);
   expect(reads).toBe(before);
