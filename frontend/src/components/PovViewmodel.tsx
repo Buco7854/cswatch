@@ -1,3 +1,4 @@
+import { reusePackedMaterialSamples } from '../packed-material';
 import {
   Component,
   Suspense,
@@ -37,7 +38,12 @@ import { povOffset } from '../pov-camera';
 import { useReducedMotion } from '../reduced-motion';
 import { EquipmentMuzzle, useNativeWeaponPose } from './EquipmentFire';
 import type { WeaponPoseSample } from '../weapon-fire';
-import { EquipmentModels, PovEquipment, type PovEquipmentProps } from './RenderEquipment';
+import {
+  EquipmentInstanceState,
+  EquipmentModels,
+  PovEquipment,
+  type PovEquipmentProps,
+} from './RenderEquipment';
 
 type ReplayHistory = Pick<Playback, 'frames' | 'rounds' | 'tickRate'>;
 
@@ -103,6 +109,7 @@ function viewmodelWeaponMaterials(model: Object3D) {
         );
     };
     material.customProgramCacheKey = () => 'cswatch-weapon-metal';
+    reusePackedMaterialSamples(material);
     copies.set(base, material);
     return material;
   };
@@ -263,10 +270,32 @@ function AvailableViewmodel({
   reducedMotion: boolean;
 }) {
   const scope = usePovScope(asset.model, identity);
+  const instance = 'native-pov:' + position.id + ':' + id;
   return (
-    <ViewmodelBoundary fallback={fallback} scope={scope}>
-      <Suspense fallback={fallback}>
-        <AuthoredViewmodel position={position} scope={scope} id={id} asset={asset} {...sampling} />
+    <ViewmodelBoundary
+      fallback={
+        <EquipmentInstanceState instance={instance} status="error">
+          {fallback}
+        </EquipmentInstanceState>
+      }
+      scope={scope}
+    >
+      <Suspense
+        fallback={
+          <EquipmentInstanceState instance={instance} status="pending">
+            {fallback}
+          </EquipmentInstanceState>
+        }
+      >
+        <EquipmentInstanceState instance={instance} status="ready">
+          <AuthoredViewmodel
+            position={position}
+            scope={scope}
+            id={id}
+            asset={asset}
+            {...sampling}
+          />
+        </EquipmentInstanceState>
       </Suspense>
     </ViewmodelBoundary>
   );

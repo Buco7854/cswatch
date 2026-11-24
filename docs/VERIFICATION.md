@@ -1,5 +1,68 @@
 # Verification record
 
+## Multi-map playback
+
+Genuine CS2 recordings in a private local Store supplied the camera motion, players, equipment and events. The parser used its required Linux sandbox. The web server served complete official map geometry, both native character rigs and a shared native equipment library. The manual QA packs have verified source hashes. Correspondence to the historical map revision in each recording is unverified.
+
+| Recording | Rounds | Combat start tick | Map assets                                                          |
+| --------- | -----: | ----------------: | ------------------------------------------------------------------- |
+| Cache     |     16 |             1,889 | Official depot 2347770, manifest `5924479096069937098`              |
+| Ancient   |     14 |            20,884 | Official depot 2347770, manifest `5924479096069937098`              |
+| Dust2     |     18 |             9,876 | Retained complete official pack from manifest `8225060435969537482` |
+| Nuke      |      7 |            15,932 | Official depot 2347770, manifest `5924479096069937098`              |
+
+Test recordings can be identified after decompression by their SHA-256. Cache and Dust2 came from the same dataset revision. Ancient was the `93n781.dem` member of the demofile-net sample archive. Nuke used the CS2DemoKit test recording.
+
+| Recording  | Demo bytes | CS2 build | SHA-256                                                            |
+| ---------- | ---------: | --------: | ------------------------------------------------------------------ |
+| de_cache   |  159419693 |     10924 | `446a464c1af860cf6b427fc468ba9a2f6cae4bebd648ed11aef3a59de27274f9` |
+| de_ancient |   37114322 |      9842 | `8fe43855c3b2f589af02e62da61971003fee96d73e4533a6dc175ec132ab82ef` |
+| de_dust2   |   96160902 |     10924 | `28a350236e24cf13df3ab381bb4d111beb07664bc22fb1d9894868fdb4fb0f92` |
+| de_nuke    |   11549488 |     10772 | `ab09a78268e24db2fe6c21672c9faadd631452cdc735b20aa193e86d2173801f` |
+
+**Map preparation.** The previous Compact builder exceeded its geometry budget on these four maps. Auto on software rendering then loaded the textured mobile GLB. Revision 6 targets the existing 450,000-triangle limit across spatial batches and retries from the original geometry when needed. Cache used the aligned-position retry. Ancient used locked shared edges and a scene-wide quantization grid. The compact tier uses flat material colors. High and Low continue to load the detailed tiers.
+
+| Map     | High GLB (MB) | Low GLB (MB) | Compact GLB (MB) | Eligible opaque triangles → Compact | Compact batches |
+| ------- | ------------: | -----------: | ---------------: | ----------------------------------: | --------------: |
+| Cache   |        159.52 |       113.78 |             4.76 |                 1,879,800 → 444,447 |              24 |
+| Ancient |        380.43 |       239.28 |             2.52 |                 5,384,945 → 394,298 |              42 |
+| Dust2   |        172.86 |       120.07 |             2.90 |                 2,735,787 → 411,574 |              57 |
+| Nuke    |        165.48 |        91.88 |             4.07 |                 2,485,345 → 394,646 |              98 |
+
+On Ancient the fallback kept all 42 spatial batches. A separate depth rasterization compared the source opaque world with Compact from the recorded eyes and aim at ticks 20,948, 21,396, 45,124 and 65,928. The tunnel opening, foreground wall and doorway kept their main silhouettes. Between 16 and 162 of 86,400 pixels per pose became background. Median surface depth differences ranged from 0.6 mm to 1.13 cm. Small fittings and thin branches visibly simplified. This probe excludes alpha-tested foliage, textures, actors and smoke.
+
+**Equipment.** Of 290 material definitions in the two native agents, 65 first-person rigs and 67 world models, 280 referenced the same glTF packed texture for occlusion, roughness and metalness. The renderer reuses a sample when the actual Three texture object is shared. The shader change reproduced every pixel in three composited 720 × 480 Dust2 frames at fixed Compact in separate sessions. Full-detail color textures, animation data, weapon-specific metalness and cloth shading remain in use. The equipment cache releases the GLB parser and its source buffers after extracting the render data. Native POV and mounted world models report loading independently, including when a thrown grenade or a scoped weapon has no visible held model.
+
+**Method.** Headless production Chrome 159 on ANGLE Vulkan SwiftShader, 720 × 480 CSS pixels at DPR 1. Each Auto session started at 100% and could change its drawing resolution. Each camera played a combat window for 12 seconds, sought back and played again. Free turned during playback. The probe counted WebGL screen submissions at distinct animation timestamps. Timings include browser and software-GPU backpressure. They do not measure presented frames on a physical monitor. The separate High and fenced-seek probes use fixed settings or explicit GPU completion as stated. Hardware GPU and game-client comparisons were unavailable.
+
+The following triplets are first person / third-person follow / free camera. All four maps reached Compact on Auto. At 720 × 480 the adaptive setting reached a 360 × 240 drawing buffer on the repeated routes. Each interval is between consecutive submissions. Frozen time outside those submissions is measured separately in the full-window budget tool.
+
+| Map     |   First frames/s |    Repeat frames/s |    First p95 ms |   Repeat p95 ms |
+| ------- | ---------------: | -----------------: | --------------: | --------------: |
+| Cache   | 11.7 / 7.4 / 3.9 |   16.4 / 9.7 / 5.3 | 316 / 450 / 900 | 117 / 233 / 483 |
+| Ancient | 10.8 / 5.4 / 6.5 |   15.9 / 8.7 / 9.8 | 200 / 650 / 383 | 150 / 233 / 233 |
+| Dust2   | 15.1 / 9.8 / 6.6 | 19.4 / 13.5 / 10.9 | 200 / 367 / 417 | 117 / 150 / 150 |
+| Nuke    | 5.9 / 8.6 / 16.4 |  8.5 / 11.7 / 20.9 | 383 / 367 / 217 | 283 / 183 / 100 |
+
+Before the change, the same repeated first-person routes on Cache and Dust2 reached 0.9 and 0.7 submitted frames/s with the fallback mobile GLBs. After the change they reached 16.4 and 19.4 respectively. Both versions ended at 50% resolution. The longest observed repeat gap fell from 6,183 to 333 ms on Cache and from 3,117 to 300 ms on Dust2. Each old repeat had just 12 submissions. These comparisons include the different map representation and equipment changes.
+
+An additional Ancient route started at tick 45,124 with seven living players and four active smoke grenades, including three in the recorded line of sight. First-person playback averaged 7.6 submitted frames/s on entry and 10.5 on the repeat, with p95 gaps of 517 and 250 ms respectively. The longest repeated gap was 333 ms. All twelve primary Auto runs and the smoke route loaded the native map and agent rigs without a browser error. After releasing the equipment parser, the repeated Dust2 Follow and Free routes also loaded the Deagle within the existing cache budget.
+
+Fixed High used the full desktop geometry at 720 × 480, 100% resolution, DPR 1 and live shadows. The detailed map, environment, landscape and skyline were loaded. Here the small number of frames makes p95 effectively the worst interval. The table gives the actual repeated maximum. The draw and triangle medians count submissions between observed screen draws across rendering passes, including shadows.
+
+| High POV | Submissions first / repeat | Frames/s first / repeat | Repeat longest gap ms | Repeat median draws | Repeat median triangles |
+| -------- | -------------------------: | ----------------------: | --------------------: | ------------------: | ----------------------: |
+| Cache    |                      4 / 8 |               0.5 / 0.4 |                 8,466 |               2,125 |               2,541,224 |
+| Ancient  |                     10 / 5 |               0.3 / 0.3 |                 7,666 |               1,120 |               9,647,823 |
+| Dust2    |                      5 / 6 |               0.5 / 0.5 |                 2,816 |                 947 |               2,447,935 |
+| Nuke     |                     6 / 12 |               0.6 / 0.4 |                 5,433 |               3,602 |               5,904,590 |
+
+Same-detail High controls on Cache and Nuke used the old renderer and the identical official desktop files. Neither measured a sustained gain in this small software sample. Cache repeated at about 0.4 submitted frames/s in both builds, as did Nuke. At Cache ticks 1,953, 2,145 and 2,401, all 345,600 RGB pixels in each composited frame matched. Nuke tick 16,444 matched exactly. At 15,996 and 16,188, 31 and 529 pixels changed respectively, with mean absolute channel errors of 0.0016 and 0.0057 on a 0–255 scale. The builds agree closely at these poses. No external game frame was supplied.
+
+The portable capture CLI independently reparsed Cache and verified the delivered Compact GLB against its mobile parent. The camera turned during its first traversal from tick 1,889 to 2,645. It submitted 58 frames in 12.0 s and dropped from 100% to 50% resolution. The frame-count p95 was 1,095 ms and the elapsed-time-weighted p95 was 1,123 ms. The 33.3 ms budget correctly failed with 16 gaps over 250 ms. This run began cold and is separate from the repeated traversal in the table. Reproduce it with the production capture CLI and `--quality auto --play-camera free --play-seconds 12 --max-p95-ms 33.3`. [Capture instructions](../scripts/graphics/README.md)
+
+**Checks.** Both production builds passed on Node 24.22.3. The backend passed 617 with one Docker Compose check skipped because the executable was unavailable. The asset worker passed all 318 checks with the genuine equipment registry. All 17 focused Chromium cases, all eight graphics capture tests, the EN/FR check and formatting passed. The timing budget failure above is the measured result on this device.
+
 ## In-game playback stalls
 
 The reference for this pass was `afc39a5`. Fixed-quality comparisons used the same pinned 60,601,900-byte Mirage replay, player, settings, map and complete local equipment catalog. The map was a retained official snapshot whose correspondence to the historical match is unverified. The browser opened the private production watch route, starting in round two at tick 10,721. The world, sky, real player rigs and equipment loaded. Chromium 159 on Linux used ANGLE Vulkan SwiftShader. These results do not establish a frame rate on an RTX 3070 or a comparison with csdemo.tv.

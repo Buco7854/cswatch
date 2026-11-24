@@ -2,7 +2,7 @@
 import * as T from 'three';
 import { GLTFLoader, MeshoptDecoder } from 'three-stdlib';
 import { registerMapBakedLighting } from '../../frontend/src/map-baked-lighting';
-import { reusePackedMapSamples } from '../../frontend/src/map-packed-material';
+import { reusePackedSceneSamples } from '../../frontend/src/packed-material';
 import { improveMapTextureDetail } from '../../frontend/src/map-texture-detail';
 import { assertMapBaseColorTextures, prepareMapModel } from '../../frontend/src/map-model';
 import { installMapDrawRanges } from '../../frontend/src/map-draw-range';
@@ -28,7 +28,7 @@ window.prepareCapture = async ({ tier, projection, settings }) => {
   registerMapBakedLighting(loader);
   const gltf = await loader.loadAsync('scene.glb');
   assertMapBaseColorTextures(gltf);
-  reusePackedMapSamples(gltf.scenes);
+  reusePackedSceneSamples(gltf.scenes);
   if (tier === 'desktop') improveMapTextureDetail(gltf.scenes);
   const { main } = prepareMapModel(gltf.scene, gltf.animations);
   const scene = new T.Scene();

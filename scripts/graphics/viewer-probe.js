@@ -6,9 +6,61 @@
   devtools.addEventListener('observe', ({ detail }) => {
     if (detail.isScene) scenes.add(detail);
   });
-  // Count composites which actually submitted a screen pass. A bare rAF counter
-  // also advances while a demand-rendered world is idle. Keep this hook in QA.
-  window.measureViewerPlayback = async (button, seconds) => {
+  // Read the production scene's mounted asset state, including intentionally missing artwork.
+  window.viewerPlaybackReadiness = () => {
+    const d = document.querySelector('.scene')?.dataset;
+    if (!d) return null;
+    const keys = [
+      'cameraMode',
+      'mapTier',
+      'mapModelState',
+      'quality',
+      'renderResolution',
+      'liveShadows',
+      'environmentState',
+      'landscapeState',
+      'skylightState',
+      'agentModelState',
+      'agentReadyCount',
+      'agentPendingCount',
+      'agentErrorCount',
+      'agentFallbackCount',
+      'equipmentModelState',
+      'equipmentPendingCount',
+      'equipmentReadyCount',
+      'equipmentReadyInstances',
+      'equipmentErrorCount',
+      'equipmentUnavailableCount',
+    ];
+    const state = Object.fromEntries(keys.map((key) => [key, d[key] ?? null]));
+    const assetStates = [
+      'environmentState',
+      'landscapeState',
+      'agentModelState',
+      'equipmentModelState',
+    ];
+    state.settled =
+      d.mapModelState === 'ready' &&
+      Boolean(d.mapTier) &&
+      ['low', 'high'].includes(d.quality) &&
+      assetStates.every((key) => ['ready', 'missing', 'error'].includes(d[key])) &&
+      d.agentPendingCount === '0' &&
+      d.equipmentPendingCount === '0';
+    state.errors = [
+      'environmentState',
+      'landscapeState',
+      'skylightState',
+      'agentModelState',
+      'equipmentModelState',
+    ].filter((key) => d[key] === 'error');
+    for (const key of ['agentErrorCount', 'equipmentErrorCount']) {
+      if (d[key] !== '0') state.errors.push(key);
+    }
+    return state;
+  };
+
+  // Several render passes may submit to the screen in one browser animation frame.
+  window.measureViewerPlayback = async (button, { seconds, mode, maxP95Ms, minIntervals }) => {
     const element = document.querySelector('.scene'),
       canvas = element?.querySelector('canvas');
     const slider = document.querySelector('.timeline-slider');
@@ -18,12 +70,48 @@
         continue;
       const renderer = state.gl,
         original = renderer.render;
-      const times = [];
-      let stamp;
+      const times = [],
+        rotate = mode === 'orbit';
+      const initialOrientation = state.camera.quaternion.clone();
+      let cameraTurned = false,
+        stamp,
+        animation;
+      const entry = window.viewerPlaybackReadiness();
+      const errors = new Set(entry?.errors);
+      const resolutions = new Set([entry?.renderResolution]);
+      let sameRoute = true;
+      const observe = () => {
+        const state = window.viewerPlaybackReadiness();
+        sameRoute &&=
+          document.querySelector('.scene') === element &&
+          state?.cameraMode === mode &&
+          state.mapTier === entry?.mapTier;
+        resolutions.add(state?.renderResolution);
+        if (state?.mapModelState !== 'ready') errors.add('mapModelState');
+        for (const key of state?.errors ?? []) errors.add(key);
+      };
+      const observer = new MutationObserver(observe);
+      observer.observe(element, {
+        attributes: true,
+        attributeFilter: [
+          'data-camera-mode',
+          'data-map-tier',
+          'data-map-model-state',
+          'data-render-resolution',
+          'data-environment-state',
+          'data-landscape-state',
+          'data-skylight-state',
+          'data-agent-model-state',
+          'data-agent-error-count',
+          'data-equipment-model-state',
+          'data-equipment-error-count',
+        ],
+      });
       renderer.render = function (...args) {
         const result = original.apply(this, args);
         if (!this.getRenderTarget()) {
-          // Several screen passes can contribute to one browser animation frame.
+          if (rotate && !cameraTurned)
+            cameraTurned = initialOrientation.angleTo(state.camera.quaternion) > 0.01;
           const frame = document.timeline.currentTime;
           if (frame !== stamp) {
             stamp = frame;
@@ -34,31 +122,109 @@
       };
       const startTick = Number(slider.value),
         started = performance.now();
+      const drag = (type, x) =>
+        canvas.dispatchEvent(
+          new PointerEvent(type, {
+            bubbles: true,
+            cancelable: true,
+            pointerType: 'mouse',
+            pointerId: 73,
+            button: 0,
+            buttons: type === 'pointerup' ? 0 : 1,
+            clientX: x,
+            clientY: 120,
+          }),
+        );
+      let ended, endTick, exit;
       try {
         button.click();
+        if (rotate) {
+          drag('pointerdown', 180);
+          const turn = (time) => {
+            const progress = Math.min(1, Math.max(0, (time - started) / (seconds * 1000)));
+            drag('pointermove', 180 + 120 * Math.sin(progress * 2 * Math.PI));
+            animation = requestAnimationFrame(turn);
+          };
+          animation = requestAnimationFrame(turn);
+        }
         await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+        ended = performance.now();
+        endTick = Number(slider.value);
+        exit = window.viewerPlaybackReadiness();
+        observe();
       } finally {
         renderer.render = original;
+        observer.disconnect();
+        if (rotate) {
+          cancelAnimationFrame(animation);
+          drag('pointerup', 180);
+        }
       }
-      const elapsedMs = performance.now() - started,
-        endTick = Number(slider.value);
-      const intervals = times
+      const elapsedMs = ended - started;
+      const gaps = times
         .slice(1)
         .map((end, i) => end - times[i])
         .sort((a, b) => a - b);
-      const percentile = (p) =>
-        intervals.length ? intervals[Math.ceil(p * intervals.length) - 1] : null;
+      const percentile = (p) => (gaps.length ? gaps[Math.ceil(p * gaps.length) - 1] : null);
+      const first = times.length ? times[0] - started : null;
+      const terminal = times.length ? ended - times.at(-1) : elapsedMs;
+      const windowGaps = (times.length ? [...gaps, first, terminal] : [elapsedMs]).sort(
+        (a, b) => a - b,
+      );
+      // A gap spanning 90% of the window must carry 90% of the weight, even if
+      // a burst of short intervals would hide it in the frame-count percentile.
+      let covered = 0,
+        timeWeightedP95Ms = windowGaps.at(-1);
+      for (const gap of windowGaps) {
+        covered += gap;
+        if (covered >= 0.95 * elapsedMs) {
+          timeWeightedP95Ms = gap;
+          break;
+        }
+      }
+      const moved =
+        endTick > startTick &&
+        times.length >= 2 &&
+        sameRoute &&
+        entry?.cameraMode === mode &&
+        exit?.cameraMode === mode &&
+        (!rotate || cameraTurned);
+      const assetsVerified = Boolean(
+        entry?.settled && exit?.settled && !errors.size && !exit.errors.length,
+      );
+      const p95Ms = percentile(0.95);
+      let budgetVerdict = 'not-evaluated';
+      if (maxP95Ms !== null) {
+        if (!moved || !assetsVerified || gaps.length < minIntervals) budgetVerdict = 'unverified';
+        else budgetVerdict = p95Ms > maxP95Ms || timeWeightedP95Ms > maxP95Ms ? 'fail' : 'pass';
+      }
       return {
-        cameraMode: element.dataset.cameraMode,
+        cameraMode: exit?.cameraMode,
+        cameraTurned: rotate ? cameraTurned : null,
         startTick,
         endTick,
         elapsedMs,
         submittedFrames: times.length,
-        firstFrameMs: times.length ? times[0] - started : null,
+        firstFrameMs: first,
         lastFrameMs: times.length ? times.at(-1) - started : null,
+        terminalGapMs: terminal,
         p50Ms: percentile(0.5),
-        p95Ms: percentile(0.95),
-        maxMs: intervals.at(-1) ?? null,
+        p95Ms,
+        maxMs: gaps.at(-1) ?? null,
+        timeWeightedP95Ms,
+        windowMaxMs: windowGaps.at(-1),
+        gapsOver100Ms: gaps.filter((ms) => ms > 100).length,
+        gapsOver250Ms: gaps.filter((ms) => ms > 250).length,
+        status: moved ? 'measured' : 'insufficient-data',
+        assetsVerified,
+        entry,
+        exit,
+        assetErrors: [...errors],
+        renderResolutions: [...resolutions],
+        requestedSeconds: seconds,
+        minIntervals,
+        maxP95Ms,
+        budgetVerdict,
         measurement: 'wall-clock intervals between screen submissions during playback',
       };
     }
@@ -149,10 +315,12 @@
                 'landscapeState',
                 'agentModelState',
                 'agentReadyCount',
+                'agentPendingCount',
                 'agentFallbackCount',
                 'agentErrorCount',
                 'equipmentModelState',
                 'equipmentReadyCount',
+                'equipmentPendingCount',
                 'equipmentUnavailableCount',
                 'equipmentErrorCount',
                 'smokeState',

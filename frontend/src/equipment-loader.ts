@@ -1,12 +1,15 @@
+import { reusePackedSceneSamples } from './packed-material';
 import { useLayoutEffect, useMemo } from 'react';
 import { useLoader } from '@react-three/fiber';
 import { Loader, LoadingManager } from 'three';
-import type { GLTF } from 'three-stdlib';
 import { ModelCache } from './model-cache';
-import { mapModelResources } from './map-model-resources';
+import { equipmentModelResources, retainEquipmentModel } from './map-model-resources';
+
 import { packEquipmentJoints } from './equipment-geometry';
 import { loadScopedGLTF } from './scoped-gltf-loader';
 import { retainEquipmentRestGeometry } from './equipment-rest-skin';
+
+type EquipmentGLTF = ReturnType<typeof retainEquipmentModel>;
 
 const MiB = 1024 * 1024;
 const mobile = () =>
@@ -22,13 +25,13 @@ function equipmentLoader(
   },
   textureEdge?: (url: string) => number | undefined,
 ) {
-  class EquipmentGLTFLoader extends Loader<GLTF> {
+  class EquipmentGLTFLoader extends Loader<EquipmentGLTF> {
     constructor() {
       super(new LoadingManager());
     }
     load(
       url: string,
-      onLoad: (gltf: GLTF) => void,
+      onLoad: (gltf: EquipmentGLTF) => void,
       onProgress?: (event: ProgressEvent) => void,
       onError?: (error: unknown) => void,
     ) {
@@ -39,9 +42,9 @@ function equipmentLoader(
       });
     }
   }
-  const cache = new ModelCache<GLTF>({
+  const cache = new ModelCache<EquipmentGLTF>({
     ...limits,
-    inspect: mapModelResources,
+    inspect: equipmentModelResources,
     clear: (url) => useLoader.clear(EquipmentGLTFLoader, url),
     load: (url, callbacks) =>
       loadScopedGLTF(
@@ -49,10 +52,11 @@ function equipmentLoader(
         {
           ...callbacks,
           loaded(gltf) {
+            reusePackedSceneSamples(gltf.scenes);
             packEquipmentJoints(gltf.scenes);
             if (url.startsWith('/api/assets/equipment-models/') && !gltf.animations.length)
               retainEquipmentRestGeometry(gltf.scene);
-            callbacks.loaded(gltf);
+            callbacks.loaded(retainEquipmentModel(gltf));
           },
         },
         transferMiB * MiB,
@@ -89,7 +93,7 @@ const pov = equipmentLoader(8, {
 });
 export const useEquipmentGLTF = (url: string) => useLoader(world.Loader, url);
 export const usePovGLTF = (url: string) => useLoader(pov.Loader, url);
-function useNativeScope(cache: ModelCache<GLTF>, url: string, identity: object) {
+function useNativeScope(cache: ModelCache<EquipmentGLTF>, url: string, identity: object) {
   const scope = useMemo(() => cache.scope(url), [cache, url, identity]);
   useLayoutEffect(() => scope.acquire(), [scope]);
   return scope;

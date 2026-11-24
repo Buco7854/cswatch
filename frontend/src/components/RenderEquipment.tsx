@@ -129,7 +129,13 @@ function AvailableEquipment({
       failed={callbacks.failed}
       fallback={fallback}
     >
-      <Suspense fallback={<PendingEquipment instance={instance}>{fallback}</PendingEquipment>}>
+      <Suspense
+        fallback={
+          <EquipmentInstanceState instance={instance} status="pending">
+            {fallback}
+          </EquipmentInstanceState>
+        }
+      >
         <LoadedEquipment
           asset={asset}
           scope={scope}
@@ -141,9 +147,20 @@ function AvailableEquipment({
     </EquipmentBoundary>
   );
 }
-function PendingEquipment({ instance, children }: { instance: string; children: ReactNode }) {
-  const context = useContext(EquipmentModels)!;
-  useLayoutEffect(() => context.report(instance, 'pending'), [context.report, instance]);
+export function EquipmentInstanceState({
+  instance,
+  status,
+  children,
+}: {
+  instance: string;
+  status: EquipmentInstanceStatus;
+  children: ReactNode;
+}) {
+  const { report } = useContext(EquipmentModels)!;
+  useLayoutEffect(() => {
+    report(instance, status);
+    return () => report(instance, null);
+  }, [report, instance, status]);
   return children;
 }
 export function EquipmentModelInstance({

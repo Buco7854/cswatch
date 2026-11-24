@@ -1,3 +1,4 @@
+import { reusePackedMaterialSamples } from './packed-material';
 import {
   Group,
   Mesh,
@@ -41,6 +42,7 @@ export function prepareAgentModel(source: Object3D) {
     result.sheenColor.fromArray(tint);
     result.sheenColorMap = material.map;
     result.sheenRoughness = 0.8;
+    reusePackedMaterialSamples(result);
     cloth.set(material, result);
     return result;
   }

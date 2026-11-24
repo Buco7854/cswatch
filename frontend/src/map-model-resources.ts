@@ -13,8 +13,45 @@ import type { ModelResource } from './model-cache';
 // holds these buffers, including those outside the final geometry and animation arrays.
 export const modelDecodedBuffers = new WeakMap<GLTF, Set<ArrayBufferLike>>();
 
-/** Conservative retained CPU estimate: binary buffers, copied image views, geometry and decoded images. */
+type RenderedModel = Pick<GLTF, 'scene' | 'scenes' | 'animations'> & {
+  parser: Pick<GLTF['parser'], 'json' | 'associations'>;
+};
+
+/** Equipment only reads the authored clip definitions and material associations after loading. */
+export function retainEquipmentModel({ scene, scenes, animations, parser }: GLTF): RenderedModel {
+  const associations: GLTF['parser']['associations'] = new Map();
+  for (const root of scenes)
+    root.traverse((node) => {
+      if (!(node instanceof Mesh)) return;
+      for (const material of Array.isArray(node.material) ? node.material : [node.material]) {
+        const entry = parser.associations.get(material);
+        if (entry) associations.set(material, entry);
+      }
+    });
+  return {
+    scene,
+    scenes,
+    animations,
+    parser: {
+      associations,
+      json: {
+        materials: parser.json.materials,
+        animations: parser.json.animations,
+      },
+    },
+  };
+}
+
 export function mapModelResources(gltf: GLTF): ModelResource[] {
+  return modelResources(gltf, gltf);
+}
+
+export function equipmentModelResources(gltf: RenderedModel): ModelResource[] {
+  return modelResources(gltf);
+}
+
+/** Count reachable render storage and, for maps, the parser kept for additional texture dependencies. */
+function modelResources(gltf: RenderedModel, source?: GLTF): ModelResource[] {
   const resources = new Map<object, ModelResource>();
   const add = (resource: ModelResource) => {
     const old = resources.get(resource.key);
@@ -91,7 +128,12 @@ export function mapModelResources(gltf: GLTF): ModelResource[] {
       for (const array of [track.times, track.values])
         add({ key: array.buffer, bytes: array.buffer.byteLength });
     }
-  const decoded = modelDecodedBuffers.get(gltf);
+  const metadataBytes = JSON.stringify(gltf.parser.json).length * 4;
+  if (!source) {
+    add({ key: gltf.parser, bytes: metadataBytes });
+    return [...resources.values()];
+  }
+  const decoded = modelDecodedBuffers.get(source);
   if (decoded) for (const buffer of decoded) add({ key: buffer, bytes: buffer.byteLength });
   const json = gltf.parser.json as {
     buffers?: {
@@ -122,8 +164,7 @@ export function mapModelResources(gltf: GLTF): ModelResource[] {
     imageCopies = [...imageViews].reduce(
       (sum, index) => sum + (json.bufferViews?.[index]?.byteLength || 0),
       0,
-    ),
-    metadataBytes = JSON.stringify(json).length * 4;
+    );
   add({ key: gltf.parser, bytes: binaryBytes + imageCopies + metadataBytes });
   return [...resources.values()];
 }

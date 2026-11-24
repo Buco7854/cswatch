@@ -19,6 +19,8 @@ import { tsImport } from '../backend/node_modules/tsx/dist/esm/api/index.mjs';
 import { boundedFile, decodeOpaqueFrame, digest } from './graphics/capture-report.mjs';
 import { readManagedPack, snapshotManagedPack } from './graphics/managed-pack.mjs';
 import { compareReplayFrame } from './graphics/replay-reference.mjs';
+import { bindViewerResponseBytes, observeViewerNetwork } from './graphics/viewer-network.mjs';
+import { verifyPreparedGlb } from '../tools/assets/prepared-glb.mjs';
 
 const options = Object.fromEntries(
   [
@@ -37,6 +39,9 @@ const options = Object.fromEntries(
     'reference',
     'max-mae',
     'play-seconds',
+    'play-camera',
+    'max-p95-ms',
+    'min-intervals',
   ].map((k) => [k, { type: 'string' }]),
 );
 const { values: o } = parseArgs({
@@ -44,7 +49,7 @@ const { values: o } = parseArgs({
 });
 if (o.help) {
   console.log(
-    'node scripts/capture-viewer.mjs --demo FILE.dem --assets MAP_ASSETS_DIR --player STEAM_ID --tick N --out NEW_DIR [--jobs MAP_JOBS_DIR --catalog MAP_CATALOG_FILE --quality low|high --width W --height H --fov V --port PORT --software --reference FILE --max-mae N --play-seconds N]',
+    'node scripts/capture-viewer.mjs --demo FILE.dem --assets MAP_ASSETS_DIR --player STEAM_ID --tick N --out NEW_DIR [--jobs MAP_JOBS_DIR --catalog MAP_CATALOG_FILE --quality auto|compact|low|high --width W --height H --fov V --port PORT --software --reference FILE --max-mae N --play-seconds N --play-camera pov|follow|free --max-p95-ms N --min-intervals N]',
   );
   process.exit(0);
 }
@@ -73,8 +78,21 @@ const viewport = {
 const port = numeric('port', 4672, 1024, 65535),
   origin = 'http://127.0.0.1:' + port;
 const playSeconds = o['play-seconds'] === undefined ? 0 : numeric('play-seconds', 0, 3, 30);
+const playCamera = o['play-camera'] ?? 'pov';
+assert(['pov', 'follow', 'free'].includes(playCamera), 'Unsupported playback camera');
+const maxP95 =
+  o['max-p95-ms'] === undefined ? undefined : numeric('max-p95-ms', 0, 1, 60_000, false);
+assert(
+  playSeconds || (o['play-camera'] === undefined && maxP95 === undefined),
+  'Playback options require --play-seconds',
+);
+const minIntervals = numeric('min-intervals', 20, 1, 50_000);
+assert(
+  o['min-intervals'] === undefined || maxP95 !== undefined,
+  '--min-intervals requires --max-p95-ms',
+);
 const quality = o.quality ?? 'high';
-assert(['high', 'low'].includes(quality), 'Unsupported quality');
+assert(['auto', 'compact', 'high', 'low'].includes(quality), 'Unsupported quality');
 const maxMae = o['max-mae'] === undefined ? undefined : numeric('max-mae', 0, 0, 255, false);
 assert(maxMae === undefined || o.reference, '--max-mae requires --reference');
 const { frameAt, defaultSettings } = await tsImport('../frontend/src/playback.ts', import.meta.url);
@@ -226,6 +244,7 @@ try {
   );
   const expected = firstPersonView(pose),
     fov = scopedVerticalFov(p) ?? settings.cameraFov;
+  bindViewerResponseBytes(app);
   await app.listen({ host: '127.0.0.1', port });
   browser = await chromium.launch({
     args: [
@@ -270,67 +289,29 @@ try {
     });
   await page.locator('input[type=password]').press('Enter');
   await page.waitForURL('**/library');
-  const prefix = '/api/demos/' + id,
-    resources = new Map(),
-    scripts = new Map(),
-    responses = new Map();
-  let responseError;
-  const pending = new Set();
-  page.on('response', (r) => {
-    if (r.status() !== 200) return;
-    const url = new URL(r.url()),
-      path = url.pathname;
-    if (url.origin !== origin) return;
-    const manifestPath = prefix + '/playback',
-      chunkPath = manifestPath + '/chunks/' + info.index;
-    const track = path === manifestPath || path === chunkPath || path === prefix + '/map-assets';
-    const visual = /\.glb$|\/environment\/|\/grade\./.test(path);
-    const script = path.startsWith('/assets/') && path.endsWith('.js');
-    if (!track && !visual && !script) return;
-    const job = (async () => {
-      if (script) scripts.set(path, digest(await r.body()));
-      else if (path === prefix + '/map-assets') responses.set(path, await r.json());
-      else if (track) responses.set(path, digest(await r.body()));
-      else {
-        const etag = /^(?:W\/)?"([a-f0-9]{64})(?:-gzip)?"$/.exec(r.headers().etag ?? '')?.[1];
-        if (etag) resources.set(path, etag);
-        else {
-          const sizes = await r.request().sizes();
-          assert(
-            sizes.responseBodySize <= 32 * 1024 ** 2,
-            'Supplementary asset exceeds capture limit',
-          );
-          resources.set(path, digest(await r.body()));
-        }
-      }
-    })().catch((e) => {
-      responseError = e;
-    });
-    pending.add(job);
-    void job.finally(() => pending.delete(job));
-  });
+  const prefix = '/api/demos/' + id;
+  const { resources, scripts, responses, settle } = observeViewerNetwork(
+    page,
+    origin,
+    prefix,
+    info.index,
+  );
   await page.goto(origin + '/watch/' + id + '?tick=' + tick + '&player=' + player);
   await page
     .locator('.scene[data-camera-mode=pov][data-map-model-state=ready] canvas')
     .waitFor({ timeout: 90000 });
-  await page.waitForFunction(
-    () => {
-      const d = document.querySelector('.scene')?.dataset;
-      return (
-        d &&
-        ![d.environmentState, d.agentModelState, d.equipmentModelState].includes('pending') &&
-        Number(d.equipmentReadyCount) +
-          Number(d.equipmentErrorCount) +
-          Number(d.equipmentUnavailableCount) >=
-          Number(d.equipmentExpectedCount)
-      );
-    },
-    undefined,
-    { timeout: 60000 },
-  );
+  const waitForModels = (mode) =>
+    page.waitForFunction(
+      (expectedMode) => {
+        const state = window.viewerPlaybackReadiness();
+        return state?.cameraMode === expectedMode && state.settled;
+      },
+      mode,
+      { timeout: 60000 },
+    );
   await page.waitForLoadState('networkidle');
-  await Promise.all([...pending]);
-  if (responseError) throw responseError;
+  await waitForModels('pov');
+  await settle();
   assert.equal(responses.get(prefix + '/playback'), digest(manifestBytes), 'Unbound manifest');
   assert.equal(
     responses.get(prefix + '/playback/chunks/' + info.index),
@@ -397,13 +378,37 @@ try {
     'Committed graphics settings differ from request',
   );
   assert.deepEqual(shot.viewport, viewport, 'Unexpected actual viewport');
-  assert.equal(shot.status.quality, quality);
+  // Adaptation runs only during moving playback. The paused reference is always at native resolution.
   assert.equal(shot.status.renderResolution, '100');
   const tier = shot.status.mapTier;
-  assert(['desktop', 'mobile'].includes(tier), 'Expected detailed map');
-  const modelUrl = discovery.assets[tier === 'desktop' ? 'model' : 'mobile'];
+  assert(['desktop', 'mobile', 'compact'].includes(tier), 'Missing delivered map tier');
+  if (quality === 'compact')
+    assert.equal(tier, 'compact', 'Compact tier was requested but is unavailable');
+  if (quality === 'high' || quality === 'low') {
+    assert.equal(shot.status.quality, quality);
+    assert.notEqual(tier, 'compact', 'Expected detailed map');
+    const preferred = quality === 'high' ? 'desktop' : 'mobile';
+    if (discovery.assets[preferred === 'desktop' ? 'model' : preferred])
+      assert.equal(tier, preferred);
+  }
+  if (tier === 'compact') assert.equal(shot.status.quality, 'low');
+  const modelUrl = discovery.assets[tier === 'desktop' ? 'model' : tier];
   const modelSha256 = resources.get(modelUrl);
   assert(modelSha256, 'Missing delivered map fingerprint');
+  if (shot.status.environmentState === 'ready') {
+    for (const face of discovery.assets.environment?.sky?.faces ?? [])
+      assert(resources.has(face), 'Missing delivered environment face ' + face);
+  }
+  if (shot.nativePovModel) {
+    const id = /^native-([a-z0-9]+)-viewmodel$/.exec(shot.nativePovModel)?.[1];
+    assert(
+      id &&
+        [...resources].some(
+          ([path, hash]) => path === '/api/assets/viewmodels/' + id + '/' + hash + '.glb',
+        ),
+      'Missing delivered native POV model',
+    );
+  }
   const pack = discovery.packId;
   assert(!pack || /^[0-9a-f]{64}$/.test(pack));
   const mapSource = pack
@@ -427,8 +432,29 @@ try {
       tierManifest.assetVersion,
     'Rendered map differs from tier manifest',
   );
-  await Promise.all([...pending]);
-  if (responseError) throw responseError;
+  let parentMobile;
+  if (tier === 'compact') {
+    const folder = join(tierRoot, manifest.map, 'mobile');
+    const parent = JSON.parse(await boundedFile(join(folder, 'manifest.json'), 64 * 1024));
+    const verified = await verifyPreparedGlb(join(folder, 'scene.glb'));
+    assert(
+      parent.map === manifest.map &&
+        parent.tier === 'mobile' &&
+        parent.assetVersion === tierManifest.assetVersion &&
+        parent.outputSha256 === verified.sha256 &&
+        parent.bytes === verified.bytes &&
+        tierManifest.sourceSha256 === verified.sha256 &&
+        tierManifest.sourceBytes === verified.bytes &&
+        /^[a-f0-9]{64}$/.test(parent.sourceSha256),
+      'Compact tier does not match its prepared mobile source',
+    );
+    parentMobile = {
+      modelSha256: verified.sha256,
+      bytes: verified.bytes,
+      sourceSha256: parent.sourceSha256,
+    };
+  }
+  await settle();
   assert(scripts.size > 0, 'Missing production application fingerprint');
   const image = shot.image;
   assert(image.length > 0 && image.length <= 16 * 1024 ** 2);
@@ -452,7 +478,8 @@ try {
         ? 'viewer-standing-height'
         : 'viewer-height-from-duck',
     modelSha256,
-    sourceSha256: tierManifest.sourceSha256,
+    sourceSha256: parentMobile?.sourceSha256 ?? tierManifest.sourceSha256,
+    ...(parentMobile && { parentMobile }),
     assetVersion: tierManifest.assetVersion,
     mapVerification: discovery.verification,
     mapSource,
@@ -484,22 +511,28 @@ try {
       await page.keyboard.press('Escape');
       await review.waitFor({ state: 'hidden' });
     }
+    if (playCamera !== 'pov') {
+      const name = playCamera === 'follow' ? 'Third-person follow' : 'Free camera';
+      const group = page.getByRole('group', { name: 'Camera mode', exact: true });
+      if (await group.isVisible()) await group.getByRole('button', { name, exact: true }).click();
+      else {
+        await page.getByRole('combobox', { name: 'Camera mode', exact: true }).click();
+        await page.getByRole('option', { name, exact: true }).click();
+      }
+    }
+    const expectedMode = playCamera === 'free' ? 'orbit' : playCamera;
+    await waitForModels(expectedMode);
     const play = page.getByRole('button', { name: 'Play', exact: true });
     await play.waitFor({ state: 'visible' });
-    const pacing = await play.evaluate(
-      (button, seconds) => window.measureViewerPlayback(button, seconds),
-      playSeconds,
+    report.playbackTiming = await play.evaluate(
+      (button, options) => window.measureViewerPlayback(button, options),
+      { seconds: playSeconds, mode: expectedMode, maxP95Ms: maxP95 ?? null, minIntervals },
     );
-    assert.equal(pacing.startTick, tick, 'Unexpected playback start');
+    assert.equal(report.playbackTiming.startTick, tick, 'Unexpected playback start');
+    assert.equal(report.playbackTiming.entry.mapTier, tier, 'Model changed before timing');
     const pause = page.getByRole('button', { name: 'Pause', exact: true });
     if (await pause.isVisible()) await pause.evaluate((button) => button.click());
-    const advanced =
-      pacing.endTick > tick && pacing.submittedFrames >= 2 && pacing.cameraMode === 'pov';
-    report.playbackTiming = {
-      ...pacing,
-      requestedSeconds: playSeconds,
-      status: advanced ? 'measured' : 'insufficient-data',
-    };
+    await settle();
   }
   if (managed) {
     const current = await readManagedPack(managedInput);
@@ -512,9 +545,12 @@ try {
     flag: 'wx',
     mode: 0o600,
   });
-  console.log(JSON.stringify({ file: join(out, 'frame.json'), verdict: report.verdict }));
-  if (report.verdict === 'unverified') process.exitCode = 3;
-  if (report.verdict === 'fail') process.exitCode = 2;
+  const playbackBudget = report.playbackTiming?.budgetVerdict;
+  console.log(
+    JSON.stringify({ file: join(out, 'frame.json'), verdict: report.verdict, playbackBudget }),
+  );
+  if (report.verdict === 'unverified' || playbackBudget === 'unverified') process.exitCode = 3;
+  if (report.verdict === 'fail' || playbackBudget === 'fail') process.exitCode = 2;
 } catch (error) {
   if (created) await rm(out, { recursive: true, force: true });
   throw error;

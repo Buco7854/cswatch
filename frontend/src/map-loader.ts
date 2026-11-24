@@ -6,7 +6,7 @@ import { loadScopedGLTF } from './scoped-gltf-loader';
 import { ModelCache, type ModelScope } from './model-cache';
 import { mapModelResources } from './map-model-resources';
 import { registerMapBakedLighting } from './map-baked-lighting';
-import { reusePackedMapSamples } from './map-packed-material';
+import { reusePackedSceneSamples } from './packed-material';
 import { improveMapTextureDetail } from './map-texture-detail';
 
 const MiB = 1024 * 1024;
@@ -71,7 +71,7 @@ const cache = new ModelCache<GLTF>({
       {
         ...callbacks,
         loaded(gltf) {
-          reusePackedMapSamples(gltf.scenes);
+          reusePackedSceneSamples(gltf.scenes);
           if (url.split('/').at(-2) === 'desktop') improveMapTextureDetail(gltf.scenes);
           callbacks.loaded(gltf);
         },
