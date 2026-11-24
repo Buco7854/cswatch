@@ -4,7 +4,13 @@ import { ModelCache, type ModelResource } from '../../frontend/src/model-cache.j
 
 type Asset = { name: string; resources: ModelResource[] };
 const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
-function harness(options: { unused?: number; bytes?: number; resident?: number } = {}) {
+function harness(
+  options: {
+    unused?: number;
+    bytes?: number | ((active: boolean) => number);
+    resident?: number;
+  } = {},
+) {
   const starts: {
       url: string;
       loaded: (value: Asset) => void;
@@ -15,7 +21,8 @@ function harness(options: { unused?: number; bytes?: number; resident?: number }
     loaded: Asset[] = [],
     errors: unknown[] = [];
   const cache = new ModelCache<Asset>({
-    inactiveBytes: () => options.bytes ?? 1000,
+    inactiveBytes: (active) =>
+      typeof options.bytes === 'function' ? options.bytes(active) : (options.bytes ?? 1000),
     maxUnused: options.unused ?? 2,
     residentBytes: options.resident !== undefined ? () => options.resident! : undefined,
     maxConcurrent: 2,
@@ -280,4 +287,31 @@ test('hard resident equipment budget evicts idle resources but never disposes ac
   assert.equal(replacement.disposals(), 0);
   assert.equal(h.loaded.at(-1)?.name, 'd');
   d();
+});
+
+test('resident weapons reuse spare capacity during play and return to the idle ceiling when the last lease closes', async () => {
+  const h = harness({ bytes: (active) => (active ? 35 : 10), resident: 35 }),
+    scene = h.cache.scope('agent').acquire();
+  h.request('agent');
+  await flush();
+  h.starts.at(-1)!.loaded(h.create('agent').value);
+  const first = h.create('rifle'),
+    second = h.create('grenade');
+  for (const asset of [first, second]) {
+    const release = h.cache.scope(asset.value.name).acquire();
+    h.request(asset.value.name);
+    await flush();
+    h.starts.at(-1)!.loaded(asset.value);
+    release();
+    await flush();
+  }
+  const again = h.cache.scope('rifle').acquire();
+  h.request('rifle');
+  assert.equal(h.starts.length, 3);
+  assert.equal(h.loaded.at(-1), first.value);
+  again();
+  scene();
+  await flush();
+  assert.equal(first.disposals(), 1);
+  assert.equal(second.disposals(), 1);
 });

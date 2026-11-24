@@ -8,6 +8,7 @@ import {
 } from 'three';
 import { GLTFLoader, MeshoptDecoder, type GLTF } from 'three-stdlib';
 import type { ModelLoadCallbacks } from './model-cache';
+import { modelDecodedBuffers } from './map-model-resources';
 type ScopedGLTFJob = (
   url: string,
   callbacks: ModelLoadCallbacks<GLTF>,
@@ -167,9 +168,17 @@ export const loadScopedGLTF: ScopedGLTFJob = (
       },
     };
   });
-  parser.setMeshoptDecoder(
-    typeof MeshoptDecoder === 'function' ? MeshoptDecoder() : MeshoptDecoder,
-  );
+  const decoder = { ...MeshoptDecoder() };
+  const decoded = new Set<ArrayBufferLike>();
+  const supported = 'decodeGltfBuffer' in decoder;
+  if (supported) {
+    const decode = decoder.decodeGltfBuffer;
+    decoder.decodeGltfBuffer = (target, ...parameters) => {
+      decode(target, ...parameters);
+      decoded.add(target.buffer);
+    };
+  }
+  parser.setMeshoptDecoder(decoder);
   configure?.(parser, (bitmap) => {
     if (finished || (cancelled && !parsing)) {
       bitmap.close();
@@ -199,6 +208,7 @@ export const loadScopedGLTF: ScopedGLTFJob = (
             parsing = false;
             revoke();
             bitmaps.clear();
+            if (supported) modelDecodedBuffers.set(value, decoded);
             callbacks.loaded(value);
           },
           failed,

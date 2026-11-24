@@ -10,7 +10,7 @@ import {
   MeshStandardMaterial,
   Texture,
 } from '../../frontend/node_modules/three/build/three.module.js';
-import { mapModelResources } from '../../frontend/src/map-model-resources.js';
+import { mapModelResources, modelDecodedBuffers } from '../../frontend/src/map-model-resources.js';
 import type { GLTF } from '../../frontend/node_modules/three-stdlib/loaders/GLTFLoader.js';
 
 test('retained model estimate counts aliased bitmap and geometry buffers once, plus source binary and copied image views', () => {
@@ -73,4 +73,29 @@ test('actor animation buffers are bounded and aliased track arrays count only on
     resources.find((resource) => resource.key === track.values.buffer)?.bytes,
     track.values.buffer.byteLength,
   );
+});
+
+test('required meshopt layouts charge decoded backing stores once, including views retained only by the parser', () => {
+  const scene = new Group(),
+    geometry = new BufferGeometry(),
+    positions = new Float32Array(30),
+    skin = new Uint8Array(64);
+  geometry.setAttribute('position', new BufferAttribute(positions, 3));
+  scene.add(new Mesh(geometry, new MeshStandardMaterial()));
+  const fallback = { EXT_meshopt_compression: { fallback: true } };
+  const json = {
+    extensionsRequired: ['EXT_meshopt_compression'],
+    buffers: [
+      { byteLength: 100 },
+      { byteLength: 1000, extensions: fallback },
+      { uri: 'backed.bin', byteLength: 60, extensions: fallback },
+    ],
+  };
+  const parser = { json },
+    gltf = { scenes: [scene], parser } as unknown as GLTF;
+  modelDecodedBuffers.set(gltf, new Set([positions.buffer, skin.buffer]));
+  const byKey = new Map(mapModelResources(gltf).map((resource) => [resource.key, resource.bytes]));
+  assert.equal(byKey.get(positions.buffer), positions.byteLength);
+  assert.equal(byKey.get(skin.buffer), skin.byteLength);
+  assert.equal(byKey.get(parser), 160 + JSON.stringify(json).length * 4);
 });

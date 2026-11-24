@@ -16,7 +16,7 @@ function equipmentLoader(
   limits: {
     maxUnused: number;
     maxConcurrent: number;
-    inactiveBytes: () => number;
+    inactiveBytes: (active: boolean) => number;
     residentBytes: () => number;
   },
   textureEdge?: (url: string) => number | undefined,
@@ -62,13 +62,17 @@ function equipmentLoader(
   return { Loader: EquipmentGLTFLoader, cache };
 }
 
+const worldBudget = () => (mobile() ? 128 : 256) * MiB;
+
 const world = equipmentLoader(
   16,
   {
     maxUnused: 12,
     maxConcurrent: 2,
-    inactiveBytes: () => (mobile() ? 32 : 64) * MiB,
-    residentBytes: () => (mobile() ? 128 : 256) * MiB,
+    // During a replay, recently holstered weapons share the existing total budget.
+    // On exit, trim idle models back to the smaller background allowance.
+    inactiveBytes: (active) => (active ? worldBudget() : worldBudget() / 4),
+    residentBytes: worldBudget,
   },
   (url) => (mobile() && url.startsWith('/api/assets/equipment-models/') ? 512 : undefined),
 );

@@ -9,6 +9,10 @@ import {
 import type { GLTF } from 'three-stdlib';
 import type { ModelResource } from './model-cache';
 
+// The decoder allocates one real buffer per requested compressed view. The parser
+// holds these buffers, including those outside the final geometry and animation arrays.
+export const modelDecodedBuffers = new WeakMap<GLTF, Set<ArrayBufferLike>>();
+
 /** Conservative retained CPU estimate: binary buffers, copied image views, geometry and decoded images. */
 export function mapModelResources(gltf: GLTF): ModelResource[] {
   const resources = new Map<object, ModelResource>();
@@ -87,8 +91,15 @@ export function mapModelResources(gltf: GLTF): ModelResource[] {
       for (const array of [track.times, track.values])
         add({ key: array.buffer, bytes: array.buffer.byteLength });
     }
+  const decoded = modelDecodedBuffers.get(gltf);
+  if (decoded) for (const buffer of decoded) add({ key: buffer, bytes: buffer.byteLength });
   const json = gltf.parser.json as {
-    buffers?: { byteLength: number }[];
+    buffers?: {
+      byteLength: number;
+      uri?: string;
+      extensions?: { EXT_meshopt_compression?: { fallback?: boolean } };
+    }[];
+    extensionsRequired?: string[];
     images?: { bufferView?: number }[];
     bufferViews?: { byteLength: number }[];
   };
@@ -97,10 +108,17 @@ export function mapModelResources(gltf: GLTF): ModelResource[] {
         ?.map((image) => image.bufferView)
         .filter((index): index is number => typeof index === 'number'),
     ),
-    binaryBytes = (json.buffers || []).reduce(
-      (sum, buffer) => sum + (Number.isFinite(buffer.byteLength) ? buffer.byteLength : 0),
-      0,
-    ),
+    binaryBytes = (json.buffers || []).reduce((sum, buffer, index) => {
+      // A required meshopt GLB can describe its decoded layout in an unbacked
+      // fallback buffer. The decoder allocates the actual views counted above.
+      const placeholder =
+        decoded &&
+        index > 0 &&
+        buffer.uri === undefined &&
+        buffer.extensions?.EXT_meshopt_compression?.fallback === true &&
+        json.extensionsRequired?.includes('EXT_meshopt_compression');
+      return sum + (!placeholder && Number.isFinite(buffer.byteLength) ? buffer.byteLength : 0);
+    }, 0),
     imageCopies = [...imageViews].reduce(
       (sum, index) => sum + (json.bufferViews?.[index]?.byteLength || 0),
       0,

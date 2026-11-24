@@ -35,7 +35,7 @@ type Options<T> = {
   load: (url: string, callbacks: ModelLoadCallbacks<T>) => (() => void) | void;
   inspect: (value: T) => ModelResource[];
   clear: (url: string) => void;
-  inactiveBytes: () => number;
+  inactiveBytes: (active: boolean) => number;
   /** Optional hard retained CPU budget, including active assets. New assets fail independently. */
   residentBytes?: () => number;
   maxUnused?: number;
@@ -136,7 +136,9 @@ export class ModelCache<T> {
           resources.set(resource.key, Math.max(resources.get(resource.key) || 0, resource.bytes));
       return [...resources.values()].reduce((sum, size) => sum + size, 0);
     };
-    while (unused.length > (this.options.maxUnused ?? 2) || bytes() > this.options.inactiveBytes())
+    const active = [...this.current.values()].some((entry) => entry.refs > 0);
+    const inactiveLimit = this.options.inactiveBytes(active);
+    while (unused.length > (this.options.maxUnused ?? 2) || bytes() > inactiveLimit)
       this.retire(unused.shift()!);
     for (const entry of this.current.values()) {
       if (this.runningURLs.size >= (this.options.maxConcurrent ?? 2)) break;
