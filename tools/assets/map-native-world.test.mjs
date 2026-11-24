@@ -222,6 +222,11 @@ test('compiled draw metadata distinguishes a third lightmap UV from a second ord
     )
     .join('')}\t]`;
   const { records } = embeddedMapDraws(control, mesh);
+  assert.deepEqual(embeddedMapDraws(control + '\n' + mesh).records, records);
+  assert.deepEqual(embeddedMapDraws(mesh + '\n' + control).records, records);
+  assert.equal(embeddedMapDraws(control + '\n' + mesh + '\n' + mesh), undefined);
+  assert.equal(embeddedMapDraws(control), undefined);
+  assert.equal(embeddedMapDraws(control + '\n' + mesh + ' '.repeat(1024 ** 2)), undefined);
   assert.deepEqual(records, [
     {
       material: 'materials/qa/plaster.vmat',

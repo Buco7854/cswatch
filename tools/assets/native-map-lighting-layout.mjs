@@ -34,10 +34,16 @@ const section = (text, name, indent) =>
     `^${'\\t'.repeat(indent)}${name}\\s*=\\s*\\r?\\n${'\\t'.repeat(indent)}\\[\\r?\\n([\\s\\S]*?)^${'\\t'.repeat(indent)}\\]`,
     'm',
   ).exec(text)?.[1];
-const singleBlock = (text, name) => {
-  if (Buffer.byteLength(text) > limits.dump || text.includes('\0')) return;
-  const parts = text.split(`--- Data for block "${name}" ---`);
-  return parts.length === 2 ? parts[1] : undefined;
+const singleBlock = (text, name, maxBytes = limits.dump) => {
+  if (Buffer.byteLength(text) > maxBytes || text.includes('\0')) return;
+  const parts = text.split(/^--- Data for block "([A-Z0-9_]{4})" ---\r?$/gm);
+  let block;
+  for (let index = 1; index < parts.length; index += 2) {
+    if (parts[index] !== name) continue;
+    if (block !== undefined) return;
+    block = parts[index + 1];
+  }
+  if (block !== undefined && Buffer.byteLength(block) <= limits.dump) return block;
 };
 
 /** The input signature discriminates the actual lightmap coordinate from paint UVs. */
@@ -53,9 +59,10 @@ export function nativeMaterialLightmapSlot(text) {
 }
 
 /** The native buffer order determines S2V's consecutive glTF TEXCOORD indices. */
-export function embeddedMapDraws(control, meshData) {
-  const ctrl = singleBlock(control, 'CTRL'),
-    mdat = singleBlock(meshData, 'MDAT');
+export function embeddedMapDraws(control, meshData = control) {
+  const maxBytes = meshData === control ? 2 * limits.dump : limits.dump;
+  const ctrl = singleBlock(control, 'CTRL', maxBytes),
+    mdat = singleBlock(meshData, 'MDAT', maxBytes);
   if (!ctrl || !mdat) return;
   const headers = [...control.matchAll(/^\t-- Block: ([A-Z0-9_]{4})\s/gm)].map((line) => line[1]);
   if (headers.filter((name) => name === 'MDAT').length !== 1) return;
@@ -258,7 +265,17 @@ export async function discoverNativeMapLighting({
     if (++models > limits.models) break;
     const path = await read(source, key, 'vmdl', limits.modelBytes);
     if (!path) continue;
-    const metadata = embeddedMapDraws(await dump(path, 'CTRL'), await dump(path, 'MDAT'));
+    // S2V accepts comma-separated blocks. Reuse the same confined tool process
+    // and input read for both the embedded layout and its draw metadata.
+    let metadata;
+    try {
+      metadata = embeddedMapDraws(await dump(path, 'CTRL,MDAT'));
+    } catch (error) {
+      if (error?.code !== 'ASSET_OUTPUT_LIMIT') throw error;
+      // A combined dump can hit the process cap even when each block fits.
+      // Preserve the individual diagnostic limits for these exceptional models.
+      metadata = embeddedMapDraws(await dump(path, 'CTRL'), await dump(path, 'MDAT'));
+    }
     if (!metadata) continue;
     for (const row of rows) {
       if (row.group && row.group !== metadata.name) continue;
