@@ -60,7 +60,8 @@ export function recentWeaponShot(
     return;
   const shots = index.get(player.id);
   if (!shots?.length) return;
-  const shot = shots[shotIndex(shots, tick)];
+  const i = shotIndex(shots, tick);
+  const shot = shots[i];
   if (
     !shot ||
     (shot.weapon === 'taser' && !includeTaser) ||
@@ -69,7 +70,14 @@ export function recentWeaponShot(
     return;
   const age = (tick - shot.tick) / tickRate;
   if (age < 0 || age >= duration) return;
-  return { ...shot, age };
+  // Multiple records on the same source tick form one pose onset.
+  const prior =
+    shots[i - 1]?.tick === shot.tick ? shots[shotIndex(shots, shot.tick - 1)] : shots[i - 1];
+  const priorTick =
+    prior?.weapon === shot.weapon && prior.tick < shot.tick ? prior.tick : undefined;
+  const following = shots[i + 1];
+  const nextTick = following?.weapon === shot.weapon ? following.tick : undefined;
+  return { ...shot, age, priorTick, nextTick };
 }
 
 function shotIndex(shots: readonly RecordedShot[], tick: number) {
@@ -107,14 +115,9 @@ export function nativeWeaponPose(
     const tail = Math.min(0.09, fireDuration / 4);
     const incoming = ease(shot.age / entry);
     const fire = { age: shot.age, weight: incoming * ease((fireDuration - shot.age) / tail) };
-    const list = index.get(player.id)!;
-    const prior = incoming < 1 ? list[shotIndex(list, tick) - 1] : undefined;
-    if (
-      prior?.weapon === shot.weapon &&
-      prior.tick < shot.tick &&
-      (reload === undefined || prior.tick >= reload)
-    ) {
-      const age = (tick - prior.tick) / rate;
+    const prior = shot.priorTick;
+    if (incoming < 1 && prior !== undefined && (reload === undefined || prior >= reload)) {
+      const age = (tick - prior) / rate;
       if (age < fireDuration)
         return {
           fire,

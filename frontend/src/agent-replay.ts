@@ -81,6 +81,15 @@ export function indexAgentDraws(data: Playback) {
   return draws;
 }
 
+export type AgentActionSample = {
+  kind: AgentAction;
+  age: number;
+  released?: boolean;
+  previousWeapon?: string;
+  priorFireAge?: number;
+  nextFireInterval?: number;
+};
+
 export function agentActionAt(
   evidence: ReturnType<typeof indexAgentEvents>,
   draws: ReturnType<typeof indexAgentDraws>,
@@ -90,7 +99,7 @@ export function agentActionAt(
   roundStart: number,
   enabled: boolean,
   fireEnabled: boolean,
-): { kind: AgentAction; age: number; released?: boolean; previousWeapon?: string } | undefined {
+): AgentActionSample | undefined {
   if (!enabled || !position.alive) return;
   const key = canonicalEquipmentKey(position.weapon);
   if (grenadeKeys.has(key)) {
@@ -110,15 +119,13 @@ export function agentActionAt(
   }
   const change = latestAt(draws.get(position.id), tick);
   const draw = change?.weapon === key ? change?.tick : undefined;
-  const fire = fireEnabled
-    ? recentWeaponShot(evidence.shots, position, tick, rate, 30)?.tick
-    : undefined;
+  const fire = fireEnabled ? recentWeaponShot(evidence.shots, position, tick, rate, 30) : undefined;
   const reload = position.reloadStarted;
   let winner: { kind: AgentAction; tick: number } | undefined;
   for (const [kind, start] of [
     ['draw', draw],
     ['reload', reload],
-    ['fire', fire],
+    ['fire', fire?.tick],
   ] as const) {
     if (
       start !== undefined &&
@@ -128,12 +135,18 @@ export function agentActionAt(
     )
       winner = { kind, tick: start };
   }
-  if (winner)
-    return {
-      kind: winner.kind,
-      age: (tick - winner.tick) / rate,
-      ...(winner.kind === 'draw' && change ? { previousWeapon: change.prior } : {}),
-    };
+  if (!winner) return;
+  const action: AgentActionSample = { kind: winner.kind, age: (tick - winner.tick) / rate };
+  if (winner.kind === 'draw') action.previousWeapon = change?.prior;
+  if (winner.kind === 'fire' && fire) {
+    if (
+      fire.priorTick !== undefined &&
+      fire.priorTick >= Math.max(roundStart, draw ?? -Infinity, reload ?? -Infinity)
+    )
+      action.priorFireAge = (tick - fire.priorTick) / rate;
+    if (fire.nextTick !== undefined) action.nextFireInterval = (fire.nextTick - fire.tick) / rate;
+  }
+  return action;
 }
 
 export function deadAgentsAt(

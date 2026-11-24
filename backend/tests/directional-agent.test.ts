@@ -21,7 +21,7 @@ import {
   type DirectionalSample,
 } from '../../frontend/src/directional-agent.js';
 import { agentPoseVisibility } from '../../frontend/src/agent-culling.js';
-import { agentCenteredMotionAt } from '../../frontend/src/agent-phase.js';
+import { agentCenteredMotionAt, agentPhaseAt } from '../../frontend/src/agent-phase.js';
 import {
   agentActionAt,
   deadAgentsAt,
@@ -169,6 +169,23 @@ for (const team of ['ct', 't']) {
     draw(7, 0);
     draw(7, 0, { action: { kind: 'fire', age: 0.25 } });
     assert.deepEqual(snapshot(), fired);
+    // Two closely spaced observations still join at the outgoing native pose.
+    draw(7, 0, { action: { kind: 'fire', age: 0.03, nextFireInterval: 0.03 } });
+    const priorShot = snapshot();
+    draw(7, 0, { action: { kind: 'fire', age: 0, priorFireAge: 0.03 } });
+    assert.deepEqual(snapshot(), priorShot);
+    draw(7, 0, { action: { kind: 'fire', age: 0.015, priorFireAge: 0.045 } });
+    const overlap = snapshot();
+    draw(10, 20);
+    draw(7, 0, { action: { kind: 'fire', age: 0.015, priorFireAge: 0.045 } });
+    assert.deepEqual(snapshot(), overlap);
+
+    sampler.sample(0.1, 2, 0, undefined, { ...idle, velocityX: 2 });
+    const legacy = snapshot();
+    sampler.sample(0.25, 2, 0, undefined, { ...idle, velocityX: 2 });
+    assert.notDeepEqual(snapshot(), legacy, 'missing gait history still samples the native cycle');
+    sampler.sample(0.1, 2, 0, undefined, { ...idle, velocityX: 2 });
+    assert.deepEqual(snapshot(), legacy);
     draw(123, 0);
     assert.deepEqual(snapshot(), level, 'gait uses observed distance');
     draw(100, 0, { death: { variant: 42, age: 2 } });
@@ -226,6 +243,26 @@ test('draw, reload and fire use newest evidence, while a death anchor survives a
   assert.equal(deadAgentsAt(playback, events, 20, rounds[0]).length, 0);
   const agentDeaths = replayAgentDeaths(playback);
   assert.ok(validAgentDeaths(agentDeaths));
+  const burst = indexAgentEvents({
+    ...playback,
+    events: [18, 20, 20, 22].map((tick) => ({
+      type: 'weapon_fire',
+      tick,
+      user_steamid: player.id,
+      weapon: 'ak47',
+    })),
+  });
+  const burstAt = (start: number, reloadStarted?: number) =>
+    agentActionAt(burst, draws, { ...player, reloadStarted }, 20, 64, start, true, true);
+  assert.deepEqual(burstAt(0), {
+    kind: 'fire',
+    age: 0,
+    priorFireAge: 2 / 64,
+    nextFireInterval: 2 / 64,
+  });
+  assert.equal(burstAt(19)?.priorFireAge, undefined);
+  assert.equal(burstAt(0, 19)?.priorFireAge, undefined);
+
   const folder = await mkdtemp(join(tmpdir(), 'agent-death-replay-'));
   try {
     await writeReplay(folder, playback);
@@ -297,7 +334,11 @@ test('authored stride integrates across direction and crouch changes, holds acro
   } finally {
     await rm(folder, { recursive: true, force: true });
   }
-  const calibration = agentStrideProfile(fixture().validated);
+  const clips = fixture().validated;
+  const calibration = agentStrideProfile(clips);
+  assert.equal(calibration.referenceStride, clips.get('rifle-walk-n')!.metadata.strideMeters);
+  assert.equal(agentPhaseAt(history, 'missing', 64, calibration), undefined);
+  assert.equal(agentCenteredMotionAt(history, 'missing', 64), undefined);
   const sample = () =>
     integrateGait(history.players[0][1], 64, calibration.strideAt, history.version);
   const continuously = sample(),

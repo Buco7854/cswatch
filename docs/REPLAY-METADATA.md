@@ -23,7 +23,7 @@ The version 3 manifest carries recorded metadata and coverage. Frames and their 
 | Chunk voice, sounds and item samples              | Always arrays. Lack of evidence or optional sound budget exhaustion produces an empty array.                        |
 | Inline captions                                   | Practice sample only. Uploaded replay captions use the separate, authorized caption artifact.                       |
 
-The per-chunk stride anchor is still used by first-person weapon motion through `indexRecordedTravel` and `RenderEquipment`. Its horizontal centimeter totals cover accepted travel including slow movement. Gait history supplies directional agent clip phase, filters near-idle intervals and may be omitted under its independent limits. The two fields serve different consumers.
+Gait history supplies each player’s directional clip phase from movement above the near-idle threshold. If the replay lacks that player’s gait history, the third-person renderer uses cumulative distance from the chunk stride anchor divided by an authored reference stride. With neither optional field, it samples the native cycle at demo time while the player is observed moving. The stride anchor also drives first-person weapon motion. Its horizontal centimeter totals include accepted slow movement.
 
 ## Recorded aim
 

@@ -14,10 +14,10 @@ import equipment from '../../shared/equipment-models.json' with { type: 'json' }
 import { canonicalEquipmentKey } from './equipment-key';
 import contract from '../../shared/agent-animation.json' with { type: 'json' };
 import { agentWeaponClass } from '../../shared/agent-gait-history.mjs';
+import type { AgentActionSample } from './agent-replay';
 import { shortestAngle } from './player-pose';
 export { agentWeaponClass } from '../../shared/agent-gait-history.mjs';
 import type {
-  AgentAction,
   AgentDeath,
   AgentDirection,
   AgentGait,
@@ -37,7 +37,7 @@ export type DirectionalSample = {
   velocityY: number;
   coherence?: number;
   weapon: string;
-  action?: { kind: AgentAction; age: number; released?: boolean; previousWeapon?: string };
+  action?: AgentActionSample;
   defusing?: boolean;
   death?: { variant: number; age: number };
 };
@@ -164,13 +164,21 @@ export function directionalGait(
     add(`${weapon}-${gait}-${directions[sector]}`, weight * (1 - towardNext));
     add(`${weapon}-${gait}-${directions[next]}`, weight * towardNext);
   }
-  return { weapon, stride, phase: cycle(integratedPhase ?? 0), samples };
+  return {
+    weapon,
+    stride,
+    phase: integratedPhase === undefined ? undefined : cycle(integratedPhase),
+    samples,
+  };
 }
 
 export function agentStrideProfile(clips: ClipSet) {
   const profile = profileFor(clips);
   return {
     key: JSON.stringify([...profile]),
+    // A single authored stride keeps legacy cumulative distance continuous
+    // when the observed player changes weapon, direction, or stance.
+    referenceStride: clips.get('rifle-walk-n')!.metadata.strideMeters!,
     strideAt: (weapon: AgentWeaponClass, speed: number, duck: number, bearing: number) =>
       gaitChoice(profile, weapon, speed, duck, bearing).stride,
   };
@@ -354,7 +362,7 @@ export function createDirectionalAgent(root: Object3D, clips: ClipSet) {
       const phase =
         metadata.phaseOffset === undefined
           ? cycle(seconds / clip.duration)
-          : cycle(gait.phase + metadata.phaseOffset);
+          : cycle((gait.phase ?? seconds / clip.duration) + metadata.phaseOffset);
       accumulate(role, phase * clip.duration, weight * blend);
     }
   }
@@ -413,9 +421,17 @@ export function createDirectionalAgent(root: Object3D, clips: ClipSet) {
           const role = `${variant ?? base.weapon}-${kind}` as DirectionalAgentRole;
           const duration = clips.get(role)?.clip.duration || 0;
           if (age >= 0 && age < duration) {
-            const envelope =
-              smooth(age / Math.min(0.06, duration / 4)) *
-              smooth((duration - age) / Math.min(0.12, duration / 4));
+            // Complete the entry by the next recorded shot even in a tight burst.
+            const entry = Math.min(0.06, duration / 4, input.action.nextFireInterval ?? Infinity);
+            const tail = Math.min(0.12, duration / 4);
+            const incoming = smooth(age / entry);
+            const envelope = incoming * smooth((duration - age) / tail);
+            const prior = input.action.priorFireAge;
+            if (kind === 'fire' && incoming < 1 && prior !== undefined && prior < duration) {
+              // The new shot blends from the outgoing authored pose. Both
+              // samples use the same replay instant even after a backward seek.
+              overlay(role, prior, smooth((duration - prior) / tail));
+            }
             const throwing = kind === 'throw' || kind === 'throw-underhand';
             const running = throwing ? smooth((speed - 2.5) / 2) : 0;
             const release = kind === 'throw-underhand' ? 13 / 30 : 0.5;
