@@ -5,6 +5,7 @@ import type { GLTF } from 'three-stdlib';
 import { ModelCache } from './model-cache';
 import { mapModelResources } from './map-model-resources';
 import { loadScopedGLTF } from './scoped-gltf-loader';
+import { retainEquipmentRestGeometry } from './equipment-rest-skin';
 
 const MiB = 1024 * 1024;
 const mobile = () =>
@@ -42,7 +43,21 @@ function equipmentLoader(
     inspect: mapModelResources,
     clear: (url) => useLoader.clear(EquipmentGLTFLoader, url),
     load: (url, callbacks) =>
-      loadScopedGLTF(url, callbacks, transferMiB * MiB, true, undefined, textureEdge?.(url)),
+      loadScopedGLTF(
+        url,
+        {
+          ...callbacks,
+          loaded(gltf) {
+            if (url.startsWith('/api/assets/equipment-models/') && !gltf.animations.length)
+              retainEquipmentRestGeometry(gltf.scene);
+            callbacks.loaded(gltf);
+          },
+        },
+        transferMiB * MiB,
+        true,
+        undefined,
+        textureEdge?.(url),
+      ),
   });
   return { Loader: EquipmentGLTFLoader, cache };
 }
