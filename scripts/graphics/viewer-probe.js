@@ -6,6 +6,64 @@
   devtools.addEventListener('observe', ({ detail }) => {
     if (detail.isScene) scenes.add(detail);
   });
+  // Count composites which actually submitted a screen pass. A bare rAF counter
+  // also advances while a demand-rendered world is idle. Keep this hook in QA.
+  window.measureViewerPlayback = async (button, seconds) => {
+    const element = document.querySelector('.scene'),
+      canvas = element?.querySelector('canvas');
+    const slider = document.querySelector('.timeline-slider');
+    for (const scene of scenes) {
+      const state = scene.__r3f?.root.getState();
+      if (!state || state.scene !== scene || state.previousRoot || state.gl.domElement !== canvas)
+        continue;
+      const renderer = state.gl,
+        original = renderer.render;
+      const times = [];
+      let stamp;
+      renderer.render = function (...args) {
+        const result = original.apply(this, args);
+        if (!this.getRenderTarget()) {
+          // Several screen passes can contribute to one browser animation frame.
+          const frame = document.timeline.currentTime;
+          if (frame !== stamp) {
+            stamp = frame;
+            times.push(performance.now());
+          } else times[times.length - 1] = performance.now();
+        }
+        return result;
+      };
+      const startTick = Number(slider.value),
+        started = performance.now();
+      try {
+        button.click();
+        await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+      } finally {
+        renderer.render = original;
+      }
+      const elapsedMs = performance.now() - started,
+        endTick = Number(slider.value);
+      const intervals = times
+        .slice(1)
+        .map((end, i) => end - times[i])
+        .sort((a, b) => a - b);
+      const percentile = (p) =>
+        intervals.length ? intervals[Math.ceil(p * intervals.length) - 1] : null;
+      return {
+        cameraMode: element.dataset.cameraMode,
+        startTick,
+        endTick,
+        elapsedMs,
+        submittedFrames: times.length,
+        firstFrameMs: times.length ? times[0] - started : null,
+        lastFrameMs: times.length ? times.at(-1) - started : null,
+        p50Ms: percentile(0.5),
+        p95Ms: percentile(0.95),
+        maxMs: intervals.at(-1) ?? null,
+        measurement: 'wall-clock intervals between screen submissions during playback',
+      };
+    }
+    throw Error('Production renderer unavailable for playback timing');
+  };
   window.captureViewerCanvas = async () => {
     const element = document.querySelector('.scene');
     const canvas = element?.querySelector('canvas');
