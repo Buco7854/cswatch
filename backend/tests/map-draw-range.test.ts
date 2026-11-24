@@ -75,3 +75,52 @@ test('map batches retain crossing triangles and restore shared geometry for othe
     scene.remove(mesh, second);
   }
 });
+
+test('main and sky keep ordered ranges on either side of an off-camera region, and preserve the shadow pass', () => {
+  const world = new Scene();
+  const sky = new Scene();
+  const camera = new PerspectiveCamera(90, 1, 0.1, 20);
+  camera.updateMatrixWorld();
+  const coordinates: number[] = [];
+  // Two small visible islands separated by 16 blocks on the other side of the map.
+  for (let b = 0; b < 18; b++) {
+    const x = b === 0 || b === 17 ? 0 : 100;
+    for (let i = 0; i < 64; i++) coordinates.push(x - 0.1, 0, -2, x + 0.1, 0, -2, x, 1, -2);
+  }
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new Float32BufferAttribute(coordinates, 3));
+  const material = new MeshBasicMaterial();
+  const mesh = new Mesh(geometry, material);
+  const landscape = new Mesh(geometry, material);
+  world.add(mesh);
+  sky.add(landscape);
+  const calls: number[][] = [];
+  let interrupt = false;
+  const renderer = {
+    renderBufferDirect() {
+      calls.push([geometry.drawRange.start, geometry.drawRange.count]);
+      if (interrupt && geometry.drawRange.start) throw new Error('interrupted final range');
+    },
+    info: { render: { frame: 1 } },
+  } as unknown as WebGLRenderer;
+  const release = installMapDrawRanges(renderer, world, world, sky);
+  const render = (scene: Scene | null, object: Mesh) =>
+    renderer.renderBufferDirect(camera, scene, geometry, material, object, null);
+  try {
+    render(world, mesh);
+    render(sky, landscape);
+    render(null, mesh);
+    assert.deepEqual(calls, [
+      [0, 192],
+      [17 * 192, 192],
+      [0, 192],
+      [17 * 192, 192],
+      [0, Infinity],
+    ]);
+    interrupt = true;
+    assert.throws(() => render(sky, landscape), /interrupted final range/);
+    assert.deepEqual(geometry.drawRange, { start: 0, count: Infinity });
+  } finally {
+    release();
+  }
+});
