@@ -1,5 +1,7 @@
 # Current handoff
 
+Map preparer revision 5 emits a private, hash-bound graphics audit for each detailed tier. Keep camera planning before material filtering so absent and unsupported draws remain measurable. Both the planner and the filter use the same set of source-verified water materials. The offline checks can measure a static feature or capture a composited production POV at a recorded tick. Keep map revision, actor, camera and renderer evidence with results. World-equipment interpolation now respects the parser’s four-tick sampling interval, including across chunk boundaries. [Graphics QA](MAP-ASSETS.md#graphics-coverage-for-the-official-map-inventory) · [Verification](VERIFICATION.md#map-graphics-and-recorded-equipment)
+
 The map loader shares a fragment texture read when a glTF material binds the same texture for roughness and metalness. Occlusion shares that read only when it also uses that exact texture. Keep this hook after the native lighting and glass material setup. [Renderer checks](VERIFICATION.md#packed-world-materials)
 
 Use the late-catalog Mirage windows when changing gameplay sound scheduling. Both sides have an approved classic announcer WAV. The viewer schedules it at the recorded winner tick even when catalog discovery finishes during lookahead. [Browser evidence](VERIFICATION.md#recorded-round-announcements)

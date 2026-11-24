@@ -76,6 +76,8 @@ Each map in the observed manifest has a row, including unrequested, queued and f
 
 To check a tier on a QA workstation, mount the pack read-only and run the [offline capture procedure](../scripts/graphics/README.md). Give the capture tool a new private output directory. To join these results on a host where the same files are mounted, pass `--captures DIR` to the inventory command and put each report under `DIR/<packId>/<tier>/capture.json`. The join checks the exact tier, model, audit and ordered camera list. Counts distinguish materials shown on screen, missing views, prior viewer baselines and supplied external references. Comparisons use the supplied camera, source revision and projection. A reproducible baseline measures change within cswatch. Comparison to CS2 or csdemo.tv requires a corresponding independently captured frame.
 
+To compare what a player sees during a recorded match, [capture a production POV](../scripts/graphics/README.md#capture-a-recorded-production-pov) at the same tick and player. With worker-managed maps, supply the mounted jobs directory and configured catalog. The tool stages the selected pack metadata privately and revalidates the live generation before writing the frame. Add `--play-seconds 12` to measure moving playback from the same pose.
+
 To capture every prepared detailed tier in one observed inventory, run this loop from the checkout on the QA host. Set `MAP_ASSETS_DIR` to the mounted asset root and `CAPTURE_ROOT` to a new private directory. The loop visits the manifest and historical approvals, sequentially. Preparation stays under the normal acquisition policy.
 
 ```sh
