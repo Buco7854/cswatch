@@ -17,12 +17,15 @@ import { reserve } from '../backend/dist/ingestion.js';
 import { processOne } from '../backend/dist/worker.js';
 import { tsImport } from '../backend/node_modules/tsx/dist/esm/api/index.mjs';
 import { boundedFile, decodeOpaqueFrame, digest } from './graphics/capture-report.mjs';
+import { readManagedPack, snapshotManagedPack } from './graphics/managed-pack.mjs';
 import { compareReplayFrame } from './graphics/replay-reference.mjs';
 
 const options = Object.fromEntries(
   [
     'demo',
     'assets',
+    'jobs',
+    'catalog',
     'out',
     'player',
     'tick',
@@ -41,7 +44,7 @@ const { values: o } = parseArgs({
 });
 if (o.help) {
   console.log(
-    'node scripts/capture-viewer.mjs --demo FILE.dem --assets MAP_ASSETS_DIR --player STEAM_ID --tick N --out NEW_DIR [--quality low|high --width W --height H --fov V --port PORT --software --reference FILE --max-mae N --play-seconds N]',
+    'node scripts/capture-viewer.mjs --demo FILE.dem --assets MAP_ASSETS_DIR --player STEAM_ID --tick N --out NEW_DIR [--jobs MAP_JOBS_DIR --catalog MAP_CATALOG_FILE --quality low|high --width W --height H --fov V --port PORT --software --reference FILE --max-mae N --play-seconds N]',
   );
   process.exit(0);
 }
@@ -105,6 +108,16 @@ assert(
   parent !== assets && !parent.startsWith(assets + '/'),
   'Use a private output directory outside map assets',
 );
+assert(!o.catalog || o.jobs, '--catalog requires --jobs');
+const jobs = o.jobs && resolve(o.jobs);
+const catalogFile = o.catalog && resolve(o.catalog);
+if (jobs) {
+  assert.equal(await realpath(jobs), jobs, 'Expected a real operator jobs directory');
+  assert(
+    parent !== jobs && !parent.startsWith(jobs + '/'),
+    'Output must be outside the operator queue',
+  );
+}
 const scratch = await mkdtemp(join(tmpdir(), 'cswatch-viewer-frame-'));
 let app,
   db,
@@ -175,6 +188,15 @@ try {
     gunzipSync(await boundedFile(path, max + 65536), { maxOutputLength: max });
   const manifestBytes = await readReplay(join(folder, 'manifest.json.gz'), 16 * 1024 ** 2),
     manifest = JSON.parse(manifestBytes);
+  const managedInput = jobs && {
+    jobs,
+    catalogFile,
+    assets,
+    map: manifest.map,
+    identity: JSON.parse(db.one('SELECT metadata FROM demos WHERE id=?', id).metadata).mapIdentity,
+  };
+  const managed = jobs && (await readManagedPack(managedInput));
+  if (managed) await snapshotManagedPack(managed, jobs, c);
   const info = manifest.chunks.findLast(
     (chunk) => chunk.startTick <= tick && chunk.endTick >= tick,
   );
@@ -384,6 +406,14 @@ try {
   assert(modelSha256, 'Missing delivered map fingerprint');
   const pack = discovery.packId;
   assert(!pack || /^[0-9a-f]{64}$/.test(pack));
+  const mapSource = pack
+    ? (discovery.resolution?.source ?? discovery.resolution?.approval?.source ?? null)
+    : null;
+  if (managed) {
+    assert.equal(pack, managed.marker.packId, 'Discovery selected a different pack');
+    assert.equal(discovery.verification, managed.verification);
+    assert.deepEqual(mapSource, managed.source, 'Discovery selected a different source');
+  }
   assert(/^[A-Za-z0-9_-]{1,80}$/.test(manifest.map));
   const tierRoot = pack ? join(assets, 'packs', pack, 'maps') : assets;
   const tierManifest = JSON.parse(
@@ -425,6 +455,8 @@ try {
     sourceSha256: tierManifest.sourceSha256,
     assetVersion: tierManifest.assetVersion,
     mapVerification: discovery.verification,
+    mapSource,
+    packId: pack ?? null,
     cameraMode: 'pov',
     settings: committed.settings,
     ...observed,
@@ -468,6 +500,12 @@ try {
       requestedSeconds: playSeconds,
       status: advanced ? 'measured' : 'insufficient-data',
     };
+  }
+  if (managed) {
+    const current = await readManagedPack(managedInput);
+    assert.deepEqual(current.marker, managed.marker, 'Installed pack changed during capture');
+    assert.deepEqual(current.request, managed.request, 'Map request changed during capture');
+    assert.deepEqual(current.result, managed.result, 'Map result changed during capture');
   }
   await writeFile(join(out, 'frame.png'), image, { flag: 'wx', mode: 0o600 });
   await writeFile(join(out, 'frame.json'), JSON.stringify(report, null, 2) + '\n', {
