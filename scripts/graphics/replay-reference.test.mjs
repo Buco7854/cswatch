@@ -83,6 +83,15 @@ test('recorded POV comparisons require a bound frame and a declared HUD-free, pr
     assert.equal(r.status, 'unverified');
     assert.equal(r.metrics, null);
   }
+  const mapSource = { appId: 730, depotId: 2347770, manifest: '123', mapSha256: 'f'.repeat(64) };
+  await writeFile(referencePath, JSON.stringify(external));
+  const missingSource = await compareReplayFrame({ ...frame, mapSource }, image, referencePath);
+  assert.deepEqual(missingSource.reasons, ['mapSource']);
+  await writeFile(referencePath, JSON.stringify({ ...external, mapSource }));
+  assert.equal(
+    (await compareReplayFrame({ ...frame, mapSource }, image, referencePath)).status,
+    'matched-external',
+  );
   const translucent = await sharp({
     create: { width: 16, height: 12, channels: 4, background: { r: 1, g: 2, b: 3, alpha: 0.5 } },
   })

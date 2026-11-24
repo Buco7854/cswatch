@@ -24,6 +24,7 @@ export async function compareReplayFrame(frame, bytes, referencePath) {
     'colorSpace',
   ])
     if (!equal(frame[key], ref[key])) reasons.push(key);
+  if (frame.mapSource && !equal(ref.mapSource, frame.mapSource)) reasons.push('mapSource');
   // Fixed tolerances permit decimal serialization of independent camera transforms.
   for (const [key, epsilon] of [
     ['worldMatrix', 1e-5],
@@ -59,6 +60,8 @@ export async function compareReplayFrame(frame, bytes, referencePath) {
   } else {
     for (const key of [
       'modelSha256',
+      'packId',
+      'mapVerification',
       'theme',
       'imageSource',
       'chunkSha256',
