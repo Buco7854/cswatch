@@ -435,7 +435,7 @@ export async function createApp(
   await registerFactorRoutes(app, db, c, key);
   await recoveryRoutes(app, db, c);
   accountMailRoutes(app, db, c, mail);
-  await setupRoutes(app, db, c, mail);
+  await setupRoutes(app, db, c);
   await guestRoutes(app, db, c);
   prepareSteamImports(db);
   const coordinator =

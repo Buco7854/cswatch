@@ -453,10 +453,11 @@ for (const secure of [false, true])
       );
       assert.deepEqual(results.map((r) => r.statusCode).sort(), [201, 409]);
       assert.equal(f.db.one("SELECT count(*) AS n FROM users WHERE role='admin'")!.n, 1);
-      assert.match(
-        f.db.one("SELECT email FROM users WHERE role='admin'")!.email,
-        /^admin_(one|two)@example\.test$/,
-      );
+      const admin = f.db.one(
+        "SELECT email,email_verified_at,created_at FROM users WHERE role='admin'",
+      )!;
+      assert.match(admin.email, /^admin_(one|two)@example\.test$/);
+      assert.equal(admin.email_verified_at, admin.created_at);
       const success = results.find((r) => r.statusCode === 201)!;
       const cookie = success.cookies.find((cookie) => cookie.name === sessionCookieName(f.config))!;
       assert.equal(success.json().session.stage, 'enroll');
@@ -505,13 +506,19 @@ test('environment admin is provisioned once, never resets an existing administra
     );
     assert.equal(existsSync(join(f.dir, 'setup-token')), false);
     const row = f.db.one("SELECT * FROM users WHERE role='admin'")!;
+    assert.equal(row.email, null);
+    assert.equal(row.email_verified_at, null);
     assert.equal(await verifyPassword(row.password_hash, 'synthetic-operator-password'), true);
     const { provisionAdmin } = await import('../src/setup.js');
-    await provisionAdmin(f.db, { ...f.config, adminPassword: 'a-different-valid-password' });
-    assert.equal(
-      f.db.one('SELECT password_hash FROM users WHERE id=?', row.id)!.password_hash,
-      row.password_hash,
-    );
+    await provisionAdmin(f.db, {
+      ...f.config,
+      adminPassword: 'a-different-valid-password',
+      adminEmail: 'later@example.test',
+    });
+    const afterRestart = f.db.one('SELECT * FROM users WHERE id=?', row.id)!;
+    assert.equal(afterRestart.password_hash, row.password_hash);
+    assert.equal(afterRestart.email, null);
+    assert.equal(afterRestart.email_verified_at, null);
     const cfg = (await f.app.inject({ url: '/api/config', headers: { host } })).body;
     assert.ok(!cfg.includes('synthetic-operator-password'));
     assert.ok(!cfg.includes('adminPassword'));
