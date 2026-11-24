@@ -34,34 +34,36 @@ export async function boundedFile(path, max) {
   }
 }
 
+export async function decodeOpaqueFrame(bytes, width, height) {
+  assert(
+    bytes.length >= 33 &&
+      bytes.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex')) &&
+      bytes.readUInt32BE(16) === width &&
+      bytes.readUInt32BE(20) === height,
+    'Reference PNG dimensions/format mismatch',
+  );
+  const raw = await sharp(bytes, { limitInputPixels: width * height, failOn: 'warning' })
+    .toColourspace('srgb')
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  assert(
+    raw.info.channels === 4 && raw.info.width === width && raw.info.height === height,
+    'Invalid PNG',
+  );
+  for (let i = 3; i < raw.data.length; i += 4)
+    assert(raw.data[i] === 255, 'Expected opaque HUD-free frame');
+  return raw.data;
+}
+
 export async function rgbMetrics(a, b, width, height) {
-  async function decode(bytes) {
-    assert(
-      bytes.length >= 33 &&
-        bytes.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex')) &&
-        bytes.readUInt32BE(16) === width &&
-        bytes.readUInt32BE(20) === height,
-      'Reference PNG dimensions/format mismatch',
-    );
-    const raw = await sharp(bytes, { limitInputPixels: width * height, failOn: 'warning' })
-      .toColourspace('srgb')
-      .ensureAlpha()
-      .raw()
-      .toBuffer({ resolveWithObject: true });
-    assert(
-      raw.info.channels === 4 && raw.info.width === width && raw.info.height === height,
-      'Invalid PNG',
-    );
-    return raw.data;
-  }
-  const first = await decode(a),
-    second = await decode(b);
+  const first = await decodeOpaqueFrame(a, width, height),
+    second = await decodeOpaqueFrame(b, width, height);
   let abs = 0,
     square = 0,
     maxError = 0,
     changedPixels = 0;
   for (let i = 0; i < first.length; i += 4) {
-    assert(first[i + 3] === 255 && second[i + 3] === 255, 'Expected opaque HUD-free frame');
     let localMax = 0;
     for (let c = i; c < i + 3; c++) {
       const d = Math.abs(first[c] - second[c]);
@@ -130,6 +132,27 @@ export async function compareView(report, view, image, reference, file) {
     if (!sha(reference.auditSha256) || reference.auditBinding !== 'tier-manifest')
       reasons.push('baseline-audit');
   }
+  return compareReferenceImage({
+    image,
+    ref,
+    file,
+    width: report.projection.width,
+    height: report.projection.height,
+    external,
+    reasons,
+  });
+}
+
+export async function compareReferenceImage({
+  image,
+  ref,
+  file,
+  width,
+  height,
+  external,
+  reasons,
+}) {
+  const empty = (status, reasons) => ({ status, reasons, metrics: null });
   if (
     !sha(ref.sha256) ||
     typeof ref.png !== 'string' ||
@@ -144,15 +167,11 @@ export async function compareView(report, view, image, reference, file) {
     return empty('unverified', ['unreadable-reference-png']);
   }
   if (digest(bytes) !== ref.sha256) return empty('unverified', ['image-digest']);
-  if (
-    bytes.length < 24 ||
-    bytes.readUInt32BE(16) !== report.projection.width ||
-    bytes.readUInt32BE(20) !== report.projection.height
-  )
+  if (bytes.length < 24 || bytes.readUInt32BE(16) !== width || bytes.readUInt32BE(20) !== height)
     return empty('unverified', ['image-dimensions']);
   let metrics;
   try {
-    metrics = await rgbMetrics(image, bytes, report.projection.width, report.projection.height);
+    metrics = await rgbMetrics(image, bytes, width, height);
   } catch {
     return empty('unverified', ['invalid-reference-png']);
   }
