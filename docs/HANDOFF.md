@@ -1,5 +1,7 @@
 # Current handoff
 
+For a moving or damaged door, compare the recorded model and closed pivot with one prepared map entity. Check the chosen mesh, yaw, camera collision and shadow invalidation on forward play, direct seek and rewind. The capture report identifies absent or ambiguous matches. Nuke supplies three observed damage stages and a deletion, and Cache supplies a 90-degree swing. [Verified sequences](VERIFICATION.md#recorded-doors-and-progressive-damage)
+
 For a blurry replay, capture the world render target, composited display pixels and moving frame times at the device’s actual pixel ratio. For a missing destruction, use a freshly parsed recording and a revision 8 map, and compare the tick before deletion, the deletion tick, rewind and round reset. An existing replay needs a new import to collect the network tracks; preserve the original demo and its notes. [Display and breakable checks](VERIFICATION.md#display-resolution-and-recorded-map-breakables)
 
 Use the matched camera regressions when changing rendering. Prepare a fresh revision 8 map to check native material switches or painted albedos. For first-person framing, compare the isolated hand silhouette at the same tick and preserve the clearance of the static prop fallback. For smoke, compare the recorded voxel field, scene depth and GPU completion. [Corrections and limits](VERIFICATION.md#rendering-corrections-against-matched-external-scenes)

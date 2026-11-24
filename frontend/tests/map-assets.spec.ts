@@ -206,6 +206,12 @@ test.describe('dense displays', () => {
     await chooseSelectOption(page, 'Rendering quality', 'High · shadows, higher resolution');
     await expect(page.locator('.scene')).toHaveAttribute('data-map-tier', 'desktop');
     await expect.poll(buffer).toEqual([1170, 1200]);
+    await page.setViewportSize({ width: 1280, height: 720 });
+    // Wide and narrow layouts have independent saved quality preferences.
+    await expect(page.getByRole('combobox', { name: 'Rendering quality' })).toContainText('Auto');
+    await chooseSelectOption(page, 'Rendering quality', 'High · shadows, higher resolution');
+    const highDpr = Math.sqrt((4 * 1024 ** 2) / (1280 * 720));
+    await expect.poll(buffer).toEqual([Math.floor(1280 * highDpr), Math.floor(720 * highDpr)]);
   });
   test('pausing restores detail after slow playback, and resuming retains the learned resolution', async ({
     page,
@@ -1721,42 +1727,56 @@ test('paused viewer stops native rendering and camera, held keys, POV seeks and 
   await idle();
 });
 
-test('a recorded world prop opens absent, returns at the round reset and restores on a backward seek', async ({
-  page,
-}) => {
-  const pose = {
-    modelId: '7001',
-    origin: [3, 5, 7] as [number, number, number],
-    angles: [0, 90, 0] as [number, number, number],
-  };
-  const replay = originalMapReplay();
-  replay.mapBreakables = [{ ...pose, hidden: [[192, 384]] }];
-  replay.rounds.push({ number: 2, tick: 384 });
-  const mesh = originalMapGLB(false, undefined, undefined, undefined, false, {
-    cswatchBreakable: {
-      ...pose,
-      hammerId: '44',
-      className: 'prop_dynamic',
-      model: 'models/original.vmdl',
-    },
-  });
-  await installMapBreakableProbe(page);
-  const { id } = await install(
+for (const kind of ['prop_dynamic', 'func_breakable'] as const) {
+  test(`a recorded ${kind} opens absent, returns at the round reset and restores on rewind`, async ({
     page,
-    { model: `/map-assets/${qaMap}/desktop/scene.glb`, mobile: null, overview: qaOverview },
-    { playback: replay, model: (r) => r.fulfill({ contentType: 'model/gltf-binary', body: mesh }) },
-  );
-  await page.goto('/watch/' + id + '?tick=256');
-  await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
-  await expect.poll(() => renderedMapBreakables(page)).toEqual({ '44': false });
-  for (const [tick, visible] of [
-    [384, true],
-    [191, true],
-    [192, false],
-    [383, false],
-    [384, true],
-  ] as const) {
-    await page.locator('.timeline-slider').fill(String(tick));
-    await expect.poll(() => renderedMapBreakables(page)).toEqual({ '44': visible });
-  }
-});
+  }) => {
+    const pose = {
+      modelId: '7001',
+      origin: [3.28125, 5, 7] as [number, number, number],
+      angles: [0, 90, 0] as [number, number, number],
+    };
+    const replay = originalMapReplay();
+    replay.mapBreakables = [
+      {
+        ...pose,
+        ...(kind === 'func_breakable'
+          ? { className: kind }
+          : { poseCodec: 'cell32-angle20' as const }),
+        hidden: [[192, 384]],
+      },
+    ];
+    replay.rounds.push({ number: 2, tick: 384 });
+    const mesh = originalMapGLB(false, undefined, undefined, undefined, false, {
+      cswatchBreakable: {
+        ...pose,
+        hammerId: '44',
+        className: kind,
+        ...(kind === 'prop_dynamic' && { origin: [3.279175, 5, 7] }),
+        model: 'models/original.vmdl',
+      },
+    });
+    await installMapBreakableProbe(page);
+    const { id } = await install(
+      page,
+      { model: `/map-assets/${qaMap}/desktop/scene.glb`, mobile: null, overview: qaOverview },
+      {
+        playback: replay,
+        model: (r) => r.fulfill({ contentType: 'model/gltf-binary', body: mesh }),
+      },
+    );
+    await page.goto('/watch/' + id + '?tick=256');
+    await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
+    await expect.poll(() => renderedMapBreakables(page)).toEqual({ '44': false });
+    for (const [tick, visible] of [
+      [384, true],
+      [191, true],
+      [192, false],
+      [383, false],
+      [384, true],
+    ] as const) {
+      await page.locator('.timeline-slider').fill(String(tick));
+      await expect.poll(() => renderedMapBreakables(page)).toEqual({ '44': visible });
+    }
+  });
+}

@@ -1,3 +1,4 @@
+import { preparePlacedDoor, useRigidMapMesh } from './prepare-rigid-door.mjs';
 import { basename } from 'node:path';
 import { breakableKey, breakableLimits } from '../../shared/map-breakables.mjs';
 import { entityDumpRows } from './environment-metadata.mjs';
@@ -54,11 +55,11 @@ export function modelResourceId(path) {
   return ((BigInt(high >>> 0) << 32n) | BigInt(low >>> 0)).toString();
 }
 
-export function preparedBreakable(value) {
+export function preparedMapEntity(value, className) {
   if (
     !value ||
     typeof value !== 'object' ||
-    value.className !== 'prop_dynamic' ||
+    value.className !== className ||
     typeof value.hammerId !== 'string' ||
     !hammerId.test(value.hammerId) ||
     typeof value.model !== 'string' ||
@@ -128,12 +129,29 @@ function placedMeshMatrix(node, stem) {
 
 /** Bind an unparented, independently identifiable Source entity to its intact pre-batch mesh.
  * Duplicate source placements, ambiguous node parts and unrecognized/absent models remain static. */
-export function tagBreakableGeometry(document, dumps) {
+export function tagBreakableGeometry(document, dumps, sourceClassCounts) {
   const rows = entityDumpRows(dumps, fields);
   const usedIds = new Map();
   const placements = new Map();
   let eligible = 0;
   for (const row of rows) {
+    const kind = row.classname;
+    const hasBreakSignal =
+      row['@OnBreak'] || (Number.isFinite(Number(row.health)) && Number(row.health) > 0);
+    if (
+      sourceClassCounts &&
+      typeof kind === 'string' &&
+      /^[a-z][a-z0-9_]{0,63}$/.test(kind) &&
+      (/(?:^|_)(?:door|breakable|breakablesurf)(?:_|$)/.test(kind) ||
+        kind === 'func_movelinear' ||
+        kind === 'func_rotating' ||
+        row['@OnBreak'] ||
+        (kind.startsWith('prop_') && hasBreakSignal))
+    ) {
+      // Count authored objects before placement filtering, including unsupported classes.
+      const key = sourceClassCounts.has(kind) || sourceClassCounts.size < 64 ? kind : '(other)';
+      sourceClassCounts.set(key, (sourceClassCounts.get(key) ?? 0) + 1);
+    }
     if (typeof row.hammeruniqueid === 'string')
       usedIds.set(row.hammeruniqueid, (usedIds.get(row.hammeruniqueid) ?? 0) + 1);
     if (
@@ -147,14 +165,14 @@ export function tagBreakableGeometry(document, dumps) {
     const scales = row.scales ?? new Array(3).fill(row.scale ?? 1);
     if (!vec3(scales, 1024) || scales.some((s) => s === 0)) continue;
     const allowed =
-      row.classname === 'prop_dynamic' &&
+      ['prop_dynamic', 'prop_door_rotating', 'func_breakable'].includes(row.classname) &&
       !row.parentname &&
       !yes(row.uselocaloffset) &&
       !yes(row.startdisabled) &&
       !yes(row.clientsideentity) &&
       typeof row.hammeruniqueid === 'string' &&
       hammerId.test(row.hammeruniqueid) &&
-      (row['@OnBreak'] || (Number.isFinite(Number(row.health)) && Number(row.health) > 0));
+      (row.classname === 'prop_door_rotating' || hasBreakSignal);
     const stem = basename(row.model, '.vmdl');
     if (!placements.has(stem)) placements.set(stem, []);
     placements
@@ -174,7 +192,9 @@ export function tagBreakableGeometry(document, dumps) {
       !mesh ||
       node.getExtension('EXT_mesh_gpu_instancing') ||
       node.listChildren().length ||
-      node.getExtras().cswatchBreakable
+      node.getExtras().cswatchBreakable ||
+      node.getExtras().cswatchDoor ||
+      node.getExtras().cswatchDoorStage
     )
       continue;
     const name = node.getName(),
@@ -188,24 +208,36 @@ export function tagBreakableGeometry(document, dumps) {
         (v, i) => Math.abs(matrix[i] - v) <= (i >= 12 && i <= 14 ? 0.0005 : 0.0001),
       ),
     );
-    if (matches.length === 1 && matches[0].allowed) matches[0].nodes.push(node);
+    if (matches.length === 1 && matches[0].allowed) matches[0].nodes.push({ node, matrix });
   }
   let tagged = 0;
+  const cachedMeshes = new Map();
+  const animated = new Set(
+    document
+      .getRoot()
+      .listAnimations()
+      .flatMap((a) => a.listChannels().map((c) => c.getTargetNode())),
+  );
   for (const places of candidates.values())
     for (const { row, nodes } of places) {
       if (nodes.length !== 1 || usedIds.get(row.hammeruniqueid) !== 1) continue;
-      const [node] = nodes;
-      node.setExtras({
-        ...node.getExtras(),
-        cswatchBreakable: {
-          hammerId: row.hammeruniqueid,
-          className: row.classname,
-          model: row.model,
-          modelId: modelResourceId(row.model),
-          origin: row.origin,
-          angles: row.angles,
-        },
-      });
+      const [{ node, matrix }] = nodes;
+      const tag = {
+        hammerId: row.hammeruniqueid,
+        className: row.classname,
+        model: row.model,
+        modelId: modelResourceId(row.model),
+        origin: row.origin,
+        angles: row.angles,
+      };
+      if (row.classname === 'prop_door_rotating') {
+        if (!preparePlacedDoor(document, node, tag, matrix, animated, cachedMeshes)) continue;
+      } else {
+        // Single-bone rigid props can also survive the Compact static-geometry pass.
+        // Articulated breakables keep their complete authored skinned representation.
+        if (node.getSkin()) useRigidMapMesh(document, node, matrix, animated, cachedMeshes);
+        node.setExtras({ ...node.getExtras(), cswatchBreakable: tag });
+      }
       tagged++;
     }
   return tagged;

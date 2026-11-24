@@ -10,6 +10,7 @@ import {
 } from 'three';
 import { preparedWater } from './source-water-material';
 import { preparedGlass } from './source-glass-material';
+import { prepareDoorStage } from './map-doors';
 import { StaticMapGroup } from './static-map-group';
 import { readSourceSun, type SourceSun } from './source-sun';
 
@@ -56,6 +57,7 @@ export function assertMapBaseColorTextures({ scene, parser }: MapTextureEvidence
 export function cloneMapModel(scene: Object3D): Object3D {
   const copy = scene.clone(true);
   copy.traverse((object) => {
+    if (object.userData.cswatchDoorStage) prepareDoorStage(object);
     if (object instanceof Light) {
       object.visible = false;
       object.intensity = 0;

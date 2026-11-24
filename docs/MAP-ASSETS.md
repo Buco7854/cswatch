@@ -139,6 +139,10 @@ The preparer can also bind modern materials by matching their exported mesh, mat
 
 Map preparer revision 8 gives approved and latest-official map jobs and packs new identities. Opening a demo can request a new pack through the normal acquisition policy and source checks. The worker publishes to the new identity and preserves earlier pack files, job records and operator-managed assets. Equipment and agent banks have an independent revision.
 
+The prepared environment's `provenance.json` includes `sourceMapObjectClasses` for authored doors, brush movement or destruction classes, explicit break outputs and damageable props. These counts include unbound geometry. Compare them with `breakableInstances`, `doorInstances`, `doorStages` and a replay capture to locate missing coverage. A declared instance alone does not establish that it broke in the recording.
+
+For a rotating door, the preparer preserves its hinge and an independently placed rigid mesh, including a verified single-bone rigid skin. It can add up to four compiled replacement models declared by the door. The model and draw records must resolve to verified inputs in the existing source closure. Variants reuse the instance material and are separated from static batching in every tier. At most eight base models, 32 replacements, 24 MiB of source and 120,000 replacement triangles are considered per map. One door stage is drawn at a time. [Recorded door contract](REPLAY-METADATA.md#recorded-rotating-doors)
+
 ## Latest official snapshots
 
 No manual map whitelist or default approval is needed. The worker lists direct map VPK entries only from fixed anonymous app `730`, depot `2347770`. A fresh inventory binds safe map basenames to one Steam manifest, SHA-1 and byte size. It is capped at 128 KiB and 256 unique names. New selections require a check within 24 hours. Failed refreshes back off rather than opening a login loop. The inventory is not a statement about an uploaded demo's original map version.

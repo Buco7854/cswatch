@@ -1,12 +1,70 @@
 import type { DemoReader } from 'cs2parser';
 import type { GameEvent } from '../../shared/playback.js';
-import type { MapBreakable, MapPropPose } from '../../shared/map-breakables.mjs';
-import { breakableKey, breakableLimits } from './map-breakables-wire.js';
+import type { MapBreakable } from '../../shared/map-breakables.mjs';
+import { breakableKey, breakableLimits, breakablePoseCodec } from './map-breakables-wire.js';
 import { recordedEntityTransform } from './item-state.js';
 
-const className = 'CDynamicProp';
-const skeleton = className + '.CBodyComponentBaseAnimGraph.m_skeletonInstance.';
-function identity(props: Record<string, unknown>): MapPropPose | undefined {
+const bodies = {
+  CDynamicProp: 'CBodyComponentBaseAnimGraph',
+  CBreakable: 'CBodyComponentBaseModelEntity',
+} as const;
+type RecordedClass = keyof typeof bodies;
+const skeletonRoot = (name: RecordedClass) => `${name}.${bodies[name]}.m_skeletonInstance.`;
+function poseFieldsFor(skeleton: string) {
+  return new Map([
+    [skeleton + 'm_angRotation', 'angle'],
+    ...['X', 'Y', 'Z'].flatMap((axis): [string, string][] => [
+      [skeleton + 'm_vecOrigin.m_cell' + axis, 'cell'],
+      [skeleton + 'm_vecOrigin.m_vec' + axis, 'offset'],
+    ]),
+  ]);
+}
+const poseFields = {
+  CDynamicProp: poseFieldsFor(skeletonRoot('CDynamicProp')),
+  CBreakable: poseFieldsFor(skeletonRoot('CBreakable')),
+};
+
+/** Read the decoder table carried by THIS recording. The cs2parser 2.8 decoder
+ * IDs 10 and 20 select unsigned varint and qangle_precise respectively. */
+function hasWirePoseCodec(reader: DemoReader, className: RecordedClass) {
+  const fields = poseFields[className];
+  const names = reader.propIdToName,
+    decoders = reader.propIdToDecoder;
+  if (!names || !decoders) return false;
+  const seen = new Set<string>();
+  let inspected = 0;
+  for (const id in names) {
+    if (++inspected > 131072) return false;
+    const name = names[id]!,
+      kind = fields.get(name);
+    if (!kind) continue;
+    const decoder = decoders[id];
+    if ((kind === 'cell' && decoder !== 10) || (kind === 'angle' && decoder !== 20)) return false;
+    if (kind === 'offset') {
+      if (!decoder || typeof decoder !== 'object' || decoder.type !== 0) return false;
+      const q = decoder.decoder;
+      if (
+        q.no_scale ||
+        q.bit_count !== 15 ||
+        q.low !== 0 ||
+        q.high !== 1023.96875 ||
+        q.high_low_mul !== 32 ||
+        q.dec_mul !== 1 / 32767 ||
+        q.flags !== 0 ||
+        q.offset !== 1 / 32
+      )
+        return false;
+    }
+    seen.add(name);
+  }
+  return seen.size === fields.size;
+}
+
+function identity(
+  props: Record<string, unknown>,
+  className: RecordedClass,
+): Omit<MapBreakable, 'hidden'> | undefined {
+  const skeleton = skeletonRoot(className);
   const model = props[skeleton + 'm_modelState.m_hModel'];
   if (
     typeof model !== 'bigint' ||
@@ -15,18 +73,25 @@ function identity(props: Record<string, unknown>): MapPropPose | undefined {
     props[skeleton + 'm_flScale'] !== 1
   )
     return;
-  const pose = recordedEntityTransform(props, className);
+  const pose = recordedEntityTransform(props, className, bodies[className]);
   if (!pose || pose.pitch === undefined || pose.yaw === undefined || pose.roll === undefined)
     return;
   return {
     modelId: String(model),
+    ...(className === 'CBreakable' ? { className: 'func_breakable' as const } : {}),
     origin: [pose.x, pose.y, pose.z],
     angles: [pose.pitch, pose.yaw, pose.roll],
   };
 }
 
-type Lifetime = { serial: number; key?: string; props?: Record<string, unknown> };
-type Track = MapBreakable & { owner?: Lifetime; missingSince?: number };
+type Lifetime = {
+  className: RecordedClass;
+  born: number;
+  serial: number;
+  key?: string;
+  props?: Record<string, unknown>;
+};
+type Track = MapBreakable & { owner?: Lifetime; brushReset?: number; missingSince?: number };
 
 /** An explicit network deletion removes a map instance. The reader ignores a mere
  * PVS leave. Resolve with the last live entity's model and unparented transform;
@@ -49,6 +114,10 @@ export function observeMapBreakables(reader: DemoReader, lastTick: number, event
         .map((e) => e.tick),
     ),
   ].sort((a, b) => a - b);
+  let decoderTable: DemoReader['propIdToDecoder'] | undefined;
+  const supportedCodecs = new Set<RecordedClass>(['CDynamicProp', 'CBreakable']);
+  const roundStarts = new Set(resets);
+  let tables = 0;
   let intervals = 0,
     stopped = false;
   function finishInterval(track: Track, tick: number) {
@@ -77,7 +146,7 @@ export function observeMapBreakables(reader: DemoReader, lastTick: number, event
   reader.on('entitycreated', ([index, , , name, serial]) => {
     if (stopped) return;
     const previous = active.get(index);
-    if (name === className && previous && serial === previous.serial) {
+    if (previous && name === previous.className && serial === previous.serial) {
       pending.add(index);
       return;
     }
@@ -85,7 +154,7 @@ export function observeMapBreakables(reader: DemoReader, lastTick: number, event
     active.delete(index);
     pending.delete(index);
     if (
-      name !== className ||
+      (name !== 'CDynamicProp' && name !== 'CBreakable') ||
       !Number.isSafeInteger(index) ||
       index < 0 ||
       index > 16382 ||
@@ -99,11 +168,18 @@ export function observeMapBreakables(reader: DemoReader, lastTick: number, event
       stopped = true;
       return;
     }
-    active.set(index, { serial });
+    active.set(index, { serial, className: name, born: reader.currentTick });
     pending.add(index);
   });
   reader.on('tickend', () => {
-    if (stopped || !pending.size) return;
+    if (stopped) return;
+    if (supportedCodecs.size && active.size && reader.propIdToDecoder !== decoderTable) {
+      decoderTable = reader.propIdToDecoder;
+      tables++;
+      for (const className of supportedCodecs)
+        if (tables > 8 || !hasWirePoseCodec(reader, className)) supportedCodecs.delete(className);
+    }
+    if (!pending.size) return;
     const tick = reader.currentTick;
     for (const index of pending) {
       const life = active.get(index),
@@ -111,13 +187,13 @@ export function observeMapBreakables(reader: DemoReader, lastTick: number, event
       if (
         !life ||
         !e ||
-        e.className !== className ||
+        e.className !== life.className ||
         !Number.isSafeInteger(tick) ||
         tick < 0 ||
         tick > lastTick
       )
         continue;
-      const pose = identity(e.properties),
+      const pose = identity(e.properties, life.className),
         key = pose && breakableKey(pose);
       if (!key || !pose || (life.key && life.key !== key)) {
         if (life.key) {
@@ -141,6 +217,15 @@ export function observeMapBreakables(reader: DemoReader, lastTick: number, event
         track = { ...pose, hidden: [] };
         tracks.set(key, track);
       }
+      if (life.className === 'CBreakable') {
+        // Round reset creates a new glass instance while the old network entity can
+        // survive until a later snapshot or deletion. Only the new round can own it.
+        if (track.brushReset !== undefined && life.born < track.brushReset) continue;
+        if (roundStarts.has(life.born)) {
+          track.brushReset = life.born;
+          if (track.owner && track.owner.born < life.born) delete track.owner;
+        }
+      }
       if (track.owner && track.owner !== life) ambiguous.add(key);
       finishInterval(track, tick);
       track.owner = life;
@@ -161,7 +246,7 @@ export function observeMapBreakables(reader: DemoReader, lastTick: number, event
     delete track.owner;
     if (!life.props || !Number.isSafeInteger(tick) || tick < 0 || tick > lastTick || unconfirmed)
       return;
-    if (breakableKey(identity(life.props)) === life.key) track.missingSince = tick;
+    if (breakableKey(identity(life.props, life.className)) === life.key) track.missingSince = tick;
   });
   return (complete: boolean): MapBreakable[] | undefined => {
     if (!complete || stopped) return;
@@ -176,6 +261,10 @@ export function observeMapBreakables(reader: DemoReader, lastTick: number, event
           origin: track.origin,
           angles: track.angles,
           hidden: track.hidden,
+          ...(track.className ? { className: track.className } : {}),
+          ...(tables && supportedCodecs.has(track.className ? 'CBreakable' : 'CDynamicProp')
+            ? { poseCodec: breakablePoseCodec }
+            : {}),
         });
     }
     return result.length ? result : undefined;

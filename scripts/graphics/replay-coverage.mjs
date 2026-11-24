@@ -55,6 +55,7 @@ export function replayCoverage(inventory, frames) {
       visualReference: frame.comparison.status,
       visualBudget: frame.verdict,
       breakables: frame.breakables ?? null,
+      doors: frame.doors ?? null,
       playback: timing
         ? {
             camera: timing.cameraMode,

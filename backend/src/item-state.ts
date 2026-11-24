@@ -82,8 +82,12 @@ const validTick = (tick: number, last: number) =>
 const round = (value: number) => Math.round(value * 100) / 100;
 
 /** Requires every recorded cell/offset component. Missing origins never become map origin. */
-export function recordedEntityTransform(properties: Record<string, unknown>, className: string) {
-  const root = `${className}.CBodyComponentBaseAnimGraph.m_skeletonInstance.`;
+export function recordedEntityTransform(
+  properties: Record<string, unknown>,
+  className: string,
+  body = 'CBodyComponentBaseAnimGraph',
+) {
+  const root = `${className}.${body}.m_skeletonInstance.`;
   const parent = properties[`${root}m_hParent`];
   // Local transforms under an actual parent need that parent's matrix. Never treat them as world coordinates.
   if (

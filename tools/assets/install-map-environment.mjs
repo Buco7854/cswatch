@@ -1,3 +1,4 @@
+import { exportDoorStages } from './install-door-stages.mjs';
 /** Trusted operator orchestration for exact selected-map sky resources. */
 import { constants } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -266,6 +267,18 @@ export async function inspectInstalledEnvironment(context, adapters = {}) {
         for (const path of Object.values(skyFaces)) await regular(path, 8 * 1024 ** 2, 57);
       }
       const gradeInput = await postProcessing();
+      const doorStages = await exportDoorStages({
+        entities: mainEntities,
+        execute,
+        s2v,
+        directory: join(stage, 'door-stages'),
+        banks: async () =>
+          Promise.all(
+            [mainPackage, 'game/csgo/pak01_dir.vpk', 'game/core/pak01_dir.vpk'].map(
+              async (file) => ({ file, index: await packageIndex(file) }),
+            ),
+          ),
+      });
       const config = {
         map,
         assetVersion,
@@ -277,6 +290,7 @@ export async function inspectInstalledEnvironment(context, adapters = {}) {
         materialData,
         skyFaces,
         ...(gradeInput ? { gradeInput } : {}),
+        ...(doorStages.length ? { doorStages } : {}),
         output,
       };
       const configPath = join(stage, 'environment-prepare.json');

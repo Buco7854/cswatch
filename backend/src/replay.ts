@@ -22,8 +22,8 @@ import type { GaitHistory } from '../../shared/agent-gait-history.mjs';
 import { encodeGaitHistory, validGaitHistory } from './replay-gait-history.js';
 import type { AgentDeathAnchor } from '../../shared/agent-deaths.mjs';
 import { replayAgentDeaths, validAgentDeaths } from './replay-agent-deaths.js';
-import type { MapBreakable } from '../../shared/map-breakables.mjs';
-import { validMapBreakables } from './map-breakables-wire.js';
+import type { MapBreakable, MapDoor } from '../../shared/map-breakables.mjs';
+import { validMapBreakables, validMapDoors } from './map-breakables-wire.js';
 import { validInfernoBank } from './inferno-state-wire.js';
 import type { InfernoBank } from '../../shared/inferno-state.mjs';
 import { replayStride } from './replay-stride.js';
@@ -398,6 +398,7 @@ export const manifestSchema = z
     smokeTracks: z.custom<SmokeTrack[]>().optional(),
     infernos: z.custom<InfernoBank>().optional(),
     mapBreakables: z.custom<MapBreakable[]>().optional(),
+    mapDoors: z.custom<MapDoor[]>().optional(),
     deadTimes: z
       .array(
         z
@@ -840,8 +841,13 @@ async function writeReplayCore(
   }
   if (!validSmokeTracks(manifest.smokeTracks, manifest.lastTick)) delete manifest.smokeTracks;
   if (!validInfernoBank(manifest.infernos, manifest.lastTick)) delete manifest.infernos;
+  if (!validMapDoors(manifest.mapDoors, manifest.lastTick)) delete manifest.mapDoors;
   if (!validMapBreakables(manifest.mapBreakables, manifest.lastTick)) delete manifest.mapBreakables;
   let json = replayJSON(manifest);
+  if (manifest.mapDoors && Buffer.byteLength(json) > replayLimits.manifestBytes) {
+    delete manifest.mapDoors;
+    json = replayJSON(manifest);
+  }
   if (manifest.mapBreakables && Buffer.byteLength(json) > replayLimits.manifestBytes) {
     delete manifest.mapBreakables;
     json = replayJSON(manifest);
@@ -896,6 +902,8 @@ export function validateReplayArtifacts(folder: string): {
     !validSmokeTracks(manifest.smokeTracks, manifest.lastTick)
   )
     throw new Error('Invalid recorded smoke bank');
+  if (manifest.mapDoors !== undefined && !validMapDoors(manifest.mapDoors, manifest.lastTick))
+    throw new Error('Invalid recorded map doors');
   if (
     manifest.mapBreakables !== undefined &&
     !validMapBreakables(manifest.mapBreakables, manifest.lastTick)
