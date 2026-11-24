@@ -360,8 +360,8 @@ test('self-service email changes use fresh proof and retire old sessions and rec
     const initiator = await f.login();
     const other = await f.login();
     const { id, username } = initiator.json().user;
-    const verifiedAt = now();
-    db.run('UPDATE users SET email_verified_at=? WHERE id=?', verifiedAt, id);
+    const verifiedAt = initiator.json().user.email_verified_at;
+    assert.equal(verifiedAt, db.one('SELECT created_at FROM users WHERE id=?', id)!.created_at);
     issuePasswordReset(db, id);
     const change = (email: string, headers = jsonHeaders(initiator)) =>
       app.inject({ method: 'POST', url: '/api/auth/profile', headers, payload: { email } });

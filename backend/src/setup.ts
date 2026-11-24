@@ -1,6 +1,5 @@
 import { accountEmail, newCredentials } from './credentials.js';
 import { accountEntry } from './auth-routes.js';
-import type { AccountMail } from './account-mail.js';
 import {
   constants,
   closeSync,
@@ -32,6 +31,23 @@ import {
 export const setupRequired = (db: Store) =>
   !db.one("SELECT id FROM users WHERE role='admin' LIMIT 1");
 
+function insertFirstAdmin(db: Store, username: string, passwordHash: string, email?: string) {
+  if (email) requireAvailableEmail(db, email);
+  const id = token().slice(0, 32);
+  const createdAt = now();
+  db.run(
+    `INSERT INTO users(id,username,password_hash,role,created_at,email,email_verified_at)
+     VALUES(?,?,?,'admin',?,?,?)`,
+    id,
+    username,
+    passwordHash,
+    createdAt,
+    email ?? null,
+    email ? createdAt : null,
+  );
+  return id;
+}
+
 /** Operator provisioning is creation-only. Restarting must never reset credentials. */
 export async function provisionAdmin(db: Store, c: Config) {
   if (!c.adminUsername && !c.adminPassword && !c.adminEmail) return;
@@ -45,17 +61,7 @@ export async function provisionAdmin(db: Store, c: Config) {
     if (!setupRequired(db)) return;
     if (db.one('SELECT id FROM users WHERE username=? COLLATE NOCASE', credentials.username))
       throw new Error('The configured administrator username is already in use.');
-    if (c.adminEmail) requireAvailableEmail(db, c.adminEmail);
-    const id = token().slice(0, 32);
-    db.run(
-      'INSERT INTO users(id,username,password_hash,role,created_at,email) VALUES(?,?,?,?,?,?)',
-      id,
-      credentials.username,
-      hash,
-      'admin',
-      now(),
-      c.adminEmail ?? null,
-    );
+    const id = insertFirstAdmin(db, credentials.username, hash, c.adminEmail);
     db.audit(id, 'instance.admin_provisioned', { target: id, administrative: true });
   });
 }
@@ -97,7 +103,7 @@ export function prepareSetup(db: Store) {
   });
 }
 
-export async function setupRoutes(app: FastifyInstance, db: Store, c: Config, mail?: AccountMail) {
+export async function setupRoutes(app: FastifyInstance, db: Store, c: Config) {
   app.post('/api/setup', accountEntry('setup'), async (request, reply) => {
     requireSession(db, request, c, ['anonymous']);
     if (!setupRequired(db)) throw new HttpError(409, 'Instance setup is already complete.');
@@ -110,7 +116,6 @@ export async function setupRoutes(app: FastifyInstance, db: Store, c: Config, ma
     if (!verifier || !equal(verifier.token_hash, digest(body.setupToken)))
       throw new HttpError(403, 'Setup code is invalid.');
     const hash = await hashPassword(body.password);
-    const id = token().slice(0, 32);
     const grant = db.transaction(() => {
       requireSession(db, request, c, ['anonymous']);
       if (!setupRequired(db)) throw new HttpError(409, 'Instance setup is already complete.');
@@ -119,16 +124,7 @@ export async function setupRoutes(app: FastifyInstance, db: Store, c: Config, ma
         throw new HttpError(403, 'Setup code is invalid.');
       if (db.one('SELECT id FROM users WHERE username=? COLLATE NOCASE', body.username))
         throw new HttpError(409, 'That username is unavailable.');
-      requireAvailableEmail(db, body.email);
-      db.run(
-        'INSERT INTO users(id,username,password_hash,role,created_at,email) VALUES(?,?,?,?,?,?)',
-        id,
-        body.username,
-        hash,
-        'admin',
-        now(),
-        body.email,
-      );
+      const id = insertFirstAdmin(db, body.username, hash, body.email);
       db.run('DELETE FROM instance_setup');
       db.audit(id, 'instance.configured', {
         target: id,
@@ -141,7 +137,6 @@ export async function setupRoutes(app: FastifyInstance, db: Store, c: Config, ma
         proof: { kind: 'password' },
       });
     });
-    mail?.queueVerification(id, request.headers['accept-language']);
     try {
       unlinkSync(join(db.root, 'setup-token'));
     } catch (error) {

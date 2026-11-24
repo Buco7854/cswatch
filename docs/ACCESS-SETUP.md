@@ -12,7 +12,7 @@ The operator can read the code with:
 docker compose exec web cat /data/setup-token
 ```
 
-Submit the username, email address, password and setup code through the setup page. The environment bootstrap accepts an optional `ADMIN_EMAIL`. Operator bootstrap remains available when mail is unavailable. The server requires exact Origin, rate limits failed attempts, validates the code before expensive hashing, then atomically rechecks that no administrator exists and consumes the verifier while creating the account. Competing enrollment requests cannot create two first administrators. Successful setup removes the code file and issues an enrollment-only session when the administrator role requires a second factor. Complete factor enrollment to enter the workspace. The code is never returned by an API or logged.
+Submit the username, email address, password and setup code through the setup page. The environment bootstrap accepts an optional `ADMIN_EMAIL`. An address supplied through either setup method is recorded as verified at account creation, even with SMTP disabled. Check the address carefully because it can receive password-reset links once email delivery is enabled. The server requires exact Origin, rate limits failed attempts, validates the code before expensive hashing, then atomically rechecks that no administrator exists and consumes the verifier while creating the account. Competing enrollment requests cannot create two first administrators. Successful setup removes the code file and issues an enrollment-only session when the administrator role requires a second factor. Complete factor enrollment to enter the workspace. The code is never returned by an API or logged.
 
 ## Account sign-in and recovery
 

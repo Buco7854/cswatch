@@ -164,7 +164,7 @@ async function relay(t: TestContext) {
   };
 }
 
-async function fixture(t: TestContext) {
+async function fixture(t: TestContext, adminEmail?: string) {
   const smtp = await relay(t);
   const root = mkdtempSync(join(tmpdir(), 'cswatch-account-mail-'));
   const db = new Store(root);
@@ -173,6 +173,7 @@ async function fixture(t: TestContext) {
     COOKIE_SECURE: 'false',
     ADMIN_USERNAME: 'local-mail-admin',
     ADMIN_PASSWORD: oldPassword,
+    ADMIN_EMAIL: adminEmail,
     MFA_REQUIRED_ROLES: 'none',
     SMTP_HOST: smtp.config.host,
     SMTP_PORT: String(smtp.config.port),
@@ -246,6 +247,18 @@ async function fixture(t: TestContext) {
   };
   return { app, bootstrap, c, db, configure, headers, post, applySession, register, codeAt, smtp };
 }
+
+test('the environment-provisioned administrator can recover by email as soon as delivery is enabled', async (t) => {
+  const email = 'operator@example.test';
+  const f = await fixture(t, email);
+  assert.equal((await f.configure(true)).statusCode, 200);
+  const browser = await f.bootstrap();
+  const requested = await f.post('auth/recover/request', browser, { email });
+  assert.equal(requested.statusCode, 200, requested.body);
+  const code = await f.codeAt(1, 'recover', email);
+  const claimed = await f.post('auth/recover/claim', browser, { code });
+  assert.equal(claimed.statusCode, 200, claimed.body);
+});
 
 test('registration verification is bound to the current address and signed-in account', async (t) => {
   const f = await fixture(t);
