@@ -1,5 +1,48 @@
 # Verification record
 
+## Packed world materials
+
+In the retained desktop GLBs, 397 of 406 Mirage materials and 588 of 760 Dust2 materials reference the same glTF texture for occlusion, roughness and metalness. Three's stock fragment shader uses three separate samplers for those channels. The map loader now reuses the roughness texel when the material binds the same texture object, including its UV channel, transform, filtering and wrapping. A Chromium regression checks the linked WebGL uniforms and exact PBR pixels with a nonuniform texture, including an AO lighting hook. Three linked samplers become one for a shared texture and two for independently transformed occlusion. Independently transformed metalness retains all three.
+
+### Private Mirage replay
+
+Production Chrome for Testing 159.0.8154.6 on Linux used ANGLE Vulkan SwiftShader, High, desktop map tier, 720 × 480 at DPR 1, 100% render resolution, live shadows and the same authored environment. The 60,601,900-byte ten-round fixture ran through the sandboxed parser and the authorized watch route. The manually installed desktop pack came from depot 2347770, manifest `8225060435969537482`. Mirage included native sky geometry, baked-light metadata, the local environment, original models and first-person equipment. Historical correspondence to the match is unverified.
+
+For each camera and revision, start a fresh browser context at round two, tick 10721. Wait for the map, skylight and at least eight native agents. Play at 1×, seek back to 10721 and repeat. POV and Follow request eight seconds of motion. Free rotates out and back in eight 30 CSS-pixel steps, advancing once per rendered composite during playback. Each cell gives p50 / p95 of consecutive frame intervals in milliseconds and the number of intervals. These are single first/repeat traversals per build. Wall-clock playback can end on different ticks, and a repeat can still expose previously unseen assets.
+
+| Camera | First, released | First, updated  | Repeat, released | Repeat, updated  |
+| ------ | --------------- | --------------- | ---------------- | ---------------- |
+| POV    | 2017 / 8050 (6) | 950 / 3683 (12) | 2400 / 9966 (7)  | 733 / 4583 (14)  |
+| Follow | 1350 / 3233 (9) | 1317 / 4533 (9) | 1317 / 4250 (9)  | 1250 / 3566 (10) |
+| Free   | 733 / 2250 (12) | 700 / 867 (10)  | 717 / 2250 (12)  | 800 / 1533 (10)  |
+
+Total WebGL texture-storage allocations on first and repeat POV traversals were 311 and 89 before, 340 and 67 after. Follow recorded 129 and 34 before, 130 and 35 after. Free recorded 11 and 7 before, 5 and 11 after. The slowest baseline first POV interval (8.05 s) ended on a composite that issued 67 texture-storage allocations and 18.0 MiB of buffer uploads. Some long intervals had little upload activity, including a 2.25 s Free interval with two allocations and under 0.1 MiB of buffer uploads. These counters identify work submitted around the stall without attributing its full duration to uploads. Several frame intervals still exceeded one second on this software device.
+
+A second measurement paused playback and sought to ticks 11236, 11778 and 12140 twice in the same order. It measured elapsed time from issuing each seek until a WebGL fence after that tick's output draw signalled (six observations per build). Counts include all passes through the output draw. Actor and equipment readiness can differ during the first seek.
+
+| Camera | Seek p50 / p95 ms, released → updated | Median draws, released → updated | Median triangles, released → updated | Updated median triangles drawn with shared lookup |
+| ------ | ------------------------------------- | -------------------------------- | ------------------------------------ | ------------------------------------------------- |
+| POV    | 3857 / 6904 → 3412 / 5593             | 1258 → 1258                      | 1,869,242 → 1,869,242                | 958,930                                           |
+| Follow | 3332 / 7807 → 1727 / 6201             | 911 → 912                        | 1,539,844 → 1,540,948                | 846,819                                           |
+| Free   | 903 / 2333 → 878 / 2902               | 504 → 503                        | 433,752 → 407,619                    | 333,771                                           |
+
+Nine matched full-view captures cover the three cameras at the three paused ticks. Six pairs matched every pixel. The remaining POV pair differed by one channel level in one pixel. The first Follow pair differed on the transport button. The first Free pair also differed at the left edge of the scene, on the radar and near player labels (443 pixels above the transport area). The centre of the world view matched in every pair. All six sessions completed without browser errors. The small samples, asynchronous asset arrival, and software rasterizer limit frame-time comparisons. RTX 3070 performance and high-percentile hardware stalls remain unmeasured.
+
+### Paired native worlds
+
+A separate WebGL probe isolated the map and 3D sky in two genuine desktop GLBs from the same depot manifest. It used the prepared scene, PBR textures, the desktop 4× anisotropy request for eligible base colors, the map's cube environment, a fixed light rig, and a 512 × 320 four-sample target. It omitted actors, grade and live shadows. Dust2 has no matching recording here, so its camera path is scripted. Mirage used another scripted path for an independent world-only comparison. The full replay above exercises the production passes.
+
+Each world used three camera starts and four positions per start, with 24 inches of X and 40 inches of Y per step, and a fixed look-at point per start. All twelve poses warmed both programs. For timing, the probe alternated stock and shared programs on the same scene and materials, then reversed order on the second visit. Each measurement fenced the sky and main-world draws. For image comparison, it rebound the multisampled target before every draw, resolved after the world, and read back two stock captures and one candidate at every pose. The second stock capture checks the repeatability of that readback.
+
+| Native world | Fenced p50 / p95 ms, stock → shared | Median JS submission ms, stock → shared | Median draws / triangles |
+| ------------ | ----------------------------------- | --------------------------------------- | ------------------------ |
+| Mirage       | 856.5 / 2099.7 → 779.8 / 1995.3     | 3.5 → 3.8                               | 697 / 725,925            |
+| Dust2        | 2327.7 / 4610.1 → 2213.8 / 4432.6   | 4.0 → 3.6                               | 807 / 2,557,586          |
+
+Both worlds had byte-identical RGBA readback at every camera pose for stock/stock and stock/shared. Draw and triangle counts matched within every pair. The shared shader was faster in 13 of 24 individual timed pairs on each map. Median fenced frame time fell 9.0% on Mirage and 4.9% on Dust2. The verified reduction in texture lookups applies wherever these materials render. The magnitude of the timing change varied by pose.
+
+For local reproduction, the retained desktop GLB SHA-256 values are `90ce4dcd7882cf9c9990c5a6005315cf62953c76de5f77db04b7f178fa910413` (Mirage) and `e6fc7842eb87594525042b47e35e4b8fe2f3754078db161961d7b114951f0d78` (Dust2). The isolated worktree's ignored `var/world-bench/REPEAT.md` describes how to run the paired probes, including the baseline frontend at `d7db89b`. The checked-in `frontend/tests/map-packed-material.spec.ts` exercises the shader without native assets. Twelve focused Chromium cases passed, covering the packed texture, native vertex lighting, Source black materials and cube fog, glass, map batching, grading, filtered skylight, shadows and fallback lighting.
+
 ## Viewer opening screens and form focus
 
 Production Chromium on Linux exercised synthetic member and authentication sessions in English and French at 390 × 844, 768 × 1024 and 1440 × 900 in both themes, with reduced motion. The six journeys traversed parser processing to a held Cache discovery request. In each pair the status panel kept its top edge, the return link kept its bounds and keyboard focus, and Enter reopened the library. Each journey also checked an automatically focused challenge heading, the next keyboard control, an editable sign-in field and the compound library search. Thirty captures cover the two loading stages and the three focus cases. The fixture exercised navigation and presentation with synthetic Cache metadata.
