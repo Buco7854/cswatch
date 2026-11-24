@@ -72,6 +72,8 @@ test('recorded POV comparisons require a bound frame and a declared HUD-free, pr
     { sourceSha256: 'd'.repeat(64) },
     { viewport: { width: 8, height: 6 } },
     { buffer: [12, 16] },
+    { imageSize: [32, 24] },
+    { deviceScale: 2 },
     { camera: { ...frame.camera, projectionMatrix: matrix.map((x) => x + 0.1) } },
     { camera: { ...frame.camera, worldMatrix: null } },
     { equipmentProjection: null },

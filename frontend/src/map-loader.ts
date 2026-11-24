@@ -75,7 +75,7 @@ const cache = new ModelCache<GLTF>({
         loaded(gltf) {
           applyEnvironmentAlbedo(gltf);
           reusePackedSceneSamples(gltf.scenes);
-          if (url.split('/').at(-2) === 'desktop') improveMapTextureDetail(gltf.scenes);
+          improveMapTextureDetail(gltf.scenes, url.split('/').at(-2));
           callbacks.loaded(gltf);
         },
       },

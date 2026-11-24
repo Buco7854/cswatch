@@ -63,7 +63,7 @@ function decoded(value) {
   }
 }
 
-function entities(input, fields = keys) {
+export function entityDumpRows(input, fields = keys) {
   const texts = Array.isArray(input) ? input : [input];
   if (
     !texts.length ||
@@ -83,6 +83,10 @@ function entities(input, fields = keys) {
       if (result.length >= limits.entities) throw new Error('Too many environment entities.');
       const entity = Object.create(null);
       for (const line of block.split(/\r?\n/)) {
+        if (fields.has('@OnBreak') && /^@OnBreak\s/.test(line)) {
+          entity['@OnBreak'] = true;
+          continue;
+        }
         const property = /^([a-zA-Z0-9_.]+)\s+(.+)$/.exec(line);
         if (
           !property ||
@@ -181,7 +185,7 @@ function skySources(all) {
 }
 
 export function inspectMapGrade(input) {
-  const all = entities(input, gradeKeys);
+  const all = entityDumpRows(input, gradeKeys);
   const masters = all.filter(
     (entity) =>
       entity.classname === 'post_processing_volume' &&
@@ -223,7 +227,7 @@ function inspectGradeLighting(all) {
 }
 
 export function inspectMapEnvironment(input) {
-  const all = entities(input);
+  const all = entityDumpRows(input);
   const reference = unique(
     all
       .filter((entity) => entity.classname === 'skybox_reference' && active(entity))
@@ -253,7 +257,7 @@ export function inspectMapEnvironment(input) {
 
 /** A static untextured gradient in the source scene's distance and height basis. */
 export function inspectGradientFog(input, matrix) {
-  const authored = entities(input, gradientKeys).filter(
+  const authored = entityDumpRows(input, gradientKeys).filter(
     (entity) => entity.classname === 'env_gradient_fog' && active(entity),
   );
   if (!authored.length) return { fog: null, reason: 'no_authored_gradient_fog' };
@@ -295,7 +299,7 @@ export function inspectGradientFog(input, matrix) {
 
 /** Source stationary shadow slots are assigned per light, not per shader or map name. */
 export function inspectSunShadowChannel(input) {
-  const sun = entities(input).filter(
+  const sun = entityDumpRows(input).filter(
     (entity) => entity.classname === 'light_environment' && active(entity),
   );
   if (!sun.length) return null;
@@ -311,7 +315,7 @@ export function inspectSunShadowChannel(input) {
 }
 
 export function inspectSkyCamera(input) {
-  const all = entities(input);
+  const all = entityDumpRows(input);
   const camera = unique(
     all
       .filter((entity) => entity.classname === 'sky_camera' && active(entity))

@@ -25,6 +25,12 @@ The version 3 manifest carries recorded metadata and coverage. Frames and their 
 
 Gait history supplies each player’s directional clip phase from movement above the near-idle threshold. If the replay lacks that player’s gait history, the third-person renderer uses cumulative distance from the chunk stride anchor divided by an authored reference stride. With neither optional field, it samples the native cycle at demo time while the player is observed moving. The stride anchor also drives first-person weapon motion. Its horizontal centimeter totals include accepted slow movement.
 
+## Recorded breakable props
+
+The optional `mapBreakables` manifest field records half-open tick intervals for explicit network deletions of stationary, unparented `CDynamicProp` instances. The confined media reader requests this extra entity class during its existing stream pass. A deletion starts the interval. Recreating the same prop or starting the next recorded round ends it. Leaving the potentially visible set does not emit a deletion. A partial parse, ambiguous simultaneous instances, unsupported transforms or exceeded observation budgets leave the original geometry in place. The bounds are 256 live entities, 512 distinct poses and 8,192 intervals.
+
+The viewer joins a prepared breakable node to its decimal 64-bit model resource ID, Source position and rotation. It requires exact pose agreement, allowing full turns, and one matching node. Entity indices and serials identify lifetimes only inside the recording. The same intervals drive visibility, map shadows and camera obstruction on playback and seeking. Previously processed demos need a fresh parse to acquire this optional field. Importing the original creates a new library entry.
+
 ## Recorded aim
 
 Chunks may carry an `aim` field containing wire version 1 and sorted player-ID/base64 pairs. Each stream stores the gap from the previous recorded tick and a continuity bit, followed by zigzag-coded yaw and pitch as canonical unsigned LEB128. A break starts from absolute angles. Angular deltas take the shortest path around a turn. The 1/128° step bounds per-axis quantization error to 1/256° (0.00391°). The wire indexes source demo ticks directly, independently of the playback clock's rate.

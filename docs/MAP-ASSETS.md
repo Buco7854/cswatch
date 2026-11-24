@@ -76,6 +76,13 @@ Each map in the observed manifest has a row, including unrequested, queued and f
 
 To check a tier on a QA workstation, mount the pack read-only and run the [offline capture procedure](../scripts/graphics/README.md). Give the capture tool a new private output directory. To join these results on a host where the same files are mounted, pass `--captures DIR` to the inventory command and put each report under `DIR/<packId>/<tier>/capture.json`. The join checks the exact tier, model, audit and ordered camera list. Counts distinguish materials shown on screen, missing views, prior viewer baselines and supplied external references. Comparisons use the supplied camera, source revision and projection. A reproducible baseline measures change within cswatch. Comparison to CS2 or csdemo.tv requires a corresponding independently captured frame.
 
+For moving scenes, the offline replay coverage report groups production captures by every map in that same inventory. It retains each recording, tick, tier, GPU, visual comparison, measured display scale and playback budget. The breakable-object result compares recorded visibility with the uniquely matched objects in the rendered map at that tick, with separate counts for absent, ambiguous and mismatched objects. A map without a supplied recording has an empty capture list. A capture of a manually installed pack remains identifiable even when its generation cannot be matched to the current inventory. Inspect the sharpness and pacing together on each target class of device.
+
+```sh
+node scripts/graphics/replay-coverage.mjs --inventory graphics-inventory.json \
+  --frame /private/phone-cache/frame.json --frame /private/desktop-ancient/frame.json
+```
+
 To compare what a player sees during a recorded match, [capture a production POV](../scripts/graphics/README.md#capture-a-recorded-production-pov) at the same tick and player. With worker-managed maps, supply the mounted jobs directory and configured catalog. The tool stages the selected pack metadata privately and revalidates the live generation before writing the frame. Add `--play-seconds 12` to measure moving playback from the same pose.
 
 To capture every prepared detailed tier in one observed inventory, run this loop from the checkout on the QA host. Set `MAP_ASSETS_DIR` to the mounted asset root and `CAPTURE_ROOT` to a new private directory. The loop visits the manifest and historical approvals, sequentially. Preparation stays under the normal acquisition policy.
@@ -130,7 +137,7 @@ The renderer uses each map's authored sun direction, supported cubemap fog and u
 
 The preparer can also bind modern materials by matching their exported mesh, material and draw counts to the verified compiled model. Its vertex layout and material input signature establish which glTF coordinate addresses the atlas. The pinned exporter applies the world's atlas scale. Draws with conflicting signatures keep the ordinary material path. The renderer can use indirect light when the compiled draw declares vertex lighting and the verified `COLOR1` layout matches the exported data channel. Foliage tint and wind channels stay separate. Verified water materials can retain a static approximation of their fog tint, roughness and angular reflection on desktop and mobile. Unsupported water and the Compact tier omit the surface. [Water inputs and measurements](../tools/assets/README.md#refractive-water-approximation) [Pinned exporter](https://github.com/ValveResourceFormat/ValveResourceFormat/blob/942df5b37ebbde6153f6c488880b91d4bed003e6/ValveResourceFormat/IO/Gltf/GltfModelExporter.Mesh.cs) [Compiled draw flags](https://github.com/ValveResourceFormat/ValveResourceFormat/blob/942df5b37ebbde6153f6c488880b91d4bed003e6/ValveResourceFormat/Resource/ResourceTypes/Mesh.cs)
 
-Map preparer revision 7 gives approved and latest-official map jobs and packs new identities. Opening a demo can request a new pack through the normal acquisition policy and source checks. The worker publishes to the new identity and preserves earlier pack files, job records and operator-managed assets. Equipment and agent banks have an independent revision.
+Map preparer revision 8 gives approved and latest-official map jobs and packs new identities. Opening a demo can request a new pack through the normal acquisition policy and source checks. The worker publishes to the new identity and preserves earlier pack files, job records and operator-managed assets. Equipment and agent banks have an independent revision.
 
 ## Latest official snapshots
 

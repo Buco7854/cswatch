@@ -1,5 +1,7 @@
 # Active work
 
+Replay checks now join real captures to the full observed official map inventory. Each recording can carry a reference image, display resolution and frame-time budget. The five-map high-density series covers Cache, Ancient, Dust2, Mirage and Nuke. Physical Android and desktop GPU measurements, other official map recordings, and unsupported breakable instances remain open. [Display and geometry evidence](../VERIFICATION.md#display-resolution-and-recorded-map-breakables)
+
 Multi-map performance checks now cover moving combat and all three player camera modes. A frame-time budget includes delays before the first frame and after the last one. The remaining hardware check is detailed playback on a desktop GPU. [Four-map results and settings](../VERIFICATION.md#multi-map-playback)
 
 Graphics verification covers worker inventory, material handling and private production POV captures. Validate new shader families against their compiled inputs and report missing external references. Hardware frame pacing and native refraction remain open. [Operator procedure](../MAP-ASSETS.md#graphics-coverage-for-the-official-map-inventory)

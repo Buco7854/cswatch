@@ -17,6 +17,7 @@ import { reserve } from '../backend/dist/ingestion.js';
 import { processOne } from '../backend/dist/worker.js';
 import { tsImport } from '../backend/node_modules/tsx/dist/esm/api/index.mjs';
 import { boundedFile, decodeOpaqueFrame, digest } from './graphics/capture-report.mjs';
+import { frameBreakables } from './graphics/frame-breakables.mjs';
 import { readManagedPack, snapshotManagedPack } from './graphics/managed-pack.mjs';
 import { compareReplayFrame } from './graphics/replay-reference.mjs';
 import { bindViewerResponseBytes, observeViewerNetwork } from './graphics/viewer-network.mjs';
@@ -33,6 +34,8 @@ const options = Object.fromEntries(
     'tick',
     'width',
     'height',
+    'device-scale',
+    'min-display-scale',
     'fov',
     'quality',
     'port',
@@ -49,7 +52,7 @@ const { values: o } = parseArgs({
 });
 if (o.help) {
   console.log(
-    'node scripts/capture-viewer.mjs --demo FILE.dem --assets MAP_ASSETS_DIR --player STEAM_ID --tick N --out NEW_DIR [--jobs MAP_JOBS_DIR --catalog MAP_CATALOG_FILE --quality auto|compact|low|high --width W --height H --fov V --port PORT --software --reference FILE --max-mae N --play-seconds N --play-camera pov|follow|free --max-p95-ms N --min-intervals N]',
+    'node scripts/capture-viewer.mjs --demo FILE.dem --assets MAP_ASSETS_DIR --player STEAM_ID --tick N --out NEW_DIR [--jobs MAP_JOBS_DIR --catalog MAP_CATALOG_FILE --quality auto|compact|low|high --width W --height H --device-scale DPR --fov V --port PORT --software --reference FILE --max-mae N --play-seconds N --play-camera pov|follow|free --max-p95-ms N --min-display-scale FRACTION --min-intervals N]',
   );
   process.exit(0);
 }
@@ -75,6 +78,13 @@ const viewport = {
   width: numeric('width', 960, 390, 1920),
   height: numeric('height', 640, 360, 1080),
 };
+const deviceScale = numeric('device-scale', 1, 1, 3, false);
+assert(
+  viewport.width * viewport.height * deviceScale ** 2 <= 4 * 1024 ** 2,
+  'Presentation image exceeds 4 megapixels',
+);
+const minDisplayScale =
+  o['min-display-scale'] === undefined ? null : numeric('min-display-scale', 0, 0.01, 1, false);
 const port = numeric('port', 4672, 1024, 65535),
   origin = 'http://127.0.0.1:' + port;
 const playSeconds = o['play-seconds'] === undefined ? 0 : numeric('play-seconds', 0, 3, 30);
@@ -83,13 +93,14 @@ assert(['pov', 'follow', 'free'].includes(playCamera), 'Unsupported playback cam
 const maxP95 =
   o['max-p95-ms'] === undefined ? undefined : numeric('max-p95-ms', 0, 1, 60_000, false);
 assert(
-  playSeconds || (o['play-camera'] === undefined && maxP95 === undefined),
+  playSeconds ||
+    (o['play-camera'] === undefined && maxP95 === undefined && minDisplayScale === null),
   'Playback options require --play-seconds',
 );
 const minIntervals = numeric('min-intervals', 20, 1, 50_000);
 assert(
-  o['min-intervals'] === undefined || maxP95 !== undefined,
-  '--min-intervals requires --max-p95-ms',
+  o['min-intervals'] === undefined || maxP95 !== undefined || minDisplayScale !== null,
+  '--min-intervals requires a playback budget',
 );
 const quality = o.quality ?? 'high';
 assert(['auto', 'compact', 'high', 'low'].includes(quality), 'Unsupported quality');
@@ -257,7 +268,7 @@ try {
   timeout = setTimeout(() => void browser.close().catch(() => {}), 180000);
   const context = await browser.newContext({
     viewport,
-    deviceScaleFactor: 1,
+    deviceScaleFactor: deviceScale,
     colorScheme: 'dark',
     reducedMotion: 'no-preference',
     serviceWorkers: 'block',
@@ -341,11 +352,20 @@ try {
         clip.y >= 0 &&
         clip.x + clip.width <= viewport.width &&
         clip.y + clip.height <= viewport.height &&
-        clip.width === shot.buffer[0] &&
-        clip.height === shot.buffer[1],
-      'Composited canvas does not match the drawing buffer',
+        clip.width > 0 &&
+        clip.height > 0 &&
+        clip.width === shot.canvasSize[0] &&
+        clip.height === shot.canvasSize[1] &&
+        shot.buffer.every((n) => Number.isSafeInteger(n) && n > 0),
+      'Composited canvas does not match the measured layout',
     );
-    return { ...shot, image: await page.screenshot({ clip }) };
+    const imageSize = [Math.round(clip.width * deviceScale), Math.round(clip.height * deviceScale)];
+    return {
+      ...shot,
+      deviceScale,
+      imageSize,
+      image: await page.screenshot({ clip, scale: 'device' }),
+    };
   };
   let shot = await screenshot();
   // Optional rigs and the grade can finish decoding after transport becomes idle.
@@ -378,7 +398,7 @@ try {
     'Committed graphics settings differ from request',
   );
   assert.deepEqual(shot.viewport, viewport, 'Unexpected actual viewport');
-  // Adaptation runs only during moving playback. The paused reference is always at native resolution.
+  // Adaptation runs only during moving playback. The paused reference uses the preset ceiling.
   assert.equal(shot.status.renderResolution, '100');
   const tier = shot.status.mapTier;
   assert(['desktop', 'mobile', 'compact'].includes(tier), 'Missing delivered map tier');
@@ -458,8 +478,8 @@ try {
   assert(scripts.size > 0, 'Missing production application fingerprint');
   const image = shot.image;
   assert(image.length > 0 && image.length <= 16 * 1024 ** 2);
-  await decodeOpaqueFrame(image, ...shot.buffer);
-  const { image: _, committed, ...observed } = shot;
+  await decodeOpaqueFrame(image, ...shot.imageSize);
+  const { image: _, committed, observedBreakables, ...observed } = shot;
   const report = {
     schemaVersion: 1,
     kind: 'cswatch-replay-frame',
@@ -486,6 +506,12 @@ try {
     packId: pack ?? null,
     cameraMode: 'pov',
     settings: committed.settings,
+    breakables: frameBreakables(
+      manifest.mapBreakables,
+      manifest.lastTick,
+      tick,
+      observedBreakables,
+    ),
     ...observed,
     visualResourcesSha256: digest(JSON.stringify([...resources].sort())),
     viewerBuildSha256: digest(JSON.stringify([...scripts].sort())),
@@ -526,7 +552,13 @@ try {
     await play.waitFor({ state: 'visible' });
     report.playbackTiming = await play.evaluate(
       (button, options) => window.measureViewerPlayback(button, options),
-      { seconds: playSeconds, mode: expectedMode, maxP95Ms: maxP95 ?? null, minIntervals },
+      {
+        seconds: playSeconds,
+        mode: expectedMode,
+        maxP95Ms: maxP95 ?? null,
+        minDisplayScale,
+        minIntervals,
+      },
     );
     assert.equal(report.playbackTiming.startTick, tick, 'Unexpected playback start');
     assert.equal(report.playbackTiming.entry.mapTier, tier, 'Model changed before timing');

@@ -1,4 +1,5 @@
-import { Box3, Matrix4, Mesh, Ray, Vector3, type Group } from 'three';
+import { Box3, Matrix4, Mesh, Ray, Vector3, type Group, type Object3D } from 'three';
+import { mapBreakableVisibility } from './map-breakables';
 import type { FollowCamera } from './follow-camera';
 
 const CLEARANCE = 0.24;
@@ -7,6 +8,7 @@ const MAX_TEST_TRIANGLES = 100000;
 const TRIANGLES_PER_BLOCK = 64;
 const MAX_BLOCKS = 32_768;
 type Surface = {
+  gate?: Object3D;
   geometry: Mesh['geometry'];
   bounds: Box3;
   toWorld: Matrix4;
@@ -19,7 +21,8 @@ export function followObstruction(root: Group) {
   const surfaces: Surface[] = [];
   const vertex = new Vector3();
   root.updateMatrixWorld(true);
-  root.traverseVisible((object) => {
+  const breakables = mapBreakableVisibility(root);
+  const add = (object: Object3D, gate?: Object3D) => {
     if (surfaces.length >= MAX_SURFACES || Object.getPrototypeOf(object) !== Mesh.prototype) return;
     const mesh = object as Mesh;
     const { material, geometry } = mesh;
@@ -48,8 +51,26 @@ export function followObstruction(root: Group) {
     bounds.applyMatrix4(mesh.matrixWorld);
     if (bounds.isEmpty()) return;
     const toWorld = mesh.matrixWorld.clone();
-    surfaces.push({ geometry, bounds, toWorld, toLocal: toWorld.clone().invert(), triangles });
-  });
+    surfaces.push({
+      geometry,
+      bounds,
+      toWorld,
+      toLocal: toWorld.clone().invert(),
+      triangles,
+      gate,
+    });
+  };
+  if (breakables) {
+    // An opening seek may already hide a tagged parent. Index its authored
+    // triangles once so all forks can trace them again after a rewind.
+    function visit(node: Object3D, gate?: Object3D) {
+      if (!(breakables!.authored.get(node) ?? node.visible)) return;
+      if (breakables!.authored.has(node)) gate = node;
+      add(node, gate);
+      for (const child of node.children) visit(child, gate);
+    }
+    visit(root);
+  } else root.traverseVisible(add);
   // Prepared primitives retain spatial locality in their index order. Build bounds
   // only for large geometry that a ray reaches, and share them across instances.
   const blocksByGeometry = new WeakMap<Mesh['geometry'], Box3[]>();
@@ -87,6 +108,7 @@ export function followObstruction(root: Group) {
       lastOrigin = new Vector3(Infinity, Infinity, Infinity),
       lastDestination = new Vector3();
     let lastPosition: FollowCamera['position'] | undefined;
+    let lastRevision: number | undefined;
 
     return ({
       target,
@@ -94,8 +116,13 @@ export function followObstruction(root: Group) {
     }: Pick<FollowCamera, 'target' | 'position'>): FollowCamera['position'] => {
       ray.origin.fromArray(target);
       destination.fromArray(position);
-      if (lastOrigin.equals(ray.origin) && lastDestination.equals(destination))
+      if (
+        lastRevision === breakables?.revision &&
+        lastOrigin.equals(ray.origin) &&
+        lastDestination.equals(destination)
+      )
         return lastPosition ?? position;
+      lastRevision = breakables?.revision;
       lastOrigin.copy(ray.origin);
       lastDestination.copy(destination);
       const length = ray.direction.subVectors(destination, ray.origin).length();
@@ -106,7 +133,11 @@ export function followObstruction(root: Group) {
         const distance = surface.bounds.containsPoint(ray.origin)
           ? 0
           : ray.intersectBox(surface.bounds, hit)?.distanceTo(ray.origin);
-        if (distance !== undefined && distance < length + clearance)
+        if (
+          distance !== undefined &&
+          distance < length + clearance &&
+          surface.gate?.visible !== false
+        )
           candidates.push({ surface, distance });
       }
       candidates.sort((x, y) => x.distance - y.distance);

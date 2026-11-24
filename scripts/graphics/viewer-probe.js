@@ -60,7 +60,10 @@
   };
 
   // Several render passes may submit to the screen in one browser animation frame.
-  window.measureViewerPlayback = async (button, { seconds, mode, maxP95Ms, minIntervals }) => {
+  window.measureViewerPlayback = async (
+    button,
+    { seconds, mode, maxP95Ms, minDisplayScale = null, minIntervals },
+  ) => {
     const element = document.querySelector('.scene'),
       canvas = element?.querySelector('canvas');
     const slider = document.querySelector('.timeline-slider');
@@ -107,9 +110,33 @@
           'data-equipment-error-count',
         ],
       });
-      renderer.render = function (...args) {
-        const result = original.apply(this, args);
-        if (!this.getRenderTarget()) {
+      const bounds = canvas.getBoundingClientRect();
+      const displayWidth = Math.round(bounds.width * window.devicePixelRatio);
+      const displayHeight = Math.round(bounds.height * window.devicePixelRatio);
+      // The WebGL canvas truncates fractional physical pixels, whereas the screenshot rounds.
+      const minWidth = Math.floor(bounds.width * window.devicePixelRatio * (minDisplayScale ?? 0));
+      const minHeight = Math.floor(
+        bounds.height * window.devicePixelRatio * (minDisplayScale ?? 0),
+      );
+      let lowestWorldScale = Infinity,
+        lowestScreenScale = Infinity,
+        belowMinScale = false;
+      const displayScale = (width, height) => {
+        if (width < minWidth || height < minHeight) belowMinScale = true;
+        return Math.min(width / displayWidth, height / displayHeight);
+      };
+      renderer.render = function (pass, lens) {
+        const target = this.getRenderTarget();
+        const result = original.call(this, pass, lens);
+        if (pass === scene && lens === state.camera) {
+          const output = target ?? canvas;
+          lowestWorldScale = Math.min(lowestWorldScale, displayScale(output.width, output.height));
+        }
+        if (!target) {
+          lowestScreenScale = Math.min(
+            lowestScreenScale,
+            displayScale(canvas.width, canvas.height),
+          );
           if (rotate && !cameraTurned)
             cameraTurned = initialOrientation.angleTo(state.camera.quaternion) > 0.01;
           const frame = document.timeline.currentTime;
@@ -193,10 +220,25 @@
         entry?.settled && exit?.settled && !errors.size && !exit.errors.length,
       );
       const p95Ms = percentile(0.95);
+      const lowestScale =
+        Number.isFinite(lowestScreenScale) && Number.isFinite(lowestWorldScale)
+          ? Math.min(lowestScreenScale, lowestWorldScale)
+          : null;
       let budgetVerdict = 'not-evaluated';
-      if (maxP95Ms !== null) {
-        if (!moved || !assetsVerified || gaps.length < minIntervals) budgetVerdict = 'unverified';
-        else budgetVerdict = p95Ms > maxP95Ms || timeWeightedP95Ms > maxP95Ms ? 'fail' : 'pass';
+      if (maxP95Ms !== null || minDisplayScale !== null) {
+        if (
+          (minDisplayScale !== null && lowestScale === null) ||
+          !moved ||
+          !assetsVerified ||
+          gaps.length < minIntervals
+        )
+          budgetVerdict = 'unverified';
+        else if (
+          (maxP95Ms !== null && (p95Ms > maxP95Ms || timeWeightedP95Ms > maxP95Ms)) ||
+          belowMinScale
+        )
+          budgetVerdict = 'fail';
+        else budgetVerdict = 'pass';
       }
       return {
         cameraMode: exit?.cameraMode,
@@ -221,6 +263,11 @@
         exit,
         assetErrors: [...errors],
         renderResolutions: [...resolutions],
+        displayPixels: [displayWidth, displayHeight],
+        lowestDisplayScale: lowestScale,
+        lowestWorldScale: Number.isFinite(lowestWorldScale) ? lowestWorldScale : null,
+        lowestPresentationScale: Number.isFinite(lowestScreenScale) ? lowestScreenScale : null,
+        minDisplayScale,
         requestedSeconds: seconds,
         minIntervals,
         maxP95Ms,
@@ -255,6 +302,45 @@
     }
     if (!sceneProps || sceneProps.playing || sceneProps.mode !== 'pov' || sceneProps.data.sample)
       throw Error('Recorded paused POV is unavailable');
+    // Read the installed map clone, including invisible descendants. This is an
+    // offline capture of scene visibility; it makes no frustum or pixel claim.
+    function observedBreakables(scene) {
+      const text = (value, max) =>
+        typeof value === 'string' && value.length <= max ? value : null;
+      const triple = (value) =>
+        Array.isArray(value) && value.length === 3 && value.every(Number.isFinite) ? value : null;
+      const nodes = [];
+      const stack = [{ node: scene, inMap: false, shown: true }];
+      let groups = 0,
+        visited = 0;
+      while (stack.length) {
+        const { node, inMap, shown } = stack.pop();
+        const group =
+          typeof node.immutableDescendants === 'boolean' &&
+          typeof node.canTrackRigCasters === 'boolean';
+        if (group && ++groups > 1) return { reason: 'multiple-map-groups' };
+        const inside = group || inMap;
+        const visible = shown && node.visible;
+        const tag = inside && node.userData.cswatchBreakable;
+        if (tag) {
+          if (nodes.length >= 512) return { reason: 'tag-limit' };
+          nodes.push({
+            className: text(tag.className, 64),
+            hammerId: text(tag.hammerId, 128),
+            model: text(tag.model, 256),
+            modelId: text(tag.modelId, 20),
+            origin: triple(tag.origin),
+            angles: triple(tag.angles),
+            visible,
+          });
+        }
+        if (++visited + stack.length + node.children.length > 65536)
+          return { reason: 'node-limit' };
+        for (const child of node.children)
+          stack.push({ node: child, inMap: inside, shown: visible });
+      }
+      return groups === 1 ? { nodes } : { reason: 'map-group-unavailable' };
+    }
     for (const scene of scenes) {
       const state = scene.__r3f?.root.getState();
       if (!state || state.scene !== scene || state.previousRoot || state.gl.domElement !== canvas)
@@ -331,6 +417,7 @@
                 camera,
                 equipmentProjection,
                 nativePovModel,
+                observedBreakables: observedBreakables(scene),
                 status,
                 screenPass,
                 viewport: { width: innerWidth, height: innerHeight },

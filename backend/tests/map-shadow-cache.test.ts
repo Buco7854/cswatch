@@ -20,6 +20,7 @@ import {
   Texture,
   type WebGLRenderer,
 } from '../../frontend/node_modules/three/build/three.module.js';
+import { bindMapBreakables } from '../../frontend/src/map-breakables.js';
 import { MapShadowCache } from '../../frontend/src/map-shadow-cache.js';
 import { prepareMapModel } from '../../frontend/src/map-model.js';
 
@@ -276,4 +277,30 @@ test('oversized caster signatures release the cache and keep ordinary refresh en
   assert.equal(update(), true);
   mesh.position.x++;
   assert.equal(update(), true);
+});
+
+test('a recorded deletion and its rewind each invalidate sealed map shadows once', () => {
+  const { map, update } = fixture();
+  const pose = {
+    modelId: '16',
+    origin: [1, 2, 3] as [number, number, number],
+    angles: [0, 0, 0] as [number, number, number],
+  };
+  map.children[0].userData.cswatchBreakable = {
+    ...pose,
+    className: 'prop_dynamic',
+    model: 'models/test.vmdl',
+    hammerId: '123',
+  };
+  const index = bindMapBreakables(map, [{ ...pose, hidden: [[16, 32]] }])!;
+  index.seek(0);
+  update();
+  assert.equal(update(), false);
+  index.seek(16);
+  assert.equal(update(), true);
+  assert.equal(update(), false);
+  index.seek(15);
+  assert.equal(update(), true);
+  assert.equal(update(), false);
+  index.dispose();
 });

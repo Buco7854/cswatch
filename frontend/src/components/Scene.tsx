@@ -17,7 +17,12 @@ import {
 } from 'react';
 import type { ReactNode } from 'react';
 import type { ListenerPose } from '../viewer-audio';
-import { AdaptiveResolution, type RenderQuality } from '../adaptive-resolution';
+import {
+  AdaptiveResolution,
+  adaptiveDetailDpr,
+  mapDetailDpr,
+  type RenderQuality,
+} from '../adaptive-resolution';
 import { Canvas, createPortal, useFrame, useThree, type RootState } from '@react-three/fiber';
 import { renderDevice, type RenderDevice } from '../render-device';
 import { OrbitControls } from '@react-three/drei';
@@ -78,6 +83,7 @@ import type { AssetStatus } from '../map-assets';
 import { assertMapBaseColorTextures, prepareMapModel } from '../map-model';
 import { beginFinalGradePass } from '../map-grade-target';
 import { renderSkyBehindMap, skyCameraFor, updateSkyCamera } from '../sky-render';
+import { bindMapBreakables } from '../map-breakables';
 import { useMapGLTF, useMapModelScope } from '../map-loader';
 import type { ModelProgressSource, ModelScope } from '../model-cache';
 import { useEquipmentAssets, type EquipmentRenderState } from '../equipment-assets';
@@ -157,8 +163,13 @@ type MapResources = DemoMapState & {
 };
 
 const UNIT = 0.0254;
-const MAX_DESKTOP_DPR = 1.75;
 const devicePixelRatio = () => window.devicePixelRatio || 1;
+const cssPixelRatio = () => 1;
+const mobileDetailDpr = () =>
+  mapDetailDpr(devicePixelRatio(), window.innerWidth * window.innerHeight, 'mobile');
+const highDetailDpr = () =>
+  mapDetailDpr(devicePixelRatio(), window.innerWidth * window.innerHeight, 'desktop');
+const autoDesktopDpr = () => Math.max(Math.min(1.75, devicePixelRatio()), mobileDetailDpr());
 
 function subscribeToDevicePixelRatio(update: () => void) {
   let media: MediaQueryList;
@@ -169,7 +180,11 @@ function subscribeToDevicePixelRatio(update: () => void) {
     update();
   };
   track();
-  return () => media.removeEventListener('change', track);
+  window.addEventListener('resize', update);
+  return () => {
+    media.removeEventListener('change', track);
+    window.removeEventListener('resize', update);
+  };
 }
 const vector = (p: Position) => new THREE.Vector3(p.x * UNIT, p.z * UNIT, -p.y * UNIT);
 function Box({
@@ -281,8 +296,12 @@ function Model({
   scope,
   registerFollowModel,
   playerLighting,
+  mapBreakables,
+  tick,
 }: {
   url: string;
+  mapBreakables: Playback['mapBreakables'];
+  tick: number;
   fogResources: SourceFogReference;
   worldFog: boolean;
   landscapeFog: boolean;
@@ -301,6 +320,7 @@ function Model({
   // tabs to clear this positive loader cache, as documented in tools/assets.
   const gltf = useMapGLTF(url);
   useLayoutEffect(() => scope.acquire(), [scope]);
+  // Recordings can share a map asset while their collision and shadow states differ.
   const prepared = useMemo(() => {
     const result = prepareMapModel(gltf.scene, gltf.animations);
     assertMapBaseColorTextures({ scene: result.main, parser: gltf.parser });
@@ -333,7 +353,7 @@ function Model({
       disposeFog,
       disposeSkyFog,
     };
-  }, [gltf, fogResources, worldFog, landscapeFog]);
+  }, [gltf, fogResources, worldFog, landscapeFog, mapBreakables]);
   useEffect(
     () => () => {
       prepared.compatibility.dispose();
@@ -344,6 +364,18 @@ function Model({
     [prepared],
   );
   const { gl, scene } = useThree();
+  const breakables = useRef<ReturnType<typeof bindMapBreakables>>(undefined);
+  useLayoutEffect(() => {
+    const index = bindMapBreakables(prepared.main, mapBreakables);
+    breakables.current = index;
+    return () => {
+      index?.dispose();
+      breakables.current = undefined;
+    };
+  }, [prepared.main, mapBreakables]);
+  useLayoutEffect(() => {
+    breakables.current?.seek(tick);
+  }, [tick, prepared.main, mapBreakables]);
   useLayoutEffect(
     () => installMapDrawRanges(gl, scene, prepared.main, prepared.sky),
     [gl, scene, prepared],
@@ -1110,6 +1142,8 @@ function World({
                   worldFog={Boolean(environment?.fog || environment?.gradientFog?.world)}
                   landscapeFog={Boolean(environment?.gradientFog?.landscape)}
                   registerFollowModel={registerFollowModel}
+                  mapBreakables={data.mapBreakables}
+                  tick={tick}
                   playerLighting={low ? null : playerLighting}
                 />
               </Suspense>
@@ -1548,10 +1582,12 @@ export default function Scene({
   const [gpu, setGpu] = useState<RenderDevice>();
   const auto = settings.quality === 'auto';
   const probingGpu = auto && gpu === undefined;
+  const autoMobile = auto && (gpu === 'integrated' || (gpu === 'unknown' && fallbackLow));
   const prefersCompact =
     settings.quality === 'compact' ||
-    (auto && (gpu === 'software' || gpu === 'limited' || (gpu === 'unknown' && fallbackLow)));
-  const wantsLow = settings.quality === 'low' || prefersCompact || (auto && gpu === 'integrated');
+    (auto && (gpu === 'software' || gpu === 'limited')) ||
+    (autoMobile && !mapAssets.assets.mobile);
+  const wantsLow = settings.quality === 'low' || prefersCompact || autoMobile;
   const detailedModel = wantsLow
     ? mapAssets.assets.mobile || mapAssets.assets.model
     : mapAssets.assets.model || mapAssets.assets.mobile;
@@ -1571,13 +1607,30 @@ export default function Scene({
     [assetScope, data.map, settings.quality, settings.renderResolution],
   );
   const adaptive = auto && !preview;
-  const resolution = adaptive
-    ? Math.min(adaptiveQuality.resolution, settings.renderResolution)
-    : settings.renderResolution;
+  const resolution =
+    adaptive && playing
+      ? Math.min(adaptiveQuality.resolution, settings.renderResolution)
+      : settings.renderResolution;
   const shadows = !low && (!adaptive || adaptiveQuality.shadows);
-  const displayDpr = useSyncExternalStore(subscribeToDevicePixelRatio, devicePixelRatio);
+  const detailedLow =
+    low &&
+    !compact &&
+    !preview &&
+    (settings.quality === 'low' || (gpu !== 'software' && gpu !== 'limited'));
+  const targetDpr = useSyncExternalStore(
+    subscribeToDevicePixelRatio,
+    low
+      ? detailedLow
+        ? mobileDetailDpr
+        : cssPixelRatio
+      : settings.quality === 'high' && !preview
+        ? highDetailDpr
+        : autoDesktopDpr,
+  );
   const renderDpr =
-    (low ? 1 : Math.min(MAX_DESKTOP_DPR, Math.max(1, displayDpr))) * (resolution / 100);
+    detailedLow && adaptive && playing
+      ? adaptiveDetailDpr(targetDpr, resolution, settings.renderResolution)
+      : targetDpr * (resolution / 100);
   const zonesAt = useMemo(
     () => buildUtilityZoneIndex(data.events, data.tickRate, true),
     [data.events, data.tickRate],

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { AdaptiveResolution } from '../src/adaptive-resolution';
+import { AdaptiveResolution, adaptiveDetailDpr } from '../src/adaptive-resolution';
 
 test('adaptive resolution reacts to sustained load within its floor and user ceiling', () => {
   const monitor = new AdaptiveResolution();
@@ -17,7 +17,7 @@ test('adaptive resolution reacts to sustained load within its floor and user cei
   expect(quality.resolution).toBe(85);
   advance(50, 35);
   expect(quality.resolution).toBe(75);
-  advance(250, 40);
+  advance(300, 40);
   expect(quality).toEqual({ resolution: 50, shadows: false });
   monitor.reset();
   advance(47, 16);
@@ -56,9 +56,17 @@ test('Auto responds to repeated stalls that dominate playback time even among sh
   }
   expect(quality).toEqual({ resolution: 100, shadows: true });
   frame(300);
-  expect(quality).toEqual({ resolution: 75, shadows: true });
-  // After each settle period the same sustained pressure can lower the
-  // buffer to its existing floor and then suspend the live shadow maps.
-  for (let i = 0; i < 12; i++) frame(350);
+  expect(quality).toEqual({ resolution: 100, shadows: false });
+  // Continued pressure can still reach the emergency floor.
+  for (let i = 0; i < 14; i++) frame(350);
   expect(quality).toEqual({ resolution: 50, shadows: false });
+});
+
+test('detailed high-density rendering respects the chosen ceiling and the emergency pixel floor', () => {
+  expect(adaptiveDetailDpr(2, 100, 100)).toBe(2);
+  expect(adaptiveDetailDpr(2, 85, 85)).toBe(1.7);
+  expect(adaptiveDetailDpr(2, 75, 100)).toBe(1.25);
+  expect(adaptiveDetailDpr(2, 50, 100)).toBe(0.5);
+  expect(adaptiveDetailDpr(2, 50, 50)).toBe(0.5);
+  expect(adaptiveDetailDpr(1, 75, 100)).toBe(0.75);
 });

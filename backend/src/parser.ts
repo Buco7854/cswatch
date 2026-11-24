@@ -295,6 +295,7 @@ export async function parse(folder: string, maxExpanded: number) {
     itemState: media.itemState,
     smokeTracks: media.smokeTracks,
     infernos: media.infernos,
+    mapBreakables: media.mapBreakables,
     eventAvailability,
     throwInputs: throwInputs.snapshots,
   };

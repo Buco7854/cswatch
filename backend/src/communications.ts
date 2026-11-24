@@ -10,6 +10,7 @@ import { observeCrosshairs } from './crosshairs.js';
 import { observeItemState } from './item-state.js';
 import { observeMapIdentity } from './map-identity.js';
 import { observeSmokeTracks } from './smoke-state.js';
+import { observeMapBreakables } from './map-breakables.js';
 import { observeInfernos } from './inferno-state.js';
 import { observeMatchPerformance } from './match-performance.js';
 import { observeRecordedEye } from './recorded-eye.js';
@@ -32,6 +33,7 @@ export async function readCommunications(
   const finishCrosshairs = observeCrosshairs(reader, lastTick, actors);
   const finishItems = observeItemState(reader, lastTick);
   const finishSmokes = observeSmokeTracks(reader, lastTick, tickRate);
+  const finishBreakables = observeMapBreakables(reader, lastTick, events);
   const finishInfernos = observeInfernos(reader, lastTick);
   observeRecordedEye(reader, frames);
   const finishPerformance = observeMatchPerformance(reader, actors, frames.at(-1));
@@ -99,7 +101,10 @@ export async function readCommunications(
   });
   let failed = false;
   try {
-    const result = await reader.parseDemo(path, { entities: EntityMode.ALL });
+    const result = await reader.parseDemo(path, {
+      entities: EntityMode.ALL,
+      entityClasses: ['CDynamicProp'],
+    });
     failed = result.status !== 'complete';
   } catch {
     failed = true;
@@ -151,6 +156,7 @@ export async function readCommunications(
     itemState: { complete: items.complete, coverage: items.coverage },
     smokeTracks: finishSmokes(!failed),
     infernos: finishInfernos(!failed),
+    mapBreakables: finishBreakables(!failed),
     warnings,
   };
 }

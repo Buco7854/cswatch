@@ -1,3 +1,5 @@
+import { RENDER_RESOLUTION_MIN } from './playback';
+
 const FRAME_WINDOW = 30;
 const MIN_WINDOW_FRAMES = 8;
 const WINDOW_MS = 1500;
@@ -6,12 +8,36 @@ const FAST_FRAME_MS = 19;
 const STALL_MS = 100;
 const STALL_STEP = 25;
 const FAST_WINDOWS_TO_UPGRADE = 4;
-const SLOW_WINDOWS_TO_SUSPEND_SHADOWS = 2;
+const SHADOW_RESOLUTION_THRESHOLD = 80;
 const SETTLE_MS = 750;
 const RESOLUTION_STEP = 10;
-const MIN_RESOLUTION = 50;
 
 export type RenderQuality = { resolution: number; shadows: boolean };
+
+/** A dense mobile target fits one megapixel at 100%. Explicit High can spend
+ * four megapixels on extra detail while preserving its regular desktop scale. */
+export function mapDetailDpr(deviceScale: number, area: number, tier: 'mobile' | 'desktop') {
+  const scale = Math.max(1, deviceScale);
+  const high = tier === 'desktop';
+  const pixelBudget = (high ? 4 : 1) * 1024 ** 2;
+  const bounded = Math.min(
+    scale,
+    high ? 3 : 2,
+    Math.max(1, Math.sqrt(pixelBudget / Math.max(1, area))),
+  );
+  return high ? Math.max(bounded, Math.min(1.75, scale)) : bounded;
+}
+
+/** Scale the additional high-density pixels away first, reaching the original
+ * half-CSS-pixel emergency floor. A fixed user ceiling stays proportional. */
+export function adaptiveDetailDpr(targetDpr: number, resolution: number, ceiling: number) {
+  const maxDpr = targetDpr * (ceiling / 100);
+  const floor = RENDER_RESOLUTION_MIN / 100;
+  if (resolution <= RENDER_RESOLUTION_MIN) return floor;
+  if (resolution >= ceiling) return maxDpr;
+  const headroom = (resolution - RENDER_RESOLUTION_MIN) / (ceiling - RENDER_RESOLUTION_MIN);
+  return floor + headroom * (maxDpr - floor);
+}
 
 /** Adjust pixel and live shadow work under sustained load without changing the map tier. */
 export class AdaptiveResolution {
@@ -24,13 +50,12 @@ export class AdaptiveResolution {
   private stalls = 0;
   private stalledMs = 0;
   private fastWindows = 0;
-  private slowAtFloor = 0;
 
   reset() {
     this.stalls = this.stalledMs = 0;
     this.previous = undefined;
     this.windowStarted = undefined;
-    this.frames = this.slow = this.fast = this.fastWindows = this.slowAtFloor = 0;
+    this.frames = this.slow = this.fast = this.fastWindows = 0;
   }
 
   sample(now: number, current: RenderQuality, ceiling: number, allowShadows = true): RenderQuality {
@@ -65,15 +90,21 @@ export class AdaptiveResolution {
 
     this.fastWindows = this.fast >= this.frames * 0.9 ? this.fastWindows + 1 : 0;
     const slowWindow = stalling || this.slow >= this.frames * 0.7;
-    this.slowAtFloor =
-      slowWindow && current.resolution === MIN_RESOLUTION ? this.slowAtFloor + 1 : 0;
-    const next = slowWindow
-      ? Math.max(MIN_RESOLUTION, current.resolution - (stalling ? STALL_STEP : RESOLUTION_STEP))
-      : this.fastWindows >= FAST_WINDOWS_TO_UPGRADE
-        ? Math.min(ceiling, current.resolution + RESOLUTION_STEP)
-        : current.resolution;
     let shadows = current.shadows && allowShadows;
-    if (this.slowAtFloor >= (stalling ? 1 : SLOW_WINDOWS_TO_SUSPEND_SHADOWS)) shadows = false;
+    // Try dropping live shadows before spending another step of image detail.
+    // Further slow windows can still reach the existing emergency pixel floor.
+    const suspendShadows =
+      slowWindow && shadows && (current.resolution <= SHADOW_RESOLUTION_THRESHOLD || stalling);
+    if (suspendShadows) shadows = false;
+    let next = current.resolution;
+    if (slowWindow && !suspendShadows) {
+      next = Math.max(
+        RENDER_RESOLUTION_MIN,
+        current.resolution - (stalling ? STALL_STEP : RESOLUTION_STEP),
+      );
+    } else if (this.fastWindows >= FAST_WINDOWS_TO_UPGRADE) {
+      next = Math.min(ceiling, current.resolution + RESOLUTION_STEP);
+    }
     if (
       allowShadows &&
       current.resolution === ceiling &&
@@ -83,7 +114,7 @@ export class AdaptiveResolution {
     this.frames = this.slow = this.fast = this.stalls = this.stalledMs = 0;
     this.windowStarted = undefined;
     if (next !== current.resolution || shadows !== current.shadows) {
-      this.fastWindows = this.slowAtFloor = 0;
+      this.fastWindows = 0;
       this.settledAt = now + SETTLE_MS;
       return { resolution: next, shadows };
     }
