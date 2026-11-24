@@ -4,7 +4,7 @@ const translucentSurfaces = new Set(['csgo_glass', 'csgo_water', 'water', 'csgo_
 const projected = new Set(['csgo_projected_decals', 'projected_decals', 'projected_decal']);
 const effects = /(?:^|_)(?:effects|particle|particles|sprite|beam|fog)(?:_|$)/;
 
-export function worldMaterialAction(material) {
+export function worldMaterialAction(material, preparedWater) {
   if (!material) return 'surface';
   const extras = material.getExtras(),
     vmat = extras.vmat;
@@ -24,13 +24,14 @@ export function worldMaterialAction(material) {
     return 'omit_effect';
   }
   if (projected.has(shader) && material.getAlphaMode() === 'OPAQUE') return 'omit_projector';
-  if (shader === 'csgo_water_fancy') return 'omit_unsupported_refraction';
+  if (shader === 'csgo_water_fancy')
+    return preparedWater?.has(material) ? 'approximated_water' : 'omit_unsupported_refraction';
   if (translucentSurfaces.has(shader) && material.getAlphaMode() === 'OPAQUE')
     return 'omit_unresolved_transparency';
   return material.getAlphaMode() === 'MASK' ? 'cutout' : 'surface';
 }
 
-export function filterMapWorldMaterials(document) {
+export function filterMapWorldMaterials(document, preparedWater) {
   const result = new Map();
   for (const mesh of document.getRoot().listMeshes()) {
     for (const primitive of mesh.listPrimitives()) {
@@ -38,12 +39,13 @@ export function filterMapWorldMaterials(document) {
         shader = material?.getExtras().vmat?.ShaderName;
       const name =
         typeof shader === 'string' && /^[a-z0-9_]{1,100}\.vfx$/.test(shader) ? shader : 'gltf';
-      const action = worldMaterialAction(material);
+      const action = worldMaterialAction(material, preparedWater);
       const key = `${name}:${action}`;
       const row = result.get(key) ?? { shader: name, action, primitives: 0 };
       row.primitives++;
       result.set(key, row);
       if (action.startsWith('omit_')) primitive.dispose();
+      else if (action === 'approximated_water') primitive.setAttribute('COLOR_0', null);
       else if (action === 'cutout') {
         const sampler = material?.getBaseColorTextureInfo();
         if (sampler && sampler.getMagFilter() !== 9728)

@@ -8,6 +8,7 @@ import {
   type Material,
   type Object3D,
 } from 'three';
+import { preparedWater } from './source-water-material';
 import { preparedGlass } from './source-glass-material';
 import { StaticMapGroup } from './static-map-group';
 import { readSourceSun, type SourceSun } from './source-sun';
@@ -62,7 +63,8 @@ export function cloneMapModel(scene: Object3D): Object3D {
     if (object instanceof Mesh) {
       const materials = Array.isArray(object.material) ? object.material : [object.material];
       object.castShadow = materials.some(
-        (material: Material) => preparedGlass(material)?.castsShadow !== false,
+        (material: Material) =>
+          preparedGlass(material)?.castsShadow !== false && !preparedWater(material),
       );
       object.receiveShadow = true;
     }
