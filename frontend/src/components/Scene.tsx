@@ -1,6 +1,6 @@
 import type { WeaponAnchor } from '../agent-attachment';
 import { recordedFootPose, type FootPoseAt } from '../agent-feet';
-import { recordedAirPose } from '../agent-vertical';
+import { recordedAirWeight } from '../agent-vertical';
 import { playerShadows } from '../player-shadows';
 import { PlayerContactShadow, PlayerSunPass } from './PlayerShadow';
 import { t } from '../i18n';
@@ -821,7 +821,24 @@ function World({
       document.removeEventListener('focusin', clear);
     };
   }, [mode, preview, gl, invalidate]);
-  const { previous, frame, next, alpha } = frameAt(data, tick);
+  const { index, previous, frame, next, alpha } = frameAt(data, tick);
+  const airWeights = useMemo(() => {
+    const weights = new Map<string, [number, number]>();
+    if (!preview && !data.sample)
+      for (const p of frame.players) {
+        if (!p.alive) continue;
+        const from = recordedAirWeight(data, p.id, index);
+        const to = next === frame ? from : recordedAirWeight(data, p.id, index + 1);
+        if (from || to) weights.set(p.id, [from, to]);
+      }
+    return weights;
+  }, [preview, data.frames, data.rounds, data.tickRate, data.sample, frame, index, next]);
+  const airAt = (id: string) => {
+    const weights = airWeights.get(id);
+    return weights
+      ? THREE.MathUtils.lerp(weights[0], weights[1], THREE.MathUtils.smoothstep(alpha, 0, 1))
+      : 0;
+  };
   const recordedTravel = useMemo(
     () => indexRecordedTravel(data.frames, data.strideAnchor, data.rounds, data.tickRate),
     [data.frames, data.strideAnchor, data.rounds, data.tickRate],
@@ -1124,7 +1141,7 @@ function World({
                 contactTrace={floorTraces.get(p.id) ?? null}
                 contactShadow={!shadows}
                 footPoseAt={preview || data.sample ? undefined : footPoseAt}
-                airborne={preview || data.sample ? undefined : recordedAirPose(data, p.id, tick)}
+                airborne={airAt(p.id)}
                 shadowPose={shadows && Boolean(sun)}
                 sample={Boolean(data.sample)}
                 model={!preview ? (p.team === 3 ? agents.ct : agents.t) : null}
@@ -1168,6 +1185,7 @@ function World({
           >
             <PovViewmodel
               native={!data.sample}
+              airborne={airAt(viewedPlayer.id)}
               history={data}
               tick={tick}
               position={viewedPlayer}

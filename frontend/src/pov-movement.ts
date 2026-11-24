@@ -118,6 +118,7 @@ export function povMovement(
   previous?: PreviousPose,
   travelMeters?: number,
   dip = 0,
+  airborne = 0,
 ) {
   if (!timing || timing.roundBoundary || !Number.isFinite(alpha)) return;
   if (next && Math.abs(next.z - position.z) > 128) return;
@@ -125,14 +126,17 @@ export function povMovement(
   const { duck } = recordedLocomotion(position, next, fromTick, nextTick, tickRate, alpha);
   const { speed, rise, yaw, pitch } = recordedMotion(position, next, alpha, timing, previous);
   if (!(speed > 0.08) && !rise && !yaw && !pitch && !dip) return;
-  const amplitude = Math.max(0, Math.min(1, (speed - 0.08) / 4)) * (1 - duck * 0.55);
+  const amplitude =
+    Math.max(0, Math.min(1, (speed - 0.08) / 4)) * (1 - duck * 0.55) * (1 - airborne);
   const time = (fromTick + (nextTick - fromTick) * Math.max(0, Math.min(1, alpha))) / tickRate;
   const step = 2 * Math.PI * (travelMeters === undefined ? 1.6 * time : travelMeters / 1.55);
+  const sway = amplitude ? Math.sin(step) * 0.016 * amplitude : 0;
+  const bounce = amplitude ? Math.cos(step * 2) * amplitude : 0;
   return {
-    side: Math.sin(step) * 0.016 * amplitude + yaw * 0.000028,
-    lift: (Math.cos(step * 2) - 1) * 0.009 * amplitude - rise * 0.0012 - dip,
-    depth: Math.cos(step * 2) * 0.01 * amplitude,
-    roll: Math.sin(step) * 0.016 * amplitude - yaw * 0.000032,
+    side: sway + yaw * 0.000028,
+    lift: (bounce - amplitude) * 0.009 - rise * 0.0012 - dip,
+    depth: bounce * 0.01,
+    roll: sway - yaw * 0.000032,
     pitch: pitch * 0.00008 - rise * 0.0012 - dip * 0.75,
     yaw: -yaw * 0.00008,
   };

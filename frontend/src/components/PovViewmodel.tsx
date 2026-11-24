@@ -275,10 +275,16 @@ function AvailableViewmodel({
 /** Local asset availability is scoped to this viewer. Missing artwork keeps the normal POV. */
 export default function PovViewmodel({
   native,
+  airborne,
   history,
   tick,
   ...props
-}: PovEquipmentProps & { native: boolean; history: ReplayHistory; tick: number }) {
+}: PovEquipmentProps & {
+  native: boolean;
+  airborne: number;
+  history: ReplayHistory;
+  tick: number;
+}) {
   const context = useContext(EquipmentModels);
   const reducedMotion = useReducedMotion();
   const frameTick = props.timing?.fromTick ?? tick;
@@ -292,6 +298,7 @@ export default function PovViewmodel({
         props.previous,
         props.travelMeters,
         povLanding(history, props.position, frameTick, tick),
+        airborne,
       );
   const root = useRef<Group>(null);
   const { invalidate } = useThree();

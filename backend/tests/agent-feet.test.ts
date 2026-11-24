@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Bone, Group, Vector3 } from '../../frontend/node_modules/three/build/three.module.js';
 import { createAgentFootLock } from '../../frontend/src/agent-feet.js';
-import { recordedAirPose } from '../../frontend/src/agent-vertical.js';
+import { recordedAirWeight } from '../../frontend/src/agent-vertical.js';
 
 test('a foot plant stays in one world position across seeks and preserves both leg lengths', () => {
   const actor = new Group();
@@ -78,21 +78,36 @@ test('one steep step and a steady climb leave the ballistic foot-lock guard inac
     })),
   });
   const jump = path((seconds) => 260 * seconds - 400 * seconds * seconds);
-  assert.equal(recordedAirPose(jump, '1', 16), 1);
+  assert.equal(recordedAirWeight(jump, '1', 2), 0);
+  assert.equal(recordedAirWeight(jump, '1', 3), 1);
+  assert.equal(recordedAirWeight({ ...jump, rounds: [{ number: 2, tick: 8 }] }, '1', 4), 0);
+  const broken = structuredClone(jump);
+  broken.frames[2].players[0].team = 2;
+  assert.equal(recordedAirWeight(broken, '1', 4), 0);
+  const separated = path(() => 0);
+  // Gravity-like decelerations separated by a constant-speed interval.
+  const heights = [0, 20, 37, 54, 68];
+  heights.forEach((z, i) => (separated.frames[i].players[0].z = z));
+  assert.equal(recordedAirWeight(separated, '1', 4), 0);
+  const landed = path((t) => Math.max(0, 160 * t - 400 * t * t));
+  const exit = landed.frames.map((_, i) => recordedAirWeight(landed, '1', i));
+  assert.equal(exit[6], 1);
+  assert.ok(exit[8] > 0 && exit[8] < exit[7] && exit[7] < exit[6]);
+  assert.equal(exit[9], 0);
   assert.equal(
-    recordedAirPose(
+    recordedAirWeight(
       path((seconds) => seconds * 120),
       '1',
-      16,
+      4,
     ),
-    undefined,
+    0,
   );
   assert.equal(
-    recordedAirPose(
+    recordedAirWeight(
       path((seconds) => (seconds > 0.2 ? 30 : 0)),
       '1',
-      16,
+      4,
     ),
-    undefined,
+    0,
   );
 });

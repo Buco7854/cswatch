@@ -2,6 +2,8 @@
 
 Classic CT and T announcements use the recorded winner and play centrally across listener perspectives. Catalog discovery can finish during playback. The approved sound bank has no MVP music. [Round audio checks](VERIFICATION.md#recorded-round-announcements)
 
+First-person stride bob and third-person boot contact now fade through recorded ballistic movement. [Mirage jump comparison](VERIFICATION.md#airborne-arm-and-boot-motion)
+
 Demo processing and map loading use one screen with a stable return link. Account titles retain assistive focus, and text fields and library search show one focus outline.
 
 Newly prepared map packs carry source-derived transparency for supported constant glass, including the Nuke door pane. Members can review the timeline while the map worker downloads or converts their selected source. Native actors retain their moving gait on streamed chunks and blend consecutive firing poses. [Viewer checks](VERIFICATION.md#map-preparation-nuke-door-glass-and-native-player-poses)
