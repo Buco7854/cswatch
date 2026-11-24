@@ -1,5 +1,7 @@
 # Current handoff
 
+Measure detailed maps with a fixed desktop tier and live shadows. For clip-free prop rigs, the shadow cache budgets the actual casters and their inputs. A large organizational hierarchy can be cheap to track. Keep the moved-bone regression when changing shadow invalidation. [Detailed-world checks](VERIFICATION.md#high-quality-playback-on-four-official-maps)
+
 Benchmark moving playback across independent recordings and native map packs. Record the selected tier, rendered frames, long gaps, software or hardware renderer and whether the historical source matches. A missing Compact tier can silently send Auto to a much larger textured model. [Multi-map measurements](VERIFICATION.md#multi-map-playback)
 
 Keep playback comparisons on the same match, player, ticks, art and drawing-buffer size. Include a first traversal and a rewind. World equipment may reuse the existing resident memory budget during playback, with a smaller idle allowance on exit. Native character instances share animation data, while each character keeps independent bones. Static map and sky draw ranges must preserve primitive order and use the active pass camera. Test both fixed quality and Auto. [Playback checks](VERIFICATION.md#in-game-playback-stalls)

@@ -37,14 +37,12 @@ export class StaticMapGroup extends Group {
   seal(clips: readonly AnimationClip[]): void {
     if (clips.length || this.sealed) return;
     let eligible = true;
-    let rigs = 0;
-    let nodes = 0;
+    let hasRig = false;
     let hasBone = false;
     this.traverse((object) => {
-      nodes++;
       if (object.constructor === Bone) hasBone = true;
       const boundRig = object instanceof SkinnedMesh && Boolean(object.skeleton?.bones.length);
-      if (boundRig) rigs++;
+      if (boundRig) hasRig = true;
       if (
         object.animations.length ||
         ('isInstancedMesh' in object && object.isInstancedMesh) ||
@@ -63,8 +61,10 @@ export class StaticMapGroup extends Group {
         eligible = false;
     });
     if (!eligible) return;
-    if (rigs || hasBone) {
-      this.trackRigCasters = rigs > 0 && rigs <= 256 && nodes <= 8192;
+    if (hasRig || hasBone) {
+      // Group and bone counts alone do not measure shadow cache cost. The cache
+      // bounds the visited hierarchy and retained caster data as it inspects them.
+      this.trackRigCasters = hasRig;
       return;
     }
     this.traverse((object) => {

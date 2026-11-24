@@ -14,7 +14,8 @@ import {
 } from 'three';
 
 const minimumBlockTriangles = 64;
-const maxIndexedTriangles = 6_000_000;
+const maxIndexedTriangles = 12_000_000;
+const maxVisitedVertices = 600_000;
 const blocksPerRegion = 8;
 const maxGapsPerDraw = 4;
 const maxBlocks = 32_768;
@@ -58,6 +59,8 @@ export function installMapDrawRanges(
   const width = budget > 0 ? Math.ceil(Math.min(totalTriangles, maxIndexedTriangles) / budget) : 0;
   const indicesPerBlock = 3 * Math.max(minimumBlockTriangles, width);
   const point = new Vector3();
+  let visited = new Uint32Array(0);
+  let stamp = 0;
   let blocks = 0,
     scanned = 0;
   for (const [geometry, count] of candidates) {
@@ -66,12 +69,23 @@ export function installMapDrawRanges(
     scanned += count / 3;
     const position = geometry.attributes.position,
       index = geometry.index;
+    // Indexed map geometry reuses vertices repeatedly inside each block. Reading
+    // a shared position once per box bounds the load cost of covering large maps.
+    const stampVertices = index && position.count <= maxVisitedVertices;
+    if (stampVertices && visited.length < position.count) visited = new Uint32Array(position.count);
     const boxes: Box3[] = [];
     for (let first = 0; first < count; first += indicesPerBlock) {
       const box = new Box3();
       const end = Math.min(first + indicesPerBlock, count);
-      for (let i = first; i < end; i++)
-        box.expandByPoint(point.fromBufferAttribute(position, index ? index.getX(i) : i));
+      stamp++;
+      for (let i = first; i < end; i++) {
+        const vertex = index ? index.getX(i) : i;
+        if (stampVertices) {
+          if (visited[vertex] === stamp) continue;
+          visited[vertex] = stamp;
+        }
+        box.expandByPoint(point.fromBufferAttribute(position, vertex));
+      }
       const magnitude = Math.max(box.min.length(), box.max.length());
       if (!Number.isFinite(magnitude)) break;
       // GPU vertex transforms use float precision. Retain boundary triangles.

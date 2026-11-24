@@ -26,8 +26,21 @@ import {
 import type { MapSun } from './map-sun';
 
 const size = 1536;
-const directional = 'getDirectionalLightInfo( directionalLight, directLight );';
-const attenuation = directional + ' directLight.color *= playerSunVisibility();';
+// A normal-mapped surface can face away from the sun even when the source
+// geometry faces it. Standard direct lighting multiplies both BRDF lobes by
+// max(dot(N,L), 0). Clearcoat uses an independent normal and still needs the light.
+const directional =
+  /(getDirectionalLightInfo\( directionalLight, directLight \);)([\s\S]*?RE_Direct\([^;]+;)/;
+const attenuation = `
+  #ifndef USE_CLEARCOAT
+    if (dot(geometryNormal, directionalLight.direction) > 0.0)
+  #endif
+  {
+    $1
+    directLight.color *= playerSunVisibility();
+    $2
+  }
+`;
 
 /** A separate depth target contains only posed players and their equipment. */
 export function playerShadows() {
@@ -38,8 +51,13 @@ export function playerShadows() {
   const casterSphere = new Sphere(new Vector3(), 9);
   const lightBounds = new Box3();
   const center = new Vector3();
+  // WebGL validates shadow samplers before drawing, even when their branch
+  // is disabled. A depth texture must be bound before the first caster appears.
+  const emptyDepth = new DepthTexture(1, 1);
+  emptyDepth.compareFunction = LessEqualCompare;
+  emptyDepth.needsUpdate = true;
   const depth = {
-    cswatchPlayerDepth: { value: null as Texture | null },
+    cswatchPlayerDepth: { value: emptyDepth as Texture | null },
     cswatchPlayerProjection: { value: new Matrix4() },
     cswatchPlayerBias: { value: 0 },
     cswatchPlayerShadows: { value: false },
@@ -173,6 +191,7 @@ export function playerShadows() {
     dispose() {
       depth.cswatchPlayerShadows.value = false;
       depth.cswatchPlayerDepth.value = null;
+      emptyDepth.dispose();
       target?.dispose();
       target = undefined;
       scene.clear();
