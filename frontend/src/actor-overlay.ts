@@ -27,7 +27,7 @@ const farDistance = 45;
 export function actorLabelStyle(meters: number, occluded: boolean) {
   const far = Math.min(1, Math.max(0, (meters - nearDistance) / (farDistance - nearDistance)));
   return {
-    scale: Math.round((1 - 0.12 * far) * 50) / 50,
+    scale: Math.round((1 - 0.1 * far) * 50) / 50,
     opacity: Math.round((occluded ? 0.75 - 0.15 * far : 1 - 0.15 * far) * 20) / 20,
   };
 }

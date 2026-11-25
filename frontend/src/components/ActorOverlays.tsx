@@ -7,6 +7,7 @@ import {
   overlapsOverlay,
   placeActorLabel,
   type ActorOverlayLayout,
+  type ScreenRect,
 } from '../actor-overlay';
 import { smokeHidesLabel } from '../smoke-render-state';
 import type { SmokeSample } from '../smoke-field';
@@ -208,7 +209,12 @@ export function useActorOverlayFrame(
 ) {
   const invalidate = useThree((state) => state.invalidate);
   const scratch = useMemo(
-    () => ({ point: new Vector3(), ndc: new Vector2(), ray: new Raycaster() }),
+    () => ({
+      point: new Vector3(),
+      ndc: new Vector2(),
+      ray: new Raycaster(),
+      markers: new Map<string, ScreenRect>(),
+    }),
     [],
   );
   useLayoutEffect(() => {
@@ -229,6 +235,8 @@ export function useActorOverlayFrame(
     const { width, height } = size;
     const occupied = [...(layout?.rectangles ?? [])];
     const candidates = [];
+    const markerBoxes = scratch.markers;
+    markerBoxes.clear();
     for (const [id, element] of overlay.markers) {
       const anchor = overlay.anchors.get(id);
       const body = anchor?.body.current;
@@ -258,6 +266,7 @@ export function useActorOverlayFrame(
         element.style.setProperty('--actor-heading', heading);
       paint(element, box);
       occupied.push(box);
+      markerBoxes.set(id, box);
     }
     // Keep the aim point readable in first person.
     if (pov)
@@ -295,7 +304,19 @@ export function useActorOverlayFrame(
         paint(element);
         continue;
       }
-      candidates.push({ element, box, distance, smoked, x: point.x, y: point.y });
+      // From above, the head projects onto the player's own direction arrow;
+      // the label then stands on top of the arrow instead.
+      const marker = markerBoxes.get(id);
+      const bottom = ((1 - point.y) * height) / 2;
+      candidates.push({
+        element,
+        box,
+        distance,
+        smoked,
+        x: point.x,
+        y: point.y,
+        bottom: marker ? Math.min(bottom, marker.top - 3) : bottom,
+      });
     }
     // Nearer players keep their full label when two collide.
     candidates.sort((a, b) => a.distance - b.distance);
@@ -304,7 +325,7 @@ export function useActorOverlayFrame(
       const { scale } = actorLabelStyle(meters, false);
       const placed = placeActorLabel(
         ((candidate.x + 1) * width) / 2,
-        ((1 - candidate.y) * height) / 2,
+        candidate.bottom,
         candidate.box,
         scale,
         size,
