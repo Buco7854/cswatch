@@ -283,8 +283,11 @@ function desktopEstimate(plan) {
   }
   return bytes;
 }
+// When no plan fits, reducing material textures would lose detail without meeting the budget,
+// so the map keeps full detail and reports its overage.
 const desktopPlan =
-  desktopPlans.find((plan) => desktopEstimate(plan) <= desktopBudget) ?? desktopPlans.at(-1);
+  desktopPlans.find((plan) => desktopEstimate(plan) <= desktopBudget) ?? desktopPlans[0];
+desktopPlan.overBudget = desktopEstimate(desktopPlan) > desktopBudget;
 desktopPlan.estimateMiB = +(desktopEstimate(desktopPlan) / MiB).toFixed(1);
 const textureCaps = texturePlanCaps(desktopPlan);
 const sourceLevels = new Map();
