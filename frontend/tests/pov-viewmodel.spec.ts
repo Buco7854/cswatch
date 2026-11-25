@@ -106,25 +106,19 @@ test('POV pass keeps world and equipment cameras distinct and restores state on 
       }
     },
   };
-  for (const worldAlreadyRendered of [false, true]) {
-    calls.length = 0;
-    expect(() =>
-      renderPovEquipment(
-        renderer as unknown as WebGLRenderer,
-        world,
-        equipment,
-        worldCamera,
-        povCamera,
-        worldAlreadyRendered,
-        0.5,
-      ),
-    ).toThrow('draw failed');
-    expect(calls).toEqual(
-      worldAlreadyRendered ? ['depth', 'equipment'] : ['world', 'depth', 'equipment'],
-    );
-    expect(renderer.autoClear).toBe(true);
-    expect(equipment.environmentIntensity).toBe(0.4);
-  }
+  expect(() =>
+    renderPovEquipment(
+      renderer as unknown as WebGLRenderer,
+      world,
+      equipment,
+      worldCamera,
+      povCamera,
+      0.5,
+    ),
+  ).toThrow('draw failed');
+  expect(calls).toEqual(['world', 'depth', 'equipment']);
+  expect(renderer.autoClear).toBe(true);
+  expect(equipment.environmentIntensity).toBe(0.4);
 });
 
 test('landing is a bounded dip after observed descent and settling', () => {

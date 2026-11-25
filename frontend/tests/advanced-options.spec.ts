@@ -318,7 +318,11 @@ async function fovPixels(page: Page, info: TestInfo, fov: number, name: string) 
         requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
       ),
   );
-  const image = await page.locator('.viewer-stage canvas').screenshot();
+  // Only the world canvas: overlapping controls can be mid-transition between captures.
+  const image = await page.locator('.viewer-stage canvas').screenshot({
+    style:
+      'body * { visibility: hidden !important } .viewer-stage canvas { visibility: visible !important }',
+  });
   await info.attach(name, { body: image, contentType: 'image/png' });
   return createHash('sha256').update(image).digest('hex');
 }

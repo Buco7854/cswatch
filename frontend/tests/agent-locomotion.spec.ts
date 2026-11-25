@@ -246,6 +246,8 @@ test('directional clips deform skinned actors from recorded speed and duck on de
     await chooseCameraControl(page, '2D tactical · low power');
     await expect(page.locator('.tactical-plot')).toBeVisible();
     await chooseCameraControl(page, 'Free camera');
+    // Leaving 2D remounts the 3D world; seek once it is drawing again.
+    await expect(scene).toHaveAttribute('data-map-model-state', 'ready');
     await expect(scene).toHaveAttribute('data-agent-ready-count', '1');
     await check(208, -0.55);
   }

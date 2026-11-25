@@ -1,4 +1,5 @@
 import type { Camera, PerspectiveCamera, Scene, WebGLRenderer } from 'three';
+import { povProjection } from './pov-camera';
 
 function withSceneEnvironment<T>(source: Scene, target: Scene, render: () => T): T {
   const environment = target.environment,
@@ -15,7 +16,6 @@ function withSceneEnvironment<T>(source: Scene, target: Scene, render: () => T):
     target.environmentRotation.copy(rotation);
   }
 }
-import { povProjection } from './pov-camera';
 
 /** Share the world eye pose without inheriting its FOV, zoom or clip planes. */
 export function updatePovCamera(world: Camera, equipment: PerspectiveCamera, aspect: number) {

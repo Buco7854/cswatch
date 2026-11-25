@@ -456,7 +456,7 @@ function World({
   selected: string;
   model: string | null;
   modelReady: boolean;
-  reportModel: (url: string, status: 'ready' | 'error', sun?: MapSun | null) => void;
+  reportModel: (url: string, status: 'pending' | 'ready' | 'error', sun?: MapSun | null) => void;
   sun: MapSun | null;
   preview: boolean;
   settings: ViewerSettings;
@@ -1468,13 +1468,13 @@ export default function Scene({
   }).length;
   const [modelLoad, setModelLoad] = useState<{
     url: string;
-    status: 'ready' | 'error';
+    status: 'pending' | 'ready' | 'error';
     sun: MapSun | null;
   }>();
   const currentModel = useRef(model);
   currentModel.current = model;
   const reportModel = useCallback(
-    (url: string, status: 'ready' | 'error', sun: MapSun | null = null) => {
+    (url: string, status: 'pending' | 'ready' | 'error', sun: MapSun | null = null) => {
       if (currentModel.current === url)
         setModelLoad((previous) =>
           previous?.url === url && previous.status === status && previous.sun === sun

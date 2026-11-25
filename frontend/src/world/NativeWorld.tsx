@@ -19,7 +19,7 @@ interface Props {
   tactical: boolean;
   passes: FramePasses;
   shadows: ReturnType<typeof playerShadows>;
-  loaded: (url: string, status: 'ready' | 'error', sun: MapSun | null) => void;
+  loaded: (url: string, status: 'pending' | 'ready' | 'error', sun: MapSun | null) => void;
   register: (world: LoadedWorld | null) => void;
 }
 // Only this positive-priority callback submits the composed frame. Other scene
@@ -80,6 +80,8 @@ export function NativeWorld({ url, tactical, passes, shadows, loaded, register }
       renderer.resetState();
       invalidate();
     }
+    // A remount (for example after the 2D view) reloads the world before it can draw.
+    loaded(url, 'pending', null);
     load().catch((error) => {
       if (!controller.signal.aborted) {
         console.error('Native world:', error);
