@@ -1,5 +1,5 @@
 // Material and lighting bindings adapted from ValveResourceFormat 21.1 (MIT). See tools/cs2export/THIRD_PARTY_NOTICES.txt.
-import { capabilities } from './textures';
+import { capabilities, tierUnits, type TextureTier } from './textures';
 import { worldResources } from './resources';
 import { sourceToViewer } from './space';
 import { program } from './program';
@@ -40,17 +40,17 @@ export async function createRenderer(
   dir: URL,
   manifest: Manifest,
   signal?: AbortSignal,
+  forcedTier?: TextureTier,
 ) {
-  capabilities(gl);
+  const tier = capabilities(gl, forcedTier);
+  const textures = tier === 'phone' ? manifest.phone : manifest;
   const resources = worldResources(gl);
   const abort = () => resources.dispose();
   signal?.throwIfAborted();
   signal?.addEventListener('abort', abort, { once: true });
   try {
-    const world = program(gl, vertex, worldFrag),
-      sky = program(gl, screenVertex, skyFrag),
+    const sky = program(gl, screenVertex, skyFrag),
       post = program(gl, screenVertex, postFrag);
-    resources.retain(world.dispose);
     resources.retain(sky.dispose);
     resources.retain(post.dispose);
     const ext = gl.getExtension('WEBGL_multi_draw');
@@ -61,7 +61,7 @@ export async function createRenderer(
     const streaming = createTextureStream(gl, fetchAsset, resources, signal);
     const arrays: WebGLTexture[] = [],
       special = new Map<string, WebGLTexture>();
-    for (const b of manifest.arrays) {
+    for (const b of textures.arrays) {
       arrays.push(streaming.register(b.file, b.format, b.srgb, b.mips, b.textures.length, b.flags));
     }
     const skyEntity = manifest.environments
@@ -72,13 +72,16 @@ export async function createRenderer(
     if (typeof skyName !== 'string') throw Error('Missing sky material texture');
     const required = new Set([skyName, 'vrf/brdf_lut']);
     for (const env of manifest.environments) {
-      for (const kind of ['irradiance', 'directional_irradiance', 'direct_light_shadows'])
-        required.add(env.world + '/lightmaps/' + kind + '.vtex');
+      if (tier === 'phone') required.add(manifest.phone.lightmaps[env.world]);
+      else
+        for (const kind of ['irradiance', 'directional_irradiance', 'direct_light_shadows'])
+          required.add(env.world + '/lightmaps/' + kind + '.vtex');
       for (const e of env.entities)
         for (const key of ['cubemaptexture', 'lightprobetexture', 'lightprobetexture_dlshd'])
-          if (typeof e[key] === 'string') required.add(e[key]);
+          if (typeof e[key] === 'string' && !(tier === 'phone' && key.endsWith('_dlshd')))
+            required.add(e[key]);
     }
-    for (const [name, t] of Object.entries(manifest.specials)) {
+    for (const [name, t] of Object.entries(textures.specials)) {
       if (!required.has(name)) continue;
       special.set(
         name.replaceAll('\\', '/'),
@@ -124,8 +127,7 @@ export async function createRenderer(
       textureBytes += values.byteLength;
       return tex;
     }
-    const materialTable = table(36, manifest.materials.length, materialRows(manifest));
-    const environments = worldEnvironments(manifest, special, table);
+    const environments = worldEnvironments(manifest, tier, special, table, materialRows(manifest));
     await MeshoptDecoder.ready;
     const geometrySpec = manifest.geometry,
       vertexArray = gl.createVertexArray();
@@ -193,6 +195,7 @@ export async function createRenderer(
     camera.near = 1;
     camera.far = 250000;
     const skyTexture = special.get(skyName)!;
+    const skyRange = tier === 'phone' ? (manifest.phone.rgbm[skyName] ?? 0) : 0;
     const skyGain =
       Number(skyEntity?.brightnessscale ?? 1) *
       2 **
@@ -238,37 +241,114 @@ export async function createRenderer(
       gl.bindTexture(target, tex);
     }
     const arrayTarget = gl.TEXTURE_2D_ARRAY;
-    const samplerNames = [
-      'colorTex',
-      'normalTex',
-      'aoTex',
-      'color2Tex',
-      'normal2Tex',
-      'blendTex',
-      'detailTex',
-      'metalTex',
-      'irradiance',
-      'directional',
-      'shadowMap',
-      'envMap',
-      'skyMap',
-      'lpv',
-      'lpvShadow',
-      'tableData',
-      'probeData',
-      'aux0',
-      'aux1',
-      'aux2',
-      'brdf',
-      'cellList',
-      'illumTex',
-      'detailMask',
-      'ao2Tex',
-      'heightTex',
-      'roughTex',
-    ];
-    world.use();
-    samplerNames.forEach((k, i) => gl.uniform1i(world.u(k), i));
+    // Fixed lighting inputs take the first units; the variant's material slots follow.
+    const fixedSamplers =
+      tier === 'phone'
+        ? ['sceneData', 'brdf', 'actorShadow', 'envMap', 'skyMap', 'lpv', 'lightAtlas']
+        : [
+            'sceneData',
+            'brdf',
+            'actorShadow',
+            'envMap',
+            'skyMap',
+            'lpv',
+            'lpvShadow',
+            'irradiance',
+            'directional',
+            'shadowMap',
+          ];
+    const unit = Object.fromEntries(fixedSamplers.map((name, index) => [name, index]));
+    const roleSamplers: Record<string, string> = {
+      color: 'colorTex',
+      normal: 'normalTex',
+      ao: 'aoTex',
+      color2: 'color2Tex',
+      normal2: 'normal2Tex',
+      blend: 'blendTex',
+      detail: 'detailTex',
+      metal: 'metalTex',
+      aux0: 'aux0',
+      aux1: 'aux1',
+      aux2: 'aux2',
+      illum: 'illumTex',
+      detailMask: 'detailMask',
+      ao2: 'ao2Tex',
+      height: 'heightTex',
+      rough: 'roughTex',
+    };
+    const slotLimit = tierUnits[tier] - fixedSamplers.length;
+    type Variant = ReturnType<typeof program> & { version: number; slots: number[] };
+    const variants = new Map<string, Variant>();
+    const uniformState = new Map<string, (p: Variant) => void>();
+    let stateVersion = 0,
+      current: Variant | null = null;
+    function setUniform(name: string, apply: (p: Variant) => void) {
+      const fresh = current?.version === stateVersion;
+      uniformState.set(name, apply);
+      stateVersion++;
+      if (current && fresh) {
+        apply(current);
+        current.version = stateVersion;
+      }
+    }
+    // Unused roles alias slot 0; their material layers are -1, so they are never sampled.
+    function variant(banks: number[]) {
+      const used = manifest.roles.map((_, index) => index).filter((index) => banks[index] >= 0);
+      const key = used.join();
+      let found = variants.get(key);
+      if (!found) {
+        if (used.length > slotLimit) throw Error('Material uses more texture roles than supported');
+        const declarations = [
+          ...Array.from(
+            { length: Math.max(1, used.length) },
+            (_, slot) => `uniform sampler2DArray slot${slot};`,
+          ),
+          ...manifest.roles.map(
+            (role, index) =>
+              `#define ${roleSamplers[role]} slot${Math.max(0, used.indexOf(index))}`,
+          ),
+        ].join('\n');
+        const source = worldFrag
+          .replace('\n', tier === 'phone' ? '\n#define PACKED_LIGHTING\n' : '\n')
+          .replace('#pragma roles', declarations);
+        const compiled = program(gl, vertex, source);
+        resources.retain(compiled.dispose);
+        compiled.use();
+        for (const [name, index] of Object.entries(unit)) gl.uniform1i(compiled.u(name), index);
+        const slots = used.length ? used : [-1];
+        slots.forEach((_, slot) =>
+          gl.uniform1i(compiled.u('slot' + slot), fixedSamplers.length + slot),
+        );
+        found = Object.assign(compiled, { version: -1, slots });
+        variants.set(key, found);
+        current = null;
+      }
+      return found;
+    }
+    function uniform(method: string, name: string, ...values: unknown[]) {
+      setUniform(name, (p) =>
+        (gl as unknown as Record<string, (...args: unknown[]) => void>)[method](
+          p.u(name),
+          ...values,
+        ),
+      );
+    }
+    function useVariant(banks: number[]) {
+      const next = variant(banks);
+      if (current !== next) {
+        next.use();
+        current = next;
+      }
+      if (next.version !== stateVersion) {
+        for (const apply of uniformState.values()) apply(next);
+        next.version = stateVersion;
+      }
+      next.slots.forEach((role, slot) =>
+        bind(fixedSamplers.length + slot, arrayTarget, arrays[banks[role]] ?? arrays[0]),
+      );
+    }
+    // Compile the variants this map uses before the first frame.
+    for (const chunk of manifest.chunks) variant(chunk.banks);
     const multiCounts = new Int32Array(8192),
       multiOffsets = new Int32Array(8192);
     function render(pose: Pose, mode: number, options: ViewOptions = {}) {
@@ -318,41 +398,41 @@ export async function createRenderer(
       gl.uniform3fv(sky.u('eye'), pose.pos);
       gl.uniform1f(sky.u('gain'), mode === 7 ? 0 : skyGain);
       gl.uniform1i(sky.u('skyMap'), 12);
+      gl.uniform1f(sky.u('rgbm'), skyRange);
       bind(12, arrayTarget, skyTexture);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       let draws = 1,
         triangles = 1;
-      world.use();
+      current = null;
       gl.bindVertexArray(vertexArray);
       gl.enable(gl.DEPTH_TEST);
       gl.depthFunc(gl.LEQUAL);
       gl.cullFace(gl.BACK);
-      gl.uniformMatrix4fv(world.u('viewProjection'), false, viewProjection.elements);
-      gl.uniform3fv(world.u('eye'), pose.pos);
-      gl.uniform1i(world.u('mode'), mode);
-      bind(15, gl.TEXTURE_2D, materialTable);
-      bind(20, arrayTarget, special.get('vrf/brdf_lut')!);
-      gl.uniform1i(world.u('hasActorShadow'), Number(!!options.shadow));
-      gl.uniform1i(world.u('actorShadow'), 27);
+      uniform('uniformMatrix4fv', 'viewProjection', false, viewProjection.elements);
+      uniform('uniform3fv', 'eye', pose.pos);
+      uniform('uniform1i', 'mode', mode);
+      bind(unit.brdf, arrayTarget, special.get('vrf/brdf_lut')!);
+      uniform('uniform1i', 'hasActorShadow', Number(!!options.shadow));
       if (options.shadow) {
-        bind(27, gl.TEXTURE_2D, options.shadow.texture);
-        gl.uniformMatrix4fv(world.u('actorProjection'), false, options.shadow.projection);
-        gl.uniform1f(world.u('actorBias'), options.shadow.bias);
+        bind(unit.actorShadow, gl.TEXTURE_2D, options.shadow.texture);
+        uniform('uniformMatrix4fv', 'actorProjection', false, options.shadow.projection);
+        uniform('uniform1f', 'actorBias', options.shadow.bias);
       }
       for (const env of environments) {
         if (env.sky && options.skybox3D === false) continue;
         gl.depthMask(true);
         gl.clear(gl.DEPTH_BUFFER_BIT);
-        gl.uniformMatrix4fv(world.u('localFromWorld'), false, env.inverse.elements);
-        gl.uniform2fv(world.u('lightScale'), env.lighting.m_vLightmapUvScale);
-        gl.uniform1f(world.u('envLastMip'), env.envLastMip);
-        gl.uniform3fv(world.u('sunDir'), env.lightDir);
-        gl.uniform3fv(world.u('sunColor'), env.color);
+        uniform('uniformMatrix4fv', 'localFromWorld', false, env.inverse.elements);
+        uniform('uniform2fv', 'lightScale', env.lighting.m_vLightmapUvScale);
+        uniform('uniform1f', 'envLastMip', env.envLastMip);
+        uniform('uniform3fv', 'sunDir', env.lightDir);
+        uniform('uniform3fv', 'sunColor', env.color);
         const gradient =
           options.fog !== false &&
           env.entities.find((e) => e.classname === 'env_gradient_fog' && !e.startdisabled);
-        gl.uniform4fv(
-          world.u('gradientColor'),
+        uniform(
+          'uniform4fv',
+          'gradientColor',
           gradient
             ? [
                 ...numbers(gradient.fogcolor ?? [255, 255, 255])
@@ -368,29 +448,33 @@ export async function createRenderer(
           const lo = Number(gradient.fogstartheight ?? 0),
             hi = Number(gradient.fogendheight ?? 0);
           const heightScale = gradient.heightfog === false || lo === hi ? 0 : 1 / (lo - hi);
-          gl.uniform4f(
-            world.u('gradientScale'),
+          uniform(
+            'uniform4f',
+            'gradientScale',
             -start / (end - start),
             heightScale === 0 ? 1 : -hi * heightScale,
             1 / (end - start),
             heightScale,
           );
-          gl.uniform2f(
-            world.u('gradientExponents'),
+          uniform(
+            'uniform2f',
+            'gradientExponents',
             Number(gradient.fogfalloffexponent ?? 1),
             Number(gradient.fogverticalexponent ?? 1),
           );
         }
         const fog = env.entities.find((e) => e.classname === 'env_cubemap_fog' && !e.startdisabled);
-        gl.uniform4f(
-          world.u('fogDist'),
+        uniform(
+          'uniform4f',
+          'fogDist',
           Number(fog?.cubemapfogstartdistance ?? 0),
           Number(fog?.cubemapfogenddistance ?? 1),
           Number(fog?.cubemapfogfalloffexponent ?? 1),
           options.fog === false ? 0 : Number(fog?.cubemapfogmaxopacity ?? 0),
         );
-        gl.uniform4f(
-          world.u('fogHeight'),
+        uniform(
+          'uniform4f',
+          'fogHeight',
           Number(fog?.cubemapfogheightstart ?? 0),
           Number(fog?.cubemapfogheightend ?? 1),
           Number(fog?.cubemapfogheightexponent ?? 1),
@@ -401,28 +485,28 @@ export async function createRenderer(
             composed.opaque();
             gl.bindFramebuffer(gl.FRAMEBUFFER, composed.framebuffer);
             gl.viewport(0, 0, width, height);
-            world.use();
+            current = null;
             gl.bindVertexArray(vertexArray);
             gl.enable(gl.DEPTH_TEST);
             gl.depthFunc(gl.LEQUAL);
             gl.cullFace(gl.BACK);
-            bind(15, gl.TEXTURE_2D, materialTable);
-            bind(20, arrayTarget, special.get('vrf/brdf_lut')!);
+            bind(unit.brdf, arrayTarget, special.get('vrf/brdf_lut')!);
+            if (options.shadow) bind(unit.actorShadow, gl.TEXTURE_2D, options.shadow.texture);
           }
-          for (const [i, tex] of [
-            'irradiance',
-            'directional_irradiance',
-            'direct_light_shadows',
-          ].entries())
-            bind(i + 8, arrayTarget, special.get(env.world + '/lightmaps/' + tex + '.vtex')!);
-          bind(11, arrayTarget, env.env);
-          bind(12, arrayTarget, skyTexture);
-          bind(13, arrayTarget, env.lpv);
-          bind(14, arrayTarget, env.shadow);
-          bind(16, gl.TEXTURE_2D, env.probes);
-          bind(21, gl.TEXTURE_2D, env.grid);
-          gl.uniform3fv(world.u('gridMin'), env.spatial.min);
-          gl.uniform3fv(world.u('gridInv'), env.spatial.invStep);
+          env.lightmaps.forEach((texture, index) =>
+            bind(unit[env.lightmapSamplers[index]], arrayTarget, texture),
+          );
+          bind(unit.envMap, arrayTarget, env.env);
+          bind(unit.skyMap, arrayTarget, skyTexture);
+          bind(unit.lpv, arrayTarget, env.lpv);
+          if (tier === 'desktop') bind(unit.lpvShadow, arrayTarget, env.shadow);
+          bind(unit.sceneData, gl.TEXTURE_2D, env.data);
+          uniform('uniform1i', 'probeBase', env.probeBase);
+          uniform('uniform1i', 'cellColumn', env.cellColumn);
+          uniform('uniform4fv', 'volumeLayers', env.volumeLayers);
+          uniform('uniform4f', 'rgbmRange', env.rgbm[0], env.rgbm[1], skyRange, env.rgbm[2]);
+          uniform('uniform3fv', 'gridMin', env.spatial.min);
+          uniform('uniform3fv', 'gridInv', env.spatial.invStep);
           if (blended && mode !== 7) {
             gl.enable(gl.BLEND);
             gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -515,8 +599,9 @@ export async function createRenderer(
           }
           for (const { side, family, banks, list, entity } of groups) {
             if (!list.length) continue;
-            gl.uniformMatrix4fv(
-              world.u('entityTransform'),
+            uniform(
+              'uniformMatrix4fv',
+              'entityTransform',
               false,
               (transforms.get(entity ?? -1) ?? identity).elements,
             );
@@ -532,9 +617,7 @@ export async function createRenderer(
               gl.enable(gl.POLYGON_OFFSET_FILL);
               gl.polygonOffset(-1, -1);
             } else gl.disable(gl.POLYGON_OFFSET_FILL);
-            banks.forEach((id, i) =>
-              bind(i < 8 ? i : i < 11 ? i + 9 : i + 11, arrayTarget, arrays[id] ?? arrays[0]),
-            );
+            useVariant(banks);
             for (let i = 0; i < list.length; i++) {
               const { first, count } = list[i];
               multiOffsets[i] = first * 4;

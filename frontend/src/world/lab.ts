@@ -54,12 +54,14 @@ async function start() {
     preserveDrawingBuffer: true,
   });
   if (!gl) throw Error('WebGL2 unavailable');
-  capabilities(gl);
+  const forced = params.get('tier');
+  const tier = capabilities(gl, forced === 'phone' || forced === 'desktop' ? forced : undefined);
+  canvas.dataset.tier = tier;
   const url = params.get('map');
   if (!url) throw Error('Supply a map directory with ?map=');
   const dir = new URL(url.replace(/\/?$/, '/'), location.href),
     map = await loadManifest(dir);
-  const { render, refine } = await createRenderer(gl, dir, map);
+  const { render, refine } = await createRenderer(gl, dir, map, undefined, tier);
   const loadTimes = { firstFrameMs: 0, fullQualityMs: 0, peakUploadBytes: 0 };
   let refining = false,
     fullQuality = false;

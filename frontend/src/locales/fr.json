@@ -1401,5 +1401,6 @@
   "The proxy sent an invalid client address or forwarding chain. Check X-Real-IP and X-Forwarded-For.": "Le proxy a transmis une adresse cliente ou une chaîne de relais invalide. Vérifiez X-Real-IP et X-Forwarded-For.",
   "X-Real-IP and X-Forwarded-For identify different clients. Check how each proxy sets these headers.": "X-Real-IP et X-Forwarded-For désignent deux clients différents. Vérifiez comment chaque proxy renseigne ces en-têtes.",
   "Client IP address": "Adresse IP du client",
-  "Connection address": "Adresse de connexion"
+  "Connection address": "Adresse de connexion",
+  "This device lacks the texture support needed for 3D": "Cet appareil ne prend pas en charge les textures nécessaires à la 3D"
 }

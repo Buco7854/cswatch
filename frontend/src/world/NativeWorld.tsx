@@ -4,7 +4,6 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { Box3, Color, DirectionalLight, Object3D, PerspectiveCamera, Vector3 } from 'three';
 import { compositor, type FramePasses } from './compositor';
 import { createRenderer, type NativeRenderer } from './renderer';
-import { capabilities } from './textures';
 import { loadManifest, type Manifest } from './format';
 import { sourceToViewer } from './space';
 import { mapSun, type MapSun } from '../map-sun';
@@ -39,7 +38,6 @@ export function NativeWorld({ url, tactical, passes, shadows, loaded, register }
     let cleanup: (() => void) | undefined;
     async function load() {
       const gl = renderer.getContext() as WebGL2RenderingContext;
-      capabilities(gl);
       const dir = new URL('.', new URL(url, location.href));
       const manifest = await loadManifest(dir);
       controller.signal.throwIfAborted();

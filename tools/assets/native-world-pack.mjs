@@ -10,6 +10,8 @@ import { localDirectory } from './toolchain-security.mjs';
 import { selectedMaps, selectedSteamManifest } from './steam-assets-plan.mjs';
 import { runAssetProcess } from './asset-process.mjs';
 
+// Built from the checksum-pinned astc-encoder 5.7.1 source in the assets image.
+const astcenc = process.env.ASTCENC_PATH || '/opt/astcenc/astcenc';
 const exportRoot = fileURLToPath(new URL('../cs2export/', import.meta.url));
 const boundary = fileURLToPath(new URL('./bin/asset-network-deny', import.meta.url));
 const MiB = 1024 ** 2;
@@ -113,7 +115,8 @@ export async function installLocalWorld(options) {
     const version = options.assetVersion ?? 'steam-2347770-' + manifest;
     const scratch = await mkdtemp(join(options.cache, 'native-'));
     const sourceDir = join(scratch, 'source'),
-      prepared = join(scratch, 'prepared');
+      prepared = join(scratch, 'prepared'),
+      stage = join(scratch, 'stage');
     const packed = join(prepared, map),
       home = join(scratch, 'home'),
       temporary = join(scratch, 'tmp');
@@ -127,8 +130,9 @@ export async function installLocalWorld(options) {
         throw Error('Native conversion storage budget exceeded.');
     };
     // Both children start under the same inherited network and filesystem policy.
-    const execute = async (command, args, stage) => {
-      await options.onPhase?.(stage);
+    let step = 0;
+    const execute = async (command, args, phase) => {
+      if (phase) await options.onPhase?.(phase);
       await runAssetProcess(
         options.networkDeny || boundary,
         ['--write-root', scratch, '--', command, ...args],
@@ -140,17 +144,19 @@ export async function installLocalWorld(options) {
           storageGuard: guard,
           maxRss: 4 * 1024 ** 3,
           timeoutMs: 300000,
-          log: join(options.cache, scratch.split('/').at(-1) + '-' + stage + '.log'),
+          log: join(options.cache, scratch.split('/').at(-1) + '-' + ++step + '.log'),
         },
       );
     };
+    const exporter = join(exportRoot, 'bin', 'Release', 'net11.0', 'cs2export.dll');
     try {
-      for (const path of [sourceDir, prepared, packed, home, temporary])
+      for (const path of [sourceDir, prepared, packed, stage, home, temporary])
         await mkdir(path, { mode: 0o700 });
+      const started = Date.now();
       await execute(
         dotnet,
         [
-          join(exportRoot, 'bin', 'Release', 'net11.0', 'cs2export.dll'),
+          exporter,
           '--extract',
           '--game',
           game,
@@ -165,7 +171,35 @@ export async function installLocalWorld(options) {
         ],
         'geometry',
       );
-      await execute(process.execPath, [join(exportRoot, 'pack.mjs'), sourceDir, packed], 'desktop');
+      await execute(
+        process.execPath,
+        [join(exportRoot, 'pack.mjs'), sourceDir, packed, stage],
+        'desktop',
+      );
+      // Phone tier: decode to stacked images, encode each group with the pinned astcenc, then page.
+      await execute(
+        dotnet,
+        [exporter, '--astc-inputs', join(stage, 'astc-plan.json'), sourceDir, join(stage, 'astc')],
+        'mobile',
+      );
+      const layout = JSON.parse(await readBounded(join(stage, 'astc', 'layout.json'), 64 * MiB));
+      for (const group of layout.groups) {
+        if (!/^group-\d{1,5}$/.test(group.name) || !/^[4568]$/.test(String(group.block[0])))
+          throw Error('Invalid phone texture group.');
+        const input = join(stage, 'astc', group.name);
+        await execute(options.astcenc || astcenc, [
+          group.srgb ? '-cs' : '-cl',
+          input + '.tga',
+          input + '.astc',
+          group.block.join('x'),
+          '-medium',
+          '-silent',
+        ]);
+        await rm(input + '.tga');
+      }
+      await execute(process.execPath, [join(exportRoot, 'finish.mjs'), packed, stage]);
+      await rm(stage, { recursive: true, force: true });
+      await options.onExported?.({ map, ms: Date.now() - started });
       await prepareOverview({
         image: join(sourceDir, 'overview.png'),
         overview: join(sourceDir, 'overview.txt'),

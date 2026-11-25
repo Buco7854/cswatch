@@ -92,6 +92,14 @@ export interface Manifest {
     model?: string;
     hammeruniqueid?: string;
   })[];
+  /** Phone ASTC tier. Banks keep the desktop ids and layer order. */
+  phone: {
+    arrays: Bank[];
+    specials: Record<string, Texture>;
+    rgbm: Record<string, number>;
+    lightmaps: Record<string, string>;
+    volumes: Record<string, { shadow: string; shadowBase: number }>;
+  };
   post: Record<
     string,
     {

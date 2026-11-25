@@ -35,6 +35,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certifi
 COPY tools/cs2export/*.cs tools/cs2export/*.csproj tools/cs2export/global.json ./
 RUN dotnet publish -c Release -r linux-x64 --self-contained false -o /export
 
+# Phone texture encoder: Arm astc-encoder 5.7.1 (Apache-2.0), built from a checksum-pinned tag.
+FROM node:24-bookworm-slim AS astcenc
+WORKDIR /build
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates cmake make g++ && rm -rf /var/lib/apt/lists/* \
+    && curl -fsSL https://codeload.github.com/ARM-software/astc-encoder/tar.gz/refs/tags/5.7.1 -o astc.tgz \
+    && echo "37ff3928c4c156fb3ac0d1adb5df144ff9c5cdbc8a8e1ffeb20229cc7f35c767  astc.tgz" | sha256sum -c - \
+    && tar -xf astc.tgz && cmake -S astc-encoder-5.7.1 -B out -DCMAKE_BUILD_TYPE=Release -DASTCENC_ISA_SSE41=ON -DASTCENC_CLI=ON \
+    && cmake --build out -j"$(nproc)" && mkdir -p /opt/astcenc \
+    && cp out/Source/astcenc-sse4.1 /opt/astcenc/astcenc && cp astc-encoder-5.7.1/LICENSE.txt /opt/astcenc/LICENSE.txt
+
 FROM node:24-bookworm-slim AS asset-build
 WORKDIR /build
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev && rm -rf /var/lib/apt/lists/*
@@ -55,7 +65,8 @@ LABEL org.opencontainers.image.source="https://github.com/Buco7854/cswatch" \
 ENV NODE_ENV=production MAP_ASSETS_DIR=/map-assets MAP_JOBS_DIR=/map-jobs MAP_CACHE_DIR=/map-cache MAP_CATALOG_FILE=/map-catalog/catalog.json
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libicu72 util-linux unzip tar gzip && rm -rf /var/lib/apt/lists/*
-ENV DOTNET_ROOT=/opt/dotnet DOTNET_CLI_TELEMETRY_OPTOUT=1
+ENV DOTNET_ROOT=/opt/dotnet DOTNET_CLI_TELEMETRY_OPTOUT=1 ASTCENC_PATH=/opt/astcenc/astcenc
+COPY --from=astcenc /opt/astcenc /opt/astcenc
 COPY --from=native-export /opt/dotnet/dotnet /opt/dotnet/dotnet
 COPY --from=native-export /opt/dotnet/host /opt/dotnet/host
 COPY --from=native-export /opt/dotnet/shared /opt/dotnet/shared

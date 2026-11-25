@@ -7,8 +7,9 @@ uniform mat4 unproject;
 uniform sampler2DArray skyMap;
 uniform vec3 eye;
 uniform float gain;
+uniform float rgbm;
 void main() {
   vec4 worldPoint = unproject * vec4(uv * 2. - 1., .5, 1.);
-  pixel =
-      vec4(textureLod(skyMap, cubeUv(worldPoint.xyz / worldPoint.w - eye, 0), 0.).rgb * gain, 1.);
+  vec4 value = textureLod(skyMap, cubeUv(worldPoint.xyz / worldPoint.w - eye, 0), 0.);
+  pixel = vec4((rgbm > 0. ? value.rgb * value.a * rgbm : value.rgb) * gain, 1.);
 }

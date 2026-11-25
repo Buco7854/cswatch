@@ -4,6 +4,7 @@ import {
   ShaderChunk,
   Texture,
   Vector3,
+  Vector4,
   type Material,
   type WebGLRenderer,
 } from 'three';
@@ -26,6 +27,8 @@ export function actorLighting(renderer: WebGLRenderer, native: NativeRenderer) {
     actorCells: borrowed(env.grid, false),
     actorGridMin: { value: new Vector3(...env.spatial.min) },
     actorGridInv: { value: new Vector3(...env.spatial.invStep) },
+    actorVolumeLayers: { value: new Vector4(...env.volumeLayers) },
+    actorRgbm: { value: env.rgbm[2] },
   };
   const patched = new Map<Material, () => void>();
   function bind(material: Material) {
@@ -69,7 +72,7 @@ export function actorLighting(renderer: WebGLRenderer, native: NativeRenderer) {
           '#include <lights_fragment_maps>\n irradiance += PI*bakedActorLight.rgb;',
         );
     };
-    material.customProgramCacheKey = () => key.call(material) + ':native-probes-v1';
+    material.customProgramCacheKey = () => key.call(material) + ':native-probes-v2';
     material.needsUpdate = true;
   }
   return {

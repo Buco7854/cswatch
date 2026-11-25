@@ -15,8 +15,10 @@ export function mapSurface(input: {
   model: string | null;
   modelStatus: AssetStatus;
   rendererFailed: boolean;
+  /** False when the device has neither the desktop nor the phone texture formats. */
+  textureSupport?: boolean;
 }): '3d' | 'plot' | 'loading' {
-  if (input.requested2D || input.rendererFailed) return 'plot';
+  if (input.requested2D || input.rendererFailed || input.textureSupport === false) return 'plot';
   if (input.sample) return '3d';
   if (input.discovery === 'pending') return 'loading';
   if (!input.model || input.modelStatus === 'error') return 'plot';

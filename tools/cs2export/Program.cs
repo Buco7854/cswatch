@@ -1,6 +1,20 @@
 using ValveResourceFormat.ResourceTypes;
 using ValveResourceFormat.Serialization.KeyValues;
 
+if (args is ["--astc-inputs", var plan, var sourceDir, var astcDir])
+{
+    try
+    {
+        AstcInputs.Run(plan, sourceDir, astcDir);
+        return 0;
+    }
+    catch (Exception error)
+    {
+        Console.Error.WriteLine(error.Message);
+        return 1;
+    }
+}
+
 if (args is ["--extract", "--game", var input, "--map", var map, "--manifest", var manifest, "--sha256", var hash, "--out", var output])
 {
     try
@@ -15,33 +29,19 @@ if (args is ["--extract", "--game", var input, "--map", var map, "--manifest", v
     }
 }
 
-if (args is ["--game", var rootDir, "--map", "de_mirage", "--out", var destination])
+if (args is not ["--check-model-inputs", "--game", var game, "--map", var checkedMap])
 {
-    try
-    {
-        Export.Run(rootDir, destination);
-        return 0;
-    }
-    catch (Exception error)
-    {
-        Console.Error.WriteLine(error.Message);
-        return 1;
-    }
-}
-
-if (args is not ["--check-model-inputs", "--game", var game, "--map", "de_mirage"])
-{
-    Console.Error.WriteLine("Usage: cs2export --game <root> --map de_mirage --out <new-directory>");
+    Console.Error.WriteLine("Usage: cs2export --extract|--astc-inputs|--check-model-inputs ... (see README.md)");
     return 2;
 }
 
 try
 {
-    using var store = new ResourceStore(game, "de_mirage");
+    using var store = new ResourceStore(game, checkedMap);
     var models = new HashSet<string>(StringComparer.Ordinal);
     var materials = new HashSet<string>(StringComparer.Ordinal);
     var textures = new HashSet<string>(StringComparer.Ordinal);
-    CheckWorld("maps/de_mirage");
+    CheckWorld("maps/" + checkedMap);
     Console.WriteLine($"Model input check: {models.Count} models, {materials.Count} materials, {textures.Count} textures.");
 
     void CheckWorld(string prefix)
@@ -62,12 +62,10 @@ try
             foreach (var entity in ((EntityLump)file.DataBlock!).GetEntities())
             {
                 CheckModel(entity.GetStringProperty("model"));
-                if (entity.GetStringProperty("classname") == "skybox_reference" && prefix == "maps/de_mirage")
+                if (entity.GetStringProperty("classname") == "skybox_reference" && prefix == "maps/" + checkedMap &&
+                    !entity.GetBooleanProperty("startdisabled"))
                 {
-                    var reference = entity.GetStringProperty("targetmapname");
-                    if (reference != "maps/prefabs/de_mirage/3dskybox_mirage_legacy.vmap")
-                        throw new InvalidDataException($"Unexpected Mirage skybox reference {reference}");
-                    var target = reference[..^5];
+                    var target = NativeScene.SkyPrefab(checkedMap, entity.GetStringProperty("targetmapname"));
                     using var prefab = store.MountPrefab(Path.Combine(game, "csgo", target + ".vpk"));
                     CheckWorld(target);
                 }

@@ -1,13 +1,17 @@
 // Material and lighting bindings adapted from ValveResourceFormat 21.1 (MIT). See tools/cs2export/THIRD_PARTY_NOTICES.txt.
 import type { Manifest, Entity } from './format';
+import type { TextureTier } from './textures';
 import { Matrix4 } from 'three';
 import { probeGrid, asVector } from './probe-grid';
 const rad = Math.PI / 180;
 export function worldEnvironments(
   manifest: Manifest,
+  tier: TextureTier,
   special: Map<string, WebGLTexture>,
   table: (width: number, height: number, values: Float32Array<ArrayBuffer>) => WebGLTexture,
+  materials: Float32Array,
 ) {
+  const textures = tier === 'phone' ? manifest.phone : manifest;
   return manifest.environments.map((environment) => {
     const entries = environment.entities.filter((x) => x.cubemaptexture && x.array_index != null);
     const height = Math.max(...entries.map((probe) => Number(probe.array_index))) + 1,
@@ -17,7 +21,7 @@ export function worldEnvironments(
         offset = 36 * index;
       values.set(asVector(probe.edge_fade_dists ?? [0, 0, 0]), offset + 32);
       const key = String(probe.cubemaptexture),
-        coefficients = manifest.specials[key]?.radiance;
+        coefficients = textures.specials[key]?.radiance;
       if (coefficients && coefficients.length >= (index + 1) * 27) {
         const luma = [0, 1, 2, 3].map(
           (k) =>
@@ -57,18 +61,59 @@ export function worldEnvironments(
         Math.pow(c / 255, 2.2) * Number(sun.brightness ?? 1) * Number(sun.brightnessscale ?? 1),
     );
     const spatial = probeGrid(entries);
+    // Material rows, then probe rows, in columns 0-35; the cell list in the columns after them.
+    const rows = manifest.materials.length,
+      cellColumn = 36,
+      width = cellColumn + spatial.width,
+      tableHeight = Math.max(rows + height, spatial.height);
+    const data = new Float32Array(width * tableHeight * 4);
+    for (let row = 0; row < rows; row++)
+      data.set(materials.subarray(row * 144, row * 144 + 144), row * width * 4);
+    for (let row = 0; row < height; row++)
+      data.set(values.subarray(row * 36, row * 36 + 36), (rows + row) * width * 4);
+    for (let row = 0; row < spatial.height; row++)
+      data.set(
+        spatial.data.subarray(row * spatial.width * 4, (row + 1) * spatial.width * 4),
+        (row * width + cellColumn) * 4,
+      );
+    const lpvName = String(entries[0].lightprobetexture),
+      shadowName = String(entries[0].lightprobetexture_dlshd);
+    const layers = (name: string) => textures.specials[name]?.levels.at(-1)?.d ?? 1;
+    const phoneVolume = tier === 'phone' ? manifest.phone.volumes[lpvName] : undefined;
+    if (tier === 'phone' && !phoneVolume) throw Error('Missing phone probe volume');
+    const lpvLayers = phoneVolume ? phoneVolume.shadowBase : layers(lpvName);
+    const range = (name: string) => (tier === 'phone' ? (manifest.phone.rgbm[name] ?? 0) : 0);
+    const lightmapNames =
+      tier === 'phone'
+        ? [manifest.phone.lightmaps[environment.world]]
+        : ['irradiance', 'directional_irradiance', 'direct_light_shadows'].map(
+            (kind) => environment.world + '/lightmaps/' + kind + '.vtex',
+          );
     return {
       ...environment,
       spatial,
       grid: table(spatial.width, spatial.height, spatial.data),
       probes: table(9, height, values),
+      data: table(width, tableHeight, data),
+      probeBase: rows,
+      cellColumn,
       inverse: new Matrix4().fromArray(environment.transform).invert(),
       lightDir,
       color,
-      envLastMip: manifest.specials[String(entries[0].cubemaptexture)].levels.length - 2,
+      envLastMip: textures.specials[String(entries[0].cubemaptexture)].levels.length - 2,
       env: get(entries[0], 'cubemaptexture'),
       lpv: get(entries[0], 'lightprobetexture'),
-      shadow: get(entries[0], 'lightprobetexture_dlshd'),
+      shadow: phoneVolume
+        ? get(entries[0], 'lightprobetexture')
+        : get(entries[0], 'lightprobetexture_dlshd'),
+      volumeLayers: phoneVolume
+        ? [0, lpvLayers, lpvLayers, layers(lpvName) - lpvLayers]
+        : [0, lpvLayers, 0, layers(shadowName)],
+      // Irradiance, cubemap and probe volume RGBM ranges.
+      rgbm: [range(lightmapNames[0]), range(String(entries[0].cubemaptexture)), range(lpvName)],
+      lightmaps: lightmapNames.map((name) => special.get(name.replaceAll('\\', '/'))!),
+      lightmapSamplers:
+        tier === 'phone' ? ['lightAtlas'] : ['irradiance', 'directional', 'shadowMap'],
     };
   });
 }

@@ -6,13 +6,15 @@ uniform sampler2D actorProbes;
 uniform sampler2D actorCells;
 uniform vec3 actorGridMin;
 uniform vec3 actorGridInv;
+// First layer and count of the probe volume, then of sun occlusion; then the RGBM range.
+uniform vec4 actorVolumeLayers;
+uniform float actorRgbm;
 varying vec3 actorSourcePosition;
 
-vec4 actorVolume(highp sampler2DArray atlas, vec3 uv, float lobes) {
-  float layers = float(textureSize(atlas, 0).z);
-  float slice = clamp(uv.z * layers / lobes - 0.5, 0.0, layers - 1.0);
-  return mix(texture(atlas, vec3(uv.xy, floor(slice))),
-             texture(atlas, vec3(uv.xy, min(layers - 1.0, floor(slice) + 1.0))), fract(slice));
+vec4 actorVolume(highp sampler2DArray atlas, vec3 uv, float lobes, vec2 range) {
+  float slice = clamp(uv.z * range.y / lobes - 0.5, 0.0, range.y - 1.0);
+  return mix(texture(atlas, vec3(uv.xy, range.x + floor(slice))),
+             texture(atlas, vec3(uv.xy, range.x + min(range.y - 1.0, floor(slice) + 1.0))), fract(slice));
 }
 vec4 actorLightingAt(vec3 normalSource) {
   ivec3 cell = clamp(ivec3(floor((actorSourcePosition - actorGridMin) * actorGridInv)),
@@ -32,14 +34,15 @@ vec4 actorLightingAt(vec3 normalSource) {
     vec3 boxUV = clamp((local-low)/(high-low),0.0,1.0);
     vec3 offset = texelFetch(actorProbes,ivec2(3,index),0).xyz;
     vec3 extent = texelFetch(actorProbes,ivec2(4,index),0).xyz;
-    vec3 size = vec3(textureSize(actorSunShadow,0));
+    vec3 size = vec3(vec2(textureSize(actorSunShadow,0).xy), actorVolumeLayers.w);
     vec3 uv = (clamp(boxUV * extent, vec3(0.5), extent-0.5) + offset) / size;
     for (int axis=0;axis<3;axis++) {
       float face = float(axis) + (normalSource[axis] <= 0.0 ? 3.0 : 0.0);
-      lighting.rgb += actorVolume(actorIrradiance,vec3(uv.xy,uv.z+face),6.0).rgb *
+      vec4 lobe = actorVolume(actorIrradiance,vec3(uv.xy,uv.z+face),6.0,actorVolumeLayers.xy);
+      lighting.rgb += (actorRgbm > 0.0 ? lobe.rgb * lobe.a * actorRgbm : lobe.rgb) *
                       normalSource[axis] * normalSource[axis] * weight;
     }
-    lighting.a += actorVolume(actorSunShadow,(boxUV*extent+offset)/size,1.0).r * weight;
+    lighting.a += actorVolume(actorSunShadow,(boxUV*extent+offset)/size,1.0,actorVolumeLayers.zw).r * weight;
     coverage += weight;
   }
   return lighting;

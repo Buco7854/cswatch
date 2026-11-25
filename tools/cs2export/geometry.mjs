@@ -86,7 +86,7 @@ function readUv(field, i) {
   }
 }
 
-export function geometry(scene, read, materialId) {
+export function geometry(scene, read, materialId, density = new Map()) {
   const ranges = [],
     entities = [],
     environments = [];
@@ -172,6 +172,8 @@ export function geometry(scene, read, materialId) {
           totalVertices += count;
           if (totalVertices * stride > 768 * 1024 * 1024)
             throw Error('Geometry exceeds decoded budget');
+          const placed = new Float32Array(count * 3),
+            uvs = new Float32Array(count * 2);
           const min = new Vector3(Infinity, Infinity, Infinity),
             max = min.clone().negate();
           const localMin = min.clone(),
@@ -191,6 +193,7 @@ export function geometry(scene, read, materialId) {
             v.writeFloatLE(origin.y, o + 4);
             v.writeFloatLE(origin.z, o + 8);
             origin.applyMatrix4(transform);
+            origin.toArray(placed, j * 3);
             min.min(origin);
             max.max(origin);
             const [n, t, sign] = frame(
@@ -209,6 +212,8 @@ export function geometry(scene, read, materialId) {
             const uv = readUv(fields.get('TEXCOORD0'), i),
               lm = readUv(fields.get('TEXCOORD3'), i),
               uv1 = readUv(fields.get('TEXCOORD1'), i);
+            uvs[j * 2] = uv[0];
+            uvs[j * 2 + 1] = uv[1];
             for (let c = 0; c < 2; c++) {
               v.writeFloatLE(uv[c], o + 20 + c * 4);
               v.writeUInt16LE(Math.round(lm[c] * 65535), o + 28 + c * 2);
@@ -232,6 +237,25 @@ export function geometry(scene, read, materialId) {
                   : (draw.m_flAlpha ?? 1));
               v[o + 56 + c] = Math.round(Math.min(1, Math.max(0, val)) * 255);
             }
+          }
+          // Placed surface and UV0 areas give each material's texels per inch at a given size.
+          const area = density.get(matName) ?? { world: 0, uv: 0 };
+          density.set(matName, area);
+          for (let j = 0; j < indices.length; j += 12) {
+            const [a, b, c] = [0, 4, 8].map((k) => indices.readUInt32LE(j + k));
+            const e = [0, 1, 2].map((k) => placed[b * 3 + k] - placed[a * 3 + k]),
+              f = [0, 1, 2].map((k) => placed[c * 3 + k] - placed[a * 3 + k]);
+            area.world +=
+              Math.hypot(
+                e[1] * f[2] - e[2] * f[1],
+                e[2] * f[0] - e[0] * f[2],
+                e[0] * f[1] - e[1] * f[0],
+              ) / 2;
+            area.uv +=
+              Math.abs(
+                (uvs[b * 2] - uvs[a * 2]) * (uvs[c * 2 + 1] - uvs[a * 2 + 1]) -
+                  (uvs[c * 2] - uvs[a * 2]) * (uvs[b * 2 + 1] - uvs[a * 2 + 1]),
+              ) / 2;
           }
           const center = new Vector3().addVectors(min, max).multiplyScalar(0.5);
           const sourceCenter = center.clone().applyMatrix4(root.clone().invert());

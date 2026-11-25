@@ -5,7 +5,10 @@ import { loadManifest, readAsset, validate } from '../../frontend/src/world/form
 
 const payload = new Uint8Array(8),
   hash = createHash('sha256').update(payload).digest('hex'),
-  file = hash + '.bin';
+  file = hash + '.bin',
+  phonePayload = new Uint8Array(16),
+  phoneHash = createHash('sha256').update(phonePayload).digest('hex'),
+  phoneFile = phoneHash + '.bin';
 function manifest() {
   const bounds = [0, 0, 0, 1, 1, 1];
   return {
@@ -16,7 +19,10 @@ function manifest() {
     bounds,
     roles: ['color'],
     geometry: { stride: 60, vertices: 3, indices: 3, vb: file, ib: file },
-    files: { [file]: { size: 8, sha256: hash, category: 'textures' } },
+    files: {
+      [file]: { size: 8, sha256: hash, category: 'textures' },
+      [phoneFile]: { size: 16, sha256: phoneHash, category: 'textures' },
+    },
     chunks: [
       {
         bounds,
@@ -51,6 +57,20 @@ function manifest() {
     environments: [],
     post: {},
     visibility: null,
+    phone: {
+      arrays: [
+        {
+          file: phoneFile,
+          format: 'ASTC6x6',
+          textures: ['grass'],
+          mips: [{ w: 4, h: 4, level: 0, offset: 0, size: 16 }],
+        },
+      ],
+      specials: {},
+      rgbm: {},
+      lightmaps: {},
+      volumes: {},
+    },
   };
 }
 test('valid format, optional visibility and single BC1 block', () =>

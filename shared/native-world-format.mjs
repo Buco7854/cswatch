@@ -47,15 +47,18 @@ function validateTexture(texture, m) {
       (!paged && l.offset !== offset)
     )
       throw Error('Invalid mip layout');
-    const block = bytesPerBlock[texture.format];
-    const bytes = block
-      ? Math.ceil(l.w / 4) * Math.ceil(l.h / 4) * block
-      : l.w *
-        l.h *
-        ({
-          RGBA8888: 4,
-          RGBA16161616F: 8,
-        }[texture.format] ?? 0);
+    const block = bytesPerBlock[texture.format],
+      astc = Number(/^ASTC([4568])x\1$/.exec(texture.format)?.[1] ?? 0);
+    const bytes = astc
+      ? Math.ceil(l.w / astc) * Math.ceil(l.h / astc) * 16
+      : block
+        ? Math.ceil(l.w / 4) * Math.ceil(l.h / 4) * block
+        : l.w *
+          l.h *
+          ({
+            RGBA8888: 4,
+            RGBA16161616F: 8,
+          }[texture.format] ?? 0);
     if (!bytes || l.size !== bytes * depth) throw Error('Invalid mip byte count');
     offset += l.size;
   }
@@ -170,6 +173,48 @@ export function validate(value) {
     for (const mip of 'mips' in texture ? texture.mips : texture.levels) gpuBytes += mip.size;
     if (gpuBytes > 2 * 1024 * MiB) throw Error('Texture allocation budget exceeded');
   }
+  const p = m.phone;
+  if (
+    !p ||
+    !Array.isArray(p.arrays) ||
+    p.arrays.length !== m.arrays.length ||
+    !p.specials ||
+    !p.rgbm ||
+    !p.lightmaps ||
+    !p.volumes
+  )
+    throw Error('Invalid phone texture tier');
+  p.arrays.forEach((bank, index) => {
+    const desktop = m.arrays[index];
+    if (
+      !/^ASTC([4568])x\1$/.test(bank.format) ||
+      bank.id !== desktop.id ||
+      bank.role !== desktop.role ||
+      bank.srgb !== desktop.srgb ||
+      !Array.isArray(bank.textures) ||
+      bank.textures.length !== desktop.textures.length ||
+      bank.textures.some((name, layer) => name !== desktop.textures[layer])
+    )
+      throw Error('Invalid phone texture bank');
+  });
+  let phoneBytes = 0;
+  for (const texture of [...p.arrays, ...Object.values(p.specials)]) {
+    validateTexture(texture, m);
+    for (const mip of 'mips' in texture ? texture.mips : texture.levels) phoneBytes += mip.size;
+    if (phoneBytes > 512 * MiB) throw Error('Phone texture allocation budget exceeded');
+  }
+  for (const [name, range] of Object.entries(p.rgbm))
+    if (!p.specials[name] || !(range > 0 && range <= 64)) throw Error('Invalid phone RGBM range');
+  for (const env of m.environments)
+    if (p.specials[p.lightmaps[env.world]]?.levels.at(-1).d !== 3)
+      throw Error('Invalid phone lightmap atlas');
+  for (const [name, volume] of Object.entries(p.volumes))
+    if (
+      !p.specials[name] ||
+      !volume.shadowBase ||
+      !bounded(volume.shadowBase, (p.specials[name].levels.at(-1).d ?? 0) - 1)
+    )
+      throw Error('Invalid phone probe volume');
   for (const mat of m.materials) {
     for (const ref of Object.values(mat.bindings)) {
       if (

@@ -2,35 +2,37 @@
 // and common lighting. Adapted from ValveResourceFormat 21.1 (MIT). See
 // tools/cs2export/THIRD_PARTY_NOTICES.txt.
 
-uniform sampler2D tableData;
-uniform sampler2D probeData;
-uniform sampler2D cellList;
+// One RGBA32F table holds material rows, this world's probe rows and its cell list.
+uniform highp sampler2D sceneData;
+uniform int probeBase;
+uniform int cellColumn;
 uniform vec3 gridMin;
 uniform vec3 gridInv;
-uniform sampler2DArray aux0;
-uniform sampler2DArray aux1;
-uniform sampler2DArray aux2;
 uniform sampler2DArray brdf;
-uniform sampler2DArray illumTex;
-uniform sampler2DArray detailMask;
-uniform sampler2DArray ao2Tex;
-uniform sampler2DArray heightTex;
-uniform sampler2DArray roughTex;
-uniform sampler2DArray colorTex;
-uniform sampler2DArray normalTex;
-uniform sampler2DArray aoTex;
-uniform sampler2DArray color2Tex;
-uniform sampler2DArray normal2Tex;
-uniform sampler2DArray blendTex;
-uniform sampler2DArray detailTex;
-uniform sampler2DArray metalTex;
+// Per-variant material role slots replace this line.
+#pragma roles
+#ifdef PACKED_LIGHTING
+// Phone packs carry irradiance, direction and sun shadow as layers 0-2 of one array.
+uniform sampler2DArray lightAtlas;
+#define irradiance lightAtlas
+#define directional lightAtlas
+#define shadowMap lightAtlas
+#define lpvShadow lpv
+const float irradianceLayer = 0., directionLayer = 1., shadowLayer = 2.;
+#else
 uniform sampler2DArray irradiance;
 uniform sampler2DArray directional;
 uniform sampler2DArray shadowMap;
+uniform sampler2DArray lpvShadow;
+const float irradianceLayer = 0., directionLayer = 0., shadowLayer = 0.;
+#endif
 uniform sampler2DArray envMap;
 uniform sampler2DArray skyMap;
 uniform sampler2DArray lpv;
-uniform sampler2DArray lpvShadow;
+// Probe volume first layer and layer count, then sun occlusion first layer and count.
+uniform vec4 volumeLayers;
+// RGBM ranges for irradiance, cubemaps, sky and probe volumes. Zero means linear HDR storage.
+uniform vec4 rgbmRange;
 uniform vec3 eye;
 uniform vec3 sunDir;
 uniform vec3 sunColor;
@@ -66,10 +68,13 @@ float actorVisibility() {
   return texture(actorShadow,vec3(uv.xy,uv.z-actorBias));
 }
 vec4 materialRow(int x) {
-  return texelFetch(tableData, ivec2(x, binding.x), 0);
+  return texelFetch(sceneData, ivec2(x, binding.x), 0);
 }
 vec4 probeRow(int x, int probeIndex) {
-  return texelFetch(probeData, ivec2(x, probeIndex), 0);
+  return texelFetch(sceneData, ivec2(x, probeBase + probeIndex), 0);
+}
+vec3 hdr(vec4 value, float range) {
+  return range > 0. ? value.rgb * value.a * range : value.rgb;
 }
 
 vec4 sampleLayer(sampler2DArray tex, vec2 uv, float layer, vec4 fallback) {
@@ -79,17 +84,16 @@ vec3 decodeTangentNormal(vec2 v) {
   vec2 h = vec2(v.x + v.y - 1.003922, v.x - v.y);
   return normalize(vec3(h.x, -h.y, 1. - abs(h.x) - abs(h.y)));
 }
-vec4 sampleProbeVolume(sampler2DArray tex, vec3 uv, float face) {
-  vec3 size = vec3(textureSize(tex, 0));
-  float depth = size.z / face;
-  float z = clamp(uv.z * depth - .5, 0., size.z - 1.);
-  return mix(texture(tex, vec3(uv.xy, floor(z))),
-             texture(tex, vec3(uv.xy, min(size.z - 1., floor(z) + 1.))), fract(z));
+vec4 sampleProbeVolume(sampler2DArray tex, vec3 uv, float face, vec2 layers) {
+  float depth = layers.y / face;
+  float z = clamp(uv.z * depth - .5, 0., layers.y - 1.);
+  return mix(texture(tex, vec3(uv.xy, layers.x + floor(z))),
+             texture(tex, vec3(uv.xy, layers.x + min(layers.y - 1., floor(z) + 1.))), fract(z));
 }
 float sampleShadowAtlas(vec2 uv) {
   vec2 size = vec2(textureSize(shadowMap, 0).xy);
   if (min(fwidth(chartNoise).x, fwidth(chartNoise).y) <= .1 || size.x <= 4096.)
-    return textureLod(shadowMap, vec3(uv, 0), 0.).r;
+    return textureLod(shadowMap, vec3(uv, shadowLayer), 0.).r;
   vec2 p = uv * size - .5;
   vec2 f = fract(p);
   vec2 f2 = f * f;
@@ -102,10 +106,10 @@ float sampleShadowAtlas(vec2 uv) {
   vec2 b = w2 + w3;
   vec2 lo = (floor(p) + w1 / a - 1.5) / size;
   vec2 hi = (floor(p) + w3 / b + .5) / size;
-  return a.x * a.y * textureLod(shadowMap, vec3(lo, 0), 0.).r +
-         b.x * a.y * textureLod(shadowMap, vec3(hi.x, lo.y, 0), 0.).r +
-         a.x * b.y * textureLod(shadowMap, vec3(lo.x, hi.y, 0), 0.).r +
-         b.x * b.y * textureLod(shadowMap, vec3(hi, 0), 0.).r;
+  return a.x * a.y * textureLod(shadowMap, vec3(lo, shadowLayer), 0.).r +
+         b.x * a.y * textureLod(shadowMap, vec3(hi.x, lo.y, shadowLayer), 0.).r +
+         a.x * b.y * textureLod(shadowMap, vec3(lo.x, hi.y, shadowLayer), 0.).r +
+         b.x * b.y * textureLod(shadowMap, vec3(hi, shadowLayer), 0.).r;
 }
 vec2 transformUV(vec2 uv, int column) {
   return vec2(dot(vec3(uv, 1.), materialRow(column).xyz),
@@ -124,7 +128,7 @@ void sampleEnvironment(vec3 localPosition, int cellRow, vec3 viewDirection, vec3
   volumeShadow = 0.;
   harmonic = vec4(0);
   for (int entry = 0; entry < 64; entry++) {
-    int probeIndex = int(texelFetch(cellList, ivec2(entry / 4, cellRow), 0)[entry % 4]);
+    int probeIndex = int(texelFetch(sceneData, ivec2(cellColumn + entry / 4, cellRow), 0)[entry % 4]);
     if (probeIndex < 0)
       break;
     vec3 local = localPosition - probeRow(0, probeIndex).xyz;
@@ -140,9 +144,10 @@ void sampleEnvironment(vec3 localPosition, int cellRow, vec3 viewDirection, vec3
       vec3 hit = max(nearPlane, farPlane);
       vec3 projectedDirection = local + reflectionDir * abs(min(min(hit.x, hit.y), hit.z));
       environmentLight +=
-          textureLod(envMap, cubeUv(mix(projectedDirection, reflectionDir, roughness), probeIndex),
-                     roughness * envLastMip)
-              .rgb *
+          hdr(textureLod(envMap,
+                         cubeUv(mix(projectedDirection, reflectionDir, roughness), probeIndex),
+                         roughness * envLastMip),
+              rgbmRange.y) *
           weight;
       harmonic += probeRow(5, probeIndex) * weight;
       environmentWeight += weight;
@@ -155,15 +160,20 @@ void sampleEnvironment(vec3 localPosition, int cellRow, vec3 viewDirection, vec3
         vec3 boxUv = clamp((local - boxMin) / (boxMax - boxMin), 0., 1.);
         vec3 size = probeRow(4, probeIndex).xyz;
         vec3 atlasOffset = probeRow(3, probeIndex).xyz;
-        vec3 atlasSize = vec3(textureSize(lpvShadow, 0));
+        vec3 atlasSize = vec3(vec2(textureSize(lpvShadow, 0).xy), volumeLayers.w);
         vec3 atlasUv = (clamp(boxUv * size, vec3(.5), size - .5) + atlasOffset) / atlasSize;
         for (int axis = 0; axis < 3; axis++) {
           float face = float(axis) + (normal[axis] <= 0. ? 3. : 0.);
-          volumeLight += sampleProbeVolume(lpv, vec3(atlasUv.xy, atlasUv.z + face), 6.).rgb *
+          volumeLight += hdr(sampleProbeVolume(lpv, vec3(atlasUv.xy, atlasUv.z + face), 6.,
+                                               volumeLayers.xy),
+                             rgbmRange.w) *
                          normal[axis] * normal[axis] * weight;
         }
         volumeShadow +=
-            sampleProbeVolume(lpvShadow, (boxUv * size + atlasOffset) / atlasSize, 1.).r * weight;
+            sampleProbeVolume(lpvShadow, (boxUv * size + atlasOffset) / atlasSize, 1.,
+                              volumeLayers.zw)
+                .r *
+            weight;
         volumeWeight += weight;
       }
     }
@@ -178,8 +188,8 @@ void sampleEnvironment(vec3 localPosition, int cellRow, vec3 viewDirection, vec3
 void sampleBakedLighting(vec3 geometryNormal, vec3 tangentNormal, vec3 volumeLight,
                          float volumeShadow, out vec3 light, out float sunVisibility) {
   if (binding.z == 1) {
-    vec3 irradianceSample = texture(irradiance, vec3(lightmapUv, 0)).rgb;
-    vec3 directionSample = texture(directional, vec3(lightmapUv, 0)).rgb;
+    vec3 irradianceSample = hdr(texture(irradiance, vec3(lightmapUv, irradianceLayer)), rgbmRange.x);
+    vec3 directionSample = texture(directional, vec3(lightmapUv, directionLayer)).rgb;
     vec2 directionXY = directionSample.xy * 2. - 1.;
     const float cap = .99619;
     directionXY *= cap / max(cap, length(directionXY));
@@ -218,10 +228,10 @@ vec3 applyFog(vec3 lit) {
           fogHeight.z);
   float fog = clamp(distTerm, 0., 1.) * heightTerm * fogDist.w;
   lit = mix(lit,
-            textureLod(skyMap, cubeUv(worldPosition - eye, 0),
-                       clamp(1. - fog * fogHeight.w, 0., 1.) *
-                           (log2(float(textureSize(skyMap, 0).x)) - 3.))
-                .rgb,
+            hdr(textureLod(skyMap, cubeUv(worldPosition - eye, 0),
+                           clamp(1. - fog * fogHeight.w, 0., 1.) *
+                               (log2(float(textureSize(skyMap, 0).x)) - 3.)),
+                rgbmRange.z),
             fog);
   return lit;
 }

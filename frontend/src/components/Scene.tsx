@@ -2,6 +2,7 @@ import { entityPlayback } from '../world/entity-playback';
 import { ReplayFrameContext } from '../replay-frames';
 import { NativePasses } from '../world/frame-context';
 import { NativeWorld, type LoadedWorld } from '../world/NativeWorld';
+import { deviceTextureTier } from '../world/textures';
 import type { FramePasses } from '../world/compositor';
 import type { WeaponAnchor } from '../agent-attachment';
 import { recordedFootPose, type FootPoseAt } from '../agent-feet';
@@ -157,7 +158,7 @@ export type MapRenderState = {
   compactTracerProfile?: boolean;
   modelProgress?: ModelProgressSource;
   renderer: '3d' | '2d';
-  failure?: 'webgl' | 'model' | 'assets';
+  failure?: 'webgl' | 'textures' | 'model' | 'assets';
   environment: AssetStatus;
   environmentVersion: string | null;
   landscape: AssetStatus;
@@ -1922,6 +1923,7 @@ export default function Scene({
       ? 0
       : unavailableEquipment;
   const [smokeUnavailable, setSmokeUnavailable] = useState(false);
+  const textureTier = useMemo(deviceTextureTier, []);
   const surface = mapSurface({
     sample: Boolean(data.sample),
     requested2D: mode === '2d',
@@ -1929,6 +1931,7 @@ export default function Scene({
     model,
     modelStatus,
     rendererFailed: rendererFailure === data.map && rendererAttempt.failed,
+    textureSupport: data.sample || textureTier !== null,
   });
   const equipmentActive = surface === '3d';
   const equipmentPending =
@@ -1970,13 +1973,15 @@ export default function Scene({
           surface === '3d' && modelStatus === 'pending' ? modelScope?.progress : undefined,
         renderer: surface === 'plot' ? '2d' : '3d',
         failure:
-          rendererFailure === data.map
-            ? 'webgl'
-            : mapAssets.status === 'error'
-              ? 'assets'
-              : modelStatus === 'error'
-                ? 'model'
-                : undefined,
+          !data.sample && textureTier === null
+            ? 'textures'
+            : rendererFailure === data.map
+              ? 'webgl'
+              : mapAssets.status === 'error'
+                ? 'assets'
+                : modelStatus === 'error'
+                  ? 'model'
+                  : undefined,
         environment: environmentStatus,
         environmentVersion: environment?.assetVersion || null,
         landscape: landscapeStatus,

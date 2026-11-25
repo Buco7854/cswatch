@@ -67,6 +67,7 @@ export function writeNativeWorld(root, map, sourceManifest = '42') {
     post: {},
     entities: [],
     environments: [],
+    phone: { arrays: [], specials: {}, rgbm: {}, lightmaps: {}, volumes: {} },
     visibility: null,
   };
   const model = Buffer.from(JSON.stringify(value));

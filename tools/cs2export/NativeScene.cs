@@ -47,6 +47,15 @@ sealed class NativeScene(ResourceStore store, string game, string output, string
         return file;
     }
 
+    // A sky prefab must live under the selected map's own prefab folder, with or without its mode prefix.
+    public static string SkyPrefab(string map, string? reference)
+    {
+        var match = System.Text.RegularExpressions.Regex.Match(reference ?? "", @"\Amaps/prefabs/([a-z0-9_]+)/[a-z0-9_]{1,100}\.vmap\z");
+        if (!match.Success || (match.Groups[1].Value != map && match.Groups[1].Value != System.Text.RegularExpressions.Regex.Replace(map, @"\A(?:de|cs|ar|dz|gd|tr)_", "")))
+            throw new InvalidDataException("Sky prefab outside selected map");
+        return reference![..^5];
+    }
+
     public void Extract()
     {
         World("maps/" + map);
@@ -167,12 +176,8 @@ sealed class NativeScene(ResourceStore store, string game, string output, string
                 }
                 if (cls == "skybox_reference" && !entity.GetBooleanProperty("startdisabled"))
                 {
-                    var reference = entity.GetStringProperty("targetmapname") ?? "";
-                    var match = System.Text.RegularExpressions.Regex.Match(reference, @"\Amaps/prefabs/([a-z0-9_]+)/[a-z0-9_]{1,100}\.vmap\z");
-                    if (prefix != "maps/" + map || !match.Success ||
-                        (match.Groups[1].Value != map && match.Groups[1].Value != map[(map.IndexOf('_') + 1)..]))
-                        throw new InvalidDataException("Sky prefab outside selected map");
-                    var sky = reference[..^5];
+                    if (prefix != "maps/" + map) throw new InvalidDataException("Nested sky prefab");
+                    var sky = SkyPrefab(map, entity.GetStringProperty("targetmapname"));
                     using var prefab = store.MountPrefab(Path.Combine(game, "csgo", sky + ".vpk"));
                     World(sky);
                 }

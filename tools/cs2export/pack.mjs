@@ -1,21 +1,17 @@
 // Material slots follow ValveResourceFormat 21.1 (MIT). See THIRD_PARTY_NOTICES.txt.
-import { readFileSync, writeFileSync, statfsSync } from 'node:fs';
+// Phase one writes the desktop tier and the phone ASTC plan. finish.mjs completes the pack.
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createHash } from 'node:crypto';
 import { MeshoptEncoder } from '../../frontend/node_modules/meshoptimizer/meshopt_encoder.js';
 import { geometry, stride } from './geometry.mjs';
-
 import { vertexArchive } from './quantize.mjs';
-import { precompress } from './precompress.mjs';
-import { deflateSync } from 'node:zlib';
-import { transposeBlocks } from '../../frontend/src/world/block-layout.mjs';
-import { materialCaps } from './material-caps.mjs';
-const materialCap = Number(process.env.CS2EXPORT_MATERIAL_CAP ?? 256);
-if (![256, 512, 1024].includes(materialCap)) throw Error('Material cap must be 256, 512 or 1024');
-const [source, out] = process.argv.slice(2);
+import { packFiles } from './pack-files.mjs';
+import { materialCap, phonePlan } from './texture-tiers.mjs';
+
+const [source, out, stage] = process.argv.slice(2);
+if (!source || !out || !stage) throw Error('Usage: pack.mjs <source> <pack> <stage>');
 const scene = JSON.parse(readFileSync(join(source, 'source.json'), 'utf8'));
-const files = {},
-  cache = new Map(),
+const cache = new Map(),
   arrays = [],
   groups = new Map(),
   refs = new Map();
@@ -27,38 +23,7 @@ function read(file) {
   }
   return bytes;
 }
-function store(bytes, category, format) {
-  const decodedSize = bytes.length;
-  let packing;
-  if (bytes.length >= 1024) {
-    const stride = { DXT1: 8, DXT5: 16, ATI1N: 8, ATI2N: 16, BC6H: 16, BC7: 16 }[format];
-    const original = bytes;
-    for (const laneBytes of stride ? [1, stride] : [1]) {
-      const packed = deflateSync(
-        laneBytes === 1 ? original : transposeBlocks(original, laneBytes, false),
-        { level: 6 },
-      );
-      if (packed.length + 64 < bytes.length) {
-        bytes = packed;
-        packing = laneBytes;
-      }
-    }
-  }
-  const sha256 = createHash('sha256').update(bytes).digest('hex'),
-    file = sha256 + '.bin';
-  if (!files[file]) {
-    const fs = statfsSync(out);
-    if (fs.bavail * fs.bsize - bytes.length < 4 * 1024 ** 3) throw Error('Disk reserve reached');
-    writeFileSync(join(out, file), bytes, { flag: 'wx' });
-    files[file] = {
-      size: bytes.length,
-      sha256,
-      category,
-      ...(packing ? { packing, decodedSize } : {}),
-    };
-  }
-  return file;
-}
+const { files, store, addMip, flush } = packFiles(out);
 function keep(file) {
   if (!files[file]) {
     writeFileSync(join(out, file), readFileSync(join(source, file)), { flag: "wx" });
@@ -67,15 +32,30 @@ function keep(file) {
   return file;
 }
 
+// Lightmap kinds other than the three sampled ones and unbound volume textures are not drawn.
+const sampledLightmap = /\/(irradiance|directional_irradiance|direct_light_shadows)\.vtex$/;
+for (const [name, texture] of Object.entries(scene.textures)) {
+  const category = scene.files[texture.file].category;
+  if (
+    (category === 'lightmaps' && !sampledLightmap.test(name)) ||
+    (category === 'textures' && texture.levels.at(-1).d > 1)
+  )
+    delete scene.textures[name];
+}
+const ids = new Map(Object.keys(scene.materials).map((name, index) => [name, index]));
+const density = new Map();
+const { ranges, entities, environments } = geometry(scene, read, (name) => ids.get(name), density);
+cache.clear();
 // Drop whole authored levels, preserving the remaining Valve block payloads.
 const textureCaps = new Map();
-if (!process.env.CS2EXPORT_MATERIAL_CAP)
-  for (const [name, material] of Object.entries(scene.materials)) {
-    const cap = materialCaps[name] ?? 256;
-    for (const texture of Object.values(material.slots))
-      textureCaps.set(texture, Math.max(cap, textureCaps.get(texture) ?? 0));
-  }
+for (const [name, material] of Object.entries(scene.materials)) {
+  const cap = materialCap(material, density.get(name));
+  for (const texture of Object.values(material.slots))
+    textureCaps.set(texture, Math.max(cap, textureCaps.get(texture) ?? 0));
+}
+const sourceLevels = new Map();
 for (const [name, texture] of Object.entries(scene.textures)) {
+  sourceLevels.set(name, texture.levels.map((level) => ({ ...level })));
   const category = scene.files[texture.file].category;
   const cap =
     category === 'cubemaps' || category === 'sky'
@@ -85,7 +65,7 @@ for (const [name, texture] of Object.entries(scene.textures)) {
           ? 8192
           : 4096
         : category === 'textures'
-          ? (textureCaps.get(name) ?? materialCap)
+          ? (textureCaps.get(name) ?? 256)
           : Infinity;
   while (
     texture.levels.length > 1 &&
@@ -148,7 +128,7 @@ const mats = Object.entries(scene.materials).map(([name, m]) => {
   const bindings = {},
     slots = {};
   for (const [slot, tex] of Object.entries(m.slots)) {
-    if (scene.textures[tex].levels.at(-1).d > 1) {
+    if (!scene.textures[tex] || scene.textures[tex].levels.at(-1).d > 1) {
       slots[slot] = tex;
       continue;
     }
@@ -161,28 +141,6 @@ const mats = Object.entries(scene.materials).map(([name, m]) => {
   }
   return { name, ...m, slots, bindings };
 });
-const ids = new Map(mats.map((m, i) => [m.name, i]));
-const { ranges, entities, environments } = geometry(scene, read, (name) => ids.get(name));
-cache.clear();
-// Pages group compatible blocks by refinement level. The bootstrap never shares a
-// file with large mips. Each mip remains one contiguous run of GPU-ready layers.
-const pages = new Map();
-function addMip(category, format, level, bytes, first) {
-  const wave = first || Math.max(level.w, level.h) <= 16 ? 0 : Math.max(level.w, level.h);
-  const key = [category, format, wave].join('/');
-  const list = pages.get(key) ?? [];
-  let page = list.at(-1);
-  if (!page || page.size + bytes.length > 2 * 1024 ** 2) {
-    page = { category, format, size: 0, parts: [], levels: [] };
-    list.push(page);
-    pages.set(key, list);
-  }
-  const descriptor = { ...level, offset: page.size, size: bytes.length };
-  page.parts.push(bytes);
-  page.levels.push(descriptor);
-  page.size += bytes.length;
-  return descriptor;
-}
 for (const bank of arrays) {
   bank.mips = scene.textures[bank.textures[0]].levels.map((level, index) => {
     const parts = bank.textures.map((name) => {
@@ -198,7 +156,7 @@ for (const bank of arrays) {
 const specials = {};
 for (const [name, texture] of Object.entries(scene.textures)) {
   const category = scene.files[texture.file].category;
-  if (category === 'textures' && texture.levels.at(-1).d === 1) continue;
+  if (category === 'textures') continue;
   const source = read(texture.file);
   if (category === 'cubemaps' || category === 'sky') {
     specials[name] = {
@@ -224,12 +182,7 @@ for (const [name, texture] of Object.entries(scene.textures)) {
   }
   cache.clear();
 }
-for (const list of pages.values())
-  for (const page of list) {
-    const file = store(Buffer.concat(page.parts), page.category, page.format);
-    for (const mip of page.levels) mip.file = file;
-  }
-pages.clear();
+flush();
 for (const bank of arrays) bank.file = bank.mips[0].file;
 for (const texture of Object.values(specials))
   if (texture.levels[0].file) texture.file = texture.levels[0].file;
@@ -332,7 +285,9 @@ const manifest = {
   ],
   textureConversions: [],
 };
-for (const [name, record] of Object.entries(files)) record.br = precompress(out, name);
-writeFileSync(join(out, 'map.json'), JSON.stringify(manifest), { flag: 'wx' });
-precompress(out, 'map.json');
+writeFileSync(join(stage, 'desktop.json'), JSON.stringify(manifest));
+writeFileSync(
+  join(stage, 'astc-plan.json'),
+  JSON.stringify(phonePlan(manifest, scene, sourceLevels)),
+);
 console.log(JSON.stringify(manifest.counts));
