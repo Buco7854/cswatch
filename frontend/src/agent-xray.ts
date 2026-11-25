@@ -8,9 +8,81 @@ import {
   SkinnedMesh,
   type ColorRepresentation,
   type Material,
+  type Side,
   type Object3D,
   type Texture,
 } from 'three';
+
+/** Edge alpha of an occluded body; its interior keeps this fraction of it. */
+const rimOpacity = 0.65;
+const fillFraction = 0.25;
+
+/**
+ * A team-coloured outline with a faint fill, drawn only where the body is
+ * behind map geometry and not already visible. Alpha follows the view angle
+ * so the silhouette edge stays readable while the inside lets the scene show.
+ */
+export function xrayMaterial({
+  color = '#ffffff',
+  opacity = 1,
+  side,
+  alphaTest = 0,
+  map = null,
+  alphaMap = null,
+}: {
+  color?: ColorRepresentation;
+  opacity?: number;
+  side?: Side;
+  alphaTest?: number;
+  map?: Texture | null;
+  alphaMap?: Texture | null;
+}) {
+  const result = new MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity: rimOpacity * opacity,
+    depthTest: true,
+    depthFunc: GreaterDepth,
+    depthWrite: false,
+    side,
+    alphaTest,
+    map,
+    alphaMap,
+    toneMapped: false,
+    stencilWrite: true,
+    stencilFunc: NotEqualStencilFunc,
+    stencilRef: 1,
+    stencilWriteMask: 0,
+  });
+  // Preserve texture alpha/cutouts while the silhouette uses one team color.
+  result.onBeforeCompile = (shader) => {
+    const varyings = 'varying vec3 vXrayNormal;\nvarying vec3 vXrayView;';
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\n' + varyings)
+      .replace(
+        '#include <project_vertex>',
+        `#include <project_vertex>
+#if ! ( defined( USE_ENVMAP ) || defined( USE_SKINNING ) )
+#include <beginnormal_vertex>
+#include <morphnormal_vertex>
+#include <defaultnormal_vertex>
+#endif
+vXrayNormal = transformedNormal;
+vXrayView = - mvPosition.xyz;`,
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\n' + varyings)
+      .replace(
+        '#include <map_fragment>',
+        `#include <map_fragment>
+diffuseColor.rgb = diffuse;
+float xrayFacing = abs( dot( normalize( vXrayNormal ), normalize( vXrayView ) ) );
+diffuseColor.a *= mix( 1.0, ${fillFraction.toFixed(2)}, smoothstep( 0.02, 0.32, xrayFacing ) );`,
+      );
+  };
+  result.customProgramCacheKey = () => 'cswatch-agent-xray-rim';
+  return result;
+}
 
 /** An instance-owned second pass shares the posed body, never another skeleton or cached material. */
 export function agentXray(root: Object3D) {
@@ -29,31 +101,13 @@ export function agentXray(root: Object3D) {
     let result = materials.get(source);
     if (result) return result;
     const masked = source as Material & { map?: Texture; alphaMap?: Texture };
-    result = new MeshBasicMaterial({
-      color: '#ffffff',
-      transparent: true,
-      opacity: 0.46 * source.opacity,
-      depthTest: true,
-      depthFunc: GreaterDepth,
-      depthWrite: false,
+    result = xrayMaterial({
+      opacity: source.opacity,
       side: source.side,
       alphaTest: source.alphaTest,
       map: masked.map ?? null,
       alphaMap: masked.alphaMap ?? null,
-      toneMapped: false,
-      stencilWrite: true,
-      stencilFunc: NotEqualStencilFunc,
-      stencilRef: 1,
-      stencilWriteMask: 0,
     });
-    // Preserve texture alpha/cutouts while the silhouette uses one team color.
-    result.onBeforeCompile = (shader) => {
-      shader.fragmentShader = shader.fragmentShader.replace(
-        '#include <map_fragment>',
-        '#include <map_fragment>\ndiffuseColor.rgb = diffuse;',
-      );
-    };
-    result.customProgramCacheKey = () => 'cswatch-agent-xray';
     result.visible = source.visible;
     materials.set(source, result);
     return result;

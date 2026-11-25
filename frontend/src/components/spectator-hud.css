@@ -13,15 +13,23 @@
   visibility: hidden;
   --actor-color: #83c3e5;
 }
+/* A light in-game marker: outlined name, thin health bar and a team chevron
+ * on the head. The game view stays visible around and behind it. */
 .actor-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
   width: max-content;
-  max-width: 144px;
-  padding: 4px 7px;
+  max-width: 120px;
   color: #fff;
-  background: rgb(17 21 22 / 92%);
-  border-inline-start: 2px solid var(--actor-color);
-  border-radius: 4px;
-  font: 600 12px / 1.2 var(--font-body, Inter, sans-serif);
+  font: 600 11px / 1.15 var(--font-body, Inter, sans-serif);
+  letter-spacing: 0.01em;
+  text-shadow:
+    0 0 1px #000,
+    0 0 2px #000,
+    0 1px 3px rgb(0 0 0 / 70%);
+  transform-origin: 50% 100%;
   user-select: none;
   pointer-events: none;
 }
@@ -52,35 +60,38 @@
   rotate: var(--actor-heading, 0deg);
 }
 .actor-label-name {
-  display: block;
-  max-width: 130px;
+  max-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.actor-label-health {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  margin-top: 3px;
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-.actor-label-health > :last-child {
-  min-width: 3ch;
-  text-align: end;
-}
 .actor-label-track {
-  width: 55px;
-  height: 3px;
+  width: 36px;
+  height: 2px;
   overflow: hidden;
-  background: rgb(255 255 255 / 18%);
-  border-radius: 2px;
+  background: rgb(0 0 0 / 55%);
+  border-radius: 1px;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 30%);
 }
 .actor-label-track > span {
   display: block;
   height: 100%;
   background: var(--actor-color);
+}
+/* Size matches actorMarkerSize in actor-overlay.ts. */
+.actor-label-marker {
+  display: block;
+  width: 10px;
+  height: 6px;
+  overflow: visible;
+  fill: var(--actor-color);
+  stroke: rgb(0 0 0 / 70%);
+  stroke-width: 1;
+  stroke-linejoin: round;
+}
+/* A label that would collide keeps only its chevron. */
+.actor-label[data-compact='true'] > :not(.actor-label-marker) {
+  visibility: hidden;
 }
 .spectator-damage {
   position: absolute;
@@ -150,14 +161,12 @@
 }
 @media (max-width: 760px) {
   .actor-label {
-    max-width: 105px;
-    padding: 3px 5px;
-    font-size: 11px;
+    max-width: 96px;
   }
   .actor-label-name {
-    max-width: 95px;
+    max-width: 96px;
   }
   .actor-label-track {
-    width: 42px;
+    width: 30px;
   }
 }

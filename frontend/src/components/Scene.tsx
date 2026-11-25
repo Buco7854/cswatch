@@ -361,7 +361,7 @@ function Agent({
       ),
     });
     if (overlays) {
-      overlayAnchor.height = 2.08 - (pose.duck ?? 0) * 0.65;
+      overlayAnchor.height = 1.94 - (pose.duck ?? 0) * 0.6;
       overlayAnchor.yaw = pose.yaw;
     }
     ref.current.position.set(pose.x * UNIT, pose.z * UNIT, -pose.y * UNIT);
@@ -497,6 +497,7 @@ function World({
     overlayLayout,
     selected,
     settings.xray,
+    mode === 'pov',
     labelSmoke,
     nativeWorld?.queries,
   );

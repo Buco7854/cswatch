@@ -2,7 +2,12 @@ import { memo, useCallback, useLayoutEffect, useMemo, type RefObject } from 'rea
 import { useTranslation } from 'react-i18next';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Raycaster, Vector2, Vector3, type Bone, type Group } from 'three';
-import { overlapsOverlay, placeActorLabel, type ActorOverlayLayout } from '../actor-overlay';
+import {
+  actorLabelStyle,
+  overlapsOverlay,
+  placeActorLabel,
+  type ActorOverlayLayout,
+} from '../actor-overlay';
 import { smokeHidesLabel } from '../smoke-render-state';
 import type { SmokeSample } from '../smoke-field';
 import { t } from '../i18n';
@@ -14,6 +19,12 @@ type ActorAnchor = {
   height: number;
   yaw: number;
 };
+
+/** Half the side of the aim point kept free of labels in first person. The
+ * drawn crosshair also reserves its own measured box through the HUD layout. */
+const reticleClearance = 8;
+/** Lift above the head bone so the chevron sits just over the head. */
+const headClearance = 0.2;
 
 export function createActorOverlay() {
   return {
@@ -81,13 +92,13 @@ const ActorOverlayItem = memo(function ActorOverlayItem({
         >
           <span className="actor-label-name">{name}</span>
           {Number.isFinite(health) && health >= 0 && (
-            <span className="actor-label-health">
-              <span className="actor-label-track" aria-hidden="true">
-                <span style={{ width: Math.min(100, health) + '%' }} />
-              </span>
-              <span>{health}</span>
+            <span className="actor-label-track" aria-hidden="true">
+              <span style={{ width: Math.min(100, health) + '%' }} />
             </span>
           )}
+          <svg className="actor-label-marker" viewBox="0 0 10 6" aria-hidden="true">
+            <path d="M1 1h8L5 5z" />
+          </svg>
         </div>
       )}
       {marker && (
@@ -150,7 +161,8 @@ export default memo(function ActorOverlays({
     <div className="actor-overlays">
       {positions.map(({ id, alive, health, team }) => {
         if (!alive || (mode === 'pov' && id === selected)) return null;
-        const name = labels ? names.get(id) : undefined;
+        // The watched player is identified by the HUD, so only others get a name.
+        const name = labels && id !== selected ? names.get(id) : undefined;
         if (!name && !marker) return null;
         return (
           <ActorOverlayItem
@@ -169,12 +181,19 @@ export default memo(function ActorOverlays({
   );
 });
 
-function paint(element: HTMLElement, box?: { left: number; top: number }) {
+function paint(element: HTMLElement, box?: { left: number; top: number }, scale = 1) {
   const visibility = box ? 'visible' : 'hidden';
   if (element.style.visibility !== visibility) element.style.visibility = visibility;
   if (!box) return;
-  const transform = `translate3d(${box.left}px, ${box.top}px, 0px)`;
+  const transform =
+    `translate3d(${box.left}px, ${box.top}px, 0px)` + (scale === 1 ? '' : ` scale(${scale})`);
   if (element.style.transform !== transform) element.style.transform = transform;
+}
+
+function flag(element: HTMLElement, name: 'occluded' | 'compact', value: boolean) {
+  if (value) {
+    if (element.dataset[name] !== 'true') element.dataset[name] = 'true';
+  } else if (name in element.dataset) delete element.dataset[name];
 }
 
 /** A single screen-space pass reads the sampled world poses and cached DOM sizes. */
@@ -183,6 +202,7 @@ export function useActorOverlayFrame(
   layout: ActorOverlayLayout | undefined,
   selected: string,
   xray: boolean,
+  pov: boolean,
   smoke: RefObject<SmokeSample[]>,
   world?: import('../world/queries').WorldQueries,
 ) {
@@ -239,6 +259,14 @@ export function useActorOverlayFrame(
       paint(element, box);
       occupied.push(box);
     }
+    // Keep the aim point readable in first person.
+    if (pov)
+      occupied.push({
+        left: width / 2 - reticleClearance,
+        right: width / 2 + reticleClearance,
+        top: height / 2 - reticleClearance,
+        bottom: height / 2 + reticleClearance,
+      });
     for (const [id, element] of overlay.labels) {
       const anchor = overlay.anchors.get(id);
       const body = anchor?.body.current;
@@ -250,15 +278,14 @@ export function useActorOverlayFrame(
       if (anchor.head.current) {
         body.worldToLocal(anchor.head.current.getWorldPosition(point));
         if (point.y >= 0.25 && point.y <= 2.3 && Math.hypot(point.x, point.z) <= 0.8)
-          point.y += 0.24;
+          point.y += headClearance;
         else point.set(0, anchor.height, 0);
       } else point.set(0, anchor.height, 0);
       body.localToWorld(point);
-      if (
-        !xray &&
-        smoke.current.length &&
-        smokeHidesLabel(smoke.current, camera.position.toArray(), point.toArray())
-      ) {
+      const smoked =
+        smoke.current.length > 0 &&
+        smokeHidesLabel(smoke.current, camera.position.toArray(), point.toArray());
+      if (smoked && !xray) {
         paint(element);
         continue;
       }
@@ -268,42 +295,61 @@ export function useActorOverlayFrame(
         paint(element);
         continue;
       }
-      candidates.push({
-        element,
-        box,
-        distance,
-        x: point.x,
-        y: point.y,
-        selected: id === selected,
-      });
+      candidates.push({ element, box, distance, smoked, x: point.x, y: point.y });
     }
-    candidates.sort((a, b) => Number(b.selected) - Number(a.selected) || a.distance - b.distance);
+    // Nearer players keep their full label when two collide.
+    candidates.sort((a, b) => a.distance - b.distance);
     for (const candidate of candidates) {
-      const box = placeActorLabel(
+      const meters = Math.sqrt(candidate.distance);
+      const { scale } = actorLabelStyle(meters, false);
+      const placed = placeActorLabel(
         ((candidate.x + 1) * width) / 2,
         ((1 - candidate.y) * height) / 2,
-        candidate.box.width,
-        candidate.box.height,
+        candidate.box,
+        scale,
         size,
         occupied,
       );
-      if (box && !xray) {
+      if (!placed) {
+        paint(candidate.element);
+        continue;
+      }
+      let occluded = candidate.smoked;
+      if (!occluded) {
         ray.setFromCamera(ndc.set(candidate.x, candidate.y), camera);
-        ray.far = Math.sqrt(candidate.distance) - 0.001;
-        if (
-          world
-            ? world.hit({
+        ray.far = meters - 0.001;
+        occluded = world
+          ? Boolean(
+              world.hit({
                 target: ray.ray.origin.toArray(),
                 position: ray.ray.at(ray.far, point).toArray(),
-              })
-            : ray.intersectObjects(scene.children, true).length
-        ) {
-          paint(candidate.element);
-          continue;
-        }
+              }),
+            )
+          : ray.intersectObjects(scene.children, true).length > 0;
       }
-      paint(candidate.element, box);
-      if (box) occupied.push(box);
+      // Without X-ray, a player behind a wall or smoke has no label.
+      if (occluded && !xray) {
+        paint(candidate.element);
+        continue;
+      }
+      const { opacity } = actorLabelStyle(meters, occluded);
+      const opacityText = String(opacity);
+      if (candidate.element.style.opacity !== opacityText)
+        candidate.element.style.opacity = opacityText;
+      flag(candidate.element, 'occluded', occluded);
+      flag(candidate.element, 'compact', placed.compact);
+      // Scale around the bottom centre so the chevron stays on the head.
+      const { width: labelWidth, height: labelHeight } = candidate.box;
+      const centre = (placed.box.left + placed.box.right) / 2;
+      paint(
+        candidate.element,
+        {
+          left: Math.round(centre - labelWidth / 2),
+          top: Math.round(placed.box.bottom - labelHeight),
+        },
+        scale,
+      );
+      occupied.push(placed.box);
     }
   });
 }
