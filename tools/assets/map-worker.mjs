@@ -58,6 +58,7 @@ import {
   runAssetProcess,
   validatePreparedMap,
 } from './install-steam-assets.mjs';
+import { installLocalWorld } from './native-world-pack.mjs';
 import { prepareToolchain } from './prepare-toolchain.mjs';
 import { selectedSteamManifest } from './steam-assets-plan.mjs';
 import {
@@ -92,6 +93,7 @@ const now = () => Math.floor(Date.now() / 1000);
 
 export function mapWorkerOptions(env = process.env) {
   const options = {
+    gameRoot: env.MAP_GAME_ROOT ? resolve(env.MAP_GAME_ROOT) : undefined,
     jobs: resolve(env.MAP_JOBS_DIR || '/map-jobs'),
     assets: resolve(env.MAP_ASSETS_DIR || '/map-assets'),
     catalog: resolve(env.MAP_CATALOG_FILE || '/map-catalog/catalog.json'),
@@ -424,7 +426,9 @@ async function packStamp(root, paths) {
 async function checkPublishedMap(root, request, validate, proof, cached) {
   const name =
     request.kind === 'latest-official' ? request.selection.map : request.approval.identity.map;
-  const allowed = managedMapPaths(name);
+  const { nativeIndex } = await import('../../backend/dist/native-map-files.js');
+  const world = await nativeIndex({ root, parts: ['maps'] }, name);
+  const allowed = managedMapPaths(name, world?.files);
   const paths = ['', ...allowed.directories, ...allowed.files];
   const stamp = await packStamp(root, paths);
   const prior = cached?.get(root);
@@ -542,10 +546,13 @@ export async function processOneMapRequest(options, adapters = {}) {
           flag: 'wx',
           mode: 0o600,
         });
-        const prepare = adapters.prepare || installSteamAssets;
+        const prepare =
+          adapters.prepare || (options.gameRoot ? installLocalWorld : installSteamAssets);
         let tools;
         await prepare(
           {
+            gameRoot: options.gameRoot,
+            networkDeny: options.networkDeny,
             maps: [map],
             manifest,
             onPhase: async (next) => {
@@ -661,7 +668,7 @@ export async function processOneMapRequest(options, adapters = {}) {
         signal.throwIfAborted();
         if (latest && !proof) throw Error('Official source proof was not produced.');
         const version = (!latest && request.approval.assetVersion) || `steam-2347770-${manifest}`;
-        await validate(join(staging, 'maps'), map, version);
+        await validate(join(staging, 'maps'), map, version, manifest);
         if (latest) {
           // The native converter has exited. Publication requires the content
           // ID in the private stage name, rather than the queue selection ID.
@@ -871,7 +878,7 @@ export async function runMapWorker(options, adapters = {}) {
         await pause(Math.min(15000, (blockedUntil - clock()) * 1000));
         continue;
       }
-      if (clock() >= refreshAt) {
+      if (!options.gameRoot && clock() >= refreshAt) {
         busy = true;
         try {
           const inventory = await refreshInventory(workOptions);

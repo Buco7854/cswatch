@@ -1,6 +1,20 @@
 using ValveResourceFormat.ResourceTypes;
 using ValveResourceFormat.Serialization.KeyValues;
 
+if (args is ["--extract", "--game", var input, "--map", var map, "--manifest", var manifest, "--sha256", var hash, "--out", var output])
+{
+    try
+    {
+        Export.Extract(input, map, manifest, hash, output, overview: true);
+        return 0;
+    }
+    catch (Exception error)
+    {
+        Console.Error.WriteLine(error.Message);
+        return 1;
+    }
+}
+
 if (args is ["--game", var rootDir, "--map", "de_mirage", "--out", var destination])
 {
     try

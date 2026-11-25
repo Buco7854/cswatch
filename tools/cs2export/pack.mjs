@@ -1,5 +1,5 @@
 // Material slots follow ValveResourceFormat 21.1 (MIT). See THIRD_PARTY_NOTICES.txt.
-import { readFileSync, writeFileSync, statfsSync, linkSync } from 'node:fs';
+import { readFileSync, writeFileSync, statfsSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { MeshoptEncoder } from '../../frontend/node_modules/meshoptimizer/meshopt_encoder.js';
@@ -61,7 +61,7 @@ function store(bytes, category, format) {
 }
 function keep(file) {
   if (!files[file]) {
-    linkSync(join(source, file), join(out, file));
+    writeFileSync(join(out, file), readFileSync(join(source, file)), { flag: "wx" });
     files[file] = scene.files[file];
   }
   return file;
@@ -294,12 +294,12 @@ for (const batch of batches.values()) {
 }
 const vb = store(archive.finish(), 'geometry');
 const ib = store(MeshoptEncoder.encodeIndexBuffer(Buffer.concat(indices), first, 4), 'geometry');
-const bounds = scene.worlds['maps/de_mirage'].bounds[0];
+const bounds = scene.worlds[`maps/${scene.map}`].bounds[0];
 const manifest = {
   format: 'cswatch-native-world',
   version: 3,
-  map: 'de_mirage',
-  sourceManifest: '8225060435969537482',
+  map: scene.map,
+  sourceManifest: scene.manifest,
   units: 'inches',
   up: 'Z',
   bounds: [...bounds.m_vMinBounds, ...bounds.m_vMaxBounds],

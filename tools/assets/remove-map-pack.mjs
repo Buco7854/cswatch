@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
-import { mapGradeFile } from '../../shared/map-grade.mjs';
+import { validate } from '../../shared/native-world-format.mjs';
 import { regular } from './asset-storage.mjs';
 import {
   mapQueueIds,
@@ -20,33 +20,26 @@ import { readMapRequest, readMapResult, writeMapJobResult } from '../../backend/
 import { withDirectory, regularFile, bytesFrom } from '../../backend/dist/map-asset-files.js';
 const defaultNetworkDeny = fileURLToPath(new URL('./bin/asset-network-deny', import.meta.url));
 
-export function managedMapPaths(map) {
-  const files = new Set(['pack.json', '.preparation.json', `maps/${map}/installation.json`]);
-  for (const tier of ['desktop', 'mobile'])
-    for (const name of ['scene.glb', 'manifest.json', 'texture-plan.json', 'visual-audit.json'])
-      files.add(`maps/${map}/${tier}/${name}`);
-  for (const name of ['scene.glb', 'manifest.json']) files.add(`maps/${map}/compact/${name}`);
-  for (const name of ['overview.png', 'overview.json', 'provenance.json'])
-    files.add(`maps/overviews/${map}/${name}`);
-  for (const name of [
-    'environment.json',
-    mapGradeFile,
-    'provenance.json',
-    'px.png',
-    'nx.png',
-    'py.png',
-    'ny.png',
-    'pz.png',
-    'nz.png',
-  ])
-    files.add(`maps/environments/${map}/${name}`);
-  const directories = new Set();
-  for (const file of files) {
-    const parts = file.split('/');
-    for (let index = 1; index < parts.length; index++)
-      directories.add(parts.slice(0, index).join('/'));
+export function managedMapPaths(map, payloads = {}) {
+  const world = `maps/${map}`;
+  const files = new Set([
+    'pack.json',
+    '.preparation.json',
+    world + '/map.json',
+    world + '/map.json.br',
+  ]);
+  for (const [name, record] of Object.entries(payloads)) {
+    files.add(world + '/' + name);
+    if (record.br) files.add(world + '/' + name + '.br');
   }
-  return { files, directories };
+  for (const name of ['overview.json', 'overview.png', 'provenance.json'])
+    files.add(`maps/overviews/${map}/${name}`);
+  return {
+    world,
+    map,
+    files,
+    directories: new Set(['maps', world, 'maps/overviews', `maps/overviews/${map}`]),
+  };
 }
 /** Every recursion is descriptor-relative; neither preflight nor deletion follows
  * a child link. Foreign entries, hardlinks and special files fail closed. */
@@ -66,9 +59,23 @@ async function walk(
   const entries = await opendir(`/proc/self/fd/${directory.fd}`);
   const names = [];
   for await (const entry of entries) {
-    if (++state.count > 128)
+    if (++state.count > 16500)
       throw Object.assign(Error('Owned pack entry limit'), { removalCode: 'files_changed' });
     names.push(entry.name);
+  }
+  if (prefix === allowed.world && names.includes('map.json')) {
+    const manifest = await regularFile(directory, 'map.json', 2, 16 * 1024 ** 2);
+    if (!manifest) throw Error('Unsafe map manifest.');
+    try {
+      const value = validate(
+        JSON.parse(await bytesFrom(manifest, (await manifest.stat()).size, 16 * 1024 ** 2)),
+      );
+      if (value.map !== allowed.map) throw Error('Map removal identity differs.');
+      allowed = managedMapPaths(allowed.map, value.files);
+    } finally {
+      await manifest.close();
+    }
+    last = 'map.json';
   }
   // Keep the immutable authorization marker until every other owned file is gone.
   names.sort((a, b) => (a === last ? 1 : b === last ? -1 : a.localeCompare(b)));
@@ -95,7 +102,7 @@ async function walk(
         directory,
         name,
         0,
-        name === 'scene.glb' ? 2 * 1024 ** 3 : 8 * 1024 ** 2,
+        prefix === allowed.world ? 256 * 1024 ** 2 : 8 * 1024 ** 2,
       );
       if (!file)
         throw Object.assign(Error('Unsafe owned pack file'), { removalCode: 'files_changed' });

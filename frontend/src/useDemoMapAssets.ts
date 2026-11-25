@@ -160,7 +160,7 @@ export function useDemoMapAssets(
       try {
         const result = await acquire();
         if (!live()) return;
-        const next = validateDemoMapAssets(result, map!);
+        const next = validateDemoMapAssets(result, map!, id!);
         uncertain.delete(key);
         retryBusy = false;
         const accepted = accept(next);
@@ -180,6 +180,7 @@ export function useDemoMapAssets(
         const discovered = validateDemoMapAssets(
           await fetchJSON(`/api/demos/${encodeURIComponent(id!)}/map-assets`),
           map!,
+          id!,
         );
         if (!live()) return;
         retryBusy = false;

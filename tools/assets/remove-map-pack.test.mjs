@@ -1,3 +1,4 @@
+import { writeNativeWorld, vertexFile } from './fixtures/native-world.mjs';
 import { mapPreparerRevision } from '../../backend/dist/asset-preparer.js';
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -99,8 +100,8 @@ async function fixture(t, latest = false) {
       : {}),
   });
   const target = join(assets, 'packs', packId),
-    model = join(target, 'maps/de_ancient/desktop/scene.glb');
-  await mkdir(join(target, 'maps/de_ancient/desktop'), { recursive: true });
+    model = join(target, 'maps/de_ancient', vertexFile);
+  writeNativeWorld(join(target, 'maps'), 'de_ancient', approval.source.manifest);
   await writeFile(
     join(target, 'pack.json'),
     JSON.stringify(

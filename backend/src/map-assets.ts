@@ -5,6 +5,7 @@ import type { FileHandle } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import type { MapAssets, MapOverview } from '../../shared/map-assets.js';
+import { nativeIndex } from './native-map-files.js';
 import { HttpError } from './security.js';
 import { validPng } from './png.js';
 import {
@@ -160,19 +161,15 @@ export async function mapAssetRoutes(
   });
   const describe = async (name: string, location = defaultLocation): Promise<MapAssets> => {
     mapName.parse(name);
-    const [desktop, mobile, compact, overview, environment] = await Promise.all([
-      hasGlb(location, [name, 'desktop'], 'scene.glb'),
-      hasGlb(location, [name, 'mobile'], 'scene.glb'),
-      hasGlb(location, [name, 'compact'], 'scene.glb'),
+    const [world, overview] = await Promise.all([
+      nativeIndex(location, name),
       loadOverview(name, location),
-      loadEnvironment(name, location),
     ]);
     return {
-      model: desktop ? `${location.modelPrefix}/${name}/desktop/scene.glb` : null,
-      mobile: mobile ? `${location.modelPrefix}/${name}/mobile/scene.glb` : null,
-      ...(compact ? { compact: `${location.modelPrefix}/${name}/compact/scene.glb` } : {}),
+      model: world ? world.hash : null,
+      mobile: null,
       overview: overview?.overview ?? null,
-      environment: environment?.environment ?? null,
+      environment: null,
     };
   };
   app.get<{ Params: { name: string } }>('/api/maps/:name', async (request, reply) => {
@@ -195,5 +192,5 @@ export async function mapAssetRoutes(
       t: (await hasGlb(defaultLocation, parts, 't.glb')) ? '/map-assets/agents/t.glb' : null,
     };
   });
-  return { describe, loadOverview, loadEnvironment };
+  return { describe, loadOverview, loadEnvironment, defaultLocation };
 }

@@ -92,6 +92,28 @@ sealed class ResourceStore : IDisposable
         throw new FileNotFoundException($"Missing compiled resource {compiled}");
     }
 
+    public void WriteOverview(string map, string destination)
+    {
+        var filename = $"resource/overviews/{map}.txt";
+        foreach (var (archive, _) in archives)
+        {
+            if (archive.FindEntry(filename) is not { } entry) continue;
+            if (entry.TotalLength > 16384) throw new InvalidDataException("Overview metadata exceeds limit");
+            archive.ReadEntry(entry, out var bytes, false);
+            if (Crc32.HashToUInt32(bytes) != entry.CRC32) throw new InvalidDataException("Overview metadata CRC mismatch");
+            File.WriteAllBytes(Path.Combine(destination, "overview.txt"), bytes);
+            using var radar = Read($"panorama/images/overheadmaps/{map}_radar_psd.vtex");
+            var texture = (ValveResourceFormat.ResourceTypes.Texture)radar.DataBlock!;
+            if (texture.Width > 2048 || texture.Height > 2048) throw new InvalidDataException("Overview dimensions exceed limit");
+            using var bitmap = texture.GenerateBitmap();
+            using var encoded = bitmap.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100);
+            using var output = File.Create(Path.Combine(destination, "overview.png"));
+            encoded.SaveTo(output);
+            return;
+        }
+        throw new FileNotFoundException(filename);
+    }
+
     public void Dispose()
     {
         foreach (var (archive, _) in archives) archive.Dispose();

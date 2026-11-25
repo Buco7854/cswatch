@@ -19,6 +19,7 @@
 #include <sys/prctl.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/resource.h>
 #include <sys/ioctl.h>
 #include <termios.h>
 #include <sys/syscall.h>
@@ -347,6 +348,8 @@ int main(int argc,char **argv) {
     const pid_t parent=getppid();
     if(prctl(PR_SET_PDEATHSIG,SIGKILL) < 0) fail("bind conversion lifetime");
     if(getppid()!=parent) {errno=ESRCH;fail("worker parent changed");}
+    struct rlimit cpu={450,450}, file={512UL*1024*1024,512UL*1024*1024};
+    if(setrlimit(RLIMIT_CPU,&cpu)<0 || setrlimit(RLIMIT_FSIZE,&file)<0) fail("conversion limits");
     restrict_writes(roots,count);restrict_conversion();
     execv(argv[index],&argv[index]);fail("exec conversion");
 }

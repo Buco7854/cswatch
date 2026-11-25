@@ -143,7 +143,7 @@ function officialSource(value: unknown, selected: LatestOfficialSelection): Offi
 }
 /** The browser binds assets to fixed content-pack URLs. A latest selection is
  * official depot evidence, never proof of the recording's historical geometry. */
-export function validateDemoMapAssets(value: unknown, map: string): DemoMapState {
+export function validateDemoMapAssets(value: unknown, map: string, demoId?: string): DemoMapState {
   const input = object(value),
     resolution = object(input.resolution);
   if (
@@ -192,6 +192,7 @@ export function validateDemoMapAssets(value: unknown, map: string): DemoMapState
     input.assets,
     map,
     typeof input.packId === 'string' ? input.packId : undefined,
+    demoId,
   );
   const hasModel = Boolean(assets.model || assets.mobile || assets.compact);
   const hasAssets = hasModel || Boolean(assets.overview || assets.environment);
@@ -201,9 +202,7 @@ export function validateDemoMapAssets(value: unknown, map: string): DemoMapState
       (input.verification === 'operator-approved' ? !approved : !latestInfo?.source) ||
       !input.packId ||
       !assets.model ||
-      !assets.mobile ||
-      !assets.overview ||
-      !assets.environment
+      !assets.overview
     )
       throw new Error('Incomplete prepared map');
   } else if (input.verification === 'version-unverified') {

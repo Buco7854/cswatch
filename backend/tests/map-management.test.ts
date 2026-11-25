@@ -33,18 +33,8 @@ import { Store, now } from '../src/db.js';
 import { initializeFixture } from './fixtures/initialized.js';
 import { enqueuePresentationRetry, writePresentationStatus } from '../src/presentation-assets.js';
 import { digest } from '../src/security.js';
+import { writeNativeWorld } from '../../tools/assets/fixtures/native-world.mjs';
 process.env.LOG_LEVEL = 'silent';
-
-function originalGlb() {
-  const json = Buffer.from(JSON.stringify({ asset: { version: '2.0' } }).padEnd(32, ' '));
-  const header = Buffer.alloc(20);
-  header.write('glTF');
-  header.writeUInt32LE(2, 4);
-  header.writeUInt32LE(header.length + json.length, 8);
-  header.writeUInt32LE(json.length, 12);
-  header.writeUInt32LE(0x4e4f534a, 16);
-  return Buffer.concat([header, json]);
-}
 
 const approval: ApprovedMapEntry = {
   identity: {
@@ -237,10 +227,8 @@ test('map administration requires current admin, exact Origin, CSRF and reviewed
   await writeMapWorkerStatus(f.jobs, { schemaVersion: 1, status: 'idle', updatedAt: now() });
   const catalog = join(f.root, 'catalog.json');
   await writeFile(catalog, JSON.stringify({ schemaVersion: 1, entries: [approval] }));
-  await mkdir(join(f.target, 'maps/de_ancient/desktop'), { recursive: true });
-  await writeFile(join(f.target, 'maps/de_ancient/desktop/scene.glb'), originalGlb());
-  await mkdir(join(f.assets, 'de_dust2/desktop'), { recursive: true });
-  await writeFile(join(f.assets, 'de_dust2/desktop/scene.glb'), originalGlb());
+  const worldManifest = writeNativeWorld(join(f.target, 'maps'), 'de_ancient');
+  writeNativeWorld(f.assets, 'de_dust2');
   const app = await createApp(
     loadConfig({
       DATA_DIR: db.root,
@@ -303,7 +291,19 @@ test('map administration requires current admin, exact Origin, CSRF and reviewed
     ).statusCode,
     403,
   );
-  const modelUrl = `/api/map-packs/${f.packId}/models/de_ancient/desktop/scene.glb`;
+  db.run(
+    'INSERT INTO demos(id,owner_id,name,source,status,size,created_at,map,metadata) VALUES(?,?,?,?,?,?,?,?,?)',
+    'map-removal-fixture',
+    'member',
+    'Original map management fixture',
+    'upload',
+    'ready',
+    100,
+    now(),
+    'de_ancient',
+    JSON.stringify({ mapIdentity: approval.identity }),
+  );
+  const modelUrl = `/api/demos/map-removal-fixture/world/${f.packId}/${createHash('sha256').update(worldManifest).digest('hex')}/map.json`;
   assert.equal((await app.inject({ url: modelUrl, headers: headers('member') })).statusCode, 200);
   assert.equal(
     (
@@ -344,24 +344,12 @@ test('map administration requires current admin, exact Origin, CSRF and reviewed
         await app.inject({
           method,
           url: modelUrl,
-          headers: { ...headers('member'), range: 'bytes=0-23' },
+          headers: headers('member'),
         })
       ).statusCode,
       404,
     );
   assert.equal(await readFile(join(f.target, 'pack.json'), 'utf8').then(Boolean), true);
-  db.run(
-    'INSERT INTO demos(id,owner_id,name,source,status,size,created_at,map,metadata) VALUES(?,?,?,?,?,?,?,?,?)',
-    'map-removal-fixture',
-    'member',
-    'Original map management fixture',
-    'upload',
-    'ready',
-    100,
-    now(),
-    'de_ancient',
-    JSON.stringify({ mapIdentity: approval.identity }),
-  );
   const demoUrl = '/api/demos/map-removal-fixture/map-assets';
   let discovery = (await app.inject({ url: demoUrl, headers: headers('member') })).json();
   assert.equal(discovery.code, 'removed_by_admin');

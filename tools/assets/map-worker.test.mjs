@@ -47,9 +47,9 @@ import {
   runMapWorker,
   mapWorkerLimits,
 } from './map-worker.mjs';
-import { graphicsInventory } from './map-graphics-inventory.mjs';
-import { writeOriginalMapTier } from './fixtures/original-map-tier.mjs';
-import { validatePreparedMap } from './prepared-map-publication.mjs';
+
+import { writeNativeWorld, vertexFile } from './fixtures/native-world.mjs';
+import { validatePreparedMap } from './native-world-pack.mjs';
 import { buildNetworkDeny } from './build-network-deny.mjs';
 import { refreshOfficialMapInventory } from './official-map-inventory.mjs';
 
@@ -414,76 +414,6 @@ test('latest official source publishes a distinct content-bound immutable pack a
     ledger,
   );
 });
-test('graphics inventory includes new unrequested maps and joins exact published audits without acquiring anything', async (t) => {
-  const f = await latestFixture(t);
-  const extra = { ...f.inventory.maps[0], map: 'de_tomorrow' };
-  const inventory = { ...f.inventory, maps: [...f.inventory.maps, extra] };
-  await writeOfficialMapInventory(f.options.jobs, inventory);
-  const names = async () => (await readdir(join(f.options.jobs, 'requests'))).sort();
-  const before = await names();
-  const captures = join(f.root, 'captures');
-  const options = { ...f.options, captures, at: inventory.updatedAt };
-  let report = await graphicsInventory(options);
-  const ours = (r) => r.maps.find((row) => row.map === f.selection.map);
-  assert.equal(report.status, 'current');
-  assert.equal(ours(report).status, 'queued');
-  assert.equal(report.maps.find((row) => row.map === extra.map).status, 'not_requested');
-  await processOneMapRequest(f.options, {
-    prepare: async (options) => {
-      await options.onSourceVerified({ ...f.selection, mapSha256: f.entry.source.mapSha256 });
-      await originalPack(options.output, f.entry);
-    },
-  });
-  report = await graphicsInventory({ ...options, at: inventory.updatedAt + 86401 });
-  assert.equal(report.status, 'stale');
-  const pack = ours(report);
-  assert.equal(pack.status, 'ready');
-  assert.equal(pack.packId, f.assetPackId);
-  assert.equal(pack.environment.sky, true);
-  assert.equal(pack.tiers.compact.status, 'not_found');
-  assert.ok(pack.tiers.desktop.modelBytes >= 24);
-  assert.equal(pack.tiers.mobile.capture.status, 'no_capture');
-  const auditPath = join(options.assets, pack.tiers.desktop.auditPath);
-  const bytes = await readFile(auditPath),
-    audit = JSON.parse(bytes);
-  const capture = {
-    ...audit,
-    kind: 'cswatch-graphics-capture',
-    auditSha256: hash(bytes),
-    auditBinding: 'tier-manifest',
-    views: audit.views.map((v, index) => ({
-      ...v,
-      index,
-      visibility: { status: 'visible' },
-      comparison: { status: 'no-reference', metrics: null },
-    })),
-    verdict: 'not-evaluated',
-  };
-  const dir = join(captures, pack.packId, 'desktop');
-  await mkdir(dir, { recursive: true });
-  const write = () => writeFile(join(dir, 'capture.json'), JSON.stringify(capture));
-  await write();
-  const desktop = async () => ours(await graphicsInventory(options)).tiers.desktop;
-  assert.deepEqual((await desktop()).capture, {
-    status: 'captured',
-    verdict: 'not-evaluated',
-    visibility: { visible: 1 },
-    comparison: { 'no-reference': 1 },
-    visibleComparisons: {},
-  });
-  capture.views[0].comparison.status = 'matched-external';
-  await write();
-  assert.equal((await desktop()).capture.status, 'invalid_capture');
-  capture.views[0].comparison.status = 'no-reference';
-  capture.views[0].eye[1] += 0.1;
-  await write();
-  assert.equal((await desktop()).capture.status, 'invalid_capture');
-  await writeFile(auditPath, Buffer.concat([bytes, Buffer.from(' ')]));
-  assert.equal((await desktop()).status, 'audit_unavailable');
-  assert.deepEqual(await names(), before);
-  assert.equal((await graphicsInventory({ ...options, jobs: f.root })).maps, null);
-});
-
 test('latest conversion refuses absent or inconsistent source proof and removed official membership', async (t) => {
   for (const mode of ['absent', 'sha1', 'manifest', 'membership'])
     await t.test(mode, async (t) => {
@@ -538,50 +468,16 @@ test('a concurrent or interrupted web atomic request never blocks another valid 
   assert.equal((await readMapResult(f.options.jobs, f.packId)).status, 'ready');
   assert.equal(await readFile(temporary, 'utf8'), 'incomplete atomic web request');
 });
-async function originalArtifacts() {
-  if (!originals)
-    originals = (async () => {
-      const document = new Document(),
-        buffer = document.createBuffer(),
-        positions = document
-          .createAccessor()
-          .setType('VEC3')
-          .setArray(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]))
-          .setBuffer(buffer);
-      document
-        .createScene()
-        .addChild(
-          document
-            .createNode('original QA triangle')
-            .setMesh(
-              document
-                .createMesh()
-                .addPrimitive(document.createPrimitive().setAttribute('POSITION', positions)),
-            ),
-        );
-      return {
-        model: Buffer.from(await new NodeIO().writeBinary(document)),
-        png: await sharp({ create: { width: 8, height: 8, channels: 4, background: '#8090a0' } })
-          .png()
-          .toBuffer(),
-      };
-    })();
-  return originals;
-}
-/** Real complete-pack validation exercises actual GLB, PNG, calibration and hashes.
- * The fixture is original geometry/pixels, never game content or a fake validator. */
 async function originalPack(output, entry) {
-  const { model, png } = await originalArtifacts(),
-    map = entry.identity.map,
+  const map = entry.identity.map,
     assetVersion = versionOf(entry);
-  for (const tier of ['desktop', 'mobile']) {
-    const directory = join(output, map, tier);
-    await writeOriginalMapTier(directory, model, map, tier, assetVersion);
-  }
-  const overview = join(output, 'overviews', map),
-    environment = join(output, 'environments', map);
+  writeNativeWorld(output, map, entry.source.manifest);
+  const png = await sharp({ create: { width: 8, height: 8, channels: 4, background: '#8090a0' } })
+    .png()
+    .toBuffer();
+  const overview = join(output, 'overviews', map);
   await mkdir(overview, { recursive: true });
-  await mkdir(environment, { recursive: true });
+
   await writeFile(join(overview, 'overview.png'), png);
   await writeFile(
     join(overview, 'overview.json'),
@@ -596,23 +492,6 @@ async function originalPack(output, entry) {
     }),
   );
   await writeFile(join(overview, 'provenance.json'), '{}');
-  const faces = {};
-  for (const face of ['px', 'nx', 'py', 'ny', 'pz', 'nz']) {
-    await writeFile(join(environment, `${face}.png`), png);
-    faces[face] = hash(png);
-  }
-  await writeFile(
-    join(environment, 'environment.json'),
-    JSON.stringify({
-      schemaVersion: 2,
-      map,
-      assetVersion,
-      source: 'Original worker QA pixels',
-      landscape: false,
-      sky: { brightness: 1, faces },
-    }),
-  );
-  await writeFile(join(environment, 'provenance.json'), '{}');
 }
 async function writePackMarker(f) {
   await writeFile(
@@ -660,9 +539,9 @@ test('worker passes exact approved provenance and publishes a complete immutable
       assert.ok(
         options.output.startsWith(join(f.options.assets, 'packs', `.preparing-${f.packId}-`)),
       );
-      await mkdir(join(options.output, f.entry.identity.map, 'desktop'), { recursive: true });
+      await mkdir(join(options.output, f.entry.identity.map), { recursive: true });
       await writeFile(
-        join(options.output, f.entry.identity.map, 'desktop/scene.glb'),
+        join(options.output, f.entry.identity.map, 'map.json'),
         'incomplete private conversion',
       );
       started.resolve();
@@ -694,10 +573,10 @@ test('worker passes exact approved provenance and publishes a complete immutable
   assert.equal(markerData.approval, canonicalMapApproval(f.entry));
   assert.ok(
     (await validatePreparedMap(join(f.target, 'maps'), f.entry.identity.map, versionOf(f.entry)))
-      .length >= 15,
+      .size === 4,
   );
   const before = await lstat(f.target),
-    model = await readFile(join(f.target, 'maps', f.entry.identity.map, 'desktop/scene.glb'));
+    model = await readFile(join(f.target, 'maps', f.entry.identity.map, 'map.json'));
   assert.equal(
     await processOneMapRequest(f.options, {
       prepare: () => {
@@ -707,29 +586,26 @@ test('worker passes exact approved provenance and publishes a complete immutable
     false,
   );
   assert.equal((await lstat(f.target)).ino, before.ino);
-  assert.deepEqual(
-    await readFile(join(f.target, 'maps', f.entry.identity.map, 'desktop/scene.glb')),
-    model,
-  );
+  assert.deepEqual(await readFile(join(f.target, 'maps', f.entry.identity.map, 'map.json')), model);
   assert.equal(
     JSON.parse(await readFile(join(f.options.jobs, 'worker-status.json'), 'utf8')).status,
     'idle',
   );
 });
 
-test('real output validation rejects missing tiers and changed cube pixels without a partial ready pack', async (t) => {
-  for (const corruption of ['missing-mobile', 'changed-sky'])
+test('real output validation rejects missing mesh data and changed Brotli bytes without a partial ready pack', async (t) => {
+  for (const corruption of ['missing-geometry', 'changed-brotli'])
     await t.test(corruption, async (t) => {
       const f = await fixture(t);
       assert.equal(
         await processOneMapRequest(f.options, {
           prepare: async (options) => {
             await originalPack(options.output, f.entry);
-            if (corruption === 'missing-mobile')
-              await rm(join(options.output, f.entry.identity.map, 'mobile'), { recursive: true });
+            if (corruption === 'missing-geometry')
+              await rm(join(options.output, f.entry.identity.map, vertexFile), { recursive: true });
             else
               await writeFile(
-                join(options.output, 'environments', f.entry.identity.map, 'px.png'),
+                join(options.output, f.entry.identity.map, 'map.json.br'),
                 Buffer.from('not the approved original PNG'),
               );
           },
@@ -849,7 +725,7 @@ test('processing recovery validates an already-published pack and never overwrit
   assert.equal((await lstat(f.target)).ino, before.ino);
   assert.ok(
     (await validatePreparedMap(join(f.target, 'maps'), f.entry.identity.map, versionOf(f.entry)))
-      .length >= 15,
+      .size === 4,
   );
 });
 
@@ -860,7 +736,7 @@ test('a changed worker-owned ready pack is retired and rebuilt through the norma
   };
   assert.equal(await processOneMapRequest(f.options, { prepare }), true);
   assert.equal((await readMapResult(f.options.jobs, f.packId)).status, 'ready');
-  const model = join(f.target, 'maps', f.entry.identity.map, 'desktop', 'scene.glb');
+  const model = join(f.target, 'maps', f.entry.identity.map, vertexFile);
   await writeFile(model, 'damaged model');
   let conversions = 0;
   assert.equal(

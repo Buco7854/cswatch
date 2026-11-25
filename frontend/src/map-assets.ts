@@ -14,18 +14,14 @@ const coordinate = (value: unknown) =>
   typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 1e7;
 
 /** Accept only the fixed local discovery contract, never arbitrary URLs from a response. */
-export function validateMapAssets(value: unknown, map: string, packId?: string): MapAssets {
+export function validateMapAssets(
+  value: unknown,
+  map: string,
+  packId?: string,
+  demoId?: string,
+): MapAssets {
   if (packId !== undefined && !/^[a-f0-9]{64}$/.test(packId)) throw new Error('Invalid map pack');
   const imageRoot = packId ? `/api/map-packs/${packId}/maps/${map}` : `/api/maps/${map}`;
-  const desktop = packId
-    ? `/api/map-packs/${packId}/models/${map}/desktop/scene.glb`
-    : `/map-assets/${map}/desktop/scene.glb`;
-  const phone = packId
-    ? `/api/map-packs/${packId}/models/${map}/mobile/scene.glb`
-    : `/map-assets/${map}/mobile/scene.glb`;
-  const compactUrl = packId
-    ? `/api/map-packs/${packId}/models/${map}/compact/scene.glb`
-    : `/map-assets/${map}/compact/scene.glb`;
   if (
     !/^[a-zA-Z0-9_-]{1,80}$/.test(map) ||
     !value ||
@@ -37,9 +33,18 @@ export function validateMapAssets(value: unknown, map: string, packId?: string):
   const model = input.model ?? null,
     mobile = input.mobile ?? null,
     compact = input.compact ?? null;
-  if (model !== null && model !== desktop) throw new Error('Invalid map model');
-  if (mobile !== null && mobile !== phone) throw new Error('Invalid mobile map model');
-  if (compact !== null && compact !== compactUrl) throw new Error('Invalid compact map model');
+  if (model !== null) {
+    const prefix = `/api/demos/${demoId}/world/${packId ?? 'manual'}/`;
+    if (
+      !demoId ||
+      !/^[a-zA-Z0-9_-]{1,80}$/.test(demoId) ||
+      typeof model !== 'string' ||
+      !model.startsWith(prefix) ||
+      !/^[a-f0-9]{64}\/map\.json$/.test(model.slice(prefix.length))
+    )
+      throw Error('Invalid native world URL');
+  }
+  if (mobile !== null || compact !== null) throw Error('Unknown world tier');
   let overview: MapOverview | null = null;
   if (input.overview !== undefined && input.overview !== null) {
     const item = input.overview as Partial<MapOverview>;

@@ -1,0 +1,191 @@
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, statfs } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
+import { brotliDecompressSync, inflateSync } from 'node:zlib';
+import { validate } from '../../shared/native-world-format.mjs';
+import { fileHashes, regular, readableDirectory, allocatedStorage } from './asset-storage.mjs';
+import { prepareOverview } from './prepare-overview.mjs';
+import { localDirectory } from './toolchain-security.mjs';
+import { selectedMaps, selectedSteamManifest } from './steam-assets-plan.mjs';
+import { runAssetProcess } from './asset-process.mjs';
+
+const exportRoot = fileURLToPath(new URL('../cs2export/', import.meta.url));
+const boundary = fileURLToPath(new URL('./bin/asset-network-deny', import.meta.url));
+const MiB = 1024 ** 2;
+const digest = (data) => createHash('sha256').update(data).digest('hex');
+async function readBounded(path, max) {
+  await regular(path, max);
+  return readFile(path);
+}
+export async function validatePreparedMap(root, map, version, manifest) {
+  selectedMaps([map]);
+  const directory = join(root, map);
+  await localDirectory(directory);
+  const bytes = await readBounded(join(directory, 'map.json'), 16 * MiB);
+  const index = validate(JSON.parse(bytes));
+  if (
+    index.map !== map ||
+    !/^[1-9]\d{0,19}$/.test(index.sourceManifest) ||
+    (manifest && index.sourceManifest !== manifest)
+  )
+    throw Error('Native source identity differs.');
+  const expected = new Set(['map.json', 'map.json.br']);
+  const matchBr = async (name, raw, record) => {
+    const packed = await readBounded(join(directory, name + '.br'), raw.length);
+    if (
+      (record && (packed.length !== record.size || digest(packed) !== record.sha256)) ||
+      !brotliDecompressSync(packed, { maxOutputLength: raw.length }).equals(raw)
+    )
+      throw Error('Invalid native Brotli representation.');
+  };
+  await matchBr('map.json', bytes);
+  for (const [name, record] of Object.entries(index.files)) {
+    expected.add(name);
+    const raw = await readBounded(join(directory, name), record.size);
+    if (raw.length !== record.size || digest(raw) !== record.sha256)
+      throw Error('Invalid native payload digest.');
+    if (
+      record.packing &&
+      inflateSync(raw, { maxOutputLength: record.decodedSize }).length !== record.decodedSize
+    )
+      throw Error('Invalid native decoded extent.');
+    if (record.br) {
+      expected.add(name + '.br');
+      await matchBr(name, raw, record.br);
+    }
+  }
+  const names = await readdir(directory);
+  if (names.length !== expected.size || names.some((name) => !expected.has(name)))
+    throw Error('Foreign native pack entry.');
+  const overview = join(root, 'overviews', map);
+  await localDirectory(overview);
+  const calibration = JSON.parse(await readBounded(join(overview, 'overview.json'), 16384));
+  const image = await readBounded(join(overview, 'overview.png'), 8 * MiB);
+  if (
+    calibration.map !== map ||
+    calibration.assetVersion !== version ||
+    calibration.referenceSize !== 1024 ||
+    !Number.isFinite(calibration.origin?.x) ||
+    !Number.isFinite(calibration.origin?.y) ||
+    !(calibration.scale > 0) ||
+    calibration.imageSha256 !== digest(image)
+  )
+    throw Error('Invalid prepared map overview.');
+  return expected;
+}
+
+export async function installLocalWorld(options) {
+  const maps = selectedMaps(options.maps);
+  const manifest = selectedSteamManifest(options.manifest);
+  const game = resolve(options.gameRoot),
+    output = resolve(options.output);
+  if (
+    !manifest ||
+    [output, resolve(options.cache)].some((path) => path === game || path.startsWith(game + '/'))
+  )
+    throw Error('Private staging must be outside the verified source.');
+  await readableDirectory(game);
+  await localDirectory(options.cache, true);
+  await localDirectory(output, true);
+  const dotnet = resolve(process.env.DOTNET_ROOT || '/opt/dotnet', 'dotnet');
+  for (const map of maps) {
+    const source = join(game, 'csgo', 'maps', map + '.vpk');
+    const hashes = await fileHashes(source, ['sha1', 'sha256'], 4 * 1024 ** 3);
+    const stat = await regular(source, 4 * 1024 ** 3);
+    const expected = options.expectedMapFiles?.[map],
+      approved = options.expectedMapHashes?.[map];
+    if (
+      (!expected && !approved) ||
+      (expected && (expected.sha1 !== hashes.sha1 || stat.size !== expected.bytes)) ||
+      (approved && approved !== hashes.sha256)
+    )
+      throw Object.assign(Error('Map differs from verified source.'), {
+        code: 'SOURCE_MAP_MISMATCH',
+      });
+    await options.onSourceVerified?.({
+      map,
+      manifest,
+      mapSha256: hashes.sha256,
+      sha1: hashes.sha1,
+      bytes: stat.size,
+    });
+    const version = options.assetVersion ?? 'steam-2347770-' + manifest;
+    const scratch = await mkdtemp(join(options.cache, 'native-'));
+    const sourceDir = join(scratch, 'source'),
+      prepared = join(scratch, 'prepared');
+    const packed = join(prepared, map),
+      home = join(scratch, 'home'),
+      temporary = join(scratch, 'tmp');
+    const guard = async () => {
+      options.signal?.throwIfAborted();
+      const disk = await statfs(scratch);
+      if (
+        disk.bavail * disk.bsize < 4 * 1024 ** 3 ||
+        (await allocatedStorage(scratch)).physicalBytes > 3 * 1024 ** 3
+      )
+        throw Error('Native conversion storage budget exceeded.');
+    };
+    // Both children start under the same inherited network and filesystem policy.
+    const execute = async (command, args, stage) => {
+      await options.onPhase?.(stage);
+      await runAssetProcess(
+        options.networkDeny || boundary,
+        ['--write-root', scratch, '--', command, ...args],
+        {
+          cwd: scratch,
+          home,
+          temporary,
+          signal: options.signal,
+          storageGuard: guard,
+          maxRss: 4 * 1024 ** 3,
+          timeoutMs: 300000,
+          log: join(options.cache, scratch.split('/').at(-1) + '-' + stage + '.log'),
+        },
+      );
+    };
+    try {
+      for (const path of [sourceDir, prepared, packed, home, temporary])
+        await mkdir(path, { mode: 0o700 });
+      await execute(
+        dotnet,
+        [
+          join(exportRoot, 'bin', 'Release', 'net11.0', 'cs2export.dll'),
+          '--extract',
+          '--game',
+          game,
+          '--map',
+          map,
+          '--manifest',
+          manifest,
+          '--sha256',
+          hashes.sha256,
+          '--out',
+          sourceDir,
+        ],
+        'geometry',
+      );
+      await execute(process.execPath, [join(exportRoot, 'pack.mjs'), sourceDir, packed], 'desktop');
+      await prepareOverview({
+        image: join(sourceDir, 'overview.png'),
+        overview: join(sourceDir, 'overview.txt'),
+        map,
+        version,
+        source: 'Valve CS2 Steam depot 2347770 manifest ' + manifest,
+        output: prepared,
+      });
+      await validatePreparedMap(prepared, map, version, manifest);
+      await options.onPhase?.('publishing');
+      // The supervisor owns this private generation until its exclusive final rename.
+      await mkdir(join(output, 'overviews'), { recursive: true });
+      await cp(packed, join(output, map), { recursive: true, force: false, errorOnExist: true });
+      await cp(join(prepared, 'overviews', map), join(output, 'overviews', map), {
+        recursive: true,
+        force: false,
+        errorOnExist: true,
+      });
+    } finally {
+      await rm(scratch, { recursive: true, force: true });
+    }
+  }
+}

@@ -23,18 +23,14 @@ test('overview calibration maps Source corners, directions and Source-unit radii
     'Off-map observations must not silently rescale or clamp calibration',
   );
 });
-test('map discovery accepts only fixed local image/model paths and bounded finite calibration', () => {
+test('map discovery accepts only a demo-scoped native manifest URL and bounded finite calibration', () => {
+  const hash = 'b'.repeat(64),
+    model = `/api/demos/demo-1/world/manual/${hash}/map.json`;
   assert.deepEqual(
-    validateMapAssets(
-      {
-        model: `/map-assets/${map}/desktop/scene.glb`,
-        mobile: `/map-assets/${map}/mobile/scene.glb`,
-        overview,
-      },
-      map,
-    ).overview,
+    validateMapAssets({ model, mobile: null, overview }, map, undefined, 'demo-1').overview,
     overview,
   );
+  assert.equal(validateMapAssets({ model, mobile: null }, map, undefined, 'demo-1').model, model);
   assert.deepEqual(validateMapAssets({ model: null, mobile: null }, map), {
     model: null,
     mobile: null,
@@ -54,12 +50,17 @@ test('map discovery accepts only fixed local image/model paths and bounded finit
     { ...overview, assetVersion: 'x'.repeat(101) },
   ])
     assert.throws(() => validateMapAssets({ model: null, mobile: null, overview: invalid }, map));
-  assert.throws(() =>
-    validateMapAssets(
-      { model: 'https://outside.invalid/map.glb', mobile: null, overview: null },
-      map,
-    ),
-  );
+  for (const [value, demo] of [
+    ['https://outside.invalid/map.json', 'demo-1'],
+    [model, undefined],
+    [model, 'demo-2'],
+    [`/api/demos/demo-1/world/${'a'.repeat(64)}/${hash}/map.json`, 'demo-1'],
+    [`/api/demos/demo-1/world/manual/${hash}/../map.json`, 'demo-1'],
+    [`/api/demos/demo-1/world/manual/${hash}/${hash}.bin`, 'demo-1'],
+  ] as const)
+    assert.throws(() =>
+      validateMapAssets({ model: value, mobile: null, overview: null }, map, undefined, demo),
+    );
   assert.throws(() =>
     validateMapAssets(
       { model: null, mobile: `/map-assets/another/mobile/scene.glb`, overview: null },

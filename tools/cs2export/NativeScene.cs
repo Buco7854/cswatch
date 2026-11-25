@@ -9,7 +9,7 @@ using ValveResourceFormat.Blocks;
 using ValveResourceFormat.ResourceTypes;
 using ValveResourceFormat.Serialization.KeyValues;
 
-sealed class NativeScene(ResourceStore store, string game, string output)
+sealed class NativeScene(ResourceStore store, string game, string output, string map, string manifest)
 {
     readonly Dictionary<string, object> models = [];
     readonly Dictionary<string, object> materials = [];
@@ -49,8 +49,8 @@ sealed class NativeScene(ResourceStore store, string game, string output)
 
     public void Extract()
     {
-        World("maps/de_mirage");
-        using var visAsset = store.ReadOptional("maps/de_mirage/world_visibility.vvis");
+        World("maps/" + map);
+        using var visAsset = store.ReadOptional($"maps/{map}/world_visibility.vvis");
         object? visibility = null;
         if (visAsset != null && VoxelVisibility.GetWorldVisibility(visAsset) is VoxelVisibility { HasVisibilityData: true } vis)
         {
@@ -85,7 +85,7 @@ sealed class NativeScene(ResourceStore store, string game, string output)
         using var brdf = new Resource();
         brdf.Read(Path.Combine(Export.ToolDirectory(), ".vrf/ValveResourceFormat-21.1/Renderer/Resources/brdf_lut.vtex_c"));
         StoreTexture("vrf/brdf_lut", "lighting", (Texture)brdf.DataBlock!);
-        var scene = new { worlds, models, materials, textures, post, visibility, files };
+        var scene = new { map, manifest, worlds, models, materials, textures, post, visibility, files };
         using var stream = File.Create(Path.Combine(output, "source.json"));
         JsonSerializer.Serialize(stream, scene);
     }
@@ -167,9 +167,12 @@ sealed class NativeScene(ResourceStore store, string game, string output)
                 }
                 if (cls == "skybox_reference" && !entity.GetBooleanProperty("startdisabled"))
                 {
-                    const string sky = "maps/prefabs/de_mirage/3dskybox_mirage_legacy";
-                    if (prefix != "maps/de_mirage" || entity.GetStringProperty("targetmapname") != sky + ".vmap")
-                        throw new InvalidDataException("Unknown skybox prefab");
+                    var reference = entity.GetStringProperty("targetmapname") ?? "";
+                    var match = System.Text.RegularExpressions.Regex.Match(reference, @"\Amaps/prefabs/([a-z0-9_]+)/[a-z0-9_]{1,100}\.vmap\z");
+                    if (prefix != "maps/" + map || !match.Success ||
+                        (match.Groups[1].Value != map && match.Groups[1].Value != map[(map.IndexOf('_') + 1)..]))
+                        throw new InvalidDataException("Sky prefab outside selected map");
+                    var sky = reference[..^5];
                     using var prefab = store.MountPrefab(Path.Combine(game, "csgo", sky + ".vpk"));
                     World(sky);
                 }

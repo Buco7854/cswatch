@@ -1,3 +1,4 @@
+import { nativeIndex, nativePayload, nativePayloadName } from './native-map-files.js';
 import { requireMutationRequest } from './request-security.js';
 import { mapGradeFile } from './map-grade-wire.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
@@ -245,7 +246,7 @@ export async function demoMapAssetRoutes(
             : resolution.selection.map,
           packLocation(c, assetPackId),
         );
-        if (assets.model && assets.mobile && assets.overview && assets.environment)
+        if (assets.model && assets.overview)
           return {
             resolution,
             acquisition: 'ready',
@@ -355,13 +356,79 @@ export async function demoMapAssetRoutes(
       readinessReason = 'owner_required';
     return readinessReason ? { ...assets, readinessReason } : assets;
   };
+  function worldUrl(id: string, assets: DemoMapAssets) {
+    if (assets.assets.model)
+      assets.assets.model = `/api/demos/${id}/world/${assets.packId ?? 'manual'}/${assets.assets.model}/map.json`;
+    return assets;
+  }
+  app.get<{ Params: { id: string; generation: string; hash: string; file: string } }>(
+    '/api/demos/:id/world/:generation/:hash/:file',
+    async (request, reply) => {
+      const { id, generation, hash, file } = request.params;
+      const demo = liveDemo(request, id, false);
+      const enabled = db.flag(c, 'auto_official_maps_enabled');
+      if (
+        !nativePayloadName.test(file) ||
+        !/^[a-f0-9]{64}$/.test(hash) ||
+        !(generation === 'manual' || packIdSchema.safeParse(generation).success)
+      )
+        throw new HttpError(404, 'World file not found.');
+      const state = await readMapPreparationState(c);
+      const resolution = await resolutionFor(demo, state);
+      let authorized: string | null = null;
+      if (resolution.status === 'approved' || resolution.status === 'latest') {
+        const reqId =
+          resolution.status === 'approved'
+            ? resolution.packId
+            : latestMapRequestId(resolution.selection);
+        const result = await readMapResult(c.mapJobsDir, reqId);
+        if (result?.status === 'ready') {
+          authorized = resolution.status === 'approved' ? reqId : (result.assetPackId ?? null);
+          if (
+            !authorized ||
+            (await unsettledMapRemoval(c.mapJobsDir, authorized)) ||
+            (resolution.status === 'latest' && !(await latestReadyPack(authorized, demo.map)))
+          )
+            throw new HttpError(404, 'World pack unavailable.');
+        } else if (result || (await readMapRequest(c.mapJobsDir, reqId)))
+          throw new HttpError(404, 'World pack unavailable.');
+      }
+      if (
+        generation !== 'manual' &&
+        resolution.status === 'latest' &&
+        generation !== authorized &&
+        (await latestReadyPack(generation, demo.map))
+      )
+        authorized = generation;
+      if ((authorized ?? (enabled ? null : 'manual')) !== generation)
+        throw new HttpError(404, 'World generation unavailable.');
+      const location = authorized ? packLocation(c, authorized) : repository.defaultLocation;
+      const encodings = (request.headers['accept-encoding'] ?? '')
+        .split(',')
+        .map((value) => value.trim());
+      const br = encodings.some((value) =>
+        /^br(?:\s*;\s*q\s*=\s*(?:1(?:\.0*)?|0?\.\d*[1-9]\d*))?$/i.test(value),
+      );
+      const item = await nativePayload(location, demo.map, hash, file, br);
+      if (authorized && (await unsettledMapRemoval(c.mapJobsDir, authorized)))
+        throw new HttpError(404, 'World pack unavailable.');
+      db.transaction(() => requireCurrentDemo(request, demo, enabled, false));
+      if (!item) throw new HttpError(404, 'World file not found.');
+      if (item.compressed) reply.header('Content-Encoding', 'br');
+      return reply
+        .header('Cache-Control', 'private, no-store')
+        .header('Vary', 'Accept-Encoding')
+        .type(file === 'map.json' ? 'application/json' : 'application/octet-stream')
+        .send(item.bytes);
+    },
+  );
   app.get<{ Params: { id: string } }>('/api/demos/:id/map-assets', async (request, reply) => {
     const demo = liveDemo(request, request.params.id, false);
     const enabled = db.flag(c, 'auto_official_maps_enabled');
     const assets = await describe(request, demo, enabled);
     db.transaction(() => requireCurrentDemo(request, demo, enabled, false));
     reply.header('Cache-Control', 'private, no-store');
-    return assets;
+    return worldUrl(demo.id, assets);
   });
   app.post<{ Params: { id: string } }>('/api/demos/:id/map-assets', async (request, reply) => {
     const demo = liveDemo(request, request.params.id, true);
@@ -372,7 +439,7 @@ export async function demoMapAssetRoutes(
     const before = await describe(request, demo, enabled);
     db.transaction(() => requireCurrentDemo(request, demo, enabled, true));
     if (!before.canAcquire || !['approved', 'latest'].includes(before.resolution.status))
-      return before;
+      return worldUrl(demo.id, before);
 
     const publish = (write: () => void) =>
       db.transaction(() => {
@@ -395,11 +462,11 @@ export async function demoMapAssetRoutes(
           : 'ineligible';
     const assets =
       queued === 'full'
-        ? { ...before, canAcquire: false, code: 'queue_full' }
+        ? { ...before, canAcquire: false, code: 'queue_full' as const }
         : await describe(request, demo, enabled);
     db.transaction(() => requireCurrentDemo(request, demo, enabled, true));
     if (queued !== 'ineligible') reply.code(queued === 'full' ? 503 : 202);
-    return assets;
+    return worldUrl(demo.id, assets);
   });
 
   /** Delivery requires a current exact approval, or a worker-proven immutable

@@ -92,11 +92,11 @@ export function geometry(scene, read, materialId) {
     environments = [];
   let totalVertices = 0;
   for (const [worldName, world] of Object.entries(scene.worlds)) {
-    const sky = worldName !== 'maps/de_mirage';
+    const sky = worldName !== `maps/${scene.map}`;
     let root = new Matrix4();
     if (sky) {
       const camera = world.entities.find((e) => e.classname === 'sky_camera');
-      const ref = scene.worlds['maps/de_mirage'].entities.find(
+      const ref = scene.worlds[`maps/${scene.map}`].entities.find(
         (e) => e.classname === 'skybox_reference',
       );
       root = placement(ref)

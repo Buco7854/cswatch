@@ -19,3 +19,7 @@ var
 **/core
 **/core.*
 **/*.db*
+
+tools/cs2export/.vrf
+tools/cs2export/bin
+tools/cs2export/obj

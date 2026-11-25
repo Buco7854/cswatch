@@ -27,7 +27,7 @@ import {
   validEnvironmentPng,
 } from '../src/map-environment.js';
 import { initializeFixture } from './fixtures/initialized.js';
-import { authoredFog, invalidFogCases } from '../../tools/assets/fixtures/fog-cases.mjs';
+import { writeNativeWorld, vertexFile } from '../../tools/assets/fixtures/native-world.mjs';
 
 process.env.LOG_LEVEL = 'silent';
 function chunk(kind: string, content: Buffer) {
@@ -350,18 +350,17 @@ test('overview descriptor opens reject links, special files and changed cached a
   }
 });
 
-test('GLB discovery advertises only readable regular version-2 files, preserving existing tier paths', async () => {
+test('native world discovery advertises only a validated manifest of the requested map', async () => {
   const s = await setup();
   try {
-    for (const path of ['de_fixture/desktop', 'de_fixture/mobile', 'agents'])
-      mkdirSync(join(s.root, 'maps', path), { recursive: true });
-    writeFileSync(join(s.root, 'maps', 'de_fixture', 'desktop', 'scene.glb'), glb());
-    writeFileSync(join(s.root, 'maps', 'de_fixture', 'mobile', 'scene.glb'), glb());
-    writeFileSync(join(s.root, 'maps', 'agents', 'ct.glb'), glb());
-    writeFileSync(join(s.root, 'maps', 'agents', 't.glb'), Buffer.from('Not a GLB'));
+    const maps = join(s.root, 'maps');
+    mkdirSync(join(maps, 'agents'), { recursive: true });
+    const manifest = writeNativeWorld(maps, 'de_fixture');
+    writeFileSync(join(maps, 'agents', 'ct.glb'), glb());
+    writeFileSync(join(maps, 'agents', 't.glb'), Buffer.from('Not a GLB'));
     assert.deepEqual((await s.get('/api/maps/de_fixture')).json(), {
-      model: '/map-assets/de_fixture/desktop/scene.glb',
-      mobile: '/map-assets/de_fixture/mobile/scene.glb',
+      model: createHash('sha256').update(manifest).digest('hex'),
+      mobile: null,
       overview: null,
       environment: null,
     });
@@ -369,19 +368,16 @@ test('GLB discovery advertises only readable regular version-2 files, preserving
       ct: '/map-assets/agents/ct.glb',
       t: null,
     });
-    rmSync(join(s.root, 'maps', 'de_fixture', 'desktop', 'scene.glb'));
-    writeFileSync(join(s.root, 'maps', 'de_fixture.glb'), glb());
-    assert.equal(
-      (await s.get('/api/maps/de_fixture')).json().model,
-      null,
-      'Loose unversioned model paths are not published.',
-    );
-    assert.equal((await s.get('/map-assets/de_fixture.glb')).statusCode, 404);
-    rmSync(join(s.root, 'maps', 'de_fixture.glb'));
-    symlinkSync(
-      join(s.root, 'maps', 'de_fixture', 'mobile', 'scene.glb'),
-      join(s.root, 'maps', 'de_fixture.glb'),
-    );
+    for (const path of ['map.json', 'map.json.br', vertexFile])
+      assert.equal((await s.get('/map-assets/de_fixture/' + path)).statusCode, 404);
+    const file = join(maps, 'de_fixture', 'map.json');
+    writeFileSync(file, JSON.stringify({ ...JSON.parse(manifest.toString()), map: 'de_other' }));
+    assert.equal((await s.get('/api/maps/de_fixture')).json().model, null);
+    writeFileSync(file, JSON.stringify({ ...JSON.parse(manifest.toString()), version: 2 }));
+    assert.equal((await s.get('/api/maps/de_fixture')).json().model, null);
+    rmSync(file);
+    symlinkSync(join(s.folder, 'outside.json'), file);
+    writeFileSync(join(s.folder, 'outside.json'), manifest);
     assert.equal((await s.get('/api/maps/de_fixture')).json().model, null);
   } finally {
     await s.close();
@@ -408,173 +404,6 @@ test('environment PNGs enforce the bounded square face format independently of o
     ),
     false,
   );
-});
-
-test('environment discovery exposes only paired fixed cube faces with private policy, no-store and no static bypass', async () => {
-  const s = await setup();
-  try {
-    assert.equal((await s.get('/api/maps/de_fixture/environment/px.png', false)).statusCode, 401);
-    assert.equal((await s.get('/api/maps/de_fixture')).json().environment, null);
-    assert.equal((await s.get('/api/maps/de_fixture/environment/px.png')).statusCode, 404);
-    const installed = s.installEnvironment();
-    const expected = {
-      assetVersion: installed.environment.assetVersion,
-      landscape: true,
-      sky: {
-        brightness: 1.5,
-        faces: environmentFaces.map((face) => `/api/maps/de_fixture/environment/${face}.png`),
-      },
-    };
-    const response = await s.get('/api/maps/de_fixture');
-    assert.deepEqual(response.json().environment, expected);
-    assert.equal(response.headers['cache-control'], 'private, no-store');
-    for (const [index, face] of environmentFaces.entries()) {
-      const image = await s.get(expected.sky.faces[index]);
-      assert.equal(image.statusCode, 200);
-      assert.equal(image.headers['content-type'], 'image/png');
-      assert.equal(image.headers['x-content-type-options'], 'nosniff');
-      assert.equal(image.headers['cache-control'], 'private, no-store');
-      assert.deepEqual(image.rawPayload, installed.images[face]);
-      assert.equal((await s.get(expected.sky.faces[index], true, 'HEAD')).rawPayload.length, 0);
-    }
-    for (const filename of ['px.png', 'environment.json', 'provenance.json'])
-      assert.equal(
-        (await s.get(`/map-assets/environments/de_fixture/${filename}`)).statusCode,
-        404,
-      );
-    for (const face of ['PX', 'unknown', 'provenance', '%2e%2e%2fpx'])
-      assert.equal((await s.get(`/api/maps/de_fixture/environment/${face}.png`)).statusCode, 404);
-    assert.equal(
-      (
-        await s.app.inject({
-          method: 'POST',
-          url: expected.sky.faces[0],
-          headers: {
-            host: 'localhost:8000',
-            origin: 'http://localhost:8000',
-            cookie: fixtureCookie('map-assets-session'),
-            'x-csrf-token': 'csrf-test',
-          },
-          payload: { image: 'No public preparation endpoint' },
-        })
-      ).statusCode,
-      404,
-    );
-    s.db.run('UPDATE settings SET value=1 WHERE key=?', 'public_access');
-    assert.equal((await s.get(expected.sky.faces[0], false)).statusCode, 200);
-    s.db.run('UPDATE settings SET value=0 WHERE key=?', 'public_access');
-    assert.equal((await s.get(expected.sky.faces[0], false, 'HEAD')).statusCode, 401);
-  } finally {
-    await s.close();
-  }
-});
-
-test('environment metadata and both prepared map tiers must agree before any face is served', async () => {
-  const s = await setup();
-  try {
-    const { environmentPack, environment } = s.installEnvironment();
-    const file = join(environmentPack, 'environment.json');
-    for (const invalid of [
-      { ...environment, map: 'de_other' },
-      { ...environment, assetVersion: 'other build' },
-      { ...environment, source: '' },
-      { ...environment, landscape: 1 },
-      { ...environment, assetVersion: 'a'.repeat(101) },
-      { ...environment, sky: { ...environment.sky, brightness: -1 } },
-      { ...environment, sky: { ...environment.sky, brightness: 17 } },
-      { ...environment, sky: { ...environment.sky, brightness: '1' } },
-      {
-        ...environment,
-        sky: { ...environment.sky, faces: { ...environment.sky.faces, px: '0'.repeat(64) } },
-      },
-      {
-        ...environment,
-        sky: {
-          ...environment.sky,
-          faces: { ...environment.sky.faces, px: 'https://outside.invalid/face.png' },
-        },
-      },
-      {
-        ...environment,
-        sky: { ...environment.sky, faces: { ...environment.sky.faces, extra: '0'.repeat(64) } },
-      },
-      { ...environment, rotation: 90 },
-    ]) {
-      writeFileSync(file, JSON.stringify(invalid));
-      assert.equal((await s.get('/api/maps/de_fixture')).json().environment, null);
-      assert.equal((await s.get('/api/maps/de_fixture/environment/px.png')).statusCode, 404);
-    }
-    writeFileSync(file, JSON.stringify(environment));
-    assert.ok((await s.get('/api/maps/de_fixture')).json().environment);
-    for (const tier of ['desktop', 'mobile']) {
-      const manifest = join(s.root, 'maps', 'de_fixture', tier, 'manifest.json');
-      const original = readFileSync(manifest);
-      writeFileSync(
-        manifest,
-        JSON.stringify({ schemaVersion: 1, map: 'de_fixture', tier, assetVersion: 'stale build' }),
-      );
-      assert.equal((await s.get('/api/maps/de_fixture')).json().environment, null);
-      writeFileSync(manifest, original);
-      rmSync(manifest);
-      assert.equal((await s.get('/api/maps/de_fixture/environment/px.png')).statusCode, 404);
-      writeFileSync(manifest, original);
-    }
-    const manifests = ['desktop', 'mobile'].map((tier) =>
-      join(s.root, 'maps', 'de_fixture', tier, 'manifest.json'),
-    );
-    const originals = manifests.map((path) => readFileSync(path));
-    assert.ok((await s.get('/api/maps/de_fixture')).json().environment);
-    for (const [index, path] of manifests.entries()) {
-      const data = JSON.parse(originals[index].toString());
-      data.assetVersion = data.assetVersion.slice(0, -1) + 'x';
-      writeFileSync(path, JSON.stringify(data));
-    }
-    assert.equal((await s.get('/api/maps/de_fixture')).json().environment, null);
-    for (const [index, path] of manifests.entries()) writeFileSync(path, originals[index]);
-    writeFileSync(file, Buffer.alloc(environmentLimits.metadataBytes + 1));
-    assert.equal((await s.get('/api/maps/de_fixture')).json().environment, null);
-  } finally {
-    await s.close();
-  }
-});
-
-test('optional authored cube fog is finite, strictly bounded and projected without URLs or guessed defaults', async () => {
-  const s = await setup();
-  try {
-    const { environmentPack, environment } = s.installEnvironment();
-    const path = join(environmentPack, 'environment.json');
-    const fog = authoredFog();
-    for (const valid of [
-      fog,
-      { ...fog, height: null },
-      {
-        ...fog,
-        start: 0,
-        end: 254000,
-        exponent: 16,
-        height: { start: -254000, end: 254000, exponent: 16 },
-        maxOpacity: 1,
-        lodBias: 0,
-        brightness: 0,
-      },
-      { ...fog, rotation: [1, 1e-7, 0, 0, 1, 0, 0, 0, 1] },
-    ]) {
-      writeFileSync(path, JSON.stringify({ ...environment, fog: valid }));
-      assert.deepEqual((await s.get('/api/maps/de_fixture')).json().environment.fog, valid);
-      assert.equal((await s.get('/api/maps/de_fixture/environment/px.png')).statusCode, 200);
-    }
-    for (const invalid of invalidFogCases()) {
-      writeFileSync(path, JSON.stringify({ ...environment, fog: invalid }));
-      assert.equal((await s.get('/api/maps/de_fixture')).json().environment, null);
-      assert.equal((await s.get('/api/maps/de_fixture/environment/px.png')).statusCode, 404);
-    }
-    writeFileSync(path, JSON.stringify(environment));
-    const restored = (await s.get('/api/maps/de_fixture')).json().environment;
-    assert.ok(restored);
-    assert.equal(Object.hasOwn(restored, 'fog'), false);
-  } finally {
-    await s.close();
-  }
 });
 
 test('environment faces reject links, special files, mixed dimensions, excess aggregate size and stale cached bytes', async () => {
@@ -647,62 +476,6 @@ test('environment faces reject links, special files, mixed dimensions, excess ag
       'dir',
     );
     assert.equal((await s.get('/api/maps/de_fixture')).json().environment, null);
-  } finally {
-    await s.close();
-  }
-});
-
-test('current packs can serve authored grading and sky assets independently', async () => {
-  const s = await setup();
-  try {
-    const { environmentPack, environment } = s.installEnvironment();
-    const base = '/api/maps/de_fixture';
-    const lutUrl = base + '/environment/grade.rgba';
-    const ungraded = (await s.get(base)).body;
-    const sky = (await s.get(base + '/environment/px.png')).rawPayload;
-    const file = join(environmentPack, 'environment.json');
-    const lut = Buffer.alloc(32, 7);
-    const grade = {
-      exposure: { min: 0.8, max: 1, bias: 0 },
-      curve: {
-        shoulder: 0,
-        linear: 0.001,
-        angle: 0.001,
-        toe: 1,
-        numerator: 1,
-        denominator: 1,
-        whiteStops: 1.5,
-      },
-      lut: { size: 2, sha256: createHash('sha256').update(lut).digest('hex') },
-    };
-    assert.equal((await s.get(lutUrl)).statusCode, 404);
-    writeFileSync(file, JSON.stringify({ ...environment, grade }));
-    assert.equal((await s.get(base)).body, ungraded);
-    const lutPath = join(environmentPack, 'grade.rgba');
-    writeFileSync(lutPath, lut);
-    assert.deepEqual((await s.get(base)).json().environment.grade, grade);
-    assert.deepEqual((await s.get(lutUrl)).rawPayload, lut);
-    assert.equal((await s.get(lutUrl, false)).statusCode, 401);
-    assert.equal((await s.get('/map-assets/environments/de_fixture/grade.rgba')).statusCode, 404);
-    writeFileSync(lutPath, Buffer.alloc(32, 8));
-    assert.equal((await s.get(lutUrl)).statusCode, 404);
-    assert.equal((await s.get(base)).body, ungraded);
-    assert.deepEqual((await s.get(base + '/environment/px.png')).rawPayload, sky);
-    writeFileSync(file, JSON.stringify({ ...environment, grade: { ...grade, lut: { size: 33 } } }));
-    assert.equal((await s.get(base)).body, ungraded);
-    writeFileSync(file, JSON.stringify(environment));
-    assert.equal((await s.get(base)).body, ungraded);
-    for (const face of environmentFaces) rmSync(join(environmentPack, `${face}.png`));
-    writeFileSync(lutPath, lut);
-    writeFileSync(file, JSON.stringify({ ...environment, landscape: false, sky: null, grade }));
-    assert.deepEqual((await s.get(base)).json().environment, {
-      assetVersion: environment.assetVersion,
-      landscape: false,
-      sky: null,
-      grade,
-    });
-    assert.deepEqual((await s.get(lutUrl)).rawPayload, lut);
-    assert.equal((await s.get(base + '/environment/px.png')).statusCode, 404);
   } finally {
     await s.close();
   }

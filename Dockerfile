@@ -21,6 +21,20 @@ RUN npm run build && npm prune --omit=dev
 
 # Optional operator asset tooling. This target never contains the app's native
 # parser, database/auth/provider dependencies or proprietary game resources.
+FROM node:24-bookworm-slim AS native-export
+WORKDIR /build/tools/cs2export
+ENV DOTNET_ROOT=/opt/dotnet DOTNET_CLI_TELEMETRY_OPTOUT=1 PATH=/opt/dotnet:$PATH
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates libicu72 && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /opt/dotnet .vrf \
+    && curl -fsSL https://builds.dotnet.microsoft.com/dotnet/Sdk/11.0.100/dotnet-sdk-11.0.100-linux-x64.tar.gz -o /tmp/sdk.tgz \
+    && echo "1bec9cca2ec689b1e80245b84f2b53c9441d1aa6daccf2ceb27490768bffa95954fa585bd275def31069d874d543d9ba9e6591fe9ade2dbd9f34ec5c0fd0050c  /tmp/sdk.tgz" | sha512sum -c - \
+    && tar -xf /tmp/sdk.tgz -C /opt/dotnet && rm /tmp/sdk.tgz \
+    && curl -fsSL https://codeload.github.com/ValveResourceFormat/ValveResourceFormat/tar.gz/refs/tags/21.1 -o /tmp/vrf.tgz \
+    && echo "6700eb517c5969464d7867f240ecfe6c6ba57ceecf6ba0e82779ef5dbb7a9928  /tmp/vrf.tgz" | sha256sum -c - \
+    && tar -xf /tmp/vrf.tgz -C .vrf && rm /tmp/vrf.tgz
+COPY tools/cs2export/*.cs tools/cs2export/*.csproj tools/cs2export/global.json ./
+RUN dotnet publish -c Release -r linux-x64 --self-contained false -o /export
+
 FROM node:24-bookworm-slim AS asset-build
 WORKDIR /build
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev && rm -rf /var/lib/apt/lists/*
@@ -41,6 +55,18 @@ LABEL org.opencontainers.image.source="https://github.com/Buco7854/cswatch" \
 ENV NODE_ENV=production MAP_ASSETS_DIR=/map-assets MAP_JOBS_DIR=/map-jobs MAP_CACHE_DIR=/map-cache MAP_CATALOG_FILE=/map-catalog/catalog.json
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libicu72 util-linux unzip tar gzip && rm -rf /var/lib/apt/lists/*
+ENV DOTNET_ROOT=/opt/dotnet DOTNET_CLI_TELEMETRY_OPTOUT=1
+COPY --from=native-export /opt/dotnet/dotnet /opt/dotnet/dotnet
+COPY --from=native-export /opt/dotnet/host /opt/dotnet/host
+COPY --from=native-export /opt/dotnet/shared /opt/dotnet/shared
+COPY --from=native-export /export ./tools/cs2export/bin/Release/net11.0
+COPY --from=native-export /build/tools/cs2export/.vrf/ValveResourceFormat-21.1/Renderer/Resources/brdf_lut.vtex_c ./tools/cs2export/.vrf/ValveResourceFormat-21.1/Renderer/Resources/brdf_lut.vtex_c
+COPY tools/cs2export/*.mjs tools/cs2export/cs2export.csproj tools/cs2export/THIRD_PARTY_NOTICES.txt ./tools/cs2export/
+COPY --from=frontend /build/frontend/node_modules/meshoptimizer ./frontend/node_modules/meshoptimizer
+COPY --from=frontend /build/frontend/node_modules/three ./frontend/node_modules/three
+COPY frontend/src/world/block-layout.mjs frontend/src/world/mesh-prediction.mjs ./frontend/src/world/
+COPY shared/model-resource-id.mjs shared/native-world-format.mjs ./shared/
+COPY --from=backend /build/backend/dist/native-world-format.mjs /build/backend/dist/native-map-files.js ./backend/dist/
 COPY --from=asset-build /build/tools/assets/package*.json ./tools/assets/
 COPY --from=asset-build /build/tools/assets/node_modules ./tools/assets/node_modules
 COPY --from=asset-build /build/tools/assets/*.mjs ./tools/assets/

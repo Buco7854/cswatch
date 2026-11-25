@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { writeNativeWorld, vertexFile } from '../../tools/assets/fixtures/native-world.mjs';
 import { mapPreparerRevision } from '../src/asset-preparer.js';
 import { fixtureCookie, insertFixtureSession } from './fixtures/member-session.js';
 import { test } from 'node:test';
@@ -80,16 +82,7 @@ function glb() {
 }
 function install(root: string, map = 'de_mirage', assetVersion = 'Synthetic-version') {
   const image = png(),
-    model = glb();
-  for (const tier of ['desktop', 'mobile']) {
-    const path = join(root, map, tier);
-    mkdirSync(path, { recursive: true });
-    writeFileSync(join(path, 'scene.glb'), model);
-    writeFileSync(
-      join(path, 'manifest.json'),
-      JSON.stringify({ schemaVersion: 1, map, tier, assetVersion }),
-    );
-  }
+    model = writeNativeWorld(root, map, approval.source.manifest);
   const overview = join(root, 'overviews', map);
   mkdirSync(overview, { recursive: true });
   writeFileSync(join(overview, 'overview.png'), image);
@@ -105,26 +98,14 @@ function install(root: string, map = 'de_mirage', assetVersion = 'Synthetic-vers
       imageSha256: sha(image),
     }),
   );
-  const environment = join(root, 'environments', map);
-  mkdirSync(environment, { recursive: true });
-  const faces = Object.fromEntries(
-    ['px', 'nx', 'py', 'ny', 'pz', 'nz'].map((face) => {
-      writeFileSync(join(environment, face + '.png'), image);
-      return [face, sha(image)];
-    }),
-  );
-  writeFileSync(
-    join(environment, 'environment.json'),
-    JSON.stringify({
-      schemaVersion: 2,
-      map,
-      assetVersion,
-      source: 'Synthetic fixture only',
-      landscape: true,
-      sky: { brightness: 1, faces },
-    }),
-  );
   return { image, model };
+}
+function expectManual(root: string) {
+  return (
+    '/api/demos/private-demo/world/manual/' +
+    sha(readFileSync(join(root, 'de_mirage', 'map.json'))) +
+    '/map.json'
+  );
 }
 async function fixture(enabled = true, privateInstance = false) {
   const directory = mkdtempSync(join(tmpdir(), 'cswatch-demo-assets-')),
@@ -356,7 +337,7 @@ test('latest ready descriptors and immutable URLs require worker marker/request/
     assert.equal(value.verification, 'latest-official');
     assert.equal(value.packId, p.assetPackId);
     assert.deepEqual(value.resolution.source, p.source);
-    assert.match(value.assets.model, new RegExp('/api/map-packs/' + p.assetPackId + '/models/'));
+    assert.match(value.assets.model, new RegExp('/world/' + p.assetPackId + '/'));
     assert.equal((await f.request(value.assets.model)).statusCode, 200);
     assert.equal((await f.request(value.assets.overview.image)).statusCode, 200);
     assert.equal(
@@ -422,7 +403,7 @@ test('stale inventory cannot authorize a fresh source job and disabled policy pr
     assert.equal(value.acquisition, 'disabled');
     assert.equal(value.verification, 'version-unverified');
     assert.equal(value.canAcquire, false);
-    assert.equal(value.assets.model, '/map-assets/de_mirage/desktop/scene.glb');
+    assert.equal(value.assets.model, expectManual(disabled.maps));
   } finally {
     await disabled.close();
   }
@@ -613,11 +594,11 @@ test('manual mode explicitly labels version-unverified assets from MAP_ASSETS_DI
     assert.equal(response.acquisition, 'disabled');
     assert.equal(response.verification, 'version-unverified');
     assert.equal(response.packId, null);
-    assert.equal(response.assets.model, '/map-assets/de_mirage/desktop/scene.glb');
+    assert.equal(response.assets.model, expectManual(f.maps));
     assert.deepEqual((await f.request(response.assets.model)).rawPayload, model);
     assert.deepEqual((await f.request(response.assets.overview.image)).rawPayload, image);
     mkdirSync(join(f.maps, 'agents'));
-    writeFileSync(join(f.maps, 'agents', 'ct.glb'), model);
+    writeFileSync(join(f.maps, 'agents', 'ct.glb'), glb());
     assert.equal((await f.request('/api/assets/agents')).json().ct, '/map-assets/agents/ct.glb');
     const preview = join(f.maps, 'previews', 'de_mirage');
     mkdirSync(preview, { recursive: true });
@@ -638,9 +619,10 @@ test('manual mode explicitly labels version-unverified assets from MAP_ASSETS_DI
       (await f.request('/api/assets/equipment')).json().icons.ak47,
       '/api/assets/equipment/ak47.png',
     );
+    const equipmentModel = glb();
     const equipment = join(f.maps, 'equipment-models', 'ak47');
     mkdirSync(equipment, { recursive: true });
-    writeFileSync(join(equipment, 'model.glb'), model);
+    writeFileSync(join(equipment, 'model.glb'), equipmentModel);
     writeFileSync(
       join(equipment, 'manifest.json'),
       JSON.stringify({
@@ -648,8 +630,8 @@ test('manual mode explicitly labels version-unverified assets from MAP_ASSETS_DI
         id: 'ak47',
         coordinateSystem: 'weapon-meters-y-up-x-forward',
         assetVersion: 'Synthetic fixture',
-        sha256: sha(model),
-        bytes: model.length,
+        sha256: sha(equipmentModel),
+        bytes: equipmentModel.length,
         decodedTextureBytes: 0,
         geometryBytes: 0,
         bounds: { min: [0, 0, 0], max: [1, 1, 1] },
@@ -659,7 +641,10 @@ test('manual mode explicitly labels version-unverified assets from MAP_ASSETS_DI
       (await f.request('/api/assets/equipment-models')).json().items.ak47.model,
       '/api/assets/equipment-models/ak47.glb',
     );
-    assert.deepEqual((await f.request('/api/assets/equipment-models/ak47.glb')).rawPayload, model);
+    assert.deepEqual(
+      (await f.request('/api/assets/equipment-models/ak47.glb')).rawPayload,
+      equipmentModel,
+    );
   } finally {
     await f.close();
   }
@@ -671,9 +656,9 @@ test('immutable approved packs require current unambiguous catalog and ready res
       pack = join(f.maps, 'packs', id, 'maps');
     install(pack);
     await enqueueMapRequest(f.jobs, approval);
-    const model = `/api/map-packs/${id}/models/de_mirage/desktop/scene.glb`,
+    const model = `/api/demos/private-demo/world/${id}/${sha(readFileSync(join(pack, 'de_mirage', 'map.json')))}/map.json`,
       overview = `/api/map-packs/${id}/maps/de_mirage/overview.png`,
-      face = `/api/map-packs/${id}/maps/de_mirage/environment/px.png`;
+      face = model.replace('map.json', vertexFile);
     for (const path of [model, overview, face])
       assert.equal((await f.request(path)).statusCode, 404);
     await writeMapJobResult(f.jobs, {
@@ -688,13 +673,15 @@ test('immutable approved packs require current unambiguous catalog and ready res
     assert.equal(ready.packId, id);
     assert.equal(ready.assets.model, model);
     assert.equal(ready.assets.overview.image, overview);
-    assert.equal(ready.assets.environment.sky.faces[0], face);
+
     for (const path of [model, overview, face])
       assert.equal((await f.request(path)).statusCode, 200);
     assert.equal((await f.request(model, 'member', 'HEAD')).rawPayload.length, 0);
-    const range = await f.request(model, 'member', 'GET', undefined, { range: 'bytes=0-3' });
-    assert.equal(range.statusCode, 206);
-    assert.equal(range.rawPayload.toString(), 'glTF');
+    const compressed = await f.request(model, 'member', 'GET', undefined, {
+      'accept-encoding': 'br',
+    });
+    assert.equal(compressed.headers['content-encoding'], 'br');
+    assert.equal((await f.request(model, 'other')).statusCode, 404);
     assert.equal(
       (await f.request(`/map-assets/packs/${id}/maps/de_mirage/desktop/scene.glb`)).statusCode,
       404,
@@ -750,7 +737,7 @@ test('manual environment-only remnants remain unavailable with an entirely empty
   const f = await fixture(false);
   try {
     install(f.maps);
-    for (const tier of ['desktop', 'mobile']) rmSync(join(f.maps, 'de_mirage', tier, 'scene.glb'));
+    rmSync(join(f.maps, 'de_mirage', 'map.json'));
     rmSync(join(f.maps, 'overviews'), { recursive: true, force: true });
     const descriptor = (await f.request()).json();
     assert.equal(descriptor.verification, 'unavailable');

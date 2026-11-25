@@ -1,14 +1,10 @@
 #!/usr/bin/env node
 /** Explicit operator action only. Anonymous fixed-depot downloads, never an app route. */
-import { spawn } from 'node:child_process';
-import { createHash } from 'node:crypto';
-import { StringDecoder } from 'node:string_decoder';
 import { constants } from 'node:fs';
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
-import { prepareOverview } from './prepare-overview.mjs';
 import { readVpkDirectory, scanSource2Dependencies } from './source2-dependencies.mjs';
 import {
   STEAM_APP,
@@ -18,7 +14,8 @@ import {
   selectedSteamManifest,
   initialSteamFiles,
   overviewResources,
-  selectedSkyPrefabFile,
+  dependencyBatch,
+  skyPrefabPackage,
   parseSteamListing,
   checkedBatch,
 } from './steam-assets-plan.mjs';
@@ -33,199 +30,11 @@ import {
   hasFreeReserve,
   checkFreeReserve,
 } from './asset-storage.mjs';
-import { publishPreparedMap } from './prepared-map-publication.mjs';
-import { resolveMapResources, exportMapGltf } from './install-map-resources.mjs';
-import { inspectInstalledEnvironment } from './install-map-environment.mjs';
-import { prepareInstalledAtmosphere } from './install-map-atmosphere.mjs';
-import { writeWaterBindings } from './map-water-inputs.mjs';
-import { prepareInstalledGlass } from './install-map-glass.mjs';
-import { prepareInstalledBakedLighting } from './install-map-baked-lighting.mjs';
+import { installLocalWorld } from './native-world-pack.mjs';
 import { localDirectory } from './toolchain-security.mjs';
-export { publishPreparedMap, validatePreparedMap } from './prepared-map-publication.mjs';
-
-const prepareMapScript = fileURLToPath(new URL('./prepare-map.mjs', import.meta.url));
-/** Trusted local executables only. Bounded diagnostics remain in private cache logs.
- * Output callbacks are trusted, cooperative work: onOutputAbort must cancel their
- * pending mutations. A deadline requests cancellation; safe cleanup still awaits
- * their drain rather than allowing a late callback to write into removed scratch.
- */
-export async function runAssetProcess(
-  command,
-  args,
-  {
-    cwd,
-    home,
-    temporary,
-    signal,
-    log,
-    storageGuard,
-    onOutputLine,
-    onOutputAbort,
-    allowFailure = false,
-    timeoutMs = 30 * 60 * 1000,
-  },
-) {
-  signal?.throwIfAborted();
-  await storageGuard?.();
-  signal?.throwIfAborted();
-  return await new Promise((resolveJob, rejectJob) => {
-    const child = spawn(command, args, {
-      cwd,
-      detached: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: {
-        PATH: process.env.PATH || '/usr/bin:/bin',
-        HOME: home,
-        TMPDIR: temporary,
-        LANG: 'C.UTF-8',
-        TZ: 'UTC',
-        NO_COLOR: '1',
-        DOTNET_CLI_TELEMETRY_OPTOUT: '1',
-        DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1',
-        DOTNET_EnableDiagnostics: '0',
-        // Keep native texture allocations and the parent worker inside the host budget.
-        // .NET interprets this managed heap size as hexadecimal (4 GiB).
-        DOTNET_GCHeapHardLimit: '100000000',
-        DOTNET_GCConserveMemory: '9',
-        DOTNET_PROCESSOR_COUNT: '2',
-      },
-    });
-    let stdout = '',
-      stderr = '',
-      bytes = 0,
-      failure,
-      ended = false,
-      guardPending;
-    const lineBuffers = { stdout: '', stderr: '' },
-      outputPending = new Set();
-    const decoders = { stdout: new StringDecoder('utf8'), stderr: new StringDecoder('utf8') };
-    const kill = () => {
-      try {
-        process.kill(-child.pid, 'SIGKILL');
-      } catch {}
-    };
-    const stop = () => {
-      failure ||= new Error('Operator asset installation was cancelled.');
-      onOutputAbort?.();
-      if (!ended) kill();
-    };
-    const timer = setTimeout(() => {
-      failure ||= new Error('Operator asset stage timed out.');
-      onOutputAbort?.();
-      if (!ended) kill();
-    }, timeoutMs);
-    signal?.addEventListener('abort', stop, { once: true });
-    const guardTimer = storageGuard
-      ? setInterval(() => {
-          if (guardPending || ended) return;
-          guardPending = Promise.resolve()
-            .then(storageGuard)
-            .catch((error) => {
-              failure ||=
-                error instanceof Error ? error : new Error('Operator asset storage guard failed.');
-              onOutputAbort?.();
-              if (!ended) kill();
-            })
-            .finally(() => {
-              guardPending = undefined;
-            });
-        }, 250)
-      : undefined;
-    const dispatchLine = (line, kind) => {
-      if (!onOutputLine || failure) return;
-      try {
-        const work = onOutputLine(line, kind);
-        if (work && typeof work.then === 'function') {
-          const tracked = Promise.resolve(work)
-            .catch((error) => {
-              failure ||=
-                error instanceof Error ? error : new Error('Operator output processing failed.');
-              onOutputAbort?.();
-              if (!ended) kill();
-            })
-            .finally(() => outputPending.delete(tracked));
-          outputPending.add(tracked);
-        }
-      } catch (error) {
-        failure ||=
-          error instanceof Error ? error : new Error('Operator output processing failed.');
-        onOutputAbort?.();
-        if (!ended) kill();
-      }
-    };
-    const appendDecoded = (kind, decoded) => {
-      if (kind === 'stdout') stdout += decoded;
-      else stderr += decoded;
-      if (onOutputLine) {
-        lineBuffers[kind] += decoded;
-        let newline;
-        while ((newline = lineBuffers[kind].indexOf('\n')) !== -1) {
-          dispatchLine(lineBuffers[kind].slice(0, newline).replace(/\r$/, ''), kind);
-          lineBuffers[kind] = lineBuffers[kind].slice(newline + 1);
-        }
-      }
-    };
-    const append = (kind, chunk) => {
-      bytes += chunk.length;
-      if (bytes > steamAssetLimits.logBytes) {
-        failure ||= Object.assign(
-          new Error('Operator asset diagnostics exceeded the output limit.'),
-          {
-            code: 'ASSET_OUTPUT_LIMIT',
-          },
-        );
-        onOutputAbort?.();
-        kill();
-        return;
-      }
-      appendDecoded(kind, decoders[kind].write(chunk));
-    };
-    child.stdout.on('data', (chunk) => append('stdout', chunk));
-    child.stderr.on('data', (chunk) => append('stderr', chunk));
-    child.once('error', (error) => {
-      failure ||= error;
-    });
-    child.once('close', async (code, exitSignal) => {
-      ended = true;
-      clearInterval(guardTimer);
-      kill();
-      try {
-        // Finish the one in-flight check before deciding whether this stage can
-        // succeed. No late guard can mutate the result or kill another stage.
-        await guardPending;
-        for (const kind of ['stdout', 'stderr']) {
-          appendDecoded(kind, decoders[kind].end());
-          if (lineBuffers[kind]) dispatchLine(lineBuffers[kind], kind);
-        }
-        await Promise.all([...outputPending]);
-        if (log)
-          await writeFile(
-            log,
-            stdout +
-              stderr +
-              `\nOperator process exit: ${code ?? 'none'}, signal: ${exitSignal ?? 'none'}\n`,
-            { mode: 0o600, flag: 'wx' },
-          );
-        if (failure) throw failure;
-        if (code !== 0 && !allowFailure)
-          throw Object.assign(
-            new Error(
-              `Operator asset stage failed with exit ${code ?? 'none'}, signal ${exitSignal ?? 'none'}. See ${log || 'the private cache log'}.`,
-            ),
-            { exitCode: code },
-          );
-        resolveJob({ code, signal: exitSignal, stdout, stderr });
-      } catch (error) {
-        rejectJob(error);
-      } finally {
-        clearTimeout(timer);
-        signal?.removeEventListener('abort', stop);
-      }
-    });
-    if (signal?.aborted) stop();
-  });
-}
-
+export { validatePreparedMap } from './native-world-pack.mjs';
+import { runAssetProcess } from './asset-process.mjs';
+export { runAssetProcess } from './asset-process.mjs';
 export async function installSteamAssets(options, adapters = {}) {
   const maps = selectedMaps(options.maps);
   const manifest =
@@ -471,282 +280,55 @@ export async function installSteamAssets(options, adapters = {}) {
         signal?.throwIfAborted();
       }
     }
-    const shaderIndexes = await Promise.all(
-      ['csgo', 'core'].map(async (group) => [
-        group,
-        await index(join(game, 'game', group, 'shaders_vulkan_dir.vpk')),
-      ]),
-    );
     for (const map of maps) {
-      const stage = await mkdtemp(join(runRoot, `${map}-`));
-      conversionRoot = stage;
-      await mkdir(join(stage, '.home'), { mode: 0o700 });
-      await mkdir(join(stage, '.tmp'), { mode: 0o700 });
-      try {
-        const packageFile = `game/csgo/maps/${map}.vpk`;
-        const shaderPreflights = [];
-        const onShaderPreflight = (report) => shaderPreflights.push(report);
-        const sourceImages = [];
-        const onSourceImages = async ({ part, attempt, report }) => {
-          const data = Buffer.from(JSON.stringify(report));
-          if (data.length > 4 * 1024 ** 2)
-            throw new Error('Source image provenance exceeds its bound.');
-          const file = `${part}-source-images-${attempt}.json`;
-          await checkFreeReserve(cache, output, data.length);
-          await writeFile(join(runRoot, file), data, { flag: 'wx', mode: 0o600 });
-          sourceImages.push({
-            part,
-            attempt,
-            file,
-            sha256: createHash('sha256').update(data).digest('hex'),
-            maxEdge: report.maxEdge,
-            images: report.images.length,
-            inputBytes: report.inputBytes,
-            outputBytes: report.outputBytes,
-            readBytes: report.readBytes,
+      const main = `game/csgo/maps/${map}.vpk`;
+      const scanPackage = async (packageFile, required) => {
+        for (let wave = 0; wave <= steamAssetLimits.waves; wave++) {
+          const closure = await scan({
+            mapVpk: join(game, packageFile),
+            csgoVpk: join(game, 'game/csgo/pak01_dir.vpk'),
+            coreVpk: join(game, 'game/core/pak01_dir.vpk'),
+            looseRoots: [join(game, 'game/csgo'), join(game, 'game/core')],
+            required,
           });
-        };
-        const sourceDescription = `Valve CS2 app ${STEAM_APP}, depot ${STEAM_DEPOT}, manifest ${plan.manifest}, operator-local S2V export`;
-        await options.onPhase?.('geometry');
-        const environment = await (adapters.inspectEnvironment || inspectInstalledEnvironment)({
-          map,
-          game,
-          stage,
-          assetVersion,
-          manifest: plan.manifest,
-          source: sourceDescription,
-          s2v: tools.s2v,
-          downloader: tools.downloader,
-          execute,
-          download,
-          index,
-          scan,
-          shaderIndexes,
-          progress,
-          onShaderPreflight,
-          onSourceImages,
-          storage: (needed) => checkStorage(cache, output, needed),
-          permitPrefab: (file) => {
-            if (!selectedSkyPrefabFile(map, file))
-              throw new Error('Sky prefab is outside the selected map.');
-            checkedBatch([{ selector: file, bytes: 0 }], { prefabs: [file] });
-            permittedPrefabs.add(file);
-          },
-        });
-        const closure = await resolveMapResources({
-          map,
-          packageFile,
-          game,
-          required: [...overviewResources(map), ...environment.required],
-          skyMap: environment.skyMap,
-          scan,
-          download,
-          progress,
-          label: map,
-        });
-        let source = await exportMapGltf({
-          map,
-          packageFile,
-          resource: `maps/${map}.vmap_c`,
-          game,
-          stage,
-          label: map,
-          closure,
-          s2v: tools.s2v,
-          execute,
-          download,
-          shaderIndexes,
-          index,
-          onShaderPreflight,
-          onSourceImages,
-          storage: (needed) => checkStorage(cache, output, needed),
-        });
-        await options.onPhase?.('environment');
-        const overviewExport = join(stage, 'overview-source');
-        await mkdir(overviewExport);
-        await execute(
-          tools.s2v,
-          [
-            '-i',
-            join(game, 'game/csgo/pak01_dir.vpk'),
-            '-f',
-            overviewResources(map).join(','),
-            '--vpk_decompile',
-            '-o',
-            overviewExport + '/',
-          ],
-          `${map}-overview`,
-        );
-        const prepared = join(stage, 'prepared');
-        await prepareOverview({
-          image: join(overviewExport, 'panorama/images/overheadmaps', `${map}_radar_psd.png`),
-          overview: join(overviewExport, 'resource/overviews', `${map}.txt`),
-          output: prepared,
-          map,
-          version: assetVersion,
-          source: sourceDescription,
-        });
-        const preparedEnvironment = await environment.prepare(source, prepared);
-        source = preparedEnvironment.mergedInput;
-        const atmosphere = await (adapters.prepareAtmosphere || prepareInstalledAtmosphere)({
-          map,
-          input: source,
-          stage,
-          prepared,
-          assetVersion,
-          game,
-          s2v: tools.s2v,
-          index,
-          download,
-          execute,
-          packageFiles: [
-            packageFile,
-            ...(preparedEnvironment.report.selectedPrefab
-              ? [preparedEnvironment.report.selectedPrefab]
-              : []),
-            'game/csgo/pak01_dir.vpk',
-            'game/core/pak01_dir.vpk',
-          ],
-        });
-        source = atmosphere.path;
-        await options.onPhase?.('lighting');
-        const baked = await (adapters.prepareBakedLighting || prepareInstalledBakedLighting)({
-          map,
-          packageFile,
-          game,
-          stage,
-          index,
-          execute,
-          s2v: tools.s2v,
-          input: source,
-          sunChannel: environment.sunChannel,
-          hasHeadroom: (needed) => hasFreeReserve(cache, output, needed),
-        });
-        const glass = await (adapters.prepareGlass || prepareInstalledGlass)({
-          input: source,
-          stage,
-          execute,
-          s2v: tools.s2v,
-          getBanks: async () => {
-            const names = [
-              packageFile,
-              ...(preparedEnvironment.report.selectedPrefab
-                ? [preparedEnvironment.report.selectedPrefab]
-                : []),
-              'game/csgo/pak01_dir.vpk',
-              'game/core/pak01_dir.vpk',
-            ];
-            const banks = [];
-            for (const name of names) banks.push(await index(join(game, name)));
-            return banks;
-          },
-        });
-        const waterArgs = await writeWaterBindings(stage, shaderPreflights);
-        // The packer checks each actual encoded tier plus the reserve immediately
-        // before its exclusive write. Source PNG sizes do not predict GLB bytes.
-        await checkStorage(cache, output);
-        // Separate tiers so the kernel can reclaim the GLB and codec working
-        // sets before the next tier starts its geometry transforms.
-        for (const tier of ['desktop', 'mobile', 'compact']) {
-          await options.onPhase?.(tier);
-          await execute(
-            process.execPath,
-            [
-              '--expose-gc',
-              prepareMapScript,
-              '--input',
-              source,
-              '--output',
-              prepared,
-              '--map',
-              map,
-              '--asset-version',
-              assetVersion,
-              '--only-tier',
-              tier,
-              ...(tier === 'compact'
-                ? []
-                : ['--auto-lighting', ...baked.args, ...glass.args, ...waterArgs]),
-            ],
-            `${map}-pack-${tier}`,
-          );
+          const records = dependencyBatch(closure, map, { packageFile });
+          if (!records.length) return closure;
+          if (wave === steamAssetLimits.waves)
+            throw Error('Native dependency scan exceeded its wave limit.');
+          await download(records, `${map}-dependencies-${wave}`);
         }
-        await options.onPhase?.('publishing');
-        const lightingTiers = {};
-        for (const tier of ['desktop', 'mobile']) {
-          const path = join(prepared, map, tier, 'manifest.json');
-          await regular(path, 16384);
-          const { bakedLighting, vertexLighting, lightingFallback, worldMaterials } = JSON.parse(
-            await readFile(path, 'utf8'),
-          );
-          lightingTiers[tier] = {
-            path: bakedLighting ? 'lightmap_v8_2' : vertexLighting ? 'vertex' : 'pbr',
-            ...(bakedLighting ?? { reason: lightingFallback ?? baked.proof.reason }),
-            ...(vertexLighting ? { vertexLighting } : {}),
-            worldMaterials,
-          };
-        }
-        const provenance = {
-          schemaVersion: 1,
-          app: STEAM_APP,
-          depot: STEAM_DEPOT,
-          manifest: plan.manifest,
-          map,
-          assetVersion,
-          tools: tools.provenance,
-          sourceVpks: closure.sources,
-          unknownNonRenderingResources: closure.unknown.filter(
-            (resource) => resource !== `${environment.skyMap}_c`,
-          ),
-          resolvedExternalSky: environment.skyMap,
-          shaderPreflights,
-          sourceImagePreparation: sourceImages,
-          bakedLighting: { source: baked.proof, tiers: lightingTiers },
-          ...(glass.proof.length ? { sourceGlass: glass.proof } : {}),
-          resourceCoverage: {
-            complete:
-              closure.unknown.filter((resource) => resource !== `${environment.skyMap}_c`)
-                .length === 0 &&
-              preparedEnvironment.report.unknownNonRenderingResources.length === 0,
-            remainingUnsupported: [
-              ...new Set([
-                ...closure.unknown.filter((resource) => resource !== `${environment.skyMap}_c`),
-                ...preparedEnvironment.report.unknownNonRenderingResources,
-              ]),
-            ],
-          },
-          environment: preparedEnvironment.report,
-          atmosphere: atmosphere.report,
-          caveats: [
-            'Sky landscape is merged offline and the prepared sky uses recorded settings; lighting, HDR range, game scripts and material blending still differ from Source 2.',
-            'Operator must verify coordinate alignment and browser performance for this map version.',
-          ],
-          downloads,
-          selectedBytes,
-          preparedAt: new Date().toISOString(),
-        };
-        progress('publish', { map });
-        installed.push(await publishPreparedMap(prepared, output, map, assetVersion, provenance));
-        await writeFile(
-          join(runRoot, 'installation.json'),
-          JSON.stringify(
-            {
-              schemaVersion: 1,
-              app: STEAM_APP,
-              depot: STEAM_DEPOT,
-              manifest: plan.manifest,
-              installed,
-              downloads,
-              selectedBytes,
-            },
-            null,
-            2,
-          ) + '\n',
-          { mode: 0o600 },
+      };
+      const closure = await scanPackage(main, overviewResources(map));
+      for (const resource of closure.unknown.filter(
+        (name) => name.startsWith('maps/prefabs/') && name.endsWith('.vmap_c'),
+      )) {
+        const { file } = skyPrefabPackage(map, resource.slice(0, -2));
+        permittedPrefabs.add(file);
+        const listing = await execute(
+          tools.downloader,
+          ['ls', STEAM_APP, `${STEAM_DEPOT}:${plan.manifest}`, '--anonymous', '--', file],
+          'prefab-preflight',
         );
-      } finally {
-        await rm(stage, { recursive: true, force: true });
+        const pinned = parseSteamListing(listing.stdout, [file]);
+        if (pinned.manifest !== plan.manifest) throw Error('Sky prefab manifest changed.');
+        const entry = pinned.files[0];
+        await download([{ selector: file, bytes: entry.bytes }], 'sky-prefab');
+        if ((await fileHash(join(game, file), 'sha1', entry.bytes)) !== entry.sha1)
+          throw Error('Sky prefab digest differs.');
+        await scanPackage(file, []);
       }
+      const actual = await fileHash(join(game, main), 'sha256', steamAssetLimits.selectedBytes);
+      await installLocalWorld({
+        ...options,
+        maps: [map],
+        manifest: plan.manifest,
+        gameRoot: join(game, 'game'),
+        expectedMapHashes: { [map]: actual },
+        onSourceVerified: undefined,
+        cache,
+        output,
+      });
+      installed.push({ map, assetVersion });
     }
     progress('complete', { maps, selectedBytes });
     return {

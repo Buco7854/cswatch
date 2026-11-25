@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  validateDemoMapAssets,
+  validateDemoMapAssets as validateNative,
   mapAcquisitionMessage,
   readMapJSON,
   mapAcquisitionKey,
@@ -9,6 +9,8 @@ import {
 const map = 'de_qa',
   pack = 'a'.repeat(64),
   empty = { model: null, mobile: null, overview: null, environment: null };
+const validateDemoMapAssets = (value: unknown, name: string) =>
+  validateNative(value, name, 'test-demo');
 const pending = {
   resolution: { status: 'approved', packId: pack },
   canAcquire: true,
@@ -18,8 +20,8 @@ const pending = {
   assets: empty,
 };
 const full = {
-  model: `/api/map-packs/${pack}/models/${map}/desktop/scene.glb`,
-  mobile: `/api/map-packs/${pack}/models/${map}/mobile/scene.glb`,
+  model: `/api/demos/test-demo/world/${pack}/${'b'.repeat(64)}/map.json`,
+  mobile: null,
   overview: {
     image: `/api/map-packs/${pack}/maps/${map}/overview.png`,
     origin: { x: -3230, y: 1713 },
@@ -54,7 +56,7 @@ test('demo discovery accepts only matching immutable complete packs and explicit
       ...full,
       overview: { ...full.overview, image: full.overview.image.replace(pack, 'b'.repeat(64)) },
     },
-    { ...full, mobile: null },
+    { ...full, overview: null },
   ])
     assert.throws(() => validateDemoMapAssets({ ...ready, assets }, map));
   assert.throws(() => validateDemoMapAssets({ ...ready, packId: 'b'.repeat(64) }, map));
@@ -67,7 +69,7 @@ test('demo discovery accepts only matching immutable complete packs and explicit
       acquisition: 'disabled',
       verification: 'version-unverified',
       packId: null,
-      assets: { ...empty, model: '/map-assets/de_qa/desktop/scene.glb' },
+      assets: { ...empty, model: `/api/demos/test-demo/world/manual/${'b'.repeat(64)}/map.json` },
     },
     map,
   );
@@ -285,8 +287,8 @@ test('latest official readiness never accepts manual URLs, incomplete assets or 
     { packId: 'b'.repeat(64) },
     { verification: 'operator-approved' },
     { verification: 'version-unverified' },
-    { assets: { ...full, mobile: null } },
-    { assets: { ...full, environment: null } },
+    { assets: { ...full, overview: null } },
+    { assets: { ...full, model: null } },
     { assets: { ...full, model: '/map-assets/de_qa/desktop/scene.glb' } },
   ])
     assert.throws(() => validateDemoMapAssets({ ...latestReady, ...change }, map));

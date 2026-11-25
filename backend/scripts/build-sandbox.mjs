@@ -31,6 +31,7 @@ for (const name of [
   'agent-gait-history',
   'equipment-key',
   'map-grade',
+  'native-world-format',
 ])
   copyFileSync(resolve(root, `../shared/${name}.mjs`), resolve(root, `dist/${name}.mjs`));
 if (process.platform !== 'linux') {

@@ -11,6 +11,19 @@ static class Export
         throw new FileNotFoundException("Cannot locate cs2export source checkout");
     }
 
+    public static void Extract(string game, string map, string manifest, string hash, string destination, bool overview)
+    {
+        if (!System.Text.RegularExpressions.Regex.IsMatch(map, @"\A[a-z][a-z0-9_]{1,79}\z") ||
+            !ulong.TryParse(manifest, out var manifestId) || manifestId == 0 || manifestId.ToString() != manifest)
+            throw new InvalidDataException("Invalid map or manifest");
+        using var vpk = File.OpenRead(Path.Combine(game, "csgo", "maps", map + ".vpk"));
+        if (Convert.ToHexStringLower(SHA256.HashData(vpk)) != hash)
+            throw new InvalidDataException("Map VPK differs from verified source hash");
+        using var store = new ResourceStore(game, map);
+        new NativeScene(store, game, destination, map, manifest).Extract();
+        if (overview) store.WriteOverview(map, destination);
+    }
+
     public static void Run(string game, string destination)
     {
         var output = Path.TrimEndingDirectorySeparator(Path.GetFullPath(destination));
@@ -19,12 +32,6 @@ static class Export
             throw new IOException("Choose an output directory outside the game root");
         if (Directory.Exists(output) || File.Exists(output))
             throw new IOException("Destination already exists: " + output);
-        using (var vpk = File.OpenRead(Path.Combine(input, "csgo/maps/de_mirage.vpk")))
-        {
-            const string pinned = "e66cdf1ae6a976f6f6ba510a2addd04b25a4c1cfd811f51f1ef13f0954e6e350";
-            if (Convert.ToHexStringLower(SHA256.HashData(vpk)) != pinned)
-                throw new InvalidDataException("Mirage VPK does not match Steam manifest 8225060435969537482");
-        }
         Directory.CreateDirectory(Path.GetDirectoryName(output)!);
         var stage = Path.Combine(Path.GetDirectoryName(output)!, ".cs2export-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(stage);
@@ -32,8 +39,7 @@ static class Export
         {
             var source = Directory.CreateDirectory(Path.Combine(stage, "source")).FullName;
             var pack = Directory.CreateDirectory(Path.Combine(stage, "pack")).FullName;
-            using (var store = new ResourceStore(input, "de_mirage"))
-                new NativeScene(store, input, source).Extract();
+            Extract(input, "de_mirage", "8225060435969537482", "e66cdf1ae6a976f6f6ba510a2addd04b25a4c1cfd811f51f1ef13f0954e6e350", source, overview: false);
             var args = new ProcessStartInfo("node") { UseShellExecute = false };
             args.ArgumentList.Add(Path.Combine(ToolDirectory(), "pack.mjs"));
             args.ArgumentList.Add(source);
