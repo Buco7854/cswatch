@@ -2,11 +2,12 @@
 // Phase one writes the desktop tier and the phone ASTC plan. finish.mjs completes the pack.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { deflateSync } from 'node:zlib';
 import { MeshoptEncoder } from '../../frontend/node_modules/meshoptimizer/meshopt_encoder.js';
 import { geometry, modelTriangles, stride } from './geometry.mjs';
 import { vertexArchive } from './quantize.mjs';
 import { simplifierReady, simplifyRange } from './simplify.mjs';
-import { packFiles } from './pack-files.mjs';
+import { packFiles, packPayload } from './pack-files.mjs';
 import { materialCap, phonePlan } from './texture-tiers.mjs';
 import { overviewCalibration, overviewRaster, playableCalibration } from './overview.mjs';
 
@@ -63,9 +64,9 @@ for (const [name, texture] of Object.entries(scene.textures)) {
 const ids = new Map(Object.keys(scene.materials).map((name, index) => [name, index]));
 const MiB = 1024 ** 2;
 // Per-map download budgets: 100 MB desktop and 70 MB phone. Geometry is shared by both tiers, so it
-// may take 45% of the phone plan; estimates use the measured 8.0 bytes per packed triangle.
-// de_dust2 packed 6% above its desktop estimate, so the plan keeps 10% in reserve below 95.4 MiB.
-const desktopBudget = 86 * MiB,
+// may take 45% of the phone plan at an assumed 8.5 bytes per triangle. The desktop estimate
+// measures every payload with the writer's packing, so it keeps 5% below 95.4 MiB for paging.
+const desktopBudget = 91 * MiB,
   geometryAllowance = 0.45 * 64.5 * MiB,
   bytesPerTriangle = 8.5;
 const roles = {
@@ -240,7 +241,19 @@ const desktopPlans = [
   { target: 0.75, max: 256, irradiance: 1024, shadow: 1024, skyLightmap: 512 },
   { target: 0.75, max: 256, irradiance: 1024, shadow: 1024, skyLightmap: 512, cube: 64 },
 ];
-const wireRatio = { textures: 0.8, lightmaps: 0.4, cubemaps: 1, sky: 0.5, probes: 0.6 };
+// Each texture level's stored size is measured once with the writer's own packing, so plans are
+// chosen on measured bytes rather than category ratios.
+const packedLevels = new Map();
+function packedLevel(texture, level) {
+  const key = texture.file + ':' + level.offset;
+  let size = packedLevels.get(key);
+  if (size === undefined) {
+    const bytes = read(texture.file).subarray(level.offset, level.offset + level.size);
+    size = packPayload(bytes, texture.format).bytes.length;
+    packedLevels.set(key, size);
+  }
+  return size;
+}
 const mainWorld = 'maps/' + scene.map + '/';
 function texturePlanCaps(plan) {
   const caps = new Map();
@@ -260,18 +273,19 @@ function capFor(name, category, plan, caps) {
   }
   return category === 'textures' ? (caps.get(name) ?? Math.min(256, plan.max)) : Infinity;
 }
+const geometryWire = deflateSync(archive.finish()).length;
 function desktopEstimate(plan) {
   const caps = texturePlanCaps(plan);
-  // Encoded vertex streams lose about 14% more to deflate; indices cost about 0.35 bytes each
-  // (de_inferno: 45.7 MB of streams for 53.4 MB encoded, 1.4 MB for 12.1M indices).
-  let bytes = archive.size() * 0.86 + triangles * 3 * 0.12;
+  // Vertex streams are measured after deflate; indices cost about 0.12 bytes each (de_inferno:
+  // 1.4 MB for 12.1M indices).
+  let bytes = geometryWire + triangles * 3 * 0.12;
   for (const [name, texture] of Object.entries(scene.textures)) {
     const category = scene.files[texture.file].category;
     const cap = capFor(name, category, plan, caps);
     let kept = texture.levels.filter((level) => Math.max(level.w, level.h) <= cap);
     if (!kept.length) kept = texture.levels.slice(0, 1);
     if (name.endsWith('/direct_light_shadows.vtex')) kept = kept.slice(-1);
-    bytes += kept.reduce((n, level) => n + level.size, 0) * (wireRatio[category] ?? 1);
+    bytes += kept.reduce((n, level) => n + packedLevel(texture, level), 0);
   }
   return bytes;
 }

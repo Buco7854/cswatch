@@ -9,26 +9,30 @@ const laneBytes = (format) =>
   ({ DXT1: 8, DXT5: 16, ATI1N: 8, ATI2N: 16, BC6H: 16, BC7: 16 })[format] ??
   (/^ASTC\d+x\d+$/.test(format ?? '') ? 16 : 0);
 
+/** The stored bytes and lane packing for a payload: plain or block-lane deflate when smaller. */
+export function packPayload(bytes, format) {
+  let packing;
+  if (bytes.length >= 1024) {
+    const stride = laneBytes(format);
+    const original = bytes;
+    for (const lanes of stride ? [1, stride] : [1]) {
+      const packed = deflateSync(lanes === 1 ? original : transposeBlocks(original, lanes, false), {
+        level: 6,
+      });
+      if (packed.length + 64 < bytes.length) {
+        bytes = packed;
+        packing = lanes;
+      }
+    }
+  }
+  return { bytes, packing };
+}
+
 export function packFiles(out, files = {}) {
   function store(bytes, category, format) {
     const decodedSize = bytes.length;
     let packing;
-    if (bytes.length >= 1024) {
-      const stride = laneBytes(format);
-      const original = bytes;
-      for (const lanes of stride ? [1, stride] : [1]) {
-        const packed = deflateSync(
-          lanes === 1 ? original : transposeBlocks(original, lanes, false),
-          {
-            level: 6,
-          },
-        );
-        if (packed.length + 64 < bytes.length) {
-          bytes = packed;
-          packing = lanes;
-        }
-      }
-    }
+    ({ bytes, packing } = packPayload(bytes, format));
     const sha256 = createHash('sha256').update(bytes).digest('hex'),
       file = sha256 + '.bin';
     if (!files[file]) {
