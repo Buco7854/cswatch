@@ -71,13 +71,15 @@ export function compositor(renderer: WebGLRenderer, native: NativeRenderer) {
     if (!fresh.length) return;
     try {
       renderer.compile(freshScene, camera, scene);
-      // Keep every linked variant for the renderer's lifetime (a bounded set of
-      // shader variants). A corpse's instance-owned materials are disposed at
-      // the round's end; without this lease the next round's first death would
-      // link the same program again mid-playback.
+      // Keep each linked built-in material variant for the renderer's lifetime
+      // (a bounded set). A corpse's instance-owned materials are disposed at the
+      // round's end; without this lease the next round's first death would link
+      // the same program again mid-playback. Custom shader programs are keyed by
+      // shader-cache entries that are renumbered once released, so they are not kept.
       for (const object of fresh) {
         const material = (object as Mesh).material;
         for (const entry of Array.isArray(material) ? material : [material]) {
+          if ((entry as Material & { isShaderMaterial?: boolean }).isShaderMaterial) continue;
           const program = (renderer.properties.get(entry) as { currentProgram?: LinkedProgram })
             .currentProgram;
           if (program && !retained.has(program)) {
