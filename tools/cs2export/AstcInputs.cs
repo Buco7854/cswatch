@@ -126,7 +126,8 @@ static class AstcInputs
             {
                 var entry = levels[level]!;
                 int w = (int)entry["w"]!, h = (int)entry["h"]!, index = 0;
-                if (w is < 1 or > 4096 || h is < 1 or > 4096) throw new InvalidDataException("Phone texture extent");
+                // Baked lighting keeps its shipped extent; Valve ships lightmaps up to 8192.
+                if (w is < 1 or > 8192 || h is < 1 or > 8192) throw new InvalidDataException("Phone texture extent");
                 foreach (var source in entry["slices"]!.AsArray())
                 {
                     var file = (string)source!["file"]!;

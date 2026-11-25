@@ -49,6 +49,18 @@ export async function createRenderer(
 ) {
   const tier = capabilities(gl, forcedTier);
   const textures = tier === 'phone' ? manifest.phone : manifest;
+  // Baked lighting keeps its shipped resolution (up to 8192), so a device whose texture limits
+  // are smaller gets the 2D map instead of a failed allocation.
+  const limit = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number,
+    layerLimit = gl.getParameter(gl.MAX_ARRAY_TEXTURE_LAYERS) as number;
+  for (const texture of [...textures.arrays, ...Object.values(textures.specials)]) {
+    const top = 'mips' in texture ? texture.mips.at(-1) : texture.levels.at(-1);
+    const layers = 'textures' in texture ? texture.textures.length : (top?.d ?? 1);
+    if (top && (Math.max(top.w, top.h) > limit || layers > layerLimit))
+      throw Error(
+        `This device's ${limit}-pixel, ${layerLimit}-layer texture limit is below this map's ${Math.max(top.w, top.h)}-pixel, ${layers}-layer texture`,
+      );
+  }
   const resources = worldResources(gl);
   const abort = () => resources.dispose();
   signal?.throwIfAborted();
