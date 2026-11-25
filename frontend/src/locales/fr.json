@@ -388,6 +388,7 @@
   "Incendiary grenade": "Grenade incendiaire",
   "Decoy grenade": "Grenade leurre",
   "Utility": "Grenade",
+  "review_tab_utility": "Grenades",
   "{{action}}: {{state}}": "{{action}} : {{state}}",
   "Recorded inputs": "Commandes enregistrées",
   "Input actions were not recorded for this player at this moment.": "Les commandes de ce joueur n’ont pas été enregistrées à cet instant.",

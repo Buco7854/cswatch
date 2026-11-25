@@ -388,6 +388,7 @@
   "Incendiary grenade": "Incendiary grenade",
   "Decoy grenade": "Decoy grenade",
   "Utility": "Utility",
+  "review_tab_utility": "Utility",
   "{{action}}: {{state}}": "{{action}}: {{state}}",
   "Recorded inputs": "Recorded inputs",
   "Input actions were not recorded for this player at this moment.": "Input actions were not recorded for this player at this moment.",

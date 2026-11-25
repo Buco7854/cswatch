@@ -125,7 +125,7 @@ function ReviewFeed({
               tabIndex={activeTab === tab ? 0 : -1}
               onClick={() => onTabChange(tab)}
             >
-              {t(tab === 'kills' ? 'Kills' : 'Utility')}{' '}
+              {t(tab === 'kills' ? 'Kills' : 'review_tab_utility')}{' '}
               <span className="num">{tab === 'kills' ? kills.length : utilities.length}</span>
             </button>
           ))}
