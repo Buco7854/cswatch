@@ -8,8 +8,9 @@ uniform sampler2DArray skyMap;
 uniform vec3 eye;
 uniform float gain;
 uniform float hdrRange;
+uniform vec3 background;
 void main() {
   vec4 worldPoint = unproject * vec4(uv * 2. - 1., .5, 1.);
   vec4 value = textureLod(skyMap, cubeUv(worldPoint.xyz / worldPoint.w - eye, 0), 0.);
-  pixel = vec4((hdrRange > 0. ? (exp2(value.rgb * 10.) - 1.) / 1023. * hdrRange : value.rgb) * gain, 1.);
+  pixel = vec4((hdrRange > 0. ? (exp2(value.rgb * 10.) - 1.) / 1023. * hdrRange : value.rgb) * gain + background, 1.);
 }

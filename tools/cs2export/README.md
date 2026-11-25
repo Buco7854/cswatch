@@ -48,11 +48,13 @@ Open the printed loopback URL. The map directory can also be served as static fi
 Without an official overview, `overview.mjs` rasterizes upward-facing surfaces below the highest spawn or objective plus 320 inches, shaded by height and slope, into a 1024-pixel PNG. Its calibration (`pos_x`, `pos_y`, `scale`, Valve's contract) squares the spawn, objective and buy-zone entities widened by 25% plus 512 inches. If only the radar image is missing it renders against the official calibration. On Mirage, rendered with the official calibration, it covered 98.5% of the official radar's pixels. Maps whose post-processing files are missing use VRF's default filmic curve without bloom or grading.
 
 ```sh
-node --test format.test.mjs texture-tiers.test.mjs overview.test.mjs
+node --test format.test.mjs texture-tiers.test.mjs overview.test.mjs simplify.test.mjs coverage.test.mjs
 node capture.mjs "$NEW_MAP_DIR" "$CAPTURE_DIR" poses.json
 ```
 
-Fog and the 3D prefab have independent per-frame switches. The lab accepts `&sky3d=0&fog=0` and the capture script reads boolean `skybox3D` and `fog` pose fields. `CS2_LAB_TIER=phone` captures the ASTC tier.
+`node coverage.mjs "$NEW_MAP_DIR" "$OVERVIEW_DIR" "$OUT"` checks geometry against the official radar: it renders the pack top-down with an orthographic camera framing the overview calibration (3D sky and fog off, material-ID view) and reports the share of the radar's opaque (playable) pixels that carry a rendered material, with a `coverage.png` marking uncovered ones in magenta. On manifest 5924479096069937098 de_inferno measured 99.95% and de_debris 100%. Areas outside the playable radar, such as building blocks that are open from above, are not counted; de_inferno's are open in Valve's compiled world as well.
+
+Fog and the 3D prefab have independent per-frame switches. The lab accepts `&sky3d=0&fog=0` and the capture script reads boolean `skybox3D` and `fog` pose fields, an optional display-referred `background` colour drawn instead of the sky (tactical views use a neutral `[0.003, 0.003, 0.003]`, about #1e1e1e), an orthographic half-height `ortho` in inches and a `view` render mode (7 is material ID). `CS2_LAB_TIER=phone` captures the ASTC tier.
 
 Capture builds the lab entry in a temporary directory, serves it on loopback and uses the frontend's Playwright Chromium with ANGLE/SwiftShader, which exposes both BC and ASTC. Install that lockfile's Chromium beforehand if needed. The default sizes are 720×480 and 1280×720. Two final integer arguments select a single size. Each screenshot has a matching record in the output `poses.json`. Draws count WebGL submissions, including sky and fullscreen passes. GPU texture bytes are logical texel/block allocations including HDR and grading targets. CPU submission and wall time to a signalled GL fence appear separately.
 

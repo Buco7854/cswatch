@@ -54,6 +54,7 @@ try {
   const error = await page.locator('canvas').getAttribute('data-error');
   if (error) throw Error(error);
   const results = [];
+  const initialView = await page.evaluate(() => Number(document.querySelector('select').value));
   const timing = await page.evaluate(() => window.worldLab.loadTimes);
   await writeFile(
     join(output, 'load.json'),
@@ -64,12 +65,20 @@ try {
   for (const [width, height] of sizes) {
     await page.setViewportSize({ width, height });
     for (const p of poses) {
-      const previous = await page.evaluate((p) => {
-        const tick = window.worldLab.tick;
-        window.worldLab.setViewOptions({ skybox3D: p.skybox3D ?? true, fog: p.fog ?? true });
-        window.worldLab.setPose(p);
-        return tick;
-      }, p);
+      const previous = await page.evaluate(
+        ([p, view]) => {
+          const tick = window.worldLab.tick;
+          window.worldLab.setViewOptions({
+            skybox3D: p.skybox3D ?? true,
+            fog: p.fog ?? true,
+            background: p.background,
+          });
+          window.worldLab.setView(p.view ?? view);
+          window.worldLab.setPose(p);
+          return tick;
+        },
+        [p, initialView],
+      );
       await page.waitForFunction(
         (t) => window.worldLab.tick > t && window.worldLab.completionMs > 0,
         previous,

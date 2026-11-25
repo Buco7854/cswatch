@@ -72,6 +72,7 @@ async function start() {
     canvas.dataset.error = String(error);
   }
 
+  let background: ViewOptions['background'];
   let raf = 0,
     last = performance.now(),
     tick = 0;
@@ -95,7 +96,11 @@ async function start() {
     }
     try {
       const frameStart = performance.now(),
-        s = render(pose, Number(select.value), { skybox3D: skybox.checked, fog: fog.checked });
+        s = render(pose, Number(select.value), {
+          skybox3D: skybox.checked,
+          fog: fog.checked,
+          background,
+        });
       tick++;
       stats.textContent = `${s.draws} ${french ? 'appels' : 'draws'} · ${s.triangles.toLocaleString()} △ · ${(s.textureBytes / 1048576).toFixed(1)} MiB · CPU ${s.submissionMs.toFixed(1)} ms`;
       const sample = {
@@ -108,10 +113,15 @@ async function start() {
         setViewOptions: (options: ViewOptions) => {
           if (options.skybox3D !== undefined) skybox.checked = options.skybox3D;
           if (options.fog !== undefined) fog.checked = options.fog;
+          background = options.background;
+          request();
+        },
+        setView: (mode: number) => {
+          select.value = String(mode);
           request();
         },
         setPose: (p: Pose) => {
-          Object.assign(pose, p);
+          Object.assign(pose, p, { ortho: p.ortho });
           request();
         },
       };

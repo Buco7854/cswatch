@@ -29,11 +29,15 @@ export interface ViewOptions {
   skybox3D?: boolean;
   fog?: boolean;
   nearFade?: number;
+  /** Display-referred linear colour drawn instead of the sky, e.g. behind a tactical view. */
+  background?: readonly [number, number, number];
 }
 export interface Pose {
   pos: number[];
   ang: number[];
   fov: number;
+  /** Orthographic half-height in inches; the frustum is then parallel and `fov` is unused. */
+  ortho?: number;
 }
 const rad = Math.PI / 180;
 export async function createRenderer(
@@ -454,6 +458,11 @@ export async function createRenderer(
     const multiCounts = new Int32Array(8192),
       multiOffsets = new Int32Array(8192);
     let renderedFrames = 0;
+    // Display-referred overlays (x-ray shells) scale by this so the fixed exposure and
+    // white point of the map grade return their authored colour.
+    const displayScale =
+      (2.8 * params.tonemap.m_flWhitePoint) /
+      (2.8 * exposure * 2 ** (params.tonemap.m_flExposureBias - 0.4));
     function render(pose: Pose, mode: number, options: ViewOptions = {}) {
       const start = performance.now();
       const composed = options.composed;
@@ -477,6 +486,18 @@ export async function createRenderer(
           ),
       );
       camera.updateProjectionMatrix();
+      if (pose.ortho) {
+        const half = pose.ortho;
+        camera.projectionMatrix.makeOrthographic(
+          -half * camera.aspect,
+          half * camera.aspect,
+          half,
+          -half,
+          camera.near,
+          camera.far,
+        );
+        camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
+      }
       camera.updateMatrixWorld();
       viewProjection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
       if (composed) {
@@ -500,7 +521,11 @@ export async function createRenderer(
       sky.use();
       gl.uniformMatrix4fv(sky.u('unproject'), false, viewProjection.clone().invert().elements);
       gl.uniform3fv(sky.u('eye'), pose.pos);
-      gl.uniform1f(sky.u('gain'), mode === 7 ? 0 : skyGain);
+      gl.uniform1f(sky.u('gain'), mode === 7 || options.background ? 0 : skyGain);
+      gl.uniform3fv(
+        sky.u('background'),
+        mode === 7 ? [0, 0, 0] : (options.background ?? [0, 0, 0]).map((c) => c * displayScale),
+      );
       gl.uniform1i(sky.u('skyMap'), 12);
       gl.uniform1f(sky.u('hdrRange'), skyRange);
       bind(12, arrayTarget, skyTexture ?? null);
@@ -807,14 +832,10 @@ export async function createRenderer(
         multiDraw: Boolean(ext),
       };
     }
-    const tone = params.tonemap;
     return {
       render,
       updateEntity,
-      // Display-referred overlays (x-ray shells) scale by this so the fixed exposure and
-      // white point of the map grade return their authored colour.
-      displayScale:
-        (2.8 * tone.m_flWhitePoint) / (2.8 * exposure * 2 ** (tone.m_flExposureBias - 0.4)),
+      displayScale,
       environments,
       geometry: { vertices, indices },
       dispose() {

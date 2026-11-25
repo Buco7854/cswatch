@@ -24,6 +24,10 @@ export interface FramePasses {
   equipment?: (render: (scene: Scene, camera: PerspectiveCamera) => void) => void;
 }
 
+// Tactical views hide the sky; a neutral dark grey (display-referred, independent of the theme)
+// fills the space around the map instead of the sky cube's lower hemisphere.
+const tacticalBackground = [0.003, 0.003, 0.003] as const;
+
 export function compositor(renderer: WebGLRenderer, native: NativeRenderer) {
   const gl = renderer.getContext() as WebGL2RenderingContext;
   // Actor x-ray shells test the stencil mask written by their own bodies.
@@ -98,6 +102,7 @@ export function compositor(renderer: WebGLRenderer, native: NativeRenderer) {
       return native.render({ pos, ang: [0, 0], fov: camera.fov }, 0, {
         skybox3D: !tactical,
         fog: !tactical,
+        background: tactical ? tacticalBackground : undefined,
         nearFade,
         shadow,
         composed: {
