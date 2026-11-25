@@ -1,5 +1,6 @@
 import type { GrenadePathsMode } from './grenade-paths';
 import type { Playback, Frame } from './types';
+import type { PoseTiming } from './player-pose';
 import { defaultCrosshairStyle, normalizeCrosshairStyle, type CrosshairStyle } from './crosshair';
 export function playbackBounds(data: Playback) {
   if (data.worldBounds) return data.worldBounds;
@@ -22,10 +23,15 @@ export function playbackBounds(data: Playback) {
     }
   return bounds;
 }
-export function frameAt(
-  data: Pick<Playback, 'frames'>,
-  tick: number,
-): { index: number; previous?: Frame; frame: Frame; next: Frame; alpha: number } {
+export type FrameSpan = {
+  index: number;
+  previous?: Frame;
+  frame: Frame;
+  next: Frame;
+  following?: Frame;
+  alpha: number;
+};
+export function frameAt(data: Pick<Playback, 'frames'>, tick: number): FrameSpan {
   let lo = 0,
     hi = data.frames.length - 1;
   while (lo < hi) {
@@ -40,10 +46,36 @@ export function frameAt(
     previous: data.frames[lo - 1],
     frame,
     next,
+    following: lo + 2 < data.frames.length ? data.frames[lo + 2] : undefined,
     alpha:
       next.tick === frame.tick
         ? 0
         : Math.max(0, Math.min(1, (tick - frame.tick) / (next.tick - frame.tick))),
+  };
+}
+const crossesRound = (data: Pick<Playback, 'rounds'>, from: number, to: number) =>
+  data.rounds.some((round) => round.tick > from && round.tick <= to);
+/** Interpolation timing for one actor, with the recorded samples on either side
+ * of the interval when no round boundary separates them. */
+export function poseTimingAt(
+  data: Pick<Playback, 'rounds' | 'tickRate'>,
+  span: FrameSpan,
+  id: string,
+): PoseTiming {
+  const { previous, frame, next, following } = span;
+  const sample = (at: Frame | undefined) => {
+    const pose = at?.players.find((player) => player.id === id);
+    return pose && { tick: at!.tick, pose };
+  };
+  return {
+    fromTick: frame.tick,
+    nextTick: next.tick,
+    tickRate: data.tickRate,
+    roundBoundary: crossesRound(data, frame.tick, next.tick),
+    before:
+      previous && !crossesRound(data, previous.tick, frame.tick) ? sample(previous) : undefined,
+    after:
+      following && !crossesRound(data, next.tick, following.tick) ? sample(following) : undefined,
   };
 }
 export type DeadTimeFilter = 'all' | 'freeze' | 'timeout';

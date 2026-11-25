@@ -4,7 +4,7 @@ import { Group, Vector2, Vector3, type InterleavedBufferAttribute } from 'three'
 import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
-import { frameAt } from '../playback';
+import { frameAt, poseTimingAt } from '../playback';
 import { playerPose } from '../player-pose';
 import { firstPersonView } from '../pov-camera';
 import { recentWeaponShot } from '../weapon-fire';
@@ -23,22 +23,15 @@ import { useTracerEvidence } from './EquipmentFire';
 const maxStreaks = 12;
 
 function viewAt(data: Playback, id: string, at: number) {
-  const { frame, next, alpha } = frameAt(data, at);
-  const from = frame.players.find((player) => player.id === id);
+  const span = frameAt(data, at);
+  const from = span.frame.players.find((player) => player.id === id);
   if (!from?.alive) return;
   return firstPersonView(
     playerPose(
       from,
-      next.players.find((player) => player.id === id),
-      alpha,
-      {
-        fromTick: frame.tick,
-        nextTick: next.tick,
-        tickRate: data.tickRate,
-        roundBoundary: data.rounds.some(
-          (round) => round.tick > frame.tick && round.tick <= next.tick,
-        ),
-      },
+      span.next.players.find((player) => player.id === id),
+      span.alpha,
+      poseTimingAt(data, span, id),
     ),
   );
 }
