@@ -58,3 +58,45 @@ test('original skinned QA actor has genuine weighted native-axis geometry after 
   assert.ok(Math.abs(Math.min(...points.map((point) => point.y)) - 1.02) < 1e-6);
   assert.ok(Math.abs(Math.max(...points.map((point) => point.z)) - 0.15) < 1e-6);
 });
+
+test('cloth agents, their x-ray masks and their corpses share one physical shader setup', async () => {
+  const { Mesh, BoxGeometry, MeshStandardMaterial, MeshPhysicalMaterial, Texture } =
+    await import('../../frontend/node_modules/three/build/three.module.js');
+  const { agentXray } = await import('../../frontend/src/agent-xray.js');
+  const packed = new Texture();
+  const cloth = new MeshStandardMaterial({
+    normalMap: new Texture(),
+    roughnessMap: packed,
+    metalnessMap: packed,
+  });
+  cloth.userData.vmat = {
+    ShaderName: 'csgo_character.vfx',
+    IntParams: { F_CLOTH_SHADING: 1 },
+    FloatParams: { g_flSheenScale: 0.5 },
+    VectorParams: { g_flSheenTintColor: [0.4, 0.4, 0.4, 1] },
+  };
+  const source = new Group();
+  source.add(new Mesh(new BoxGeometry(), cloth));
+  const living = prepareAgentModel(source),
+    corpse = prepareAgentModel(source);
+  const material = (prepared: ReturnType<typeof prepareAgentModel>) =>
+    (prepared.instance.children[0] as InstanceType<typeof Mesh>).material as InstanceType<
+      typeof MeshPhysicalMaterial
+    >;
+  for (const prepared of [living, corpse]) {
+    assert.ok(material(prepared) instanceof MeshPhysicalMaterial);
+    assert.deepEqual(material(prepared).defines, { STANDARD: '', PHYSICAL: '' });
+  }
+  const original = material(living);
+  const xray = agentXray(living.instance);
+  const release = xray.acquire();
+  const mask = material(living);
+  assert.notEqual(mask, original);
+  assert.deepEqual(mask.defines, { STANDARD: '', PHYSICAL: '' });
+  // The mask keeps the packed-sample patch, so it compiles the corpse's program.
+  assert.equal(mask.onBeforeCompile, original.onBeforeCompile);
+  assert.equal(mask.customProgramCacheKey(), material(corpse).customProgramCacheKey());
+  assert.match(mask.customProgramCacheKey(), /:packed-mr$/);
+  release();
+  assert.equal(material(living), original);
+});

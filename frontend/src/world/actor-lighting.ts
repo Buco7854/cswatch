@@ -11,6 +11,12 @@ import {
 import probeShader from './glsl/actor-probes.glsl?raw';
 import type { NativeRenderer } from './renderer';
 
+type ShaderPatch = Pick<Material, 'onBeforeCompile' | 'customProgramCacheKey'>;
+const lightingBase = new WeakMap<
+  ShaderPatch['onBeforeCompile'],
+  { before: ShaderPatch['onBeforeCompile']; key: ShaderPatch['customProgramCacheKey'] }
+>();
+
 export function actorLighting(renderer: WebGLRenderer, native: NativeRenderer) {
   const env = native.environments.find((environment) => !environment.sky)!;
   const wrappers: Texture[] = [];
@@ -33,8 +39,11 @@ export function actorLighting(renderer: WebGLRenderer, native: NativeRenderer) {
   const patched = new Map<Material, () => void>();
   function bind(material: Material) {
     if (!(material instanceof MeshStandardMaterial) || patched.has(material)) return;
-    const before = material.onBeforeCompile,
+    let before = material.onBeforeCompile,
       key = material.customProgramCacheKey;
+    // A clone (an x-ray mask) can carry its source's lighting patch; patch the base once.
+    const base = lightingBase.get(before);
+    if (base) ({ before, key } = base);
     // A disposed material leaves the registry; replays remount many instance materials.
     const forget = () => {
       patched.delete(material);
@@ -80,6 +89,7 @@ export function actorLighting(renderer: WebGLRenderer, native: NativeRenderer) {
         );
     };
     material.customProgramCacheKey = () => key.call(material) + ':native-probes-v2';
+    lightingBase.set(material.onBeforeCompile, { before, key });
     material.needsUpdate = true;
   }
   return {

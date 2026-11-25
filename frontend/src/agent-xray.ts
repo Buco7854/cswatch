@@ -165,6 +165,10 @@ export function agentXray(root: Object3D) {
     let result = masks.get(source);
     if (result) return result;
     result = source.clone();
+    // Material.copy omits shader patches (packed ORM samples, actor lighting).
+    // The mask must draw exactly like its source and share its program.
+    result.onBeforeCompile = source.onBeforeCompile;
+    result.customProgramCacheKey = source.customProgramCacheKey;
     result.stencilWrite = false;
     result.stencilRef = visibleBit;
     result.stencilFunc = AlwaysStencilFunc;

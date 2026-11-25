@@ -38,6 +38,9 @@ export function prepareAgentModel(source: Object3D) {
     // Keep the packed normal, AO, roughness and metal textures. Add the cloth
     // lobe from the trusted Source material parameters using glTF's PBR model.
     MeshStandardMaterial.prototype.copy.call(result, material);
+    // The standard copy replaces the physical defines; every instance, its x-ray
+    // mask and its corpse must compile the same physical shader.
+    result.defines = { STANDARD: '', PHYSICAL: '' };
     result.sheen = Math.max(0, Math.min(1, scale));
     result.sheenColor.fromArray(tint);
     result.sheenColorMap = material.map;
