@@ -44,6 +44,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certifi
     && tar -xf astc.tgz && cmake -S astc-encoder-5.7.1 -B out -DCMAKE_BUILD_TYPE=Release -DASTCENC_ISA_SSE41=ON -DASTCENC_CLI=ON \
     && cmake --build out -j"$(nproc)" && mkdir -p /opt/astcenc \
     && cp out/Source/astcenc-sse4.1 /opt/astcenc/astcenc && cp astc-encoder-5.7.1/LICENSE.txt /opt/astcenc/LICENSE.txt
+# Lightmap mip encoder: Convection Texture Tools (MIT) at a checksum-pinned commit, with the
+# exporter's C ABI wrapper.
+COPY tools/cs2export/native/bcenc.cpp ./
+RUN curl -fsSL https://codeload.github.com/elasota/ConvectionKernels/tar.gz/350416daa4e98f1c17ffc273b134d0120a2ef230 -o cvtt.tgz \
+    && echo "955df000fff2480962509bfbea767bb1c53b5b29883aba94ad832ad42f075803  cvtt.tgz" | sha256sum -c - \
+    && tar -xf cvtt.tgz && mkdir -p /opt/cs2bcenc \
+    && g++ -O2 -fPIC -shared -std=c++11 -DCVTT_SINGLE_FILE -Wl,--no-undefined -IConvectionKernels-350416daa4e98f1c17ffc273b134d0120a2ef230 \
+       -o /opt/cs2bcenc/libcs2bcenc.so ConvectionKernels-350416daa4e98f1c17ffc273b134d0120a2ef230/ConvectionKernels_SingleFile.cpp bcenc.cpp \
+    && cp ConvectionKernels-350416daa4e98f1c17ffc273b134d0120a2ef230/LICENSE.txt /opt/cs2bcenc/LICENSE.txt
 
 FROM node:24-bookworm-slim AS asset-build
 WORKDIR /build
@@ -67,6 +76,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libicu72 util-linux unzip tar gzip && rm -rf /var/lib/apt/lists/*
 ENV DOTNET_ROOT=/opt/dotnet DOTNET_CLI_TELEMETRY_OPTOUT=1 ASTCENC_PATH=/opt/astcenc/astcenc
 COPY --from=astcenc /opt/astcenc /opt/astcenc
+COPY --from=astcenc /opt/cs2bcenc /opt/cs2bcenc
 COPY --from=native-export /opt/dotnet/dotnet /opt/dotnet/dotnet
 COPY --from=native-export /opt/dotnet/host /opt/dotnet/host
 COPY --from=native-export /opt/dotnet/shared /opt/dotnet/shared

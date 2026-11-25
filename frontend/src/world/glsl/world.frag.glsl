@@ -201,8 +201,10 @@ void sampleEnvironment(vec3 localPosition, int cellRow, vec3 viewDirection, vec3
 void sampleBakedLighting(vec3 geometryNormal, vec3 tangentNormal, vec3 volumeLight,
                          float volumeShadow, out vec3 light, out float sunVisibility) {
   if (binding.z == 1) {
-    vec3 irradianceSample = hdr(texture(irradiance, vec3(lightmapUv, irradianceLayer)), hdrRange.x);
-    vec3 directionSample = texture(directional, vec3(lightmapUv, directionLayer)).rgb;
+    // Lightmap mips exist only so a download budget can ship a smaller top level; sampling the
+    // shipped top level keeps neighbouring atlas charts from bleeding together at distance.
+    vec3 irradianceSample = hdr(textureLod(irradiance, vec3(lightmapUv, irradianceLayer), 0.), hdrRange.x);
+    vec3 directionSample = textureLod(directional, vec3(lightmapUv, directionLayer), 0.).rgb;
     vec2 directionXY = directionSample.xy * 2. - 1.;
     const float cap = .99619;
     directionXY *= cap / max(cap, length(directionXY));

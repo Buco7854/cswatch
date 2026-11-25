@@ -281,10 +281,18 @@ sealed class NativeScene(ResourceStore store, string game, string output, string
 
     void StoreTexture(string name, string category, Texture tex)
     {
+        // Valve's chain stops above 4x4 when its smallest shipped level is larger.
+        var partialChain = Math.Min(tex.Width, tex.Height) >> (tex.NumMipLevels - 1) > 4;
         if (category == "lightmaps" && name.EndsWith("/direct_light_shadows.vtex", StringComparison.Ordinal) &&
-            tex.NumMipLevels == 1 && tex.Depth == 1 && tex.Format is VTexFormat.BC7 or VTexFormat.ATI1N)
+            partialChain && tex.Depth == 1 && tex.Format is VTexFormat.BC7 or VTexFormat.ATI1N or VTexFormat.ATI2N)
         {
             StoreShadowLightmap(name, tex);
+            return;
+        }
+        if (category == "lightmaps" && partialChain && tex.Depth == 1 &&
+            tex.Format is VTexFormat.BC6H or VTexFormat.BC7 or VTexFormat.DXT1)
+        {
+            StoreLightmapChain(name, tex);
             return;
         }
         int first = 0;
@@ -310,10 +318,14 @@ sealed class NativeScene(ResourceStore store, string game, string output, string
     {
         int width = tex.Width, height = tex.Height;
         if (width % 4 != 0 || height % 4 != 0) throw new InvalidDataException($"{name} extent {width}x{height}");
-        var source = new byte[tex.CalculateBufferSizeForMipLevel(0)];
-        foreach (var _ in tex.GetEveryMipLevelTexture(source, 0)) { }
+        var source = ShippedLevels(tex)[0].Data;
         var rgba = new byte[width * height * 4];
-        TinyBCSharp.BlockDecoder.Create(tex.Format == VTexFormat.BC7 ? TinyBCSharp.BlockFormat.BC7 : TinyBCSharp.BlockFormat.BC4U)
+        TinyBCSharp.BlockDecoder.Create(tex.Format switch
+        {
+            VTexFormat.BC7 => TinyBCSharp.BlockFormat.BC7,
+            VTexFormat.ATI2N => TinyBCSharp.BlockFormat.BC5U,
+            _ => TinyBCSharp.BlockFormat.BC4U,
+        })
             .Decode(source, width, height, rgba, width, height);
         var red = new byte[width * height];
         for (var i = 0; i < red.Length; i++) red[i] = rgba[i * 4];
@@ -339,6 +351,63 @@ sealed class NativeScene(ResourceStore store, string game, string output, string
         }
         textures.Add(name, new { file = Write("lightmaps", payload.GetBuffer().AsSpan(0, (int)payload.Length)),
             radiance = tex.RadianceCoefficients, format = "ATI1N", flags = (int)tex.Flags, depth = 1, first = 0, levels });
+    }
+
+    // Every shipped level's blocks, largest first; the decoder reuses one buffer per level.
+    static List<(int W, int H, byte[] Data)> ShippedLevels(Texture tex)
+    {
+        var buffer = new byte[tex.CalculateBufferSizeForMipLevel(0)];
+        var shipped = new List<(int W, int H, byte[] Data)>();
+        foreach (var (level, w, h, _, size) in tex.GetEveryMipLevelTexture(buffer, 0))
+            shipped.Add((w, h, buffer.AsSpan(0, size).ToArray()));
+        shipped.Sort((a, b) => b.W.CompareTo(a.W));
+        return shipped;
+    }
+
+    // Valve ships baked lightmaps with no or partial mip chains. Shipped levels keep Valve's blocks; each smaller level is
+    // a box-filtered average re-encoded in the same format, so a download budget can drop levels.
+    void StoreLightmapChain(string name, Texture tex)
+    {
+        var chain = ShippedLevels(tex);
+        var (width, height, original) = chain[^1];
+        var hdr = tex.Format == VTexFormat.BC6H;
+        var format = tex.Format switch { VTexFormat.BC6H => 6, VTexFormat.BC7 => 7, _ => 1 };
+        var decoded = new byte[width * height * (hdr ? 16 : 4)];
+        TinyBCSharp.BlockDecoder.Create(tex.Format switch
+        {
+            VTexFormat.BC6H => TinyBCSharp.BlockFormat.BC6HUf32,
+            VTexFormat.BC7 => TinyBCSharp.BlockFormat.BC7,
+            _ => TinyBCSharp.BlockFormat.BC1,
+        }).Decode(original, width, height, decoded, width, height);
+        var texels = new float[width * height * 4];
+        if (hdr) System.Buffer.BlockCopy(decoded, 0, texels, 0, decoded.Length);
+        else for (var i = 0; i < texels.Length; i++) texels[i] = decoded[i];
+        while (width > 4 && height > 4 && width % 2 == 0 && height % 2 == 0)
+        {
+            var next = new float[width / 2 * (height / 2) * 4];
+            for (var y = 0; y < height / 2; y++)
+                for (var x = 0; x < width / 2; x++)
+                    for (var c = 0; c < 4; c++)
+                        next[(y * (width / 2) + x) * 4 + c] = (texels[((2 * y) * width + 2 * x) * 4 + c] +
+                            texels[((2 * y) * width + 2 * x + 1) * 4 + c] + texels[((2 * y + 1) * width + 2 * x) * 4 + c] +
+                            texels[((2 * y + 1) * width + 2 * x + 1) * 4 + c]) / 4;
+            width /= 2;
+            height /= 2;
+            texels = next;
+            chain.Add((width, height, hdr
+                ? BlockEncoder.Run(format, Array.ConvertAll(texels, v => BitConverter.HalfToInt16Bits((Half)Math.Max(0, v))), width, height)
+                : BlockEncoder.Run(format, Array.ConvertAll(texels, v => (byte)Math.Clamp(MathF.Round(v), 0, 255)), width, height)));
+        }
+        var levels = new List<object>();
+        using var payload = new MemoryStream();
+        for (var index = chain.Count - 1; index >= 0; index--)
+        {
+            var (w, h, data) = chain[index];
+            levels.Add(new { level = index, w, h, d = 1, offset = payload.Position, size = data.Length });
+            payload.Write(data);
+        }
+        textures.Add(name, new { file = Write("lightmaps", payload.GetBuffer().AsSpan(0, (int)payload.Length)),
+            radiance = tex.RadianceCoefficients, format = tex.Format.ToString(), flags = (int)tex.Flags, depth = 1, first = 0, levels });
     }
 
     // BC4 unsigned: two endpoints and eight interpolated values, three index bits per texel.

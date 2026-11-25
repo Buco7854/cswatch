@@ -47,6 +47,8 @@ export async function runAssetProcess(
         DOTNET_GCHeapHardLimit: '100000000',
         DOTNET_GCConserveMemory: '9',
         DOTNET_PROCESSOR_COUNT: '2',
+        // The exporter's pinned lightmap block encoder, when not at its image path.
+        ...(process.env.CS2EXPORT_BCENC ? { CS2EXPORT_BCENC: process.env.CS2EXPORT_BCENC } : {}),
       },
     });
     let stdout = '',
