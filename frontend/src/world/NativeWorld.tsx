@@ -17,6 +17,8 @@ export interface LoadedWorld {
 interface Props {
   url: string;
   tactical: boolean;
+  /** Inches within which foliage and cutouts dissolve in front of the camera. */
+  nearFade?: number;
   passes: FramePasses;
   shadows: ReturnType<typeof playerShadows>;
   loaded: (url: string, status: 'pending' | 'ready' | 'error', sun: MapSun | null) => void;
@@ -24,7 +26,15 @@ interface Props {
 }
 // Only this positive-priority callback submits the composed frame. Other scene
 // components update transforms, animation and effect lists before it runs.
-export function NativeWorld({ url, tactical, passes, shadows, loaded, register }: Props) {
+export function NativeWorld({
+  url,
+  tactical,
+  nearFade = 0,
+  passes,
+  shadows,
+  loaded,
+  register,
+}: Props) {
   const { gl: renderer, scene, invalidate } = useThree();
   const current = useRef<ReturnType<typeof compositor> | null>(null);
   useEffect(() => {
@@ -110,7 +120,7 @@ export function NativeWorld({ url, tactical, passes, shadows, loaded, register }
           bias: depth.cswatchPlayerBias.value,
         }
       : undefined;
-    current.current.frame(scene, camera, tactical, passes, shadow);
+    current.current.frame(scene, camera, tactical, passes, shadow, nearFade);
   }, 3);
   return null;
 }

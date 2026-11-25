@@ -92,6 +92,8 @@ sealed class ResourceStore : IDisposable
         throw new FileNotFoundException($"Missing compiled resource {compiled}");
     }
 
+    // Writes the official overview text and radar image when the game files have them. The packer
+    // renders missing artwork from the world geometry.
     public void WriteOverview(string map, string destination)
     {
         var filename = $"resource/overviews/{map}.txt";
@@ -102,7 +104,8 @@ sealed class ResourceStore : IDisposable
             archive.ReadEntry(entry, out var bytes, false);
             if (Crc32.HashToUInt32(bytes) != entry.CRC32) throw new InvalidDataException("Overview metadata CRC mismatch");
             File.WriteAllBytes(Path.Combine(destination, "overview.txt"), bytes);
-            using var radar = Read($"panorama/images/overheadmaps/{map}_radar_psd.vtex");
+            using var radar = ReadOptional($"panorama/images/overheadmaps/{map}_radar_psd.vtex");
+            if (radar == null) return;
             var texture = (ValveResourceFormat.ResourceTypes.Texture)radar.DataBlock!;
             if (texture.Width > 2048 || texture.Height > 2048) throw new InvalidDataException("Overview dimensions exceed limit");
             using var bitmap = texture.GenerateBitmap();
@@ -111,7 +114,6 @@ sealed class ResourceStore : IDisposable
             encoded.SaveTo(output);
             return;
         }
-        throw new FileNotFoundException(filename);
     }
 
     public void Dispose()

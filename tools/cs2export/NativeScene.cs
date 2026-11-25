@@ -218,15 +218,26 @@ sealed class NativeScene(ResourceStore store, string game, string output, string
             return;
         }
         var model = (Model)asset.DataBlock!;
-        var meshes = new List<object>();
-        foreach (var embedded in model.GetEmbeddedMeshesForLod(0))
-            meshes.Add(MeshRecord(embedded.Mesh, embedded.MeshIndex));
-        foreach (var reference in model.GetReferenceMeshNamesForLod(0))
+        List<object> Level(int level)
         {
-            using var file = store.Read(reference.MeshName);
-            meshes.Add(MeshRecord((Mesh)file.DataBlock!, reference.MeshIndex));
+            var meshes = new List<object>();
+            foreach (var embedded in model.GetEmbeddedMeshesForLod(level))
+                meshes.Add(MeshRecord(embedded.Mesh, embedded.MeshIndex));
+            foreach (var reference in model.GetReferenceMeshNamesForLod(level))
+            {
+                using var file = store.Read(reference.MeshName);
+                meshes.Add(MeshRecord((Mesh)file.DataBlock!, reference.MeshIndex));
+            }
+            return meshes;
         }
-        models.Add(name, new { meshes, skins = model.GetMaterialGroups().ToDictionary(p => p.Name, p => p.Materials) });
+        // The next coarser LOD lets the packer fit a map's download budget.
+        var coarser = model.LodInfo.AvailableLevels.Where(level => level > 0).Order().FirstOrDefault();
+        models.Add(name, new
+        {
+            meshes = Level(0),
+            coarse = coarser > 0 ? Level(coarser) : null,
+            skins = model.GetMaterialGroups().ToDictionary(p => p.Name, p => p.Materials),
+        });
     }
 
     object MeshRecord(Mesh mesh, int index)
@@ -270,6 +281,12 @@ sealed class NativeScene(ResourceStore store, string game, string output, string
 
     void StoreTexture(string name, string category, Texture tex)
     {
+        if (category == "lightmaps" && name.EndsWith("/direct_light_shadows.vtex", StringComparison.Ordinal) &&
+            tex.NumMipLevels == 1 && tex.Depth == 1 && tex.Format is VTexFormat.BC7 or VTexFormat.ATI1N)
+        {
+            StoreShadowLightmap(name, tex);
+            return;
+        }
         int first = 0;
         if (category == "textures")
             while (first + 1 < tex.NumMipLevels && (Math.Max(tex.Width, tex.Height) >> first) > 1024) first++;
@@ -285,6 +302,76 @@ sealed class NativeScene(ResourceStore store, string game, string output, string
         }
         textures.Add(name, new { file = Write(category, payload.GetBuffer().AsSpan(0, (int)payload.Length)),
             radiance = tex.RadianceCoefficients, format = tex.Format.ToString(), flags = (int)tex.Flags, depth = tex.Depth, first, levels });
+    }
+
+    // The shader reads only the sun-shadow channel, and Valve ships this lightmap without mips. Its
+    // red channel becomes BC4 with a box-filtered mip chain, so the download budget can drop levels.
+    void StoreShadowLightmap(string name, Texture tex)
+    {
+        int width = tex.Width, height = tex.Height;
+        if (width % 4 != 0 || height % 4 != 0) throw new InvalidDataException($"{name} extent {width}x{height}");
+        var source = new byte[tex.CalculateBufferSizeForMipLevel(0)];
+        foreach (var _ in tex.GetEveryMipLevelTexture(source, 0)) { }
+        var rgba = new byte[width * height * 4];
+        TinyBCSharp.BlockDecoder.Create(tex.Format == VTexFormat.BC7 ? TinyBCSharp.BlockFormat.BC7 : TinyBCSharp.BlockFormat.BC4U)
+            .Decode(source, width, height, rgba, width, height);
+        var red = new byte[width * height];
+        for (var i = 0; i < red.Length; i++) red[i] = rgba[i * 4];
+        var chain = new List<(int W, int H, byte[] Data)> { (width, height, red) };
+        while (chain[^1].W > 4 && chain[^1].H > 4 && chain[^1].W % 8 == 0 && chain[^1].H % 8 == 0)
+        {
+            var (w, h, data) = chain[^1];
+            var next = new byte[w / 2 * (h / 2)];
+            for (var y = 0; y < h / 2; y++)
+                for (var x = 0; x < w / 2; x++)
+                    next[y * (w / 2) + x] = (byte)((data[2 * y * w + 2 * x] + data[2 * y * w + 2 * x + 1] +
+                        data[(2 * y + 1) * w + 2 * x] + data[(2 * y + 1) * w + 2 * x + 1] + 2) / 4);
+            chain.Add((w / 2, h / 2, next));
+        }
+        var levels = new List<object>();
+        using var payload = new MemoryStream();
+        for (var index = chain.Count - 1; index >= 0; index--)
+        {
+            var (w, h, data) = chain[index];
+            var blocks = EncodeBC4(data, w, h);
+            levels.Add(new { level = index, w, h, d = 1, offset = payload.Position, size = blocks.Length });
+            payload.Write(blocks);
+        }
+        textures.Add(name, new { file = Write("lightmaps", payload.GetBuffer().AsSpan(0, (int)payload.Length)),
+            radiance = tex.RadianceCoefficients, format = "ATI1N", flags = (int)tex.Flags, depth = 1, first = 0, levels });
+    }
+
+    // BC4 unsigned: two endpoints and eight interpolated values, three index bits per texel.
+    static byte[] EncodeBC4(byte[] data, int width, int height)
+    {
+        var output = new byte[width / 4 * (height / 4) * 8];
+        var block = new byte[16];
+        var o = 0;
+        for (var by = 0; by < height; by += 4)
+            for (var bx = 0; bx < width; bx += 4)
+            {
+                byte lo = 255, hi = 0;
+                for (var i = 0; i < 16; i++)
+                {
+                    block[i] = data[(by + i / 4) * width + bx + i % 4];
+                    lo = Math.Min(lo, block[i]);
+                    hi = Math.Max(hi, block[i]);
+                }
+                output[o] = hi;
+                output[o + 1] = lo;
+                ulong bits = 0;
+                if (hi > lo)
+                    for (var i = 0; i < 16; i++)
+                    {
+                        // Palette order: hi, lo, then six steps from hi towards lo.
+                        var step = (int)Math.Round((hi - block[i]) * 7.0 / (hi - lo));
+                        ulong index = step switch { 0 => 0, 7 => 1, _ => (ulong)(step + 1) };
+                        bits |= index << (3 * i);
+                    }
+                for (var k = 0; k < 6; k++) output[o + 2 + k] = (byte)(bits >> (8 * k));
+                o += 8;
+            }
+        return output;
     }
 }
 

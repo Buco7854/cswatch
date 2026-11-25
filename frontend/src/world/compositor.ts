@@ -43,6 +43,7 @@ export function compositor(renderer: WebGLRenderer, native: NativeRenderer) {
     tactical: boolean,
     passes: FramePasses,
     shadow?: { texture: WebGLTexture; projection: Float32Array; bias: number },
+    nearFade = 0,
   ) {
     hdr.setSize(gl.drawingBufferWidth, gl.drawingBufferHeight);
     const previousTarget = renderer.getRenderTarget(),
@@ -97,6 +98,7 @@ export function compositor(renderer: WebGLRenderer, native: NativeRenderer) {
       return native.render({ pos, ang: [0, 0], fov: camera.fov }, 0, {
         skybox3D: !tactical,
         fog: !tactical,
+        nearFade,
         shadow,
         composed: {
           camera,

@@ -1,5 +1,5 @@
 // Material and lighting bindings adapted from ValveResourceFormat 21.1 (MIT). See tools/cs2export/THIRD_PARTY_NOTICES.txt.
-import { capabilities, tierUnits, type TextureTier } from './textures';
+import { capabilities, fixedUnits, type TextureTier } from './textures';
 import { worldResources } from './resources';
 import { sourceToViewer } from './space';
 import { program } from './program';
@@ -28,6 +28,7 @@ export interface ViewOptions {
   shadow?: { texture: WebGLTexture; projection: Float32Array; bias: number };
   skybox3D?: boolean;
   fog?: boolean;
+  nearFade?: number;
 }
 export interface Pose {
   pos: number[];
@@ -140,6 +141,44 @@ export async function createRenderer(
       textureBytes += values.byteLength;
       return tex;
     }
+    // Least important roles first. A material using more roles than the device has units for
+    // loses these in the same order in its draw variant and in its material row.
+    const dropOrder = [
+      'ao2',
+      'detailMask',
+      'aux2',
+      'detail',
+      'ao',
+      'rough',
+      'metal',
+      'aux1',
+      'height',
+      'illum',
+      'blend',
+      'aux0',
+      'normal2',
+      'color2',
+      'normal',
+      'color',
+    ];
+    const roleLimit =
+      Math.min(gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS) as number, 32) - fixedUnits[tier];
+    const fitRoles = (banks: number[]) => {
+      const fitted = [...banks];
+      for (const role of dropOrder) {
+        if (fitted.filter((bank) => bank >= 0).length <= roleLimit) break;
+        const index = manifest.roles.indexOf(role);
+        if (index >= 0) fitted[index] = -1;
+      }
+      return fitted;
+    };
+    for (const chunk of manifest.chunks) chunk.banks = fitRoles(chunk.banks);
+    for (const material of manifest.materials) {
+      const banks = manifest.roles.map((role) => material.bindings[role]?.[0] ?? -1);
+      fitRoles(banks).forEach((bank, index) => {
+        if (bank < 0) delete material.bindings[manifest.roles[index]];
+      });
+    }
     const environments = worldEnvironments(manifest, tier, special, table, materialRows(manifest));
     await MeshoptDecoder.ready;
     const geometrySpec = manifest.geometry,
@@ -196,10 +235,51 @@ export async function createRenderer(
       gl.bindFramebuffer(gl.FRAMEBUFFER, frame);
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, hdr, 0);
       gl.bindRenderbuffer(gl.RENDERBUFFER, depth);
-      gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, width, height);
-      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depth);
+      // Same format as the viewer's depth-stencil target, so water can copy either.
+      gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH24_STENCIL8, width, height);
+      gl.framebufferRenderbuffer(
+        gl.FRAMEBUFFER,
+        gl.DEPTH_STENCIL_ATTACHMENT,
+        gl.RENDERBUFFER,
+        depth,
+      );
       if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE)
         throw Error('HDR framebuffer incomplete');
+    }
+    // Opaque depth copied before water draws; it matches the bound target's depth-stencil format.
+    const sceneDepth = {
+      texture: resources.texture(),
+      framebuffer: gl.createFramebuffer(),
+      width: 0,
+      height: 0,
+    };
+    resources.retain(() => gl.deleteFramebuffer(sceneDepth.framebuffer));
+    const waterIn = new Set(
+      manifest.chunks.filter((chunk) => chunk.family === 'water').map((chunk) => chunk.sky),
+    );
+    function copySceneDepth(source: WebGLFramebuffer | null) {
+      if (sceneDepth.width !== width || sceneDepth.height !== height) {
+        gl.deleteTexture(sceneDepth.texture);
+        sceneDepth.texture = gl.createTexture()!;
+        gl.bindTexture(gl.TEXTURE_2D, sceneDepth.texture);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, gl.DEPTH24_STENCIL8, width, height);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, sceneDepth.framebuffer);
+        gl.framebufferTexture2D(
+          gl.FRAMEBUFFER,
+          gl.DEPTH_STENCIL_ATTACHMENT,
+          gl.TEXTURE_2D,
+          sceneDepth.texture,
+          0,
+        );
+        sceneDepth.width = width;
+        sceneDepth.height = height;
+      }
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, source);
+      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, sceneDepth.framebuffer);
+      gl.blitFramebuffer(0, 0, width, height, 0, 0, width, height, gl.DEPTH_BUFFER_BIT, gl.NEAREST);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, source);
     }
     const camera = new PerspectiveCamera(),
       viewProjection = new Matrix4(),
@@ -248,7 +328,7 @@ export async function createRenderer(
       }
     }
     const transparent = (family: string) =>
-      ['glass', 'blended', 'overlay', 'additive', 'modulate'].includes(family);
+      ['glass', 'blended', 'overlay', 'additive', 'modulate', 'water'].includes(family);
     function bind(unit: number, target: number, tex: WebGLTexture | null) {
       gl.activeTexture(gl.TEXTURE0 + unit);
       gl.bindTexture(target, tex);
@@ -289,7 +369,8 @@ export async function createRenderer(
       height: 'heightTex',
       rough: 'roughTex',
     };
-    const slotLimit = tierUnits[tier] - fixedSamplers.length;
+    if (fixedSamplers.length !== fixedUnits[tier]) throw Error('Fixed sampler count mismatch');
+    const slotLimit = roleLimit;
     type Variant = ReturnType<typeof program> & { version: number; slots: number[] };
     const variants = new Map<string, Variant>();
     const uniformState = new Map<string, (p: Variant) => void>();
@@ -305,9 +386,10 @@ export async function createRenderer(
       }
     }
     // Unused roles alias slot 0; their material layers are -1, so they are never sampled.
-    function variant(banks: number[]) {
+    // Water variants also read the opaque scene depth for the water column.
+    function variant(banks: number[], water = false) {
       const used = manifest.roles.map((_, index) => index).filter((index) => banks[index] >= 0);
-      const key = used.join();
+      const key = used.join() + (water ? '/water' : '');
       let found = variants.get(key);
       if (!found) {
         if (used.length > slotLimit) throw Error('Material uses more texture roles than supported');
@@ -322,7 +404,12 @@ export async function createRenderer(
           ),
         ].join('\n');
         const source = worldFrag
-          .replace('\n', tier === 'phone' ? '\n#define PACKED_LIGHTING\n' : '\n')
+          .replace(
+            '\n',
+            '\n' +
+              (tier === 'phone' ? '#define PACKED_LIGHTING\n' : '') +
+              (water ? '#define WATER\n' : ''),
+          )
           .replace('#pragma roles', declarations);
         const compiled = program(gl, vertex, source);
         resources.retain(compiled.dispose);
@@ -332,6 +419,7 @@ export async function createRenderer(
         slots.forEach((_, slot) =>
           gl.uniform1i(compiled.u('slot' + slot), fixedSamplers.length + slot),
         );
+        if (water) gl.uniform1i(compiled.u('sceneDepth'), fixedSamplers.length + slots.length);
         found = Object.assign(compiled, { version: -1, slots });
         variants.set(key, found);
         current = null;
@@ -346,8 +434,8 @@ export async function createRenderer(
         ),
       );
     }
-    function useVariant(banks: number[]) {
-      const next = variant(banks);
+    function useVariant(banks: number[], water = false) {
+      const next = variant(banks, water);
       if (current !== next) {
         next.use();
         current = next;
@@ -359,9 +447,10 @@ export async function createRenderer(
       next.slots.forEach((role, slot) =>
         bind(fixedSamplers.length + slot, arrayTarget, arrays[banks[role]] ?? arrays[0]),
       );
+      if (water) bind(fixedSamplers.length + next.slots.length, gl.TEXTURE_2D, sceneDepth.texture);
     }
     // Compile the variants this map uses before the first frame.
-    for (const chunk of manifest.chunks) variant(chunk.banks);
+    for (const chunk of manifest.chunks) variant(chunk.banks, chunk.family === 'water');
     const multiCounts = new Int32Array(8192),
       multiOffsets = new Int32Array(8192);
     let renderedFrames = 0;
@@ -402,6 +491,7 @@ export async function createRenderer(
         );
       }
       frustum.setFromProjectionMatrix(viewProjection);
+      const inverseViewProjection = viewProjection.clone().invert().elements;
       gl.viewport(0, 0, width, height);
       gl.bindFramebuffer(gl.FRAMEBUFFER, composed?.framebuffer ?? frame);
       gl.disable(gl.DEPTH_TEST);
@@ -511,6 +601,7 @@ export async function createRenderer(
             bind(unit.brdf, arrayTarget, special.get('vrf/brdf_lut')!);
             bind(unit.actorShadow, gl.TEXTURE_2D, options.shadow?.texture ?? null);
           }
+          if (blended && waterIn.has(env.sky)) copySceneDepth(composed?.framebuffer ?? frame);
           env.lightmaps.forEach((texture, index) =>
             bind(unit[env.lightmapSamplers[index]], arrayTarget, texture),
           );
@@ -520,6 +611,8 @@ export async function createRenderer(
           if (tier === 'desktop') bind(unit.lpvShadow, arrayTarget, env.shadow);
           bind(unit.sceneData, gl.TEXTURE_2D, env.data);
           uniform('uniform1i', 'probeBase', env.probeBase);
+          uniform('uniform1f', 'nearFade', options.nearFade ?? 0);
+          uniform('uniformMatrix4fv', 'inverseViewProjection', false, inverseViewProjection);
           uniform('uniform1i', 'cellColumn', env.cellColumn);
           uniform('uniform4fv', 'volumeLayers', env.volumeLayers);
           uniform('uniform4f', 'hdrRange', env.hdr[0], env.hdr[1], skyRange, env.hdr[2]);
@@ -635,7 +728,7 @@ export async function createRenderer(
               gl.enable(gl.POLYGON_OFFSET_FILL);
               gl.polygonOffset(-1, -1);
             } else gl.disable(gl.POLYGON_OFFSET_FILL);
-            useVariant(banks);
+            useVariant(banks, family === 'water');
             for (let i = 0; i < list.length; i++) {
               const { first, count } = list[i];
               multiOffsets[i] = first * 4;

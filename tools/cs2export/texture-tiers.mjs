@@ -13,12 +13,13 @@ const phoneWire = 64.5 * MiB,
 const wireFactor = { array: 0.75, lightmap: 0.5, volume: 0.5, special: 0.8 };
 
 /** Smallest retained size at which UV0 reaches the target texels per placed inch. */
-export function materialCap(material, area) {
-  const scale = material.vectors.g_vTexCoordScale ?? [1, 1];
+export function materialCap(material, area, texels = target, maxCap = 1024) {
+  const scale = material.vectors.g_vTexCoordScale ?? material.vectors.g_vTexCoordScale1 ?? [1, 1];
   const ratio =
     area && area.world > 0 ? Math.sqrt((area.uv * Math.abs(scale[0] * scale[1])) / area.world) : 0;
-  if (!(ratio > 0)) return 256;
-  return [256, 512, 1024].find((cap) => cap * ratio >= target) ?? 1024;
+  const caps = [256, 512, 1024].filter((cap) => cap <= maxCap);
+  if (!(ratio > 0)) return Math.min(256, maxCap);
+  return caps.find((cap) => cap * ratio >= (texels ?? target)) ?? caps.at(-1);
 }
 
 // Block sizes chosen by pixel difference against the desktop tier on the Mirage lab poses.
@@ -38,7 +39,7 @@ const slice = (texture, level, profile) => ({
 const hdr = (format) => format === 'BC6H' || format === 'RGBA16161616F';
 
 /** Phone items reuse the desktop bank layers and levels, so material bindings stay valid. */
-function planWith(manifest, scene, sourceLevels, phoneCap, lightmapBlock) {
+function planWith(manifest, scene, sourceLevels, phoneCap, lightmapBlock, lightmapCap = 4096) {
   const items = [],
     targets = [];
   for (const bank of manifest.arrays) {
@@ -75,8 +76,11 @@ function planWith(manifest, scene, sourceLevels, phoneCap, lightmapBlock) {
     // whole factor while decoding.
     const levelsOf = (name) => sourceLevels.get(name);
     // Like the desktop tier, irradiance is capped at 4096.
-    const size =
-      levelsOf(kinds[0]).findLast((l) => Math.max(l.w, l.h) <= 4096) ?? levelsOf(kinds[0])[0];
+    // A distant 3D-sky world keeps at most 1024; whole-factor halvings reach the cap.
+    const limit = env.sky ? Math.min(1024, lightmapCap) : lightmapCap;
+    let size = levelsOf(kinds[0]).at(-1);
+    while (Math.max(size.w, size.h) > limit && size.w % 2 === 0 && size.h % 2 === 0)
+      size = { w: size.w / 2, h: size.h / 2 };
     const whole = (a, b) => a.w % b.w === 0 && a.h % b.h === 0 && a.w / b.w === a.h / b.h;
     const pick = (name) => {
       const levels = levelsOf(name);
@@ -170,10 +174,11 @@ export function phonePlan(manifest, scene, sourceLevels) {
     ...caps.map((cap) => [cap, lightmapBlock]),
     [caps.at(-1), [5, 5]],
     [caps.at(-1), [6, 6]],
+    [caps.at(-1), [6, 6], 2048],
   ];
   let plan;
-  for (const [cap, block] of candidates) {
-    plan = planWith(manifest, scene, sourceLevels, cap, block);
+  for (const [cap, block, lightmapCap] of candidates) {
+    plan = planWith(manifest, scene, sourceLevels, cap, block, lightmapCap);
     let gpu = 0,
       wire = base;
     plan.items.forEach((item, index) => {
@@ -185,6 +190,7 @@ export function phonePlan(manifest, scene, sourceLevels) {
     plan.estimate = {
       cap,
       lightmapBlock: block,
+      ...(lightmapCap ? { lightmapCap } : {}),
       gpuMiB: +(gpu / MiB).toFixed(1),
       wireMiB: +(wire / MiB).toFixed(1),
     };

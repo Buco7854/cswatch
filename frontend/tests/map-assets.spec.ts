@@ -158,6 +158,28 @@ async function setRendererEvidence(page: Page, adapter: string) {
   }, adapter);
 }
 
+test('a GPU with 16 fragment texture units keeps the desktop tier and draws the world', async ({
+  page,
+}) => {
+  test.skip(Boolean(process.env.E2E_PRIVATE));
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  // ANGLE on D3D11 and Metal report 16.
+  await page.addInitScript(() => {
+    const gl = WebGL2RenderingContext.prototype;
+    const getParameter = gl.getParameter;
+    gl.getParameter = function (name: number) {
+      return name === this.MAX_TEXTURE_IMAGE_UNITS ? 16 : getParameter.call(this, name);
+    } as typeof getParameter;
+  });
+  await install(page, { model: 'native', overview: qaOverview });
+  await open(page);
+  await expect(page.locator('.scene')).toHaveAttribute('data-map-tier', 'desktop');
+  await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
+  await expect(page.locator('.map-failure, [data-map-failure]')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
 test.describe('dense displays', () => {
   test.use({ deviceScaleFactor: 3 });
   test('a phone keeps detailed textures and renders above CSS resolution within its pixel budget on rotation', async ({

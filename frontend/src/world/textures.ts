@@ -1,7 +1,14 @@
 import type { Mip } from './format';
 export type TextureTier = 'desktop' | 'phone';
-// Samplers per world draw: eight material slots plus the fixed lighting inputs of each tier.
-export const tierUnits: Record<TextureTier, number> = { desktop: 18, phone: 15 };
+// Fixed lighting samplers per world draw. Chrome reports 16 fragment units on ANGLE/D3D11 and
+// Metal, so a tier needs room for six material roles; heavier materials drop their least
+// important roles when the device has fewer units than they use.
+export const fixedUnits: Record<TextureTier, number> = { desktop: 10, phone: 7 };
+export const minimumRoles = 6;
+export const tierUnits: Record<TextureTier, number> = {
+  desktop: fixedUnits.desktop + minimumRoles,
+  phone: fixedUnits.phone + minimumRoles,
+};
 const tierExtensions: Record<TextureTier, string[]> = {
   desktop: [
     'EXT_texture_compression_bptc',

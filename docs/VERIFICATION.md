@@ -4,43 +4,54 @@
 
 Evidence from 2026-11-25 on the 3-CPU, 9 GB Linux host without a GPU. Chromium used ANGLE/SwiftShader, which exposes BPTC, RGTC, S3TC and ASTC. SwiftShader results are correctness and counts only, never frame rate.
 
-**Official inventory.** The assets worker's fresh inventory of manifest 5924479096069937098 listed 42 maps. The 20 `*_vanity`, `workshop_preview_*`, `lobby_mapveto` and `graphics_settings` entries are presentation variants and were excluded. Each of the other 22 went through the real worker path (Steam acquisition, confined extraction, desktop packing, phone encoding and publication), one at a time with sources pruned afterwards. Eleven are ready:
+**Official inventory.** The worker's inventory of manifest 5924479096069937098 listed 42 maps. The 20 `*_vanity`, `workshop_preview_*`, `lobby_mapveto` and `graphics_settings` entries are presentation variants. The other 22 went through the real worker path one at a time with sources pruned afterwards, and 21 are ready:
 
-| Map              | Desktop wire MiB | Phone wire MB | Phone GPU MiB | Phone cap / lightmap block | Export s | Draws CT / T / centre / overhead |
-| ---------------- | ---------------: | ------------: | ------------: | -------------------------- | -------: | -------------------------------- |
-| ar_baggage       |             93.7 |          52.8 |          75.6 | 128 / 4×4                  |       36 | 154 / 145 / 102 / 98             |
-| ar_shoots        |            143.4 |          69.0 |          52.4 | 128 / 6×6                  |       49 | 40 / 37 / 32 / 40                |
-| ar_shoots_night  |            149.3 |          69.3 |          52.4 | 128 / 6×6                  |       49 | 43 / 43 / 36 / 42                |
-| cs_office        |             69.5 |          54.0 |          82.5 | 512 / 4×4                  |       32 | 118 / 102 / 92 / 84              |
-| de_ancient       |            222.6 |         113.5 |          66.6 | 128 / 6×6                  |       66 | 54 / 57 / 46 / 42                |
-| de_ancient_night |            223.1 |         114.1 |          66.2 | 128 / 6×6                  |       65 | 56 / 57 / 46 / 42                |
-| de_anubis        |            126.3 |          67.4 |          57.1 | 128 / 5×5                  |       48 | 179 / 177 / 128 / 134            |
-| de_dust2         |              121 |          63.6 |          42.6 | 128 / 6×6                  |       43 | 76 / 144 / 126 / 105             |
-| de_mirage        |             82.9 |          66.3 |            83 | 512 / 4×4                  |       37 | 165 / 163 / 129 / 125            |
-| de_nuke          |            116.3 |          62.2 |          75.4 | 128 / 4×4                  |       40 | 250 / 265 / 203 / 195            |
-| de_vertigo       |             76.7 |          58.2 |          75.1 | 512 / 4×4                  |       33 | 101 / 109 / 103 / 118            |
+| Map              |   Desktop MB | Phone MB | Phone GPU MiB | Packed triangles | Phone plan   | Export s | Draws CT / T / centre / overhead | Notes                                                                               |
+| ---------------- | -----------: | -------: | ------------: | ---------------: | ------------ | -------: | -------------------------------- | ----------------------------------------------------------------------------------- |
+| ar_baggage       |         81.9 |     52.8 |          75.6 |        2,129,326 | 128/4×4      |       35 | 152 / 142 / 106 / 126            |                                                                                     |
+| ar_pool_day      |         70.5 |     46.3 |          72.3 |        1,452,530 | 512/4×4      |       34 | 131 / 13 / 10 / 146              | generated radar, sky absent, water                                                  |
+| ar_shoots        |        108.2 |     69.2 |          42.4 |        3,580,610 | 128/5×5      |       48 | 36 / 34 / 29 / 36                | simplified, over: desktop                                                           |
+| ar_shoots_night  |        110.8 |     69.5 |          42.4 |        3,580,565 | 128/5×5      |       56 | 39 / 40 / 33 / 38                | simplified, over: desktop                                                           |
+| cs_italy         |        123.2 |     65.5 |          43.1 |        3,598,614 | 128/6×6      |       64 | 56 / 107 / 155 / 158             | simplified, coarse LOD, over: desktop                                               |
+| cs_office        |         71.1 |     54.0 |          82.5 |          979,394 | 512/4×4      |       32 | 118 / 102 / 97 / 113             |                                                                                     |
+| de_ancient       |        140.1 |     67.3 |          30.6 |        3,643,547 | 128/6×6/2048 |       65 | 51 / 53 / 37 / 39                | simplified, water, over: desktop                                                    |
+| de_ancient_night |        140.1 |     67.7 |          30.2 |        3,661,337 | 128/6×6/2048 |       60 | 53 / 53 / 39 / 40                | simplified, water, over: desktop                                                    |
+| de_anubis        |        108.0 |     67.9 |          57.1 |        3,574,684 | 128/5×5      |       64 | 161 / 161 / 120 / 135            | simplified, water, over: desktop                                                    |
+| de_cache         |        203.1 |     79.1 |          97.1 |        3,575,802 | 128/6×6/2048 |       82 | 112 / 180 / 116 / 96             | desktop not captured (SwiftShader allocation), over: desktop/phone                  |
+| de_cbble         |        133.5 |     69.8 |          57.4 |        3,580,581 | 128/5×5      |       62 | 75 / 67 / 66 / 81                | simplified, water, over: desktop                                                    |
+| de_debris        |         88.6 |     62.2 |          85.8 |        1,072,758 | 512/4×4      |       45 | 72 / 86 / 55 / 91                | generated radar, default grade, sky absent, missing resources                       |
+| de_dust2         |        103.7 |     67.8 |          52.2 |        3,580,628 | 128/5×5      |       62 | 62 / 119 / 108 / 92              | simplified, over: desktop                                                           |
+| de_eldorado      |        108.2 |     66.8 |          39.6 |        3,581,041 | 128/5×5      |       62 | 101 / 88 / 80 / 89               | simplified, generated radar, default grade, missing resources, water, over: desktop |
+| de_inferno       |        158.0 |     72.9 |          36.4 |        4,044,733 | 128/6×6/2048 |      104 | 200 / 133 / 111 / 134            | simplified, coarse LOD, water, over: desktop/phone                                  |
+| de_mirage        |         86.9 |     66.3 |            83 |        1,474,269 | 512/4×4      |       38 | 165 / 163 / 132 / 145            |                                                                                     |
+| de_nuke          |         93.4 |     57.9 |          57.1 |        3,579,589 | 128/5×5      |       60 | 234 / 251 / 193 / 196            | simplified, water                                                                   |
+| de_overpass      |        146.9 |     65.5 |          37.1 |        3,581,143 | 128/6×6/2048 |       55 | 130 / 253 / 307 / 252            | simplified, over: desktop                                                           |
+| de_poseidon      |         91.4 |     59.6 |            71 |        2,037,782 | 256/4×4      |       39 | 83 / 88 / 61 / 78                | generated radar, default grade, sky absent, missing resources                       |
+| de_train         |        167.7 |     71.4 |          44.8 |        3,800,171 | 128/6×6/2048 |       80 | 73 / 299 / 249 / 178             | simplified, coarse LOD, water, over: desktop/phone                                  |
+| de_vertigo       |         78.3 |     58.2 |          75.1 |        2,063,956 | 512/4×4      |       44 | 102 / 110 / 104 / 112            |                                                                                     |
+| rush_001         | not prepared |          |               |                  |              |          |                                  | packer exceeded its decoded-geometry bound (14.2M triangles)                        |
 
-Draws are WebGL submissions at 960×540, including sky and fullscreen passes. Phone GPU bytes are texture allocations without render targets.
+Sizes are Brotli download and texture allocation per tier; draws are WebGL submissions at 960×540. Phone captures include a 390×844 portrait.
 
-- de_debris, de_eldorado, de_poseidon and ar_pool_day: the pinned `pak01_dir.vpk` tree lists no `resource/overviews/<map>.txt` for them (ar_pool_day also lacks its radar image). The viewer needs that calibration for the radar, the 2D view and the no-texture fallback.
-- cs_italy, de_cache, de_cbble, de_inferno, de_overpass and de_train: with 6.3 GB free and the owner's 3 GB floor, the Steam sources (2.2–2.3 GB for the larger maps) plus extraction exceeded the worker's free-space reserve.
-- rush_001: its dependency closure exceeded the installer's 4 GiB read budget.
-- de_ancient and de_ancient_night: the shared geometry alone exceeds the 70 MB phone download (113.5 and 114.1 MB at the smallest texture plan).
-- `csgo_water_fancy` (Ancient, Ancient Night, Anubis, Nuke) draws an opaque surface in its fog colour with cubemap reflection. Refraction, column fog, screen-space reflection, caustics, waves, foam and debris are not ported; on Anubis the canal reads near-black from above. `csgo_simple_liquid` (one Vertigo material) uses the generic path.
+- rush_001's dependency closure reads 4.92 GiB (the installer bound is now 6 GiB). Its 14.2M triangles exceed the packer's 768 MiB decoded-geometry bound; with that bound at 1.5 GiB the packer was killed at its 4 GiB RSS limit.
+- de_debris, de_eldorado, de_poseidon and ar_pool_day ship no overview text or radar image (the `pak01_dir.vpk` tree has none). The packer renders a top-down radar; on Mirage, rendered against the official calibration, it covered 98.5% of the official radar's pixels. de_debris also names textures, a 3D sky and post-processing that the archive lacks, so its ground and sky render black where the game shows error materials.
+- Desktop downloads above 100 MB come from authored lighting without mips: 4096² BC6H irradiance, BC6H probe-volume atlases (de_cache: 300×292×1608, 134 MiB) and cubemaps. The pinned toolchain has no BC6H encoder, so only geometry, material textures and the BC4-converted sun shadow shrink. SwiftShader could not allocate de_cache's desktop atlas, so only its phone tier was captured.
+- Geometry above 45% of the phone budget switches placed models to their coarser LOD and is then simplified within 2 inches of the source. On de_train 2 inches was indistinguishable at the spawns (MAE 0.34, 0.44% of pixels over 8 levels) while 8 inches bent window frames.
 
-**Phone tier.** HDR textures store `log2(1 + 1023 v / range) / 10` per channel. On Vertigo's T spawn the phone's baked lighting measured MAE 0.66 (0.3% of pixels over 8 levels) against desktop, where per-texel RGBM measured MAE 11.5 (22.2%). On the five Mirage lab poses at 1280×720 the phone measured MAE 0.61–1.46 (0.25–3.2%) against desktop. The phone allocated 92.5 MiB of textures and targets at 1280×720. The planner's download estimate ranged from 7.3 MiB high to 2.0 MiB low across ten maps. A local Vertigo export with the final encoding took 9.0 s for desktop packing, 1.2 s for the phone layout, 7.4 s for group decoding, 7.1 s for astcenc and 2.9 s for finishing; the table's export column is the confined worker's time from extraction to publication.
+**Rendering fixes found by the captures.** RGBM phone lightmaps showed blocky brightness on high-range maps; per-channel log encoding measured MAE 0.66 against desktop on Vertigo's baked lighting where RGBM measured 11.5. Ancient's T-spawn stream was an opaque tan plane; water now fogs and decays the scene behind by column depth and reflects the cubemap by Fresnel. Environment-blend materials now sample their `g_tColor2`/`g_tNormal2` layer. The desktop tier needed 18 fragment texture units; it now needs 16 (Chrome on ANGLE/D3D11 and Metal) and drops minor roles of heavier materials. In follow mode, foliage and cutouts within 96 inches of the camera dissolve. At tick 12000 the T player 76561197964020430 stands 138 units from a smoke detonated at tick 11521, so the grey view is the smoke; the same pose renders normally without it.
 
-**Texel density.** The density rule (1.25 texels per placed inch, 256–1024) against the earlier per-material Mirage caps measured MAE 0.03–1.2 (0–3.2% of pixels over 8 levels) on the five lab poses.
+**Phone tier.** On the five Mirage lab poses at 1280×720 the phone measured MAE 0.61–1.46 (0.25–3.2% of pixels over 8 levels) against desktop and allocated 92.5 MiB of textures and targets. BC4 conversion of the sun shadow reproduced the desktop lab poses exactly.
 
-**Normal install.** From empty data and map directories with default settings, the worker prepared Mirage from the local game root in 40.8 s. An isolated account uploaded `var/fixture/input.dem`. POV, third-person and overhead captures at ticks 43193, 21241 and 18142 and a 390×844 portrait are under `var/native-world/round3/cutover-native-r4` and `cutover-native-phone-r4`. Phone against desktop measured MAE 0.69–1.48 (0.22–3.0%). Third-person shows capsules because the available private agent bank is not accepted, as in the previous round.
+**Normal install.** From empty directories with default settings (no game root), the worker discovered the inventory, prepared Mirage and published the CT/T agent bank on its first attempt, followed by equipment, equipment models and viewmodels. Both teams render as agent models in POV and follow captures under `var/native-world/round3/cutover-native-r5`. Earlier capsules came from an old agent bank without directional clips. A worker with `MAP_GAME_ROOT` (a development mode) never refreshes the inventory and so prepares no presentation banks.
 
-| 10 s of 1× POV from tick 43000 | Draws per frame p50 / max | React commits/s | Script ms per frame p50 / p95 | Long tasks >50 ms |
-| ------------------------------ | ------------------------: | --------------: | ----------------------------: | ----------------: |
-| Native desktop                 |                 177 / 192 |             3.5 |                   24.8 / 2261 |                 6 |
-| Native phone                   |                 177 / 187 |             1.3 |                    366 / 2918 |                 7 |
-| `main` (85104a9)               |               1650 / 1997 |             4.9 |                   16.4 / 1315 |                10 |
+| 10 s of 1× POV from tick 43000                  | Draws per frame p50 / max | React commits/s | Script ms per frame p50 / p95 | Long tasks >50 ms |
+| ----------------------------------------------- | ------------------------: | --------------: | ----------------------------: | ----------------: |
+| Native desktop, old agent bank                  |                 177 / 192 |             3.5 |                   24.8 / 2261 |                 6 |
+| Native phone, old agent bank                    |                 177 / 187 |             1.3 |                    366 / 2918 |                 7 |
+| Native desktop, prepared agents, worker running |                 214 / 235 |             1.0 |                   1243 / 3088 |                 8 |
+| `main` (85104a9)                                |               1650 / 1997 |             4.9 |                   16.4 / 1315 |                10 |
 
-SwiftShader rasterized 14 native frames and 31 `main` frames in the window. Before the renderer stopped reading `getError` every frame, native script time was 1023 ms per frame at p50 because each read waited for the GPU process.
+The third row ran while the worker prepared weapon banks on the same 3 CPUs. Before the renderer stopped reading `getError` every frame, native script time was 1023 ms per frame at p50.
 
 ## Nearby wall impacts
 

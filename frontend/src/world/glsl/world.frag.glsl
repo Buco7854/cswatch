@@ -27,6 +27,12 @@ uniform sampler2DArray lpvShadow;
 const float irradianceLayer = 0., directionLayer = 0., shadowLayer = 0.;
 #endif
 uniform sampler2DArray envMap;
+uniform mat4 inverseViewProjection;
+// Foliage and alpha-tested surfaces dissolve within this many inches of a third-person camera.
+uniform float nearFade;
+#ifdef WATER
+uniform highp sampler2D sceneDepth;
+#endif
 uniform sampler2DArray skyMap;
 uniform sampler2DArray lpv;
 // Probe volume first layer and layer count, then sun occlusion first layer and count.
@@ -304,6 +310,12 @@ void main() {
   float alpha = albedo.a * drawTint.a * flags.w;
   if (flags.x > 0. && alpha < surfaceParams.x)
     discard;
+  if (nearFade > 0. && (flags.x > 0. || flags.z == 5.)) {
+    float keep = smoothstep(nearFade * .35, nearFade, distance(worldPosition, eye));
+    float dither = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(.06711056, .00583715))));
+    if (dither > keep)
+      discard;
+  }
   if (flags.y < .5)
     alpha = 1.;
   vec3 viewDirection = normalize(eye - worldPosition);
@@ -325,8 +337,7 @@ void main() {
                                         0., 1.),
                                   .333)),
                           .02, 1.);
-  // csgo_water_fancy: opaque fog-coloured surface at its minimum roughness. Refraction, column
-  // fog, SSR, caustics, waves, foam and debris are not ported.
+  // csgo_water_fancy reflects the cubemap at its minimum roughness.
   if (flags.z == 7.)
     roughness = clamp(materialRow(35).y, .02, 1.);
   vec3 environmentLight;
@@ -435,6 +446,33 @@ void main() {
     lit = vec3(0);
   if (mode == 5)
     lit = albedo.rgb + emission;
+#ifdef WATER
+  // Renderer/Shaders/csgo/csgo_water_fancy.frag.slang without waves, foam, debris, caustics and
+  // screen-space reflection: the water column behind the surface fogs and decays the scene, and
+  // the cubemap reflection mixes in by Fresnel. Blending over the opaque scene stands in for
+  // refraction.
+  if (flags.z == 7.) {
+    vec4 decayParams = materialRow(9), fogParams = materialRow(33);
+    float behindDepth = texelFetch(sceneDepth, ivec2(gl_FragCoord.xy), 0).r;
+    vec4 behind = inverseViewProjection *
+                  vec4(gl_FragCoord.xy / vec2(textureSize(sceneDepth, 0)) * 2. - 1.,
+                       behindDepth * 2. - 1., 1.);
+    float column = behindDepth >= 1.
+                       ? fogParams.y
+                       : min(fogParams.y, max(0., distance(behind.xyz / behind.w, eye) -
+                                                      distance(worldPosition, eye)) *
+                                              .01);
+    float fogAlpha = 1. - exp(-column * fogParams.x);
+    vec3 decay = exp((decayParams.rgb - 1.) * decayParams.a * column);
+    vec3 fogColor = baseTint.rgb * mix(decay, vec3(1), clamp(fogParams.x * .04, 0., 1.));
+    vec3 emitted = fogColor * fogAlpha * fogParams.z * (light * occlusion + direct);
+    float facing = pow(1. - clamp(dot(viewDirection, normal), 0., 1.), materialRow(34).x);
+    float reflectionMix = clamp((facing * (1. - fogParams.w) + fogParams.w) * 1.5, 0., 1.);
+    float transmitted = dot(decay * (1. - fogAlpha), vec3(1. / 3.));
+    alpha = 1. - (1. - reflectionMix) * transmitted;
+    lit = ((1. - reflectionMix) * emitted + reflectionMix * environmentLight) / max(alpha, .001);
+  }
+#endif
   lit = applyFog(lit);
   if (mode == 1)
     lit = albedo.rgb;

@@ -4,7 +4,7 @@ Maps are native world packs from `tools/cs2export`, prepared by the confined ass
 
 For a map that looks wrong, capture the same pose in the lab on both tiers (`node tools/cs2export/capture.mjs`, `CS2_LAB_TIER=phone`) and compare with `compare.mjs`. Check the pack's `unsupported` list and the material shaders at that spot before changing the renderer. For a slow opening, follow the worker's `map.phase` events (`source`, `geometry`, `desktop`, `mobile`, `publishing`) separately from the browser download.
 
-Open map work: overviews for maps Valve ships without them (de_debris, de_eldorado, de_poseidon, ar_pool_day), a translucent water port, phone geometry above the download budget on Ancient, and a host with more free disk for the six larger maps. [Results](VERIFICATION.md#native-worlds)
+Open map work: a BC6H/BC7 encoder for desktop lighting above the 100 MB budget, rush_001's 14.2M triangles, and phone downloads above 70 MB on de_cache, de_inferno and de_train. [Results](VERIFICATION.md#native-worlds)
 
 For doors, breakables and recorded visibility, check `world/entity-playback.ts` against the recorded track at the tick, on play, seek and rewind; ranges and BVH queries share one entity state.
 

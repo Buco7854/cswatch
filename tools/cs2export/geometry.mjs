@@ -86,7 +86,18 @@ function readUv(field, i) {
   }
 }
 
-export function geometry(scene, read, materialId, density = new Map()) {
+/** Triangles per model at its finest and coarser LOD, for budget planning. */
+export function modelTriangles(model) {
+  const count = (meshes) =>
+    (meshes ?? []).reduce(
+      (sum, mesh) => sum + mesh.draws.reduce((n, draw) => n + draw.m_nIndexCount / 3, 0),
+      0,
+    );
+  return { fine: count(model.meshes), coarse: model.coarse ? count(model.coarse) : undefined };
+}
+
+// Models in `coarse` use their next coarser LOD; `instances` counts whole-model placements.
+export function geometry(scene, read, materialId, density = new Map(), coarse = new Set(), instances = new Map()) {
   const ranges = [],
     entities = [],
     environments = [];
@@ -136,7 +147,10 @@ export function geometry(scene, read, materialId, density = new Map()) {
       const model = scene.models[name];
       if (!model && scene.missingResources?.includes(name)) return;
       const placement = transform.equals(identity) ? undefined : transform.toArray();
-      for (const mesh of model.meshes) {
+      if (fragment === null) instances.set(name, (instances.get(name) ?? 0) + 1);
+      // Aggregate fragments address LOD 0 draws, so they keep it.
+      const meshes = fragment === null && coarse.has(name) && model.coarse ? model.coarse : model.meshes;
+      for (const mesh of meshes) {
         const draws = fragment === null ? mesh.draws : [mesh.draws[fragment]];
         for (const draw of draws) {
           if (!draw) throw Error('Unknown fragment draw in ' + name);
@@ -336,8 +350,9 @@ export function geometry(scene, read, materialId, density = new Map()) {
             v.writeUInt16LE(probe?.e.array_index ?? 0, j * stride + 50);
             v.writeUInt16LE(lpv?.e.array_index ?? 65535, j * stride + 54);
           }
-          const family =
-            mat.shader === 'csgo_static_overlay.vfx' && mat.ints.F_BLEND_MODE === 3
+          const family = mat.shader.includes('water')
+            ? 'water'
+            : mat.shader === 'csgo_static_overlay.vfx' && mat.ints.F_BLEND_MODE === 3
               ? 'modulate'
               : mat.ints.F_ADDITIVE_BLEND
                 ? 'additive'

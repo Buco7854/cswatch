@@ -941,6 +941,8 @@ function World({
             register={registerNative}
             shadows={playerLighting}
             tactical={mode === 'tactical'}
+            // The follow camera avoids walls but not foliage cards; leaves near it dissolve.
+            nearFade={mode === 'follow' ? 96 : 0}
             loaded={reportModel}
           />
         )}

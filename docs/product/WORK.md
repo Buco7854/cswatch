@@ -1,6 +1,6 @@
 # Active work
 
-Native worlds replace the glTF map path. Eleven official maps pass the worker on the test host with both tiers. Next: overview-less maps, translucent water, Ancient's phone download and the six maps that need more disk, then hardware GPU and phone measurements. [Evidence](../VERIFICATION.md#native-worlds)
+Native worlds replace the glTF map path. 21 of 22 official maps pass the worker with both tiers. Next: desktop lighting re-encoding for the 100 MB budget, rush_001 and hardware GPU and phone measurements. [Evidence](../VERIFICATION.md#native-worlds)
 
 The Nuke ramp shutter, Secret exit and duct now have source-identified checks on revision 9. A recording of a mode that enables the blockers would extend the existing synthetic activation and 5v5 checks. Frame pacing still needs a repeat on a hardware GPU and a physical phone. [Verification](../VERIFICATION.md#native-worlds)
 

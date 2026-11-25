@@ -26,7 +26,7 @@ export function materialRows(manifest: Manifest) {
           .slice(0, 3)
           .map((x) => (x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4));
       const family = familyNumber(material);
-      return [
+      const row = [
         ...manifest.roles.slice(0, 8).map((key) => bindings[key]?.[1] ?? -1),
         features.F_ALPHA_TEST ?? 0,
         features.F_TRANSLUCENT ||
@@ -34,7 +34,8 @@ export function materialRows(manifest: Manifest) {
         family === 2 ||
         material.shader.includes('overlay') ||
         family === 1 ||
-        family === 4
+        family === 4 ||
+        family === 7
           ? 1
           : 0,
         family,
@@ -46,7 +47,8 @@ export function materialRows(manifest: Manifest) {
         scalars.g_flModelTintAmount ?? 1,
         scalars.g_flBlendSoftness ?? 0.5,
         features.F_VERTEX_COLOR ?? 0,
-        ...(vectors.g_vTexCoordScale ?? [1, 1]).slice(0, 2),
+        // csgo_environment_blend scales each layer with g_vTexCoordScale1, 2 and 3.
+        ...(vectors.g_vTexCoordScale ?? vectors.g_vTexCoordScale1 ?? [1, 1]).slice(0, 2),
         ...(vectors.g_vTexCoordOffset ?? [0, 0]).slice(0, 2),
         ...(vectors.g_vLayer1DetailScale ?? [1, 1]).slice(0, 2),
         vectors.g_vLayer1DetailTintAndBlend?.[3] ?? 0,
@@ -85,7 +87,8 @@ export function materialRows(manifest: Manifest) {
         scalars.g_flBumpStrength ?? 1,
         ...['Layer1', 'Layer1Normal', 'Layer2', 'Layer2Normal', 'BlendModulate', 'Normal'].flatMap(
           (prefix) => {
-            const scale = vectors['g_v' + prefix + 'TexCoordScale'] ?? [1, 1],
+            const scale = vectors['g_v' + prefix + 'TexCoordScale'] ??
+                (prefix.startsWith('Layer2') ? vectors.g_vTexCoordScale2 : undefined) ?? [1, 1],
               center = vectors['g_v' + prefix + 'TexCoordCenter'] ?? [0.5, 0.5],
               offset = vectors['g_v' + prefix + 'TexCoordOffset'] ?? [0, 0];
             const a = (scalars['g_fl' + prefix + 'TexCoordRotation'] ?? 0) * rad,
@@ -128,6 +131,30 @@ export function materialRows(manifest: Manifest) {
         0,
         0,
       ];
+      if (family === 7) {
+        // Water reuses the second-layer tint and detail rows, which its shader path never reads.
+        // Decay colour is not converted to linear, like the source shader.
+        row.splice(
+          9 * 4,
+          4,
+          ...(vectors.g_vWaterDecayColor ?? [1, 1, 1]).slice(0, 3),
+          scalars.g_flWaterDecayStrength ?? 8,
+        );
+        row.splice(
+          33 * 4,
+          8,
+          scalars.g_flWaterFogStrength ?? 0.5,
+          scalars.g_flWaterMaxDepth ?? 100,
+          scalars.g_flWaterFogShadowStrength ?? 0.5,
+          scalars.g_flReflectance ?? 0.2,
+          scalars.g_flFresnelExponent ?? 5,
+          0,
+          0,
+          0,
+        );
+      }
+      if (row.length !== 144) throw Error('Material row layout changed');
+      return row;
     }),
   );
 }

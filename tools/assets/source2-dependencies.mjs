@@ -17,7 +17,8 @@ export const dependencyLimits = Object.freeze({
   resources: 100000,
   blocks: 1024,
   references: 20000,
-  totalReadBytes: 4 * 1024 ** 3,
+  // rush_001, the largest official closure on manifest 5924479096069937098, reads 4.92 GiB.
+  totalReadBytes: 6 * 1024 ** 3,
 });
 const decoder = new TextDecoder('utf-8', { fatal: true });
 const embeddedArchive = 0x7fff;

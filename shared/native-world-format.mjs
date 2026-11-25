@@ -35,9 +35,10 @@ function validateTexture(texture, m) {
       throw Error('Invalid mip page layout');
     const depth = bank ? texture.textures.length : (l.d ?? 0);
     if (
-      !bounded(l.w, bank ? 1024 : 16384) ||
+      // Material banks normally stop at 1024; a texture shipped without smaller mips keeps 2048.
+      !bounded(l.w, bank ? 2048 : 16384) ||
       !l.w ||
-      !bounded(l.h, bank ? 1024 : 16384) ||
+      !bounded(l.h, bank ? 2048 : 16384) ||
       !l.h ||
       !bounded(depth, 2048) ||
       !depth ||
@@ -240,7 +241,7 @@ export function validate(value) {
     if (
       !bounded(p.dimension, 64) ||
       p.dimension < 2 ||
-      m.files[p.lut]?.size !== p.dimension ** 3 * 4
+      (m.files[p.lut]?.decodedSize ?? m.files[p.lut]?.size) !== p.dimension ** 3 * 4
     )
       throw Error('Invalid color grading LUT');
   if (m.visibility && (!m.files[m.visibility.file] || !bounded(m.visibility.clusters, 65536)))
