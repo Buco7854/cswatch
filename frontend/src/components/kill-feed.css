@@ -24,3 +24,8 @@
   width: 32px;
   height: 14px;
 }
+.viewer-frame .killfeed .killfeed-weapon .equipment-glyph.equipment-text-fallback {
+  width: auto;
+  max-width: 72px;
+  height: auto;
+}

@@ -186,6 +186,11 @@ div.review-feed-summary {
   width: 36px;
   height: 13px;
 }
+.review-feed-weapon .equipment-glyph.equipment-text-fallback {
+  width: auto;
+  max-width: 72px;
+  height: auto;
+}
 .review-feed-weapon .equipment-glyph:not(.is-weapon) {
   width: 12px;
   height: 14px;
