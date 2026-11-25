@@ -84,7 +84,9 @@ export function worldEnvironments(
       shadowName = String(entries[0].lightprobetexture_dlshd);
     const layers = (name: string) => textures.specials[name]?.levels.at(-1)?.d ?? 1;
     const phoneVolume = tier === 'phone' ? manifest.phone.volumes[lpvName] : undefined;
-    if (tier === 'phone' && !phoneVolume) throw Error('Missing phone probe volume');
+    // A world without probe volumes (de_poseidon's 3D sky) samples none on either tier.
+    if (tier === 'phone' && entries[0].lightprobetexture && !phoneVolume)
+      throw Error('Missing phone probe volume');
     const lpvLayers = phoneVolume ? phoneVolume.shadowBase : layers(lpvName);
     const range = (name: string) => (tier === 'phone' ? (manifest.phone.hdr[name] ?? 0) : 0);
     const lightmapNames =
