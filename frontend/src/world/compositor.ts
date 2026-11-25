@@ -25,6 +25,9 @@ export interface FramePasses {
   equipment?: (render: (scene: Scene, camera: PerspectiveCamera) => void) => void;
 }
 
+type LinkedProgram = { usedTimes: number };
+const retainedPrograms = new WeakMap<WebGLRenderer, Set<LinkedProgram>>();
+
 export function compositor(renderer: WebGLRenderer, native: NativeRenderer) {
   const gl = renderer.getContext() as WebGL2RenderingContext;
   // Actor x-ray shells test the stencil mask written by their own bodies.
@@ -43,6 +46,8 @@ export function compositor(renderer: WebGLRenderer, native: NativeRenderer) {
   // while they are culled, so a player or weapon entering view mid-playback
   // reuses a program instead of compiling and linking it inside that frame.
   const prepared = new WeakSet<Material>();
+  const retained = retainedPrograms.get(renderer) ?? new Set<LinkedProgram>();
+  retainedPrograms.set(renderer, retained);
   const fresh: Object3D[] = [];
   const freshScene = {
     traverse: (visit: (object: Object3D) => void) => fresh.forEach(visit),
@@ -66,6 +71,21 @@ export function compositor(renderer: WebGLRenderer, native: NativeRenderer) {
     if (!fresh.length) return;
     try {
       renderer.compile(freshScene, camera, scene);
+      // Keep every linked variant for the renderer's lifetime (a bounded set of
+      // shader variants). A corpse's instance-owned materials are disposed at
+      // the round's end; without this lease the next round's first death would
+      // link the same program again mid-playback.
+      for (const object of fresh) {
+        const material = (object as Mesh).material;
+        for (const entry of Array.isArray(material) ? material : [material]) {
+          const program = (renderer.properties.get(entry) as { currentProgram?: LinkedProgram })
+            .currentProgram;
+          if (program && !retained.has(program)) {
+            retained.add(program);
+            program.usedTimes++;
+          }
+        }
+      }
     } finally {
       fresh.length = 0;
     }
