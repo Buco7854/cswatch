@@ -234,7 +234,7 @@
   "Session expired. Refresh the page and try again.": "Session expired. Refresh the page and try again.",
   "Share demo": "Share demo",
   "Show a centered crosshair in player perspective.": "Show a centered crosshair in player perspective.",
-  "Show player shapes through map geometry.": "Show player shapes through map geometry.",
+  "Outline players hidden behind map geometry.": "Outline players hidden behind map geometry.",
   "Show recent eliminations over the scene.": "Show recent eliminations over the scene.",
   "Show the selected player’s recent path.": "Show the selected player’s recent path.",
   "Sign in": "Sign in",

@@ -27,7 +27,7 @@ import { disposeEquipmentInstance } from '../equipment-model';
 import { assertBaseColorTextures } from '../model-textures';
 import type { AgentDeathSample } from '../agent-replay';
 import { weaponAnchor, type WeaponAnchor } from '../agent-attachment';
-import { agentXray, xrayMaterial } from '../agent-xray';
+import { agentXray, xrayHiddenMaterial, xrayOutlineMaterial } from '../agent-xray';
 import { createAgentFootLock, type FootPoseAt } from '../agent-feet';
 import { createCorpseFloor } from '../agent-corpse-floor';
 import type { SceneTrace } from '../world/queries';
@@ -58,18 +58,24 @@ export function GenericAgentBody({
     stencilZPass: ReplaceStencilOp,
   };
   const renderOrder = xray ? 5 : 0;
-  const xrayShell = useMemo(
-    () => (xray ? xrayMaterial({ color: team === 3 ? '#9ec7da' : '#e7ba73' }) : undefined),
+  const xrayShells = useMemo(
+    () =>
+      xray
+        ? [
+            xrayHiddenMaterial({}),
+            xrayOutlineMaterial({ color: team === 3 ? '#9ec7da' : '#e7ba73' }),
+          ]
+        : undefined,
     [xray, team],
   );
-  useEffect(() => () => xrayShell?.dispose(), [xrayShell]);
+  useEffect(() => () => xrayShells?.forEach((material) => material.dispose()), [xrayShells]);
   return (
     <group name={'generic-agent:' + id}>
-      {xray && (
-        <mesh position={[0, 0.95, 0]} renderOrder={10} material={xrayShell}>
+      {xrayShells?.map((material, index) => (
+        <mesh key={index} position={[0, 0.95, 0]} renderOrder={10 + index} material={material}>
           <capsuleGeometry args={[0.26, 1.1, 4, 8]} />
         </mesh>
-      )}
+      ))}
       <mesh
         position={[0, 0.91, 0]}
         castShadow={castStatic}

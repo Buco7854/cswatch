@@ -40,6 +40,7 @@ import ActorOverlays, {
   type ActorOverlay,
 } from './ActorOverlays';
 import type { ActorOverlayLayout } from '../actor-overlay';
+import { setXrayViewportHeight } from '../agent-xray';
 import * as THREE from 'three';
 import type { Playback, Position } from '../types';
 import TacticalPlot from './TacticalPlot';
@@ -492,6 +493,7 @@ function World({
     [nativeWorld, data.mapBreakables, data.mapDoors, data.mapVisibility],
   );
   useFrame(() => seekNative?.(replayFrames?.tick ?? tick), -90);
+  useFrame(({ size }) => setXrayViewportHeight(size.height), -90);
   useActorOverlayFrame(
     overlays,
     overlayLayout,
