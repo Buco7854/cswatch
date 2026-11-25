@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Mirage · World lab</title>
+  </head>
+  <body>
+    <main>
+      <canvas id="world" tabindex="0" aria-label="Mirage free camera"></canvas>
+      <section aria-label="World controls">
+        <strong>Mirage</strong
+        ><select id="mode" aria-label="Rendering view"></select>
+        <output id="stats" aria-live="polite">Loading world…</output>
+      </section>
+      <aside>WASD · Mouse or drag to look · Q/E height</aside>
+    </main>
+    <script type="module" src="/src/world/lab.ts"></script>
+  </body>
+</html>

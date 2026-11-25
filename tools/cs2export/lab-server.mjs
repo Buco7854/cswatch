@@ -1,0 +1,87 @@
+import { build, createServer, preview } from '../../frontend/node_modules/vite/dist/node/index.js';
+import { createReadStream } from 'node:fs';
+import { lstat, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
+import { resolve, join } from 'node:path';
+
+const root = fileURLToPath(new URL('../../frontend/', import.meta.url));
+function mapFiles(directory) {
+  return (server) => {
+    server.middlewares.use('/world-data', async (req, res) => {
+      const name = req.url?.slice(1);
+      if (
+        req.method !== 'GET' ||
+        !name ||
+        !(name === 'map.json' || /^[a-f0-9]{64}\.bin$/.test(name))
+      ) {
+        res.statusCode = 404;
+        res.end();
+        return;
+      }
+      try {
+        const path = join(directory, name),
+          st = await lstat(path);
+        if (!st.isFile()) throw Error();
+        res.setHeader('Content-Length', st.size);
+        res.setHeader(
+          'Content-Type',
+          name.endsWith('.json') ? 'application/json' : 'application/octet-stream',
+        );
+        createReadStream(path)
+          .on('error', () => res.destroy())
+          .pipe(res);
+      } catch {
+        res.statusCode = 404;
+        res.end();
+      }
+    });
+  };
+}
+export async function serve(directory, port = 0, production = false) {
+  const mount = mapFiles(directory),
+    options = { host: '127.0.0.1', port, strictPort: true };
+  const config = {
+    root,
+    configFile: false,
+    publicDir: false,
+    logLevel: 'warn',
+    plugins: [{ name: 'native-world-lab', configureServer: mount, configurePreviewServer: mount }],
+  };
+  let server, buildDir;
+  try {
+    if (production) {
+      buildDir = await mkdtemp(join(tmpdir(), 'cswatch-world-lab-'));
+      const isolated = {
+        ...config,
+        build: {
+          outDir: buildDir,
+          emptyOutDir: true,
+          rollupOptions: { input: join(root, 'world-lab.html') },
+        },
+      };
+      await build(isolated);
+      server = await preview({ ...isolated, preview: options });
+    } else {
+      server = await createServer({ ...config, server: options });
+      await server.listen();
+    }
+  } catch (error) {
+    if (buildDir) await rm(buildDir, { recursive: true });
+    throw error;
+  }
+  return {
+    url: `http://127.0.0.1:${server.httpServer.address().port}/world-lab.html?map=/world-data/`,
+    close: async () => {
+      try {
+        await server.close();
+      } finally {
+        if (buildDir) await rm(buildDir, { recursive: true });
+      }
+    },
+  };
+}
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const server = await serve(resolve(process.argv[2]), Number(process.argv[3]) || 4198);
+  console.log(server.url);
+}

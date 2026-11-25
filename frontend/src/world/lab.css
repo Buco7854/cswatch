@@ -1,0 +1,69 @@
+:root {
+  color-scheme: light dark;
+  font:
+    14px system-ui,
+    sans-serif;
+  --panel: #fcfaf5ed;
+  --ink: #161b1b;
+  --line: #838383;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --panel: #172020ed;
+    --ink: #fff;
+  }
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: #1d2527;
+  color: var(--ink);
+}
+canvas {
+  width: 100vw;
+  height: 100dvh;
+  display: block;
+  touch-action: none;
+}
+section,
+aside {
+  position: fixed;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  padding: 6px 12px;
+  border-radius: 4px;
+}
+section {
+  left: 12px;
+  top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  max-width: calc(100vw - 24px);
+}
+select {
+  height: 36px;
+  border-radius: 3px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+}
+aside {
+  bottom: 12px;
+  left: 12px;
+  font-size: 12px;
+}
+output {
+  font-variant-numeric: tabular-nums;
+}
+@media (pointer: coarse) {
+  select {
+    min-height: 44px;
+  }
+  aside {
+    display: none;
+  }
+}
