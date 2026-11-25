@@ -228,18 +228,14 @@ if (overview) {
   }
 }
 // Drop whole authored levels, preserving the remaining Valve block payloads.
-// The desktop tier takes the first plan whose estimate fits its budget: distant 3D-sky
-// lightmaps, then the sun shadow, material texel density and baked lighting resolution give way.
-// Estimates use measured Brotli/raw ratios per category.
+// The desktop tier takes the first plan whose estimate fits its budget; only material texture
+// caps and texel density give way. A map that still exceeds the budget keeps its quality.
 const desktopPlans = [
-  { target: undefined, max: 1024, irradiance: 4096, shadow: 8192, skyLightmap: Infinity },
-  { target: undefined, max: 1024, irradiance: 4096, shadow: 8192, skyLightmap: 1024 },
-  { target: undefined, max: 1024, irradiance: 4096, shadow: 4096, skyLightmap: 1024 },
-  { target: undefined, max: 512, irradiance: 4096, shadow: 4096, skyLightmap: 1024 },
-  { target: 1, max: 512, irradiance: 2048, shadow: 2048, skyLightmap: 1024 },
-  { target: 1, max: 256, irradiance: 2048, shadow: 2048, skyLightmap: 512 },
-  { target: 0.75, max: 256, irradiance: 1024, shadow: 1024, skyLightmap: 512 },
-  { target: 0.75, max: 256, irradiance: 1024, shadow: 1024, skyLightmap: 512, cube: 64 },
+  { target: undefined, max: 1024 },
+  { target: undefined, max: 512 },
+  { target: 1, max: 512 },
+  { target: 1, max: 256 },
+  { target: 0.75, max: 256 },
 ];
 // Each texture level's stored size is measured once with the writer's own packing, so plans are
 // chosen on measured bytes rather than category ratios.
@@ -254,7 +250,6 @@ function packedLevel(texture, level) {
   }
   return size;
 }
-const mainWorld = 'maps/' + scene.map + '/';
 function texturePlanCaps(plan) {
   const caps = new Map();
   for (const [name, material] of Object.entries(scene.materials)) {
@@ -265,18 +260,10 @@ function texturePlanCaps(plan) {
   return caps;
 }
 function capFor(name, category, plan, caps) {
-  if (category === 'cubemaps') return plan.cube ?? 128;
-  if (category === 'sky') return 128;
-  if (category === 'lightmaps') {
-    const own = /direct_light_shadows/.test(name) ? plan.shadow : plan.irradiance;
-    const cap = name.startsWith(mainWorld) ? own : Math.min(own, plan.skyLightmap);
-    // Generated lightmap levels average neighbouring atlas charts: on cs_italy a 1024 level
-    // smeared walls (24-33% of spawn pixels over 8 levels). The download plan therefore keeps
-    // Valve's smallest shipped level at least; the generated levels serve the phone tier.
-    const texture = scene.textures[name];
-    const shipped = texture?.shipped ? texture.levels.at(-texture.shipped) : undefined;
-    return shipped ? Math.max(cap, shipped.w, shipped.h) : cap;
-  }
+  if (category === 'cubemaps' || category === 'sky') return 128;
+  // Baked lighting (lightmaps, sun shadows and probe volumes) keeps its full shipped
+  // resolution on every plan; only material textures give way to the budget.
+  if (category === 'lightmaps') return Infinity;
   return category === 'textures' ? (caps.get(name) ?? Math.min(256, plan.max)) : Infinity;
 }
 const geometryWire = deflateSync(archive.finish()).length;
@@ -290,7 +277,8 @@ function desktopEstimate(plan) {
     const cap = capFor(name, category, plan, caps);
     let kept = texture.levels.filter((level) => Math.max(level.w, level.h) <= cap);
     if (!kept.length) kept = texture.levels.slice(0, 1);
-    if (name.endsWith('/direct_light_shadows.vtex')) kept = kept.slice(-1);
+    // The shader samples a lightmap's top level only.
+    if (category === 'lightmaps') kept = kept.slice(-1);
     bytes += kept.reduce((n, level) => n + packedLevel(texture, level), 0);
   }
   return bytes;
@@ -314,7 +302,7 @@ for (const [name, texture] of Object.entries(scene.textures)) {
     texture.levels.pop();
     texture.first++;
   }
-  if (name.endsWith('/direct_light_shadows.vtex')) texture.levels = texture.levels.slice(-1);
+  if (category === 'lightmaps') texture.levels = texture.levels.slice(-1);
   const skipped = texture.levels.at(-1).level;
   for (const level of texture.levels) level.level -= skipped;
 }

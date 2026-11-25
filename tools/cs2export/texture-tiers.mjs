@@ -39,7 +39,7 @@ const slice = (texture, level, profile) => ({
 const hdr = (format) => format === 'BC6H' || format === 'RGBA16161616F';
 
 /** Phone items reuse the desktop bank layers and levels, so material bindings stay valid. */
-function planWith(manifest, scene, sourceLevels, phoneCap, lightmapBlock, lightmapCap = 4096) {
+function planWith(manifest, scene, sourceLevels, phoneCap, lightmapBlock, lightmapCap = Infinity) {
   const items = [],
     targets = [];
   for (const bank of manifest.arrays) {
@@ -75,9 +75,8 @@ function planWith(manifest, scene, sourceLevels, phoneCap, lightmapBlock, lightm
     // box-reduced and smaller ones (a 3D sky's 4x4 placeholder shadow) are repeated, each by a
     // whole factor while decoding.
     const levelsOf = (name) => sourceLevels.get(name);
-    // Like the desktop tier, irradiance is capped at 4096.
-    // A distant 3D-sky world keeps at most 1024; whole-factor halvings reach the cap.
-    const limit = env.sky ? Math.min(1024, lightmapCap) : lightmapCap;
+    // Baked lighting keeps its full shipped resolution on every tier; only the ASTC block varies.
+    const limit = lightmapCap;
     let size = levelsOf(kinds[0]).at(-1);
     while (Math.max(size.w, size.h) > limit && size.w % 2 === 0 && size.h % 2 === 0)
       size = { w: size.w / 2, h: size.h / 2 };
@@ -168,13 +167,13 @@ export function phonePlan(manifest, scene, sourceLevels) {
   const base = [manifest.geometry.vb, manifest.geometry.ib, manifest.visibility?.file]
     .filter(Boolean)
     .reduce((sum, file) => sum + manifest.files[file].size, 0);
-  // Lower the material cap first, then coarsen the lightmap atlas at the smallest cap.
+  // Lower the material cap first, then coarsen the lightmap blocks at the smallest cap. The
+  // lightmap resolution itself is never reduced: a map that still exceeds the budget reports it.
   const caps = [512, 256, 128].filter((cap) => cap <= maxPhoneCap);
   const candidates = [
     ...caps.map((cap) => [cap, lightmapBlock]),
     [caps.at(-1), [5, 5]],
     [caps.at(-1), [6, 6]],
-    [caps.at(-1), [6, 6], 2048],
   ];
   let plan;
   for (const [cap, block, lightmapCap] of candidates) {
