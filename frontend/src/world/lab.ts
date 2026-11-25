@@ -28,6 +28,8 @@ if (french) {
     'ZQSD ou WASD · Glisser pour regarder · E pour monter';
   stats.textContent = 'Chargement…';
 }
+select.add(new Option(french ? 'Identifiant matériau' : 'Material ID', '7'));
+if (params.get('view') === 'material-id') select.value = '7';
 const parse = (text: string | null, fallback: number[]) => {
   const v = text?.split(',').map(Number);
   return v?.length === fallback.length && v.every(Number.isFinite) ? v : fallback;

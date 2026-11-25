@@ -20,8 +20,16 @@ function mapFiles(directory) {
         return;
       }
       try {
-        const path = join(directory, name),
-          st = await lstat(path);
+        let path = join(directory, name);
+        res.setHeader('Vary', 'Accept-Encoding');
+        const acceptsBrotli = String(req.headers['accept-encoding'] ?? '')
+          .split(',')
+          .some((token) => /^br(?:\s*;\s*q=(?!0(?:\.0*)?$)[\d.]+)?$/i.test(token.trim()));
+        if (acceptsBrotli && (await lstat(path + '.br').catch(() => null))?.isFile()) {
+          path += '.br';
+          res.setHeader('Content-Encoding', 'br');
+        }
+        const st = await lstat(path);
         if (!st.isFile()) throw Error();
         res.setHeader('Content-Length', st.size);
         res.setHeader(

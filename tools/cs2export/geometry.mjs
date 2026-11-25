@@ -1,7 +1,6 @@
 // Mesh bindings and tangent frames adapted from ValveResourceFormat 21.1 (MIT).
 // Copyright (c) 2015 ValveResourceFormat Contributors. See THIRD_PARTY_NOTICES.txt.
 import {
-  Matrix3,
   Matrix4,
   Vector3,
   Euler,
@@ -131,7 +130,7 @@ export function geometry(scene, read, materialId) {
     function submit(name, transform, tint, binding, fragment, entityIndex = -1) {
       if (!name) return;
       const model = scene.models[name];
-      const normalMatrix = new Matrix3().getNormalMatrix(transform);
+      const placement = transform.equals(identity) ? undefined : transform.toArray();
       for (const mesh of model.meshes) {
         const draws = fragment === null ? mesh.draws : [mesh.draws[fragment]];
         for (const draw of draws) {
@@ -175,29 +174,31 @@ export function geometry(scene, read, materialId) {
             throw Error('Geometry exceeds decoded budget');
           const min = new Vector3(Infinity, Infinity, Infinity),
             max = min.clone().negate();
+          const localMin = min.clone(),
+            localMax = max.clone();
           for (const [relative, j] of remap) {
             const i = relative + draw.m_nBaseVertex,
               p = i * pos.stride + pos.offset,
               o = j * stride;
-            origin
-              .set(
-                pos.bytes.readFloatLE(p),
-                pos.bytes.readFloatLE(p + 4),
-                pos.bytes.readFloatLE(p + 8),
-              )
-              .applyMatrix4(transform);
-            min.min(origin);
-            max.max(origin);
+            origin.set(
+              pos.bytes.readFloatLE(p),
+              pos.bytes.readFloatLE(p + 4),
+              pos.bytes.readFloatLE(p + 8),
+            );
+            localMin.min(origin);
+            localMax.max(origin);
             v.writeFloatLE(origin.x, o);
             v.writeFloatLE(origin.y, o + 4);
             v.writeFloatLE(origin.z, o + 8);
+            origin.applyMatrix4(transform);
+            min.min(origin);
+            max.max(origin);
             const [n, t, sign] = frame(
               normal.bytes,
               i * normal.stride + normal.offset,
               normal.format,
             );
-            n.applyNormalMatrix(normalMatrix);
-            t.transformDirection(transform);
+
             for (const [d, at] of [
               [n, 12],
               [t, 16],
@@ -327,6 +328,8 @@ export function geometry(scene, read, materialId) {
             side: !!mat.ints.F_RENDER_BACKFACES,
             sky,
             entityIndex,
+            localBounds: [...localMin.toArray(), ...localMax.toArray()],
+            placement,
             cubeHandshake: binding.m_nCubeMapPrecomputedHandshake ?? 0,
             probeHandshake: binding.m_nLightProbeVolumePrecomputedHandshake ?? 0,
             bounds: [...min.toArray(), ...max.toArray()],

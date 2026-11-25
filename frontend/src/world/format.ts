@@ -1,3 +1,4 @@
+import { transposeBlocks } from './block-layout.mjs';
 export interface Mip {
   level: number;
   w: number;
@@ -30,13 +31,26 @@ export interface Material {
   vectors: Record<string, number[]>;
   bindings: Record<string, number[]>;
 }
+export interface Range {
+  bounds: number[];
+  first: number;
+  count: number;
+  entity: number;
+  material: number;
+  vertices: number;
+  uvBounds: number[];
+  positionGrid: number[];
+  placement?: number[];
+  streams: ([number, number, number] | null)[];
+  attributes: number[];
+}
 export interface Chunk {
   bounds: number[];
   family: string;
   sky: boolean;
   side: boolean;
   banks: number[];
-  ranges: { bounds: number[]; first: number; count: number; entity: number; material: number }[];
+  ranges: Range[];
 }
 export interface Entity {
   classname: string;
@@ -61,7 +75,10 @@ export interface Manifest {
   bounds: number[];
   visibility: { file: string; clusters: number } | null;
   geometry: { vb: string; ib: string; stride: number; indices: number; vertices: number };
-  files: Record<string, { sha256: string; size: number; category: string }>;
+  files: Record<
+    string,
+    { sha256: string; size: number; category: string; decodedSize?: number; packing?: number }
+  >;
   materials: Material[];
   arrays: Bank[];
   chunks: Chunk[];
@@ -127,7 +144,7 @@ function validateTexture(texture: Bank | Texture, m: Manifest) {
     if (!bytes || l.size !== bytes * depth) throw Error('Invalid mip byte count');
     offset += l.size;
   }
-  if (offset !== file.size) throw Error('Invalid texture payload size');
+  if (offset !== (file.decodedSize ?? file.size)) throw Error('Invalid texture payload size');
 }
 
 export function validate(value: unknown): Manifest {
@@ -135,7 +152,7 @@ export function validate(value: unknown): Manifest {
   if (
     !m ||
     m.format !== 'cswatch-native-world' ||
-    m.version !== 1 ||
+    m.version !== 2 ||
     m.units !== 'inches' ||
     m.up !== 'Z' ||
     !box(m.bounds)
@@ -147,10 +164,16 @@ export function validate(value: unknown): Manifest {
     if (
       !/^[0-9a-f]{64}\.bin$/.test(name) ||
       name !== f.sha256 + '.bin' ||
-      !bounded(f.size, 256 * MiB)
+      !bounded(f.size, 256 * MiB) ||
+      (f.packing !== undefined &&
+        (![1, 8, 16].includes(f.packing) ||
+          !bounded(f.decodedSize!, 256 * MiB) ||
+          f.decodedSize! < f.size ||
+          f.decodedSize! % f.packing !== 0)) ||
+      (f.decodedSize !== undefined && f.packing === undefined)
     )
       throw Error('Invalid file record');
-    total += f.size;
+    total += f.decodedSize ?? f.size;
   }
   const g = m.geometry;
   if (
@@ -177,7 +200,8 @@ export function validate(value: unknown): Manifest {
     m.roles.length > 32
   )
     throw Error('Invalid scene table');
-  let next = 0;
+  let next = 0,
+    vertices = 0;
   for (const c of m.chunks) {
     if (
       !box(c.bounds) ||
@@ -198,10 +222,31 @@ export function validate(value: unknown): Manifest {
         !(r.entity === -1 || bounded(r.entity, m.entities.length - 1))
       )
         throw Error('Invalid draw range');
+      if (
+        !bounded(r.vertices, g.vertices - vertices) ||
+        !r.vertices ||
+        !vec(r.uvBounds, 4) ||
+        !vec(r.positionGrid, 6) ||
+        (r.placement !== undefined && !vec(r.placement, 16)) ||
+        !vec(r.attributes, 4) ||
+        !Array.isArray(r.streams) ||
+        r.streams.length !== 7 ||
+        !r.streams.every((entry, index) =>
+          entry === null
+            ? index >= 3
+            : vec(entry, 3) &&
+              bounded(entry[2], 2) &&
+              bounded(entry[0], m.files[g.vb].decodedSize ?? m.files[g.vb].size) &&
+              bounded(entry[1], (m.files[g.vb].decodedSize ?? m.files[g.vb].size) - entry[0]) &&
+              entry[1] > 0,
+        )
+      )
+        throw Error('Invalid vertex streams');
+      vertices += r.vertices;
       next += r.count;
     }
   }
-  if (next !== g.indices) throw Error('Incomplete index coverage');
+  if (next !== g.indices || vertices !== g.vertices) throw Error('Incomplete index coverage');
   for (const texture of [...m.arrays, ...Object.values(m.specials)]) validateTexture(texture, m);
   for (const mat of m.materials) {
     for (const ref of Object.values(mat.bindings)) {
@@ -282,5 +327,13 @@ export async function readAsset(dir: URL, m: Manifest, file: string) {
     b.toString(16).padStart(2, '0'),
   ).join('');
   if (hash !== f.sha256) throw Error('Map file failed integrity check ' + file);
+  if (f.packing) {
+    const decoded = await boundedBody(
+      new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate'))),
+      f.decodedSize!,
+      f.decodedSize,
+    );
+    return f.packing === 1 ? decoded : transposeBlocks(decoded, f.packing, true);
+  }
   return bytes;
 }

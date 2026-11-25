@@ -176,7 +176,10 @@ void main(){
  float fog=clamp(distTerm,0.,1.)*heightTerm*fogDist.w;
  lit=mix(lit,textureLod(skyMap,cubeUv(w-eye,0),clamp(1.-fog*fogHeight.w,0.,1.)*(log2(float(textureSize(skyMap,0).x))-3.)).rgb,fog);
  if(mode==1)lit=albedo.rgb;else if(mode==2)lit=normal*.5+.5;else if(mode==3)lit=light;else if(mode==4)lit=env;
- pixel=vec4(max(lit,vec3(0)),alpha);
+ if(mode==7){
+  int id=binding.x+1;
+  pixel=vec4(float(id & 255),float(id >> 8),255.,255.)/255.;
+ }else pixel=vec4(max(lit,vec3(0)),alpha);
 }
 `;
 export const screenVertex =
@@ -201,6 +204,7 @@ uniform vec4 curve;
 uniform vec4 toe;
 uniform vec4 bloom;
 uniform bool bypass;
+uniform bool materialIds;
 
 vec3 uncharted(vec3 signal) {
   vec3 numerator = signal * (curve.x * signal + curve.y * curve.z) + curve.w * toe.x;
@@ -244,6 +248,7 @@ vec3 additiveBloom() {
 
 void main() {
   vec3 scene = texture(hdr, uv).rgb;
+  if(materialIds){pixel=vec4(scene,1);return;}
   if (bypass) {
     pixel = vec4(encodeSrgb(scene), 1);
     return;

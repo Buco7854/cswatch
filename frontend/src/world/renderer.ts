@@ -3,6 +3,7 @@ import { program } from './program';
 import { projectedBounds, transparentGroups, type ScreenRect } from './transparency';
 import { probeGrid } from './probe-grid';
 import { Frustum, Matrix4, PerspectiveCamera, Vector3, Box3 } from 'three';
+import { decodeVertices } from './geometry';
 import { MeshoptDecoder } from 'meshoptimizer';
 import { readAsset, type Manifest, type Entity } from './format';
 import { textureArray } from './textures';
@@ -272,17 +273,18 @@ export async function createRenderer(gl: WebGL2RenderingContext, dir: URL, m: Ma
   const g = m.geometry,
     vao = gl.createVertexArray();
   gl.bindVertexArray(vao);
-  for (const [file, count, size, target] of [
-    [g.vb, g.vertices, g.stride, gl.ARRAY_BUFFER],
-    [g.ib, g.indices, 4, gl.ELEMENT_ARRAY_BUFFER],
-  ] as const) {
-    const raw = new Uint8Array(count * size),
-      compressed = await fetchAsset(file);
-    if (target === gl.ARRAY_BUFFER) MeshoptDecoder.decodeVertexBuffer(raw, count, size, compressed);
-    else MeshoptDecoder.decodeIndexBuffer(raw, count, 4, compressed);
-    gl.bindBuffer(target, gl.createBuffer());
-    gl.bufferData(target, raw, gl.STATIC_DRAW);
-  }
+  const indices = new Uint32Array(g.indices);
+  MeshoptDecoder.decodeIndexBuffer(
+    new Uint8Array(indices.buffer),
+    g.indices,
+    4,
+    await fetchAsset(g.ib),
+  );
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer());
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+  const vertices = decodeVertices(m, await fetchAsset(g.vb), indices);
+  gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+  gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
   for (const [index, count, type, offset, norm, integer] of [
     [0, 3, gl.FLOAT, 0, 0, 0],
     [1, 3, gl.BYTE, 12, 1, 0],
@@ -413,7 +415,7 @@ export async function createRenderer(gl: WebGL2RenderingContext, dir: URL, m: Ma
     sky.use();
     gl.uniformMatrix4fv(sky.u('unproject'), false, vp.clone().invert().elements);
     gl.uniform3fv(sky.u('eye'), pose.pos);
-    gl.uniform1f(sky.u('gain'), skyGain);
+    gl.uniform1f(sky.u('gain'), mode === 7 ? 0 : skyGain);
     gl.uniform1i(sky.u('skyMap'), 12);
     bind(12, arr, skyTexture);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -500,7 +502,7 @@ export async function createRenderer(gl: WebGL2RenderingContext, dir: URL, m: Ma
       gl.uniform3fv(world.u('gridMin'), env.spatial.min);
       gl.uniform3fv(world.u('gridInv'), env.spatial.invStep);
       for (const blended of [false, true]) {
-        if (blended) {
+        if (blended && mode !== 7) {
           gl.enable(gl.BLEND);
           gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
         } else gl.disable(gl.BLEND);
@@ -540,7 +542,8 @@ export async function createRenderer(gl: WebGL2RenderingContext, dir: URL, m: Ma
               !frustum.intersectsBox(r.box)
             )
               continue;
-            if (blended) {
+            if (mode === 7) gl.disable(gl.BLEND);
+            if (blended && mode !== 7) {
               const center = r.box.getCenter(new Vector3()).applyMatrix4(cam.matrixWorldInverse);
               byDepth.push({
                 c,
@@ -569,7 +572,8 @@ export async function createRenderer(gl: WebGL2RenderingContext, dir: URL, m: Ma
         }
         for (const { side, family, banks, list } of groups) {
           if (!list.length) continue;
-          if (blended) {
+          if (mode === 7) gl.disable(gl.BLEND);
+          if (blended && mode !== 7) {
             if (family === 'additive') gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
             else if (family === 'modulate') gl.blendFunc(gl.DST_COLOR, gl.SRC_COLOR);
             else gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -643,6 +647,7 @@ export async function createRenderer(gl: WebGL2RenderingContext, dir: URL, m: Ma
       b.m_flBloomStrength,
       0,
     );
+    gl.uniform1i(post.u('materialIds'), Number(mode === 7));
     gl.uniform1i(post.u('bypass'), mode === 0 ? 0 : 1);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     const error = gl.getError();

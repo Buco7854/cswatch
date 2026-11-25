@@ -5,6 +5,13 @@ import { createHash } from 'node:crypto';
 import { MeshoptEncoder } from '../../frontend/node_modules/meshoptimizer/meshopt_encoder.js';
 import { geometry, stride } from './geometry.mjs';
 
+import { vertexArchive } from './quantize.mjs';
+import { precompress } from './precompress.mjs';
+import { deflateSync } from 'node:zlib';
+import { transposeBlocks } from '../../frontend/src/world/block-layout.mjs';
+import { materialCaps } from './material-caps.mjs';
+const materialCap = Number(process.env.CS2EXPORT_MATERIAL_CAP ?? 256);
+if (![256, 512, 1024].includes(materialCap)) throw Error('Material cap must be 256, 512 or 1024');
 const [source, out] = process.argv.slice(2);
 const scene = JSON.parse(readFileSync(join(source, 'source.json'), 'utf8'));
 const files = {},
@@ -20,14 +27,35 @@ function read(file) {
   }
   return bytes;
 }
-function store(bytes, category) {
+function store(bytes, category, format) {
+  const decodedSize = bytes.length;
+  let packing;
+  if (bytes.length >= 1024) {
+    const stride = { DXT1: 8, DXT5: 16, ATI1N: 8, ATI2N: 16, BC6H: 16, BC7: 16 }[format];
+    const original = bytes;
+    for (const laneBytes of stride ? [1, stride] : [1]) {
+      const packed = deflateSync(
+        laneBytes === 1 ? original : transposeBlocks(original, laneBytes, false),
+        { level: 6 },
+      );
+      if (packed.length + 64 < bytes.length) {
+        bytes = packed;
+        packing = laneBytes;
+      }
+    }
+  }
   const sha256 = createHash('sha256').update(bytes).digest('hex'),
     file = sha256 + '.bin';
   if (!files[file]) {
     const fs = statfsSync(out);
     if (fs.bavail * fs.bsize - bytes.length < 4 * 1024 ** 3) throw Error('Disk reserve reached');
     writeFileSync(join(out, file), bytes, { flag: 'wx' });
-    files[file] = { size: bytes.length, sha256, category };
+    files[file] = {
+      size: bytes.length,
+      sha256,
+      category,
+      ...(packing ? { packing, decodedSize } : {}),
+    };
   }
   return file;
 }
@@ -39,6 +67,37 @@ function keep(file) {
   return file;
 }
 
+// Drop whole authored levels, preserving the remaining Valve block payloads.
+const textureCaps = new Map();
+if (!process.env.CS2EXPORT_MATERIAL_CAP)
+  for (const [name, material] of Object.entries(scene.materials)) {
+    const cap = materialCaps[name] ?? 256;
+    for (const texture of Object.values(material.slots))
+      textureCaps.set(texture, Math.max(cap, textureCaps.get(texture) ?? 0));
+  }
+for (const [name, texture] of Object.entries(scene.textures)) {
+  const category = scene.files[texture.file].category;
+  const cap =
+    category === 'cubemaps' || category === 'sky'
+      ? 128
+      : category === 'lightmaps'
+        ? /direct_light_shadows/.test(name)
+          ? 8192
+          : 4096
+        : category === 'textures'
+          ? (textureCaps.get(name) ?? materialCap)
+          : Infinity;
+  while (
+    texture.levels.length > 1 &&
+    Math.max(texture.levels.at(-1).w, texture.levels.at(-1).h) > cap
+  ) {
+    texture.levels.pop();
+    texture.first++;
+  }
+  if (name.endsWith('/direct_light_shadows.vtex')) texture.levels = texture.levels.slice(-1);
+  const skipped = texture.levels.at(-1).level;
+  for (const level of texture.levels) level.level -= skipped;
+}
 function layer(name, role, srgb) {
   const key = [name, role, srgb].join('|');
   if (refs.has(key)) return refs.get(key);
@@ -120,14 +179,25 @@ for (const bank of arrays) {
     }
     mips.push({ w: mip.w, h: mip.h, offset: start, size: offset - start, level: mip.level });
   }
-  bank.file = store(Buffer.concat(streams), 'textures');
+  bank.file = store(Buffer.concat(streams), 'textures', bank.format);
   bank.mips = mips;
   cache.clear();
 }
 const specials = {};
 for (const [name, tex] of Object.entries(scene.textures)) {
-  if (scene.files[tex.file].category !== 'textures' || tex.levels.at(-1).d > 1)
-    specials[name] = { ...tex, file: keep(tex.file) };
+  const category = scene.files[tex.file].category;
+  if (category !== 'textures' || tex.levels.at(-1).d > 1) {
+    const last = tex.levels.at(-1);
+    const start = tex.levels[0].offset;
+    const end = last.offset + last.size,
+      length = end - start;
+    if (start) for (const level of tex.levels) level.offset -= start;
+    specials[name] = {
+      ...tex,
+      file: store(read(tex.file).subarray(start, end), category, tex.format),
+    };
+    cache.clear();
+  }
 }
 for (const p of Object.values(scene.post)) keep(p.lut);
 if (scene.visibility) keep(scene.visibility.file);
@@ -144,8 +214,9 @@ for (const r of ranges) {
   if (!batch.cells.has(keyCell)) batch.cells.set(keyCell, []);
   batch.cells.get(keyCell).push(r);
 }
-const vertices = [],
-  indices = [],
+await MeshoptEncoder.ready;
+const archive = vertexArchive();
+const indices = [],
   chunks = [];
 let first = 0,
   base = 0;
@@ -163,11 +234,13 @@ for (const batch of batches.values()) {
     chunks.push(chunk);
     for (const r of rs) {
       const count = r.indices.length / 4;
+      const vertexData = archive.encode(r, mats[r.mat]);
       for (let i = 0; i < count; i++)
         r.indices.writeUInt32LE(r.indices.readUInt32LE(i * 4) + base, i * 4);
-      vertices.push(r.v);
+
       indices.push(r.indices);
       chunk.ranges.push({
+        ...vertexData,
         first,
         count,
         bounds: r.bounds,
@@ -185,16 +258,12 @@ for (const batch of batches.values()) {
     }
   }
 }
-await MeshoptEncoder.ready;
-const vb = store(
-  MeshoptEncoder.encodeVertexBuffer(Buffer.concat(vertices), base, stride),
-  'geometry',
-);
+const vb = store(archive.finish(), 'geometry');
 const ib = store(MeshoptEncoder.encodeIndexBuffer(Buffer.concat(indices), first, 4), 'geometry');
 const bounds = scene.worlds['maps/de_mirage'].bounds[0];
 const manifest = {
   format: 'cswatch-native-world',
-  version: 1,
+  version: 2,
   map: 'de_mirage',
   sourceManifest: '8225060435969537482',
   units: 'inches',
@@ -225,9 +294,11 @@ const manifest = {
     'Translucent ranges are depth sorted by their bounds. Intersecting triangles within a range retain source ordering.',
     'Box cubemaps use six array layers and lack cross-face filtering. Small-scale material response and glass transmission are approximations.',
     'Dynamic direct lights and animated shadow casters are omitted. On this snapshot all local lights use baked or disabled direct illumination.',
-    'Automatic exposure uses the settled viewport luminance. Temporal adaptation and output dithering are omitted.',
+    'The map master volume sets fixed exposure. Color grading uses its neutral LUT diagonal.',
   ],
   textureConversions: [],
 };
+for (const [name, record] of Object.entries(files)) record.br = precompress(out, name);
 writeFileSync(join(out, 'map.json'), JSON.stringify(manifest), { flag: 'wx' });
+precompress(out, 'map.json');
 console.log(JSON.stringify(manifest.counts));
