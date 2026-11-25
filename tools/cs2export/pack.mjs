@@ -269,7 +269,13 @@ function capFor(name, category, plan, caps) {
   if (category === 'sky') return 128;
   if (category === 'lightmaps') {
     const own = /direct_light_shadows/.test(name) ? plan.shadow : plan.irradiance;
-    return name.startsWith(mainWorld) ? own : Math.min(own, plan.skyLightmap);
+    const cap = name.startsWith(mainWorld) ? own : Math.min(own, plan.skyLightmap);
+    // Generated lightmap levels average neighbouring atlas charts: on cs_italy a 1024 level
+    // smeared walls (24-33% of spawn pixels over 8 levels). The download plan therefore keeps
+    // Valve's smallest shipped level at least; the generated levels serve the phone tier.
+    const texture = scene.textures[name];
+    const shipped = texture?.shipped ? texture.levels.at(-texture.shipped) : undefined;
+    return shipped ? Math.max(cap, shipped.w, shipped.h) : cap;
   }
   return category === 'textures' ? (caps.get(name) ?? Math.min(256, plan.max)) : Infinity;
 }

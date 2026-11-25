@@ -407,7 +407,8 @@ sealed class NativeScene(ResourceStore store, string game, string output, string
             payload.Write(data);
         }
         textures.Add(name, new { file = Write("lightmaps", payload.GetBuffer().AsSpan(0, (int)payload.Length)),
-            radiance = tex.RadianceCoefficients, format = tex.Format.ToString(), flags = (int)tex.Flags, depth = 1, first = 0, levels });
+            radiance = tex.RadianceCoefficients, format = tex.Format.ToString(), flags = (int)tex.Flags, depth = 1, first = 0, levels,
+            shipped = tex.NumMipLevels });
     }
 
     // BC4 unsigned: two endpoints and eight interpolated values, three index bits per texel.
