@@ -4,6 +4,8 @@ import { allocateTexture } from './textures';
 export function createTextureStream(
   gl: WebGL2RenderingContext,
   read: (file: string) => Promise<Uint8Array<ArrayBuffer>>,
+  resources: { retain(release: () => void): void },
+  signal?: AbortSignal,
 ) {
   type Upload = { target: ReturnType<typeof allocateTexture>; mip: Mip };
   type Page = { file: string; wave: number; uploads: Upload[] };
@@ -18,6 +20,7 @@ export function createTextureStream(
     flags: number,
   ) {
     const target = allocateTexture(gl, format, srgb, mips, depth, flags);
+    resources.retain(() => gl.deleteTexture(target.texture));
     mips.forEach((mip, index) => {
       const name = mip.file ?? file;
       const wave =
@@ -33,6 +36,7 @@ export function createTextureStream(
   async function bootstrap() {
     const initial = [...pages.values()].filter((page) => page.wave === 0);
     const payloads = await Promise.all(initial.map((page) => read(page.file)));
+    signal?.throwIfAborted();
     const uploads = initial.flatMap((page, index) =>
       page.uploads.map((upload) => ({ ...upload, bytes: payloads[index] })),
     );
@@ -59,6 +63,7 @@ export function createTextureStream(
             deadline = performance.now() + 2;
             frameBytes = 0;
           }
+          signal?.throwIfAborted();
           slice.write();
           frameBytes += slice.bytes;
           peakFrameBytes = Math.max(peakFrameBytes, frameBytes);

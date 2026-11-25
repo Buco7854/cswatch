@@ -265,6 +265,7 @@ export class SmokeVolumePass {
     low: boolean,
     xray: boolean,
     sceneLightScale = 1,
+    framebuffer?: WebGLFramebuffer,
   ) {
     this.hide();
     const keys = new Set(smoke.map(({ key }) => key));
@@ -331,7 +332,14 @@ export class SmokeVolumePass {
       if (width !== this.depth.width || height !== this.depth.height)
         this.depth.setSize(width, height);
       this.depth.viewport.set(0, 0, crop.width, crop.height);
-      cropSmokeCamera(this.depthCamera, camera, crop, this.size.x, this.size.y, far + 0.01);
+      cropSmokeCamera(
+        this.depthCamera,
+        camera,
+        crop,
+        this.size.x,
+        this.size.y,
+        framebuffer ? camera.far : far + 0.01,
+      );
       if (!this.bindTarget(gl, this.depth)) {
         if (width === crop.width && height === crop.height) return false;
         // A tight allocation can still succeed under GPU memory pressure.
@@ -339,7 +347,28 @@ export class SmokeVolumePass {
         this.depth.setSize(crop.width, crop.height);
         if (!this.bindTarget(gl, this.depth)) return false;
       }
-      this.depthPass.render(gl, world, this.depthCamera);
+      if (framebuffer) {
+        const context = gl.getContext() as WebGL2RenderingContext;
+        context.bindFramebuffer(context.READ_FRAMEBUFFER, framebuffer);
+        context.blitFramebuffer(
+          left,
+          bottom,
+          right,
+          top,
+          0,
+          0,
+          crop.width,
+          crop.height,
+          context.DEPTH_BUFFER_BIT,
+          context.NEAREST,
+        );
+        context.bindFramebuffer(
+          context.READ_FRAMEBUFFER,
+          context.getParameter(context.DRAW_FRAMEBUFFER_BINDING),
+        );
+        this.depthCamera.near = camera.near;
+        this.depthCamera.far = camera.far;
+      } else this.depthPass.render(gl, world, this.depthCamera);
       gl.autoClear = false;
       const rendered = [];
       for (const [i, { cloud, rect }] of visible.entries()) {

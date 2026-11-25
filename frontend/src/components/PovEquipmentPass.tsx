@@ -1,6 +1,7 @@
-import { useMemo, useRef, type ReactNode } from 'react';
+import { useContext, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react';
 import { createPortal, useFrame } from '@react-three/fiber';
 import { PerspectiveCamera, Scene, Vector3, type DirectionalLight } from 'three';
+import { NativePasses } from '../world/frame-context';
 import { beginFinalGradePass } from '../map-grade-target';
 import { renderPovEquipment, updatePovCamera } from '../pov-render';
 import { povFar, povNear } from '../pov-camera';
@@ -24,6 +25,7 @@ export default function PovEquipmentPass({
   trace: ReturnType<typeof followObstruction> | null;
   children: ReactNode;
 }) {
+  const native = useContext(NativePasses);
   const equipment = useMemo(() => new Scene(), []);
   const camera = useMemo(() => new PerspectiveCamera(50, 1, povNear, povFar), []);
   const directional = useRef<DirectionalLight>(null);
@@ -48,10 +50,30 @@ export default function PovEquipmentPass({
       return exposure;
     };
   }, [sun, trace]);
+  const draw = useRef<NonNullable<NonNullable<typeof native>['equipment']>>(() => {});
+  useLayoutEffect(() => {
+    if (!native) return;
+    native.equipment = (render) => draw.current(render);
+    return () => {
+      delete native.equipment;
+    };
+  }, [native]);
   useFrame(({ gl, scene, camera: worldCamera, size }) => {
     // SkyPass (priority 1) already composes sky + world when present. Without
     // it, this callback takes ownership of the normal world render as well.
     updatePovCamera(worldCamera, camera, size.width / size.height);
+    if (native) {
+      draw.current = (render) => {
+        const sun = native.sun;
+        if (sun && directional.current) {
+          directional.current.color.copy(sun.color);
+          directional.current.position.copy(sun.position);
+          directional.current.intensity = sun.intensity;
+        }
+        render(equipment, camera);
+      };
+      return;
+    }
     const exposure = sunlight?.(camera.position) ?? 1;
     if (directional.current) directional.current.intensity = (sample ? 3.5 : 1.8) * exposure;
     renderPovEquipment(
@@ -67,7 +89,11 @@ export default function PovEquipmentPass({
   }, 2);
   return createPortal(
     <>
-      <SceneLighting sample={sample} sun={sun} skylight={skylight} directionalRef={directional} />
+      {native ? (
+        <directionalLight ref={directional} />
+      ) : (
+        <SceneLighting sample={sample} sun={sun} skylight={skylight} directionalRef={directional} />
+      )}
       {children}
     </>,
     equipment,

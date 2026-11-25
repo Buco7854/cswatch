@@ -53,6 +53,18 @@ in vec2 lightmapUv;
 in vec2 chartNoise;
 flat in ivec4 binding;
 out vec4 pixel;
+uniform bool hasActorShadow;
+uniform highp sampler2DShadow actorShadow;
+uniform mat4 actorProjection;
+uniform float actorBias;
+
+float actorVisibility() {
+  if (!hasActorShadow) return 1.0;
+  vec4 clip = actorProjection * vec4(worldPosition, 1.0);
+  vec3 uv = clip.xyz / clip.w * 0.5 + 0.5;
+  if (any(lessThanEqual(uv,vec3(0))) || any(greaterThanEqual(uv,vec3(1)))) return 1.0;
+  return texture(actorShadow,vec3(uv.xy,uv.z-actorBias));
+}
 vec4 materialRow(int x) {
   return texelFetch(tableData, ivec2(x, binding.x), 0);
 }
@@ -307,7 +319,7 @@ void main() {
   float sunVisibility;
   sampleBakedLighting(geometryNormal, tangentNormal, volumeLight, volumeShadow, light,
                       sunVisibility);
-  direct = sunColor * sunVisibility * max(0., dot(normal, sunDir));
+  direct = sunColor * actorVisibility() * sunVisibility * max(0., dot(normal, sunDir));
   float occlusion = sampleLayer(aoTex, secondary, layers.z, vec4(1)).r;
   if (layers.w >= 0.)
     occlusion = mix(occlusion,

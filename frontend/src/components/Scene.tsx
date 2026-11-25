@@ -1,3 +1,7 @@
+import { ReplayFrameContext } from '../replay-frames';
+import { NativePasses } from '../world/frame-context';
+import { NativeWorld, type LoadedWorld } from '../world/NativeWorld';
+import type { FramePasses } from '../world/compositor';
 import type { WeaponAnchor } from '../agent-attachment';
 import { recordedFootPose, type FootPoseAt } from '../agent-feet';
 import { recordedAirWeight } from '../agent-vertical';
@@ -8,6 +12,7 @@ import { t } from '../i18n';
 import {
   Component,
   Suspense,
+  useContext,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -514,6 +519,7 @@ class MapModelBoundary extends Component<
   }
 }
 function Agent({
+  data,
   position,
   next,
   alpha,
@@ -535,6 +541,7 @@ function Agent({
   travelMeters,
   action,
 }: {
+  data: Playback;
   position: Position;
   next?: Position;
   alpha: number;
@@ -556,6 +563,7 @@ function Agent({
   travelMeters?: number;
   action?: DirectionalSample['action'];
 }) {
+  const replayFrames = useContext(ReplayFrameContext);
   const pose = playerPose(position, next, alpha, timing);
   const motion = recordedMotion(position, next, alpha, timing, previous);
   const weaponAnchor = useRef<WeaponAnchor | null>(null);
@@ -587,6 +595,17 @@ function Agent({
   const eye = useRef(new THREE.Vector3());
   useFrame(() => {
     if (!ref.current) return;
+    const current = frameAt(data, replayFrames?.tick ?? tick);
+    const from = current.frame.players.find((p) => p.id === position.id) ?? position;
+    const to = current.next.players.find((p) => p.id === position.id);
+    const pose = playerPose(from, to, current.alpha, {
+      fromTick: current.frame.tick,
+      nextTick: current.next.tick,
+      tickRate: data.tickRate,
+      roundBoundary: data.rounds.some(
+        (r) => r.tick > current.frame.tick && r.tick <= current.next.tick,
+      ),
+    });
     if (overlays) {
       overlayAnchor.height = 2.08 - (pose.duck ?? 0) * 0.65;
       overlayAnchor.yaw = pose.yaw;
@@ -644,6 +663,9 @@ function Agent({
       {contactShadow && contactTrace && <PlayerContactShadow body={ref} trace={contactTrace} />}
     </group>
   );
+}
+function ComposedChildren({ children }: { children: ReactNode }) {
+  return <>{children}</>;
 }
 function World({
   data,
@@ -713,6 +735,12 @@ function World({
   overlayLayout?: ActorOverlayLayout;
 }) {
   const { camera, gl, invalidate } = useThree();
+  const replayFrames = useContext(ReplayFrameContext);
+  useLayoutEffect(() => replayFrames?.attach(invalidate), [replayFrames, invalidate]);
+  useFrame(() => replayFrames?.sample(performance.now()), -100);
+  const isNative = !!model?.endsWith('/map.json') && !data.sample;
+  const nativePasses = useMemo<FramePasses>(() => ({}), [model]);
+  const [, registerNative] = useState<LoadedWorld | null>(null);
   const labelSmoke = useRef<SmokeSample[]>([]);
   useActorOverlayFrame(overlays, overlayLayout, selected, settings.xray, labelSmoke);
   const [contextRevision, setContextRevision] = useState(0);
@@ -1013,6 +1041,7 @@ function World({
       };
     };
   }, [mode, bounds, camera, focus?.id, focusTrace, invalidate]);
+  const currentBoundary = poseTiming.roundBoundary;
   const overheadTarget = useMemo(() => new THREE.Vector3(), []);
   useFrame(({ size }, delta) => {
     if (mode === 'orbit') {
@@ -1079,9 +1108,20 @@ function World({
       camera.lookAt(...view.target);
       return;
     }
-    const p = viewedPlayer;
+    const current = frameAt(data, replayFrames?.tick ?? tick);
+    const alpha = current.alpha;
+    const poseTiming = {
+      fromTick: current.frame.tick,
+      nextTick: current.next.tick,
+      tickRate: data.tickRate,
+      roundBoundary:
+        current.frame.tick !== frame.tick
+          ? data.rounds.some((r) => r.tick > current.frame.tick && r.tick <= current.next.tick)
+          : currentBoundary,
+    };
+    const p = current.frame.players.find((p) => p.id === selected);
     if (!p) return;
-    const n = nextPlayers.get(p.id);
+    const n = current.next.players.find((next) => next.id === p.id);
     if (mode === 'follow') {
       const follow = thirdPersonFollow(p, n, alpha, poseTiming);
       if (!follow) return;
@@ -1136,220 +1176,244 @@ function World({
     !death &&
     (data.sample || modelReady);
 
+  const FrameRoot = isNative ? ComposedChildren : SceneGrade;
   return (
-    <SceneGrade
-      environment={data.sample ? null : gradeEnvironment}
-      low={low}
-      multisample={multisample}
-      revision={contextRevision}
-      manualWorld={!sky && !showPovEquipment}
-    >
-      <EnvironmentBackground
-        key={contextRevision}
-        environment={environment}
-        sample={Boolean(data.sample)}
-        report={reportEnvironment}
-        resources={fogResources}
+    <NativePasses.Provider value={isNative ? nativePasses : null}>
+      <FrameRoot
+        environment={data.sample ? null : gradeEnvironment}
         low={low}
-      />
-      {sky && (
-        <SkyPass
-          povFollows={Boolean(showPovEquipment)}
-          sky={sky}
-          sun={sun}
-          skylight={skylight}
-          fallbackSun={fallbackSun}
-        />
-      )}
-      <SceneLighting
-        sample={Boolean(data.sample)}
-        sun={sun}
-        skylight={skylight}
-        fallbackSun={fallbackSun}
-        shadows={shadows}
-      />
-      {data.sample ? (
-        <Courtyard />
-      ) : (
-        <>
-          {model && modelScope && (
-            <MapModelBoundary key={model} url={model} scope={modelScope} report={reportModel}>
-              <Suspense fallback={null}>
-                <Model
-                  url={model}
-                  scope={modelScope}
-                  loaded={reportModel}
-                  fogResources={fogResources}
-                  worldFog={Boolean(environment?.fog || environment?.gradientFog?.world)}
-                  landscapeFog={Boolean(environment?.gradientFog?.landscape)}
-                  registerFollowModel={registerFollowModel}
-                  mapBreakables={data.mapBreakables}
-                  mapDoors={data.mapDoors}
-                  mapVisibility={data.mapVisibility}
-                  tick={tick}
-                  playerLighting={low ? null : playerLighting}
-                />
-              </Suspense>
-            </MapModelBoundary>
-          )}
-        </>
-      )}
-      <PlayerSunPass
-        root={actors}
-        pipeline={playerLighting}
-        sun={shadows && !preview ? sun : null}
-      />
-      <group visible={Boolean(data.sample) || modelReady}>
-        <group ref={actors} visible={Boolean(data.sample) || modelReady}>
-          {frame.players
-            .filter(
-              (p) =>
-                p.alive &&
-                !(mode === 'pov' && p.id === viewedPlayer?.id) &&
-                !bodies.some((body) => body.position.id === p.id),
-            )
-            .map((p) => (
-              <Agent
-                key={p.id}
-                position={p}
-                next={nextPlayers.get(p.id)}
-                alpha={alpha}
-                xray={settings.xray && !preview}
-                labels={settings.playerLabels && !preview && (Boolean(data.sample) || modelReady)}
-                overlays={overlays}
-                hideNearCamera={
-                  !preview &&
-                  !data.sample &&
-                  (mode === 'orbit' || (mode === 'follow' && p.id === selected))
-                }
-                contactTrace={floorTraces.get(p.id) ?? null}
-                contactShadow={!shadows}
-                footPoseAt={preview || data.sample ? undefined : footPoseAt}
-                airborne={airAt(p.id)}
-                shadowPose={shadows && Boolean(sun)}
-                sample={Boolean(data.sample)}
-                model={!preview ? (p.team === 3 ? agents.ct : agents.t) : null}
-                tick={tick}
-                timing={poseTiming}
-                previous={previousPlayers?.get(p.id)}
-                gaitHistory={gaitHistory}
-                travelMeters={recordedTravel?.(frame, next, p.id, alpha)}
-                action={agentActionAt(
-                  agentEvents,
-                  draws,
-                  p,
-                  tick,
-                  data.tickRate,
-                  round?.tick ?? 0,
-                  !preview && !reduceAgentMotion,
-                  settings.shotEffects,
-                )}
-              />
-            ))}
-          {bodies.map((body) => (
-            <RecordedAgentBody
-              key={body.position.id + ':' + body.variant}
-              body={body}
-              url={body.position.team === 3 ? agents.ct : agents.t}
-              tick={tick}
-              rate={data.tickRate}
-              reducedMotion={reduceAgentMotion}
-              shadowPose={shadows && Boolean(sun)}
-              floor={floorTraces.get(body.position.id)}
-            />
-          ))}
-        </group>
-        {showPovEquipment && (
-          <PovEquipmentPass
-            hasSky={Boolean(sky)}
+        multisample={multisample}
+        revision={contextRevision}
+        manualWorld={!sky && !showPovEquipment}
+      >
+        {!isNative && (
+          <EnvironmentBackground
+            key={contextRevision}
+            environment={environment}
+            sample={Boolean(data.sample)}
+            report={reportEnvironment}
+            resources={fogResources}
+            low={low}
+          />
+        )}
+        {sky && (
+          <SkyPass
+            povFollows={Boolean(showPovEquipment)}
+            sky={sky}
+            sun={sun}
+            skylight={skylight}
+            fallbackSun={fallbackSun}
+          />
+        )}
+        {!isNative && (
+          <SceneLighting
             sample={Boolean(data.sample)}
             sun={sun}
             skylight={skylight}
-            trace={followTrace}
-          >
-            <PovViewmodel
-              agentModel={viewedPlayer.team === 3 ? agents.ct : agents.t}
-              gaitHistory={gaitHistory}
-              action={povActionAt(agentEvents, viewedPlayer, tick, data.tickRate, round?.tick ?? 0)}
-              native={!data.sample}
-              airborne={airAt(viewedPlayer.id)}
-              history={data}
-              tick={tick}
-              position={viewedPlayer}
-              next={nextPlayers.get(viewedPlayer.id)}
-              previous={previousPlayers?.get(viewedPlayer.id)}
-              travelMeters={recordedTravel?.(frame, next, viewedPlayer.id, alpha)}
-              alpha={alpha}
-              timing={poseTiming}
-            />
-          </PovEquipmentPass>
-        )}
-        {!preview && tracers && tracerTrace && (
-          <ShotTracers
-            data={data}
-            tick={tick}
-            pov={mode === 'pov' ? selected : undefined}
-            trace={tracerTrace}
+            fallbackSun={fallbackSun}
+            shadows={shadows}
           />
         )}
-        {!preview && <RecordedEquipment items={items} floor={followTrace} />}
-        {!preview && settings.utilities && (
-          <Smoke
-            data={data}
-            zones={utilityState.zones}
-            tick={tick}
-            modelReady={modelReady}
-            onUnavailable={onSmokeUnavailable}
-            sunTrace={smokeSunTrace}
-            low={low}
-            xray={settings.xray}
-            sun={sun}
-            labelSmoke={labelSmoke}
+        {isNative && (
+          <NativeWorld
+            url={model!}
+            passes={nativePasses}
+            register={registerNative}
+            shadows={playerLighting}
+            tactical={mode === 'tactical'}
+            loaded={reportModel}
           />
         )}
-        {!preview && (
-          <UtilityLayer
-            data={data}
-            tick={tick}
-            nativeVolume={modelReady}
-            staticMap={followModel}
-            lightBursts={!low}
-            selected={selected}
-            settings={settings}
-            utilityState={utilityState}
-          />
+        {data.sample ? (
+          <Courtyard />
+        ) : (
+          <>
+            {!isNative && model && modelScope && (
+              <MapModelBoundary key={model} url={model} scope={modelScope} report={reportModel}>
+                <Suspense fallback={null}>
+                  <Model
+                    url={model}
+                    scope={modelScope}
+                    loaded={reportModel}
+                    fogResources={fogResources}
+                    worldFog={Boolean(environment?.fog || environment?.gradientFog?.world)}
+                    landscapeFog={Boolean(environment?.gradientFog?.landscape)}
+                    registerFollowModel={registerFollowModel}
+                    mapBreakables={data.mapBreakables}
+                    mapDoors={data.mapDoors}
+                    mapVisibility={data.mapVisibility}
+                    tick={tick}
+                    playerLighting={low ? null : playerLighting}
+                  />
+                </Suspense>
+              </MapModelBoundary>
+            )}
+          </>
         )}
-        {mode === 'orbit' &&
-          focus &&
-          tick >= (focus.fromTick ?? -Infinity) &&
-          tick <= (focus.untilTick ?? Infinity) && (
-            <mesh
-              name="review-impact-target"
-              position={[
-                focus.target.x * UNIT,
-                focus.target.z * UNIT + 0.05,
-                -focus.target.y * UNIT,
-              ]}
-              rotation={[-Math.PI / 2, 0, 0]}
-              renderOrder={11}
-            >
-              <ringGeometry args={[0.4, 0.47, 32]} />
-              <meshBasicMaterial color="#e4b575" depthTest={false} transparent opacity={0.8} />
-            </mesh>
-          )}
-      </group>
-      {data.sample && (
-        <OrbitControls
-          ref={orbit}
-          enabled={mode === 'orbit' && !preview}
-          enableDamping
-          minPolarAngle={0.02}
-          maxPolarAngle={Math.PI - 0.02}
-          minDistance={3}
-          maxDistance={bounds.extent * 3}
+        <PlayerSunPass
+          root={actors}
+          pipeline={playerLighting}
+          sun={shadows && !preview ? sun : null}
         />
-      )}
-    </SceneGrade>
+        <group visible={Boolean(data.sample) || modelReady}>
+          <group ref={actors} visible={Boolean(data.sample) || modelReady}>
+            {frame.players
+              .filter(
+                (p) =>
+                  p.alive &&
+                  !(mode === 'pov' && p.id === viewedPlayer?.id) &&
+                  !bodies.some((body) => body.position.id === p.id),
+              )
+              .map((p) => (
+                <Agent
+                  data={data}
+                  key={p.id}
+                  position={p}
+                  next={nextPlayers.get(p.id)}
+                  alpha={alpha}
+                  xray={settings.xray && !preview}
+                  labels={settings.playerLabels && !preview && (Boolean(data.sample) || modelReady)}
+                  overlays={overlays}
+                  hideNearCamera={
+                    !preview &&
+                    !data.sample &&
+                    (mode === 'orbit' || (mode === 'follow' && p.id === selected))
+                  }
+                  contactTrace={floorTraces.get(p.id) ?? null}
+                  contactShadow={!shadows}
+                  footPoseAt={preview || data.sample ? undefined : footPoseAt}
+                  airborne={airAt(p.id)}
+                  shadowPose={shadows && Boolean(sun)}
+                  sample={Boolean(data.sample)}
+                  model={!preview ? (p.team === 3 ? agents.ct : agents.t) : null}
+                  tick={tick}
+                  timing={poseTiming}
+                  previous={previousPlayers?.get(p.id)}
+                  gaitHistory={gaitHistory}
+                  travelMeters={recordedTravel?.(frame, next, p.id, alpha)}
+                  action={agentActionAt(
+                    agentEvents,
+                    draws,
+                    p,
+                    tick,
+                    data.tickRate,
+                    round?.tick ?? 0,
+                    !preview && !reduceAgentMotion,
+                    settings.shotEffects,
+                  )}
+                />
+              ))}
+            {bodies.map((body) => (
+              <RecordedAgentBody
+                key={body.position.id + ':' + body.variant}
+                body={body}
+                url={body.position.team === 3 ? agents.ct : agents.t}
+                tick={tick}
+                rate={data.tickRate}
+                reducedMotion={reduceAgentMotion}
+                shadowPose={shadows && Boolean(sun)}
+                floor={floorTraces.get(body.position.id)}
+              />
+            ))}
+          </group>
+          {showPovEquipment && (
+            <PovEquipmentPass
+              hasSky={Boolean(sky)}
+              sample={Boolean(data.sample)}
+              sun={sun}
+              skylight={skylight}
+              trace={followTrace}
+            >
+              <PovViewmodel
+                agentModel={viewedPlayer.team === 3 ? agents.ct : agents.t}
+                gaitHistory={gaitHistory}
+                action={povActionAt(
+                  agentEvents,
+                  viewedPlayer,
+                  tick,
+                  data.tickRate,
+                  round?.tick ?? 0,
+                )}
+                native={!data.sample}
+                airborne={airAt(viewedPlayer.id)}
+                history={data}
+                tick={tick}
+                position={viewedPlayer}
+                next={nextPlayers.get(viewedPlayer.id)}
+                previous={previousPlayers?.get(viewedPlayer.id)}
+                travelMeters={recordedTravel?.(frame, next, viewedPlayer.id, alpha)}
+                alpha={alpha}
+                timing={poseTiming}
+              />
+            </PovEquipmentPass>
+          )}
+          {!preview && tracers && tracerTrace && (
+            <ShotTracers
+              data={data}
+              tick={tick}
+              pov={mode === 'pov' ? selected : undefined}
+              trace={tracerTrace}
+            />
+          )}
+          {!preview && <RecordedEquipment items={items} floor={followTrace} />}
+          {!preview && settings.utilities && (
+            <Smoke
+              data={data}
+              zones={utilityState.zones}
+              tick={tick}
+              modelReady={modelReady}
+              onUnavailable={onSmokeUnavailable}
+              sunTrace={smokeSunTrace}
+              low={low}
+              xray={settings.xray}
+              sun={sun}
+              labelSmoke={labelSmoke}
+            />
+          )}
+          {!preview && (
+            <UtilityLayer
+              data={data}
+              tick={tick}
+              nativeVolume={modelReady}
+              staticMap={followModel}
+              lightBursts={!low}
+              selected={selected}
+              settings={settings}
+              utilityState={utilityState}
+            />
+          )}
+          {mode === 'orbit' &&
+            focus &&
+            tick >= (focus.fromTick ?? -Infinity) &&
+            tick <= (focus.untilTick ?? Infinity) && (
+              <mesh
+                name="review-impact-target"
+                position={[
+                  focus.target.x * UNIT,
+                  focus.target.z * UNIT + 0.05,
+                  -focus.target.y * UNIT,
+                ]}
+                rotation={[-Math.PI / 2, 0, 0]}
+                renderOrder={11}
+              >
+                <ringGeometry args={[0.4, 0.47, 32]} />
+                <meshBasicMaterial color="#e4b575" depthTest={false} transparent opacity={0.8} />
+              </mesh>
+            )}
+        </group>
+        {data.sample && (
+          <OrbitControls
+            ref={orbit}
+            enabled={mode === 'orbit' && !preview}
+            enableDamping
+            minPolarAngle={0.02}
+            maxPolarAngle={Math.PI - 0.02}
+            minDistance={3}
+            maxDistance={bounds.extent * 3}
+          />
+        )}
+      </FrameRoot>
+    </NativePasses.Provider>
   );
 }
 function UtilityLayer({
@@ -1779,7 +1843,10 @@ export default function Scene({
   );
   const currentRendererAttempt = useRef(rendererAttempt);
   currentRendererAttempt.current = rendererAttempt;
-  const modelScope = useMapModelScope(data.sample || probingGpu ? null : model, rendererAttempt);
+  const modelScope = useMapModelScope(
+    data.sample || probingGpu || model?.endsWith('/map.json') ? null : model,
+    rendererAttempt,
+  );
   const gradeEnvironment = mapAssets.assets.environment ?? null,
     environment = compact ? null : gradeEnvironment,
     environmentIdentity = mapEnvironmentKey(environment);

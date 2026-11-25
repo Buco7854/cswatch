@@ -1,0 +1,82 @@
+import {
+  DataArrayTexture,
+  MeshStandardMaterial,
+  ShaderChunk,
+  Texture,
+  Vector3,
+  type Material,
+  type WebGLRenderer,
+} from 'three';
+import probeShader from './glsl/actor-probes.glsl?raw';
+import type { NativeRenderer } from './renderer';
+
+export function actorLighting(renderer: WebGLRenderer, native: NativeRenderer) {
+  const env = native.environments.find((environment) => !environment.sky)!;
+  const wrappers: Texture[] = [];
+  function borrowed(handle: WebGLTexture, array: boolean) {
+    const texture = array ? new DataArrayTexture() : new Texture();
+    (renderer.properties.get(texture) as { __webglTexture: WebGLTexture }).__webglTexture = handle;
+    wrappers.push(texture);
+    return { value: texture };
+  }
+  const uniforms = {
+    actorIrradiance: borrowed(env.lpv, true),
+    actorSunShadow: borrowed(env.shadow, true),
+    actorProbes: borrowed(env.probes, false),
+    actorCells: borrowed(env.grid, false),
+    actorGridMin: { value: new Vector3(...env.spatial.min) },
+    actorGridInv: { value: new Vector3(...env.spatial.invStep) },
+  };
+  const patched = new Map<Material, () => void>();
+  function bind(material: Material) {
+    if (!(material instanceof MeshStandardMaterial) || patched.has(material)) return;
+    const before = material.onBeforeCompile,
+      key = material.customProgramCacheKey;
+    patched.set(material, () => {
+      material.onBeforeCompile = before;
+      material.customProgramCacheKey = key;
+      material.needsUpdate = true;
+    });
+    material.onBeforeCompile = function (shader, gl) {
+      before.call(this, shader, gl);
+      Object.assign(shader.uniforms, uniforms);
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 actorSourcePosition;')
+        .replace(
+          '#include <project_vertex>',
+          `#include <project_vertex>
+          vec4 actorPoint=vec4(transformed,1.);
+          #ifdef USE_INSTANCING
+            actorPoint=instanceMatrix*actorPoint;
+          #endif
+          actorPoint=modelMatrix*actorPoint;
+          actorSourcePosition=vec3(actorPoint.x,-actorPoint.z,actorPoint.y)/0.0254;`,
+        );
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\n' + probeShader)
+        .replace(
+          '#include <lights_fragment_begin>',
+          `vec3 actorNormal = inverseTransformDirection(normal,viewMatrix);
+          vec4 bakedActorLight=actorLightingAt(vec3(actorNormal.x,-actorNormal.z,actorNormal.y));
+          ` +
+            ShaderChunk.lights_fragment_begin.replace(
+              'getDirectionalLightInfo( directionalLight, directLight );',
+              'getDirectionalLightInfo( directionalLight, directLight ); directLight.color *= 1.0 - bakedActorLight.a;',
+            ),
+        )
+        .replace(
+          '#include <lights_fragment_maps>',
+          '#include <lights_fragment_maps>\n irradiance += PI*bakedActorLight.rgb;',
+        );
+    };
+    material.customProgramCacheKey = () => key.call(material) + ':native-probes-v1';
+    material.needsUpdate = true;
+  }
+  return {
+    bind,
+    dispose() {
+      for (const restore of patched.values()) restore();
+      for (const wrapper of wrappers) renderer.properties.remove(wrapper);
+    },
+  };
+}

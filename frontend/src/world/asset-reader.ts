@@ -28,6 +28,9 @@ export function assetReader(dir: URL, manifest: Manifest) {
       });
     },
     close() {
+      for (const request of pending.values())
+        request.reject(new DOMException('Map closed', 'AbortError'));
+      pending.clear();
       worker.terminate();
     },
   };

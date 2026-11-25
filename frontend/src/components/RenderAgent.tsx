@@ -1,3 +1,4 @@
+import { ReplayFrameContext } from '../replay-frames';
 import {
   Component,
   Suspense,
@@ -251,7 +252,10 @@ function LoadedAgent({
     const bone = prepared.instance.getObjectByName('head_0');
     if (bone instanceof Bone) return registerHeadAnchor(bone);
   }, [prepared, registerHeadAnchor]);
+  const replayTime = useContext(ReplayFrameContext);
+  const frameTick = tick;
   useFrame(({ camera }) => {
+    const tick = directional.death ? frameTick : (replayTime?.tick ?? frameTick);
     if (!poseVisible(camera, prepared.root, xrayEnabled || Boolean(shadowPose))) return;
     const motion = directional.death ? undefined : motionAt?.(tick);
     const phase =

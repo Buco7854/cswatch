@@ -1,3 +1,4 @@
+import { NativePasses } from '../world/frame-context';
 import { useContext, useLayoutEffect, useMemo, useRef, type RefObject } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Color, Group, PerspectiveCamera, Vector3 } from 'three';
@@ -80,16 +81,27 @@ function VolumePass({
     };
   }, [gl, invalidate, labelSmoke, onUnavailable, pass]);
 
+  const native = useContext(NativePasses);
+  useLayoutEffect(
+    () => () => {
+      if (native) delete native.smoke;
+    },
+    [native],
+  );
   useFrame(({ gl, scene, camera }) => {
-    const ready =
-      camera instanceof PerspectiveCamera &&
-      pass.render(gl, scene, camera, draws, color, low, xray, sceneLightScale);
-    if (available.current === ready) return;
-    if (!ready) pass.hide();
-    available.current = ready;
-    labelSmoke.current = ready ? draws : [];
-    onUnavailable(!ready);
-    invalidate();
+    const prepare = (framebuffer?: WebGLFramebuffer) => {
+      const ready =
+        camera instanceof PerspectiveCamera &&
+        pass.render(gl, scene, camera, draws, color, low, xray, sceneLightScale, framebuffer);
+      if (available.current === ready) return;
+      if (!ready) pass.hide();
+      available.current = ready;
+      labelSmoke.current = ready ? draws : [];
+      onUnavailable(!ready);
+      invalidate();
+    };
+    if (native) native.smoke = prepare;
+    else prepare();
   });
   return <primitive object={group} />;
 }

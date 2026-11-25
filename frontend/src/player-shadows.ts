@@ -82,6 +82,7 @@ export function playerShadows() {
     return result;
   }
   return {
+    depth,
     render(renderer: WebGLRenderer, root: Object3D, sun: MapSun, view?: Camera) {
       if (projection !== sun) {
         projection = sun;

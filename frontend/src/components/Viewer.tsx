@@ -1,3 +1,4 @@
+import { ReplayFrames, ReplayFrameContext } from '../replay-frames';
 import { PlaybackClock } from '../playback-clock';
 import { useViewerAudio, type ListenerPose } from '../viewer-audio';
 import type { WallTrace } from '../shot-wall-audio';
@@ -186,6 +187,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     tick,
     (replay, initialTick) => {
       playbackClock.current.reset(initialTick, performance.now());
+      replayFrames.tick = initialTick;
       setTick(initialTick);
       const player = openingPlayer(replay, initialTick, linkedPlayer);
       setSelected(player);
@@ -589,6 +591,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     document.addEventListener('keydown', escape);
     return () => document.removeEventListener('keydown', escape);
   }, [panel, compactPanels]);
+  const replayFrames = useMemo(() => new ReplayFrames(), []);
   const playbackClock = useRef(new PlaybackClock());
   const deathFollow = useRef(new DeathFollowController());
   const spectatorEvents = useMemo(
@@ -651,6 +654,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
       deathFollow.current.reset();
       const next = Math.max(first, Math.min(last, value));
       playbackClock.current.reset(next, performance.now());
+      replayFrames.tick = next;
       setTick(next);
     },
     [first, last, audio],
@@ -684,38 +688,34 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
   useEffect(() => {
     playbackClock.current.reset(currentTick.current, performance.now());
     if (!playing || !data || buffering) return;
-    let frame = 0;
-    const animate = (now: number) => {
-      if (document.hidden) return;
-      const state = playbackState.current;
-      const ceiling = Math.min(last, state.availableUntil(playbackClock.current.tick));
-      const advanced = playbackClock.current.at(now, rate * speed, ceiling);
-      const requested =
-        state.autoSkip && state.data
-          ? skipDeadTime(state.data, advanced, state.autoSkip, last)
-          : advanced;
-      const next = Math.min(requested, ceiling, last);
-      if (next !== advanced) {
-        audio.flush();
-        playbackClock.current.reset(next, now);
-      }
-      setTick(next);
-      if (next >= last) {
-        setPlaying(false);
-        return;
-      }
-      frame = requestAnimationFrame(animate);
-    };
+    const stop = replayFrames.play(
+      (now: number) => {
+        const state = playbackState.current;
+        const ceiling = Math.min(last, state.availableUntil(playbackClock.current.tick));
+        const advanced = playbackClock.current.at(now, rate * speed, ceiling);
+        const requested =
+          state.autoSkip && state.data
+            ? skipDeadTime(state.data, advanced, state.autoSkip, last)
+            : advanced;
+        const next = Math.min(requested, ceiling, last);
+        if (next !== advanced) {
+          audio.flush();
+          playbackClock.current.reset(next, now);
+        }
+        return next;
+      },
+      (next) => {
+        setTick(next);
+        if (next >= last) setPlaying(false);
+      },
+    );
     const visibility = () => {
       audio.flush();
-      cancelAnimationFrame(frame);
-      playbackClock.current.reset(currentTick.current, performance.now());
-      if (!document.hidden) frame = requestAnimationFrame(animate);
+      playbackClock.current.reset(replayFrames.tick, performance.now());
     };
-    if (!document.hidden) frame = requestAnimationFrame(animate);
     document.addEventListener('visibilitychange', visibility);
     return () => {
-      cancelAnimationFrame(frame);
+      stop();
       document.removeEventListener('visibilitychange', visibility);
     };
   }, [playing, Boolean(data), buffering, rate, speed, last, id, user?.id, audio]);
@@ -1479,23 +1479,25 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
           inert={mapLoading || (Boolean(panel) && compactPanels)}
         >
           <Suspense fallback={<div className="scene-fallback">{t('Starting renderer…')}</div>}>
-            <Scene
-              key={sceneKey}
-              data={data}
-              tick={tick}
-              mobile={mobile}
-              playing={playing}
-              buffering={buffering}
-              mode={mode}
-              selected={selected}
-              settings={settings}
-              mapAssets={mapAssets}
-              assetScope={user?.id || 'public'}
-              onMapStatus={reportMap}
-              focus={grenadeFocus}
-              onAudioListener={cameraAudio}
-              overlayLayout={overlayLayout}
-            />
+            <ReplayFrameContext.Provider value={replayFrames}>
+              <Scene
+                key={sceneKey}
+                data={data}
+                tick={tick}
+                mobile={mobile}
+                playing={playing}
+                buffering={buffering}
+                mode={mode}
+                selected={selected}
+                settings={settings}
+                mapAssets={mapAssets}
+                assetScope={user?.id || 'public'}
+                onMapStatus={reportMap}
+                focus={grenadeFocus}
+                onAudioListener={cameraAudio}
+                overlayLayout={overlayLayout}
+              />
+            </ReplayFrameContext.Provider>
           </Suspense>
           {recordedFlash !== undefined && settings.flashFeedback !== 'off' && (
             <FlashFeedback presentation={settings.flashFeedback} opacity={recordedFlash} />

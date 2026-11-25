@@ -17,6 +17,7 @@ export function program(gl: WebGL2RenderingContext, vs: string, fs: string) {
     throw Error(gl.getProgramInfoLog(p) ?? 'Shader link failed');
   const uniforms = new Map<string, WebGLUniformLocation | null>();
   return {
+    dispose: () => gl.deleteProgram(p),
     use: () => gl.useProgram(p),
     u: (k: string) => {
       if (!uniforms.has(k)) uniforms.set(k, gl.getUniformLocation(p, k));

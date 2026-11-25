@@ -1,7 +1,7 @@
 import type { Mip } from './format';
 export function capabilities(gl: WebGL2RenderingContext) {
-  if (gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS) < 27)
-    throw Error('World lab requires 27 fragment texture units');
+  if (gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS) < 28)
+    throw Error('World lab requires 28 fragment texture units');
   const required = [
     'EXT_texture_compression_bptc',
     'EXT_texture_compression_rgtc',
