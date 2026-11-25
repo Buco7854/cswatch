@@ -4,7 +4,7 @@ Maps are native world packs from `tools/cs2export`, prepared by the confined ass
 
 For a map that looks wrong, capture the same pose in the lab on both tiers (`node tools/cs2export/capture.mjs`, `CS2_LAB_TIER=phone`) and compare with `compare.mjs`. Check the pack's `unsupported` list and the material shaders at that spot before changing the renderer. For a slow opening, follow the worker's `map.phase` events (`source`, `geometry`, `desktop`, `mobile`, `publishing`) separately from the browser download.
 
-Open map work: a BC6H/BC7 encoder for desktop lighting above the 100 MB budget, rush_001's 14.2M triangles, and phone downloads above 70 MB on de_cache, de_inferno and de_train. [Results](VERIFICATION.md#native-worlds)
+Open map work: downloads above the 100 MB desktop and 70 MB phone budgets, driven by full-resolution baked lighting and probe volumes that are never reduced for size, and by geometry on de_ancient, de_inferno and de_train; rush_001 on a host with more free disk; de_eldorado's addon overview calibration, which does not frame its world; uncovered radar areas on de_cbble. Check a new map with `tools/cs2export/coverage.mjs` (radar coverage) before trusting overhead views. [Results](VERIFICATION.md#native-worlds)
 
 For doors, breakables and recorded visibility, check `world/entity-playback.ts` against the recorded track at the tick, on play, seek and rewind; ranges and BVH queries share one entity state.
 
