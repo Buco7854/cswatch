@@ -3,9 +3,9 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { MeshoptEncoder } from '../../frontend/node_modules/meshoptimizer/meshopt_encoder.js';
-import { MeshoptSimplifier } from '../../frontend/node_modules/meshoptimizer/meshopt_simplifier.js';
 import { geometry, modelTriangles, stride } from './geometry.mjs';
 import { vertexArchive } from './quantize.mjs';
+import { simplifierReady, simplifyRange } from './simplify.mjs';
 import { packFiles } from './pack-files.mjs';
 import { materialCap, phonePlan } from './texture-tiers.mjs';
 import { overviewCalibration, playableCalibration, renderOverview } from './overview.mjs';
@@ -59,7 +59,14 @@ const instances = new Map(),
   coarse = new Set();
 let ranges, entities, environments, fineTriangles;
 try {
-  ({ ranges, entities, environments } = geometry(scene, read, materialId, density, coarse, instances));
+  ({ ranges, entities, environments } = geometry(
+    scene,
+    read,
+    materialId,
+    density,
+    coarse,
+    instances,
+  ));
   fineTriangles = countTriangles(ranges);
 } catch (error) {
   if (error.message !== 'Geometry exceeds decoded budget') throw error;
@@ -67,7 +74,14 @@ try {
   for (const [name, model] of Object.entries(scene.models)) if (model.coarse) coarse.add(name);
   density = new Map();
   instances.clear();
-  ({ ranges, entities, environments } = geometry(scene, read, materialId, density, coarse, instances));
+  ({ ranges, entities, environments } = geometry(
+    scene,
+    read,
+    materialId,
+    density,
+    coarse,
+    instances,
+  ));
   fineTriangles = Object.entries(scene.models).reduce(
     (n, [name, model]) => n + (instances.get(name) ?? 0) * modelTriangles(model).fine,
     0,
@@ -96,47 +110,47 @@ if (triangles * bytesPerTriangle > geometryAllowance) {
   }
 }
 // Geometry still above its allowance is simplified: large opaque ranges, never foliage cards,
-// within 2 inches of the source. On de_train 2 inches was indistinguishable at the spawns (MAE
-// 0.34) while 8 inches visibly bent window frames, so geometry that still exceeds the allowance
-// stays over budget. Borders stay locked so neighbouring ranges and lightmap seams keep meeting.
+// within 2 inches of the source and without removing surface (see simplify.mjs). On de_train
+// 2 inches was indistinguishable at the spawns (MAE 0.34) while 8 inches bent window frames, so
+// geometry that still exceeds the allowance stays over budget. Borders stay locked so neighbouring
+// ranges and lightmap seams keep meeting.
 let simplifyError = 0,
   simplified = 0;
 if (triangles * bytesPerTriangle > geometryAllowance) {
-  await MeshoptSimplifier.ready;
+  await simplifierReady;
   const materialList = Object.values(scene.materials);
   const eligible = (range) =>
     !range.sky &&
     range.family === 'opaque' &&
     range.indices.length / 12 >= 256 &&
     !materialList[range.mat]?.shader.includes('foliage');
-  const originals = new Map(ranges.filter(eligible).map((r) => [r, { v: r.v, indices: r.indices }]));
-  const fixedTriangles = triangles - [...originals.values()].reduce((n, o) => n + o.indices.length / 12, 0);
+  const originals = new Map(
+    ranges.filter(eligible).map((r) => [r, { v: r.v, indices: r.indices }]),
+  );
+  const fixedTriangles =
+    triangles - [...originals.values()].reduce((n, o) => n + o.indices.length / 12, 0);
   const eligibleTriangles = triangles - fixedTriangles;
-  let ratio = Math.max(0.05, (geometryAllowance / bytesPerTriangle - fixedTriangles) / eligibleTriangles);
+  let ratio = Math.max(
+    0.05,
+    (geometryAllowance / bytesPerTriangle - fixedTriangles) / eligibleTriangles,
+  );
   const before = triangles;
   for (const error of [2, 2, 2]) {
     simplifyError = error;
     for (const [range, original] of originals) {
-      const count = original.indices.length / 4,
-        vertices = original.v.length / stride;
-      const positions = new Float32Array(vertices * 3);
-      for (let i = 0; i < vertices; i++)
-        for (let c = 0; c < 3; c++) positions[i * 3 + c] = original.v.readFloatLE(i * stride + c * 4);
+      const count = original.indices.length / 4;
       const indices = new Uint32Array(count);
       for (let i = 0; i < count; i++) indices[i] = original.indices.readUInt32LE(i * 4);
-      const target = Math.max(3, Math.floor((count * ratio) / 3) * 3);
-      const [kept] = MeshoptSimplifier.simplify(indices, positions, 3, target, error, [
-        'LockBorder',
-        'ErrorAbsolute',
-      ]);
-      if (kept.length >= count) {
+      const kept = simplifyRange(original.v, stride, indices, ratio, error);
+      if (!kept) {
         Object.assign(range, original);
         continue;
       }
       const remap = new Map();
       for (const index of kept) if (!remap.has(index)) remap.set(index, remap.size);
       const v = Buffer.alloc(remap.size * stride);
-      for (const [from, to] of remap) original.v.copy(v, to * stride, from * stride, (from + 1) * stride);
+      for (const [from, to] of remap)
+        original.v.copy(v, to * stride, from * stride, (from + 1) * stride);
       const out = Buffer.alloc(kept.length * 4);
       kept.forEach((index, i) => out.writeUInt32LE(remap.get(index), i * 4));
       range.v = v;
@@ -145,7 +159,11 @@ if (triangles * bytesPerTriangle > geometryAllowance) {
     triangles = countTriangles(ranges);
     if (triangles * bytesPerTriangle <= geometryAllowance) break;
     // Ranges that stopped above their target leave a deficit; aim the next pass lower.
-    ratio = Math.max(0.05, ratio * (geometryAllowance / bytesPerTriangle - fixedTriangles) / (triangles - fixedTriangles));
+    ratio = Math.max(
+      0.05,
+      (ratio * (geometryAllowance / bytesPerTriangle - fixedTriangles)) /
+        (triangles - fixedTriangles),
+    );
   }
   simplified = before - triangles;
 }
@@ -355,7 +373,10 @@ if (defaultGrade) {
     for (let g = 0; g < size; g++)
       for (let r = 0; r < size; r++) {
         const at = 4 * (r + size * (g + size * b));
-        lut.set([r, g, b].map((c) => Math.round((c * 255) / (size - 1))), at);
+        lut.set(
+          [r, g, b].map((c) => Math.round((c * 255) / (size - 1))),
+          at,
+        );
         lut[at + 3] = 255;
       }
   scene.post['default'] = {
@@ -374,7 +395,8 @@ if (defaultGrade) {
     lut: store(lut, 'grading'),
   };
 }
-for (const [name, p] of Object.entries(scene.post)) if (name !== 'default' || !defaultGrade) keep(p.lut);
+for (const [name, p] of Object.entries(scene.post))
+  if (name !== 'default' || !defaultGrade) keep(p.lut);
 if (scene.visibility) keep(scene.visibility.file);
 const batches = new Map();
 for (const r of ranges) {
@@ -473,9 +495,7 @@ const manifest = {
   unsupported: [
     'Frustum culling only. Decoded PVS is exported separately.',
     ...(coarse.size
-      ? [
-          `${coarse.size} models are drawn at their coarser LOD to fit the download budget.`,
-        ]
+      ? [`${coarse.size} models are drawn at their coarser LOD to fit the download budget.`]
       : []),
     ...(simplified
       ? [
@@ -499,7 +519,9 @@ const manifest = {
         ]
       : []),
     ...(defaultGrade
-      ? ['The game files lack this map\'s post-processing; it uses a default filmic curve without bloom or grading.']
+      ? [
+          "The game files lack this map's post-processing; it uses a default filmic curve without bloom or grading.",
+        ]
       : []),
     ...(scene.missingSkies?.length
       ? ['Referenced 3D skies absent from the game files: ' + scene.missingSkies.join(', ') + '.']
