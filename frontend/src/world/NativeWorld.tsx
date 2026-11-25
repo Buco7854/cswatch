@@ -1,3 +1,4 @@
+import { worldQueries, type WorldQueries } from './queries';
 import { useEffect, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Box3, Color, DirectionalLight, Object3D, PerspectiveCamera, Vector3 } from 'three';
@@ -12,6 +13,7 @@ import type { playerShadows } from '../player-shadows';
 export interface LoadedWorld {
   manifest: Manifest;
   native: NativeRenderer;
+  queries: WorldQueries;
 }
 interface Props {
   url: string;
@@ -75,7 +77,11 @@ export function NativeWorld({ url, tactical, passes, shadows, loaded, register }
         compositorInstance.dispose();
         native.dispose();
       };
-      register({ manifest, native });
+      register({
+        manifest,
+        native,
+        queries: worldQueries(manifest, native.geometry.vertices, native.geometry.indices),
+      });
       loaded(url, 'ready', null, 'ready', sun);
       invalidate();
       await native.refine(invalidate);

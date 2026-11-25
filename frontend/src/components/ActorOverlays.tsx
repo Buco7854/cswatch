@@ -184,6 +184,7 @@ export function useActorOverlayFrame(
   selected: string,
   xray: boolean,
   smoke: RefObject<SmokeSample[]>,
+  world?: import('../world/queries').WorldQueries,
 ) {
   const invalidate = useThree((state) => state.invalidate);
   const scratch = useMemo(
@@ -289,7 +290,14 @@ export function useActorOverlayFrame(
       if (box && !xray) {
         ray.setFromCamera(ndc.set(candidate.x, candidate.y), camera);
         ray.far = Math.sqrt(candidate.distance) - 0.001;
-        if (ray.intersectObjects(scene.children, true).length) {
+        if (
+          world
+            ? world.hit({
+                target: ray.ray.origin.toArray(),
+                position: ray.ray.at(ray.far, point).toArray(),
+              })
+            : ray.intersectObjects(scene.children, true).length
+        ) {
           paint(candidate.element);
           continue;
         }

@@ -740,9 +740,16 @@ function World({
   useFrame(() => replayFrames?.sample(performance.now()), -100);
   const isNative = !!model?.endsWith('/map.json') && !data.sample;
   const nativePasses = useMemo<FramePasses>(() => ({}), [model]);
-  const [, registerNative] = useState<LoadedWorld | null>(null);
+  const [nativeWorld, registerNative] = useState<LoadedWorld | null>(null);
   const labelSmoke = useRef<SmokeSample[]>([]);
-  useActorOverlayFrame(overlays, overlayLayout, selected, settings.xray, labelSmoke);
+  useActorOverlayFrame(
+    overlays,
+    overlayLayout,
+    selected,
+    settings.xray,
+    labelSmoke,
+    nativeWorld?.queries,
+  );
   const [contextRevision, setContextRevision] = useState(0);
   useLayoutEffect(() => {
     const restored = () => {
@@ -780,8 +787,10 @@ function World({
     tracers ||
     items.some(({ kind }) => kind !== 'projectile');
   const followTrace = useMemo(
-    () => (traceMap && followModel ? followObstruction(followModel) : null),
-    [traceMap, followModel],
+    () =>
+      nativeWorld?.queries.trace ??
+      (traceMap && followModel ? followObstruction(followModel) : null),
+    [traceMap, followModel, nativeWorld],
   );
   const wallAudioTrace = useMemo(
     () => (traceWallAudio ? followTrace?.fork(0) : undefined),
@@ -1375,7 +1384,7 @@ function World({
               data={data}
               tick={tick}
               nativeVolume={modelReady}
-              staticMap={followModel}
+              staticMap={nativeWorld?.queries ?? followModel}
               lightBursts={!low}
               selected={selected}
               settings={settings}
@@ -1429,7 +1438,7 @@ function UtilityLayer({
   data: Playback;
   tick: number;
   nativeVolume: boolean;
-  staticMap: THREE.Group | null;
+  staticMap: THREE.Group | import('../world/queries').WorldQueries | null;
   lightBursts: boolean;
   selected: string;
   settings: ViewerSettings;

@@ -113,7 +113,7 @@ export default function GrenadeBurst({
   reducedMotion,
 }: {
   zones: UtilityZone[];
-  staticMap: Group | null;
+  staticMap: Group | import('../world/queries').WorldQueries | null;
   lighting: boolean;
   warm: boolean;
   tick: number;
