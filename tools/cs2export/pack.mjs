@@ -164,41 +164,75 @@ const mats = Object.entries(scene.materials).map(([name, m]) => {
 const ids = new Map(mats.map((m, i) => [m.name, i]));
 const { ranges, entities, environments } = geometry(scene, read, (name) => ids.get(name));
 cache.clear();
-for (const bank of arrays) {
-  const layout = scene.textures[bank.textures[0]].levels;
-  const streams = [],
-    mips = [];
-  let offset = 0;
-  for (const mip of layout) {
-    const start = offset;
-    for (const name of bank.textures) {
-      const tex = scene.textures[name],
-        level = tex.levels.find((l) => l.level === mip.level);
-      streams.push(read(tex.file).subarray(level.offset, level.offset + level.size));
-      offset += level.size;
-    }
-    mips.push({ w: mip.w, h: mip.h, offset: start, size: offset - start, level: mip.level });
+// Pages group compatible blocks by refinement level. The bootstrap never shares a
+// file with large mips. Each mip remains one contiguous run of GPU-ready layers.
+const pages = new Map();
+function addMip(category, format, level, bytes, first) {
+  const wave = first || Math.max(level.w, level.h) <= 16 ? 0 : Math.max(level.w, level.h);
+  const key = [category, format, wave].join('/');
+  const list = pages.get(key) ?? [];
+  let page = list.at(-1);
+  if (!page || page.size + bytes.length > 2 * 1024 ** 2) {
+    page = { category, format, size: 0, parts: [], levels: [] };
+    list.push(page);
+    pages.set(key, list);
   }
-  bank.file = store(Buffer.concat(streams), 'textures', bank.format);
-  bank.mips = mips;
+  const descriptor = { ...level, offset: page.size, size: bytes.length };
+  page.parts.push(bytes);
+  page.levels.push(descriptor);
+  page.size += bytes.length;
+  return descriptor;
+}
+for (const bank of arrays) {
+  bank.mips = scene.textures[bank.textures[0]].levels.map((level, index) => {
+    const parts = bank.textures.map((name) => {
+      const source = scene.textures[name],
+        mip = source.levels[index];
+      return read(source.file).subarray(mip.offset, mip.offset + mip.size);
+    });
+    const { level: mip, w, h } = level;
+    return addMip('textures', bank.format, { level: mip, w, h }, Buffer.concat(parts), index === 0);
+  });
   cache.clear();
 }
 const specials = {};
-for (const [name, tex] of Object.entries(scene.textures)) {
-  const category = scene.files[tex.file].category;
-  if (category !== 'textures' || tex.levels.at(-1).d > 1) {
-    const last = tex.levels.at(-1);
-    const start = tex.levels[0].offset;
-    const end = last.offset + last.size,
-      length = end - start;
-    if (start) for (const level of tex.levels) level.offset -= start;
+for (const [name, texture] of Object.entries(scene.textures)) {
+  const category = scene.files[texture.file].category;
+  if (category === 'textures' && texture.levels.at(-1).d === 1) continue;
+  const source = read(texture.file);
+  if (category === 'cubemaps' || category === 'sky') {
     specials[name] = {
-      ...tex,
-      file: store(read(tex.file).subarray(start, end), category, tex.format),
+      ...texture,
+      levels: texture.levels.map((mip, index) =>
+        addMip(
+          category,
+          texture.format,
+          mip,
+          source.subarray(mip.offset, mip.offset + mip.size),
+          index === 0,
+        ),
+      ),
     };
-    cache.clear();
+  } else {
+    const start = texture.levels[0].offset,
+      last = texture.levels.at(-1);
+    specials[name] = {
+      ...texture,
+      file: store(source.subarray(start, last.offset + last.size), category, texture.format),
+      levels: texture.levels.map((mip) => ({ ...mip, offset: mip.offset - start })),
+    };
   }
+  cache.clear();
 }
+for (const list of pages.values())
+  for (const page of list) {
+    const file = store(Buffer.concat(page.parts), page.category, page.format);
+    for (const mip of page.levels) mip.file = file;
+  }
+pages.clear();
+for (const bank of arrays) bank.file = bank.mips[0].file;
+for (const texture of Object.values(specials))
+  if (texture.levels[0].file) texture.file = texture.levels[0].file;
 for (const p of Object.values(scene.post)) keep(p.lut);
 if (scene.visibility) keep(scene.visibility.file);
 const batches = new Map();
@@ -263,7 +297,7 @@ const ib = store(MeshoptEncoder.encodeIndexBuffer(Buffer.concat(indices), first,
 const bounds = scene.worlds['maps/de_mirage'].bounds[0];
 const manifest = {
   format: 'cswatch-native-world',
-  version: 2,
+  version: 3,
   map: 'de_mirage',
   sourceManifest: '8225060435969537482',
   units: 'inches',

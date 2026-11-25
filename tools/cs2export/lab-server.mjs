@@ -1,4 +1,6 @@
 import { build, createServer, preview } from '../../frontend/node_modules/vite/dist/node/index.js';
+import { Readable } from 'node:stream';
+import { setTimeout as delay } from 'node:timers/promises';
 import { createReadStream } from 'node:fs';
 import { lstat, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -6,7 +8,15 @@ import { fileURLToPath } from 'node:url';
 import { resolve, join } from 'node:path';
 
 const root = fileURLToPath(new URL('../../frontend/', import.meta.url));
-function mapFiles(directory) {
+function mapFiles(directory, mbit, downloads) {
+  let available = 0;
+  async function* limited(path) {
+    for await (const chunk of createReadStream(path, { highWaterMark: 32768 })) {
+      available = Math.max(available, performance.now()) + (chunk.length * 8) / (mbit * 1000);
+      await delay(Math.max(0, available - performance.now()));
+      yield chunk;
+    }
+  }
   return (server) => {
     server.middlewares.use('/world-data', async (req, res) => {
       const name = req.url?.slice(1);
@@ -36,7 +46,8 @@ function mapFiles(directory) {
           'Content-Type',
           name.endsWith('.json') ? 'application/json' : 'application/octet-stream',
         );
-        createReadStream(path)
+        res.once('finish', () => downloads.push({ name, bytes: st.size }));
+        (mbit ? Readable.from(limited(path)) : createReadStream(path))
           .on('error', () => res.destroy())
           .pipe(res);
       } catch {
@@ -46,8 +57,9 @@ function mapFiles(directory) {
     });
   };
 }
-export async function serve(directory, port = 0, production = false) {
-  const mount = mapFiles(directory),
+export async function serve(directory, port = 0, production = false, mbit = 0) {
+  const downloads = [];
+  const mount = mapFiles(directory, mbit, downloads),
     options = { host: '127.0.0.1', port, strictPort: true };
   const config = {
     root,
@@ -79,6 +91,7 @@ export async function serve(directory, port = 0, production = false) {
     throw error;
   }
   return {
+    downloads,
     url: `http://127.0.0.1:${server.httpServer.address().port}/world-lab.html?map=/world-data/`,
     close: async () => {
       try {

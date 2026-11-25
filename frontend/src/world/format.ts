@@ -1,5 +1,6 @@
 import { transposeBlocks } from './block-layout.mjs';
 export interface Mip {
+  file?: string;
   level: number;
   w: number;
   h: number;
@@ -122,7 +123,15 @@ function validateTexture(texture: Bank | Texture, m: Manifest) {
     throw Error('Invalid texture layers');
   let offset = 0;
   const top = levels.at(-1)!;
+  const paged = levels[0].file !== undefined;
   for (const [i, l] of levels.entries()) {
+    const page = l.file ? m.files[l.file] : file;
+    if (
+      !page ||
+      (l.file !== undefined) !== paged ||
+      !bounded(l.offset, (page.decodedSize ?? page.size) - l.size)
+    )
+      throw Error('Invalid mip page layout');
     const depth = bank ? texture.textures.length : (l.d ?? 0);
     if (
       !bounded(l.w, bank ? 1024 : 16384) ||
@@ -134,7 +143,7 @@ function validateTexture(texture: Bank | Texture, m: Manifest) {
       l.level !== levels.length - 1 - i ||
       l.w !== Math.max(1, top.w >> l.level) ||
       l.h !== Math.max(1, top.h >> l.level) ||
-      l.offset !== offset
+      (!paged && l.offset !== offset)
     )
       throw Error('Invalid mip layout');
     const block = bytesPerBlock[texture.format];
@@ -144,7 +153,8 @@ function validateTexture(texture: Bank | Texture, m: Manifest) {
     if (!bytes || l.size !== bytes * depth) throw Error('Invalid mip byte count');
     offset += l.size;
   }
-  if (offset !== (file.decodedSize ?? file.size)) throw Error('Invalid texture payload size');
+  if (!paged && offset !== (file.decodedSize ?? file.size))
+    throw Error('Invalid texture payload size');
 }
 
 export function validate(value: unknown): Manifest {
@@ -152,7 +162,7 @@ export function validate(value: unknown): Manifest {
   if (
     !m ||
     m.format !== 'cswatch-native-world' ||
-    m.version !== 2 ||
+    m.version !== 3 ||
     m.units !== 'inches' ||
     m.up !== 'Z' ||
     !box(m.bounds)
@@ -247,7 +257,12 @@ export function validate(value: unknown): Manifest {
     }
   }
   if (next !== g.indices || vertices !== g.vertices) throw Error('Incomplete index coverage');
-  for (const texture of [...m.arrays, ...Object.values(m.specials)]) validateTexture(texture, m);
+  let gpuBytes = 0;
+  for (const texture of [...m.arrays, ...Object.values(m.specials)]) {
+    validateTexture(texture, m);
+    for (const mip of 'mips' in texture ? texture.mips : texture.levels) gpuBytes += mip.size;
+    if (gpuBytes > 2 * 1024 * MiB) throw Error('Texture allocation budget exceeded');
+  }
   for (const mat of m.materials) {
     for (const ref of Object.values(mat.bindings)) {
       if (
@@ -320,7 +335,9 @@ export async function loadManifest(dir: URL) {
   return validate(JSON.parse(new TextDecoder().decode(bytes)));
 }
 export async function readAsset(dir: URL, m: Manifest, file: string) {
-  const f = m.files[file];
+  return readFileRecord(dir, file, m.files[file]);
+}
+export async function readFileRecord(dir: URL, file: string, f: Manifest['files'][string]) {
   if (!f) throw Error('Unknown map file');
   const bytes = await boundedBody(await fetch(new URL(file, dir)), f.size, f.size);
   const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), (b) =>

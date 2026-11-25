@@ -5,8 +5,9 @@ import { probeGrid } from './probe-grid';
 import { Frustum, Matrix4, PerspectiveCamera, Vector3, Box3 } from 'three';
 import { decodeVertices } from './geometry';
 import { MeshoptDecoder } from 'meshoptimizer';
-import { readAsset, type Manifest, type Entity } from './format';
-import { textureArray } from './textures';
+import { assetReader } from './asset-reader';
+import { type Manifest, type Entity } from './format';
+import { createTextureStream } from './stream';
 import { vertex, worldFrag, screenVertex, skyFrag, postFrag } from './shaders';
 
 export interface Pose {
@@ -23,13 +24,13 @@ export async function createRenderer(gl: WebGL2RenderingContext, dir: URL, m: Ma
     post = program(gl, screenVertex, postFrag);
   const ext = gl.getExtension('WEBGL_multi_draw');
   let textureBytes = 0;
-  const fetchAsset = (file: string) => readAsset(dir, m, file);
+  const reader = assetReader(dir, m);
+  const fetchAsset = reader.read;
+  const streaming = createTextureStream(gl, fetchAsset);
   const arrays: WebGLTexture[] = [],
     special = new Map<string, WebGLTexture>();
   for (const b of m.arrays) {
-    const data = await fetchAsset(b.file);
-    arrays.push(textureArray(gl, b.format, b.srgb, b.mips, b.textures.length, b.flags, data));
-    textureBytes += data.byteLength;
+    arrays.push(streaming.register(b.file, b.format, b.srgb, b.mips, b.textures.length, b.flags));
   }
   const skyEntity = m.environments
     .find((e) => !e.sky)
@@ -47,11 +48,12 @@ export async function createRenderer(gl: WebGL2RenderingContext, dir: URL, m: Ma
   }
   for (const [name, t] of Object.entries(m.specials)) {
     if (!required.has(name)) continue;
-    const data = await fetchAsset(t.file),
-      tex = textureArray(gl, t.format, false, t.levels, t.levels.at(-1)!.d!, t.flags | 3, data);
-    special.set(name.replaceAll('\\', '/'), tex);
-    textureBytes += data.byteLength;
+    special.set(
+      name.replaceAll('\\', '/'),
+      streaming.register(t.file, t.format, false, t.levels, t.levels.at(-1)!.d!, t.flags | 3),
+    );
   }
+  textureBytes += streaming.allocatedBytes;
   const controller = m.environments
     .find((environment) => !environment.sky)
     ?.entities.find(
@@ -62,7 +64,13 @@ export async function createRenderer(gl: WebGL2RenderingContext, dir: URL, m: Ma
   const exposure = controller?.enableexposure ? Number(controller.minexposure ?? 1) : 1;
   const lut = gl.createTexture();
   const dimension = params.dimension;
-  const cube = await fetchAsset(params.lut);
+  const [lutPayload, indexPayload, vertexPayload] = await Promise.all([
+    fetchAsset(params.lut),
+    fetchAsset(m.geometry.ib),
+    fetchAsset(m.geometry.vb),
+    streaming.bootstrap(),
+  ]);
+  const cube = lutPayload;
   const diagonal = new Uint8Array(4 * dimension);
   for (let index = 0; index < dimension; index++) {
     const offset = 4 * index * (dimension * dimension + dimension + 1);
@@ -274,15 +282,10 @@ export async function createRenderer(gl: WebGL2RenderingContext, dir: URL, m: Ma
     vao = gl.createVertexArray();
   gl.bindVertexArray(vao);
   const indices = new Uint32Array(g.indices);
-  MeshoptDecoder.decodeIndexBuffer(
-    new Uint8Array(indices.buffer),
-    g.indices,
-    4,
-    await fetchAsset(g.ib),
-  );
+  MeshoptDecoder.decodeIndexBuffer(new Uint8Array(indices.buffer), g.indices, 4, indexPayload);
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer());
   gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
-  const vertices = decodeVertices(m, await fetchAsset(g.vb), indices);
+  const vertices = decodeVertices(m, vertexPayload, indices);
   gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
   gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
   for (const [index, count, type, offset, norm, integer] of [
@@ -385,7 +388,7 @@ export async function createRenderer(gl: WebGL2RenderingContext, dir: URL, m: Ma
   samplerNames.forEach((k, i) => gl.uniform1i(world.u(k), i));
   const multiCounts = new Int32Array(8192),
     multiOffsets = new Int32Array(8192);
-  return function render(pose: Pose, mode: number) {
+  function render(pose: Pose, mode: number) {
     const start = performance.now();
     if (width !== gl.drawingBufferWidth || height !== gl.drawingBufferHeight) resize();
     cam.aspect = width / height;
@@ -659,5 +662,9 @@ export async function createRenderer(gl: WebGL2RenderingContext, dir: URL, m: Ma
       submissionMs: performance.now() - start,
       multiDraw: Boolean(ext),
     };
+  }
+  return {
+    render,
+    refine: (invalidate: () => void) => streaming.refine(invalidate).finally(reader.close),
   };
 }

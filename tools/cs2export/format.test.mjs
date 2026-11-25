@@ -10,7 +10,7 @@ function manifest() {
   const bounds = [0, 0, 0, 1, 1, 1];
   return {
     format: 'cswatch-native-world',
-    version: 2,
+    version: 3,
     units: 'inches',
     up: 'Z',
     bounds,
@@ -78,7 +78,7 @@ test('response integrity and bounded streaming', async (t) => {
   const dir = new URL('https://example.invalid/'),
     m = manifest();
   const fake = t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify(m)));
-  assert.equal((await loadManifest(dir)).version, 2);
+  assert.equal((await loadManifest(dir)).version, 3);
   fake.mock.mockImplementation(async () => new Response(payload));
   assert.deepEqual(await readAsset(dir, m, file), payload);
   fake.mock.mockImplementation(async () => new Response(new Uint8Array(8).fill(255)));
@@ -120,4 +120,15 @@ test('topology prediction survives triangle rotation and unsigned arithmetic wra
     predictWords(words, 2, decoded, false);
     assert.deepEqual(words, values);
   }
+});
+test('mip pages require complete block rows inside verified payloads', () => {
+  const m = manifest(),
+    mip = m.arrays[0].mips[0];
+  mip.file = file;
+  assert.equal(validate(m), m);
+  mip.offset = 1;
+  assert.throws(() => validate(m), /page layout/);
+  mip.offset = 0;
+  mip.file = 'missing';
+  assert.throws(() => validate(m), /page layout/);
 });

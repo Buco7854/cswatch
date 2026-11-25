@@ -15,7 +15,9 @@ const sizes =
         [1280, 720],
       ];
 await mkdir(output, { recursive: true });
-const server = await serve(map, 0, true);
+const rate = Number(process.env.CS2_LAB_MBIT) || 0;
+if (!Number.isFinite(rate) || rate < 0) throw Error('Invalid bandwidth');
+const server = await serve(map, 0, true, rate);
 let browser;
 try {
   browser = await chromium.launch({
@@ -31,6 +33,9 @@ try {
     viewport: { width: sizes[0][0], height: sizes[0][1] },
     deviceScaleFactor: 1,
   });
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Network.enable');
+  await cdp.send('Network.setCacheDisabled', { cacheDisabled: true });
   page.on('console', (m) => {
     if (m.type() === 'error' || m.type() === 'warning') console.error(m.text());
   });
@@ -39,22 +44,20 @@ try {
     server.url + (process.env.CS2_LAB_VIEW === 'material-id' ? '&view=material-id' : ''),
   );
   await page.waitForFunction(
-    () => window.worldLab || document.querySelector('canvas').dataset.error,
+    () =>
+      window.worldLab?.loadTimes.fullQualityMs || document.querySelector('canvas').dataset.error,
     null,
     { timeout: 180000 },
   );
   const error = await page.locator('canvas').getAttribute('data-error');
   if (error) throw Error(error);
   const results = [];
-  console.log(
-    'Map payload bytes ' +
-      (await page.evaluate(() =>
-        performance
-          .getEntriesByType('resource')
-          .filter((r) => new URL(r.name).pathname.startsWith('/world-data/'))
-          .reduce((n, r) => n + r.decodedBodySize, 0),
-      )),
+  const timing = await page.evaluate(() => window.worldLab.loadTimes);
+  await writeFile(
+    join(output, 'load.json'),
+    JSON.stringify({ mbit: rate || null, ...timing, downloads: server.downloads }, null, 2),
   );
+  console.log(JSON.stringify(timing));
   console.log('Chromium ' + browser.version());
   for (const [width, height] of sizes) {
     await page.setViewportSize({ width, height });

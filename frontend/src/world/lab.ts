@@ -52,7 +52,15 @@ async function start() {
   if (!url) throw Error('Supply a map directory with ?map=');
   const dir = new URL(url.replace(/\/?$/, '/'), location.href),
     map = await loadManifest(dir);
-  const render = await createRenderer(gl, dir, map);
+  const { render, refine } = await createRenderer(gl, dir, map);
+  const loadTimes = { firstFrameMs: 0, fullQualityMs: 0, peakUploadBytes: 0 };
+  let refining = false,
+    fullQuality = false;
+  function failed(error: unknown) {
+    stats.textContent = String(error);
+    canvas.dataset.error = String(error);
+  }
+
   let raf = 0,
     last = performance.now(),
     tick = 0;
@@ -81,6 +89,8 @@ async function start() {
       stats.textContent = `${s.draws} ${french ? 'appels' : 'draws'} · ${s.triangles.toLocaleString()} △ · ${(s.textureBytes / 1048576).toFixed(1)} MiB · CPU ${s.submissionMs.toFixed(1)} ms`;
       const sample = {
         ...s,
+        loadTimes,
+        fullQuality,
         tick,
         pose,
         completionMs: 0,
@@ -90,6 +100,8 @@ async function start() {
         },
       };
       Object.assign(window, { worldLab: sample });
+      if (!fullQuality)
+        stats.textContent += french ? ' · textures en cours' : ' · loading textures';
       const fence = gl!.fenceSync(gl!.SYNC_GPU_COMMANDS_COMPLETE, 0);
       if (fence) {
         gl!.flush();
@@ -106,6 +118,18 @@ async function start() {
           gl!.deleteSync(fence);
           if (status === gl!.WAIT_FAILED) return;
           sample.completionMs = performance.now() - frameStart;
+          if (!refining) {
+            loadTimes.firstFrameMs = performance.now();
+            refining = true;
+            refine(request)
+              .then((peak) => {
+                loadTimes.peakUploadBytes = peak;
+                fullQuality = true;
+                request();
+              })
+              .catch(failed);
+          } else if (sample.fullQuality && !loadTimes.fullQualityMs)
+            loadTimes.fullQualityMs = performance.now();
           stats.textContent +=
             ' · ' + (french ? 'image' : 'frame') + ' ' + sample.completionMs.toFixed(0) + ' ms';
         };
