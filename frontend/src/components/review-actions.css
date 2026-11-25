@@ -221,6 +221,47 @@
     flex: 0 0 auto;
   }
 }
+/* On short landscape screens the card would sit across the middle of the
+ * view. It moves right of the centre, beside the roster lane when one is
+ * shown, and keeps the centre of the view clear. */
+@media (min-width: 600px) and (max-height: 560px) {
+  .viewer-frame {
+    --moment-card-right: var(--viewer-edge, 16px);
+  }
+  .viewer-frame:has(.broadcast-lineup-stack) {
+    --moment-card-right: var(--viewer-roster-lane);
+  }
+  .viewer-frame .viewer-context-actions,
+  .viewer-frame .viewer-context-actions.is-combat:has(.combat-kill-line) {
+    left: auto;
+    right: var(--moment-card-right);
+    transform: none;
+    width: min(360px, calc(50% - var(--moment-card-right) - 24px));
+  }
+  /* Beside a roster the card is narrow: names get their own row. */
+  .viewer-frame:has(.broadcast-lineup-stack)
+    .viewer-context-actions.is-combat:has(.combat-kill-line) {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .viewer-frame:has(.broadcast-lineup-stack) .viewer-context-actions.is-combat > * {
+    min-width: 0;
+  }
+  .viewer-frame:has(.broadcast-lineup-stack) .viewer-context-actions .review-moment-buttons {
+    justify-content: flex-end;
+  }
+  /* Icon buttons keep their accessible name and title and leave the
+   * recorded names room to read. */
+  .viewer-frame .viewer-context-actions .review-action {
+    flex: 0 0 auto;
+    justify-content: center;
+    min-width: 44px;
+  }
+  .viewer-frame .viewer-context-actions .review-action > span:last-child {
+    display: none;
+  }
+}
 .combat-kill-line {
   display: flex;
   align-items: center;
