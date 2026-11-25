@@ -1,9 +1,23 @@
 using ValveResourceFormat.ResourceTypes;
 using ValveResourceFormat.Serialization.KeyValues;
 
+if (args is ["--game", var rootDir, "--map", "de_mirage", "--out", var destination])
+{
+    try
+    {
+        Export.Run(rootDir, destination);
+        return 0;
+    }
+    catch (Exception error)
+    {
+        Console.Error.WriteLine(error.Message);
+        return 1;
+    }
+}
+
 if (args is not ["--check-model-inputs", "--game", var game, "--map", "de_mirage"])
 {
-    Console.Error.WriteLine("Usage: cs2export --check-model-inputs --game <root> --map de_mirage");
+    Console.Error.WriteLine("Usage: cs2export --game <root> --map de_mirage --out <new-directory>");
     return 2;
 }
 
@@ -40,7 +54,7 @@ try
                     if (reference != "maps/prefabs/de_mirage/3dskybox_mirage_legacy.vmap")
                         throw new InvalidDataException($"Unexpected Mirage skybox reference {reference}");
                     var target = reference[..^5];
-                    store.MountPrefab(Path.Combine(game, "csgo", target + ".vpk"));
+                    using var prefab = store.MountPrefab(Path.Combine(game, "csgo", target + ".vpk"));
                     CheckWorld(target);
                 }
             }

@@ -22,7 +22,25 @@ sealed class ResourceStore : IDisposable
         }
     }
 
-    public void MountPrefab(string path) => Mount(path, prepend: true);
+    public IDisposable MountPrefab(string path)
+    {
+        Mount(path, prepend: true);
+        return new PrefabScope(this, archives[0]);
+    }
+
+    sealed class PrefabScope(ResourceStore store, (Package Archive, string Path) item) : IDisposable
+    {
+        public void Dispose()
+        {
+            if (store.archives.Remove(item)) item.Archive.Dispose();
+        }
+    }
+
+    public Resource? ReadOptional(string name)
+    {
+        try { return Read(name); }
+        catch (FileNotFoundException) { return null; }
+    }
 
     void Mount(string path, bool prepend = false)
     {
