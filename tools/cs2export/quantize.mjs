@@ -157,6 +157,8 @@ export function vertexArchive() {
         ],
       };
     },
+    /** Bytes of unique encoded streams so far. */
+    size: () => length,
     finish: () => Buffer.concat(buffers),
   };
 }

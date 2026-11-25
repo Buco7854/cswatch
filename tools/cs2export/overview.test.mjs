@@ -4,7 +4,8 @@ import { inflateSync } from 'node:zlib';
 import { overviewCalibration, playableCalibration, renderOverview } from './overview.mjs';
 
 test('official overview text supplies the three calibration fields', () => {
-  const text = '"de_x"\n{\n\t"material"\t"overviews/de_x"\n\t"pos_x"\t\t"-3230"\n\t"pos_y"\t\t"1713"\n\t"scale"\t\t"5.00"\n}';
+  const text =
+    '"de_x"\n{\n\t"material"\t"overviews/de_x"\n\t"pos_x"\t\t"-3230"\n\t"pos_y"\t\t"1713"\n\t"scale"\t\t"5.00"\n}';
   assert.deepEqual(overviewCalibration(text), { x: -3230, y: 1713, scale: 5 });
   assert.equal(overviewCalibration('"de_x" { "pos_x" "1" }'), undefined);
 });
@@ -17,7 +18,10 @@ test('playable bounds come from spawn and objective entities and form a square',
   ]);
   // Span 2000 in both axes around (0, 500), widened by 25% plus 512 on each side.
   assert.deepEqual(calibration, { x: -1762, y: 2262, scale: 3.4414, ceiling: 384 });
-  assert.equal(playableCalibration([{ classname: 'info_player_terrorist', origin: [0, 0, 0] }]), undefined);
+  assert.equal(
+    playableCalibration([{ classname: 'info_player_terrorist', origin: [0, 0, 0] }]),
+    undefined,
+  );
 });
 
 test('the render rasterizes upward surfaces below the ceiling into a calibrated PNG', () => {

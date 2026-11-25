@@ -97,7 +97,17 @@ export function modelTriangles(model) {
 }
 
 // Models in `coarse` use their next coarser LOD; `instances` counts whole-model placements.
-export function geometry(scene, read, materialId, density = new Map(), coarse = new Set(), instances = new Map()) {
+// With `visit`, each range is handed over as it is decoded instead of being retained, so memory
+// holds one draw's vertices at a time.
+export function geometry(
+  scene,
+  read,
+  materialId,
+  density = new Map(),
+  coarse = new Set(),
+  instances = new Map(),
+  visit = undefined,
+) {
   const ranges = [],
     entities = [],
     environments = [];
@@ -149,7 +159,8 @@ export function geometry(scene, read, materialId, density = new Map(), coarse = 
       const placement = transform.equals(identity) ? undefined : transform.toArray();
       if (fragment === null) instances.set(name, (instances.get(name) ?? 0) + 1);
       // Aggregate fragments address LOD 0 draws, so they keep it.
-      const meshes = fragment === null && coarse.has(name) && model.coarse ? model.coarse : model.meshes;
+      const meshes =
+        fragment === null && coarse.has(name) && model.coarse ? model.coarse : model.meshes;
       for (const mesh of meshes) {
         const draws = fragment === null ? mesh.draws : [mesh.draws[fragment]];
         for (const draw of draws) {
@@ -190,7 +201,7 @@ export function geometry(scene, read, materialId, density = new Map(), coarse = 
           const count = remap.size,
             v = Buffer.alloc(count * stride);
           totalVertices += count;
-          if (totalVertices * stride > 768 * 1024 * 1024)
+          if (totalVertices * stride > (visit ? 8192 : 768) * 1024 * 1024)
             throw Error('Geometry exceeds decoded budget');
           const placed = new Float32Array(count * 3),
             uvs = new Float32Array(count * 2);
@@ -365,7 +376,7 @@ export function geometry(scene, read, materialId, density = new Map(), coarse = 
                       : mat.ints.F_ALPHA_TEST
                         ? 'cutout'
                         : 'opaque';
-          ranges.push({
+          (visit ?? ((range) => ranges.push(range)))({
             v,
             indices,
             mat: materialId(matName),

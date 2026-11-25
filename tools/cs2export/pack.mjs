@@ -8,7 +8,7 @@ import { vertexArchive } from './quantize.mjs';
 import { simplifierReady, simplifyRange } from './simplify.mjs';
 import { packFiles } from './pack-files.mjs';
 import { materialCap, phonePlan } from './texture-tiers.mjs';
-import { overviewCalibration, playableCalibration, renderOverview } from './overview.mjs';
+import { overviewCalibration, overviewRaster, playableCalibration } from './overview.mjs';
 
 const [source, out, stage] = process.argv.slice(2);
 if (!source || !out || !stage) throw Error('Usage: pack.mjs <source> <pack> <stage>');
@@ -17,13 +17,29 @@ const cache = new Map(),
   arrays = [],
   groups = new Map(),
   refs = new Map();
+// Source payloads stay cached up to 512 MiB, least recently used first out, so a large world
+// streams through bounded memory.
+let cachedBytes = 0;
 function read(file) {
   let bytes = cache.get(file);
-  if (!bytes) {
-    bytes = readFileSync(join(source, file));
+  if (bytes) {
+    cache.delete(file);
     cache.set(file, bytes);
+    return bytes;
+  }
+  bytes = readFileSync(join(source, file));
+  cache.set(file, bytes);
+  cachedBytes += bytes.length;
+  for (const [name, old] of cache) {
+    if (cachedBytes <= 512 * 1024 ** 2 || name === file) break;
+    cache.delete(name);
+    cachedBytes -= old.length;
   }
   return bytes;
+}
+function clearCache() {
+  cache.clear();
+  cachedBytes = 0;
 }
 const { files, store, addMip, flush } = packFiles(out);
 function keep(file) {
@@ -52,140 +68,164 @@ const MiB = 1024 ** 2;
 const desktopBudget = 86 * MiB,
   geometryAllowance = 0.45 * 64.5 * MiB,
   bytesPerTriangle = 8.5;
+const roles = {
+  color: ['g_tColor', 'g_tColor1', 'g_tGlassTintColor'],
+  normal: ['g_tLayer1NormalRoughness', 'g_tNormal', 'g_tNormal1'],
+  ao: ['g_tLayer1AmbientOcclusion', 'g_tAmbientOcclusion'],
+  // csgo_environment_blend names its second layer g_tColor2/g_tNormal2.
+  color2: ['g_tLayer2Color', 'g_tColor2'],
+  normal2: ['g_tLayer2NormalRoughness', 'g_tNormal2'],
+  blend: ['g_tBlendModulation'],
+  detail: ['g_tLayer1Detail', 'g_tDetail'],
+  metal: ['g_tMetalness'],
+  aux0: ['g_tGlassDust', 'g_tMask1', 'g_tTransmissiveColor'],
+  aux1: ['g_tMask2', 'g_tTintMask'],
+  aux2: ['g_tMask3'],
+  illum: ['g_tSelfIllumMask'],
+  detailMask: ['g_tDetailMask'],
+  ao2: ['g_tLayer2AmbientOcclusion'],
+  height: ['g_tHeight1'],
+  rough: ['g_tRoughness'],
+};
 const materialId = (name) => ids.get(name);
-const countTriangles = (list) => list.reduce((n, range) => n + range.indices.length / 12, 0);
-let density = new Map();
-const instances = new Map(),
+const materialList = Object.values(scene.materials);
+// Large opaque ranges, never foliage cards, may be simplified.
+const simplifiable = (range) =>
+  !range.sky &&
+  range.family === 'opaque' &&
+  range.indices.length / 12 >= 256 &&
+  !materialList[range.mat]?.shader.includes('foliage');
+// Pass one decodes every range once to measure texel density and triangle counts; nothing is
+// retained, so any world fits in bounded memory.
+const density = new Map(),
+  instances = new Map(),
   coarse = new Set();
-let ranges, entities, environments, fineTriangles;
-try {
-  ({ ranges, entities, environments } = geometry(
-    scene,
-    read,
-    materialId,
-    density,
-    coarse,
-    instances,
-  ));
-  fineTriangles = countTriangles(ranges);
-} catch (error) {
-  if (error.message !== 'Geometry exceeds decoded budget') throw error;
-  // Too large to decode at full detail: every model with a coarser LOD starts there.
-  for (const [name, model] of Object.entries(scene.models)) if (model.coarse) coarse.add(name);
-  density = new Map();
-  instances.clear();
-  ({ ranges, entities, environments } = geometry(
-    scene,
-    read,
-    materialId,
-    density,
-    coarse,
-    instances,
-  ));
-  fineTriangles = Object.entries(scene.models).reduce(
-    (n, [name, model]) => n + (instances.get(name) ?? 0) * modelTriangles(model).fine,
-    0,
-  );
-}
-let triangles = countTriangles(ranges);
-if (triangles * bytesPerTriangle > geometryAllowance) {
+let fineTriangles = 0,
+  fineSimplifiable = 0;
+geometry(scene, read, materialId, density, new Set(), instances, (range) => {
+  const count = range.indices.length / 12;
+  fineTriangles += count;
+  if (simplifiable(range)) fineSimplifiable += count;
+});
+clearCache();
+let estimate = fineTriangles;
+if (estimate * bytesPerTriangle > geometryAllowance) {
   // The placements whose coarser LOD saves the most triangles switch first.
   const savings = [...instances]
     .map(([name, count]) => {
       const t = modelTriangles(scene.models[name]);
       return { name, saving: t.coarse === undefined ? 0 : count * (t.fine - t.coarse) };
     })
-    .filter((s) => s.saving > 0 && !coarse.has(s.name))
+    .filter((s) => s.saving > 0)
     .sort((a, b) => b.saving - a.saving);
-  let estimate = triangles;
   for (const { name, saving } of savings) {
     if (estimate * bytesPerTriangle <= geometryAllowance) break;
     coarse.add(name);
     estimate -= saving;
   }
-  if (coarse.size) {
-    density = new Map();
-    ({ ranges, entities, environments } = geometry(scene, read, materialId, density, coarse));
-    triangles = countTriangles(ranges);
-  }
 }
-// Geometry still above its allowance is simplified: large opaque ranges, never foliage cards,
-// within 2 inches of the source and without removing surface (see simplify.mjs). On de_train
-// 2 inches was indistinguishable at the spawns (MAE 0.34) while 8 inches bent window frames, so
-// geometry that still exceeds the allowance stays over budget. Borders stay locked so neighbouring
-// ranges and lightmap seams keep meeting.
-let simplifyError = 0,
-  simplified = 0;
-if (triangles * bytesPerTriangle > geometryAllowance) {
-  await simplifierReady;
-  const materialList = Object.values(scene.materials);
-  const eligible = (range) =>
-    !range.sky &&
-    range.family === 'opaque' &&
-    range.indices.length / 12 >= 256 &&
-    !materialList[range.mat]?.shader.includes('foliage');
-  const originals = new Map(
-    ranges.filter(eligible).map((r) => [r, { v: r.v, indices: r.indices }]),
-  );
-  const fixedTriangles =
-    triangles - [...originals.values()].reduce((n, o) => n + o.indices.length / 12, 0);
-  const eligibleTriangles = triangles - fixedTriangles;
-  let ratio = Math.max(
-    0.05,
-    (geometryAllowance / bytesPerTriangle - fixedTriangles) / eligibleTriangles,
-  );
-  const before = triangles;
-  for (const error of [2, 2, 2]) {
-    simplifyError = error;
-    for (const [range, original] of originals) {
-      const count = original.indices.length / 4;
-      const indices = new Uint32Array(count);
-      for (let i = 0; i < count; i++) indices[i] = original.indices.readUInt32LE(i * 4);
-      const kept = simplifyRange(original.v, stride, indices, ratio, error);
-      if (!kept) {
-        Object.assign(range, original);
-        continue;
-      }
-      const remap = new Map();
-      for (const index of kept) if (!remap.has(index)) remap.set(index, remap.size);
-      const v = Buffer.alloc(remap.size * stride);
-      for (const [from, to] of remap)
-        original.v.copy(v, to * stride, from * stride, (from + 1) * stride);
-      const out = Buffer.alloc(kept.length * 4);
-      kept.forEach((index, i) => out.writeUInt32LE(remap.get(index), i * 4));
-      range.v = v;
-      range.indices = out;
-    }
-    triangles = countTriangles(ranges);
-    if (triangles * bytesPerTriangle <= geometryAllowance) break;
-    // Ranges that stopped above their target leave a deficit; aim the next pass lower.
-    ratio = Math.max(
+// Geometry still above its allowance is simplified within 2 inches of the source and without
+// removing surface (see simplify.mjs). On de_train 2 inches was indistinguishable at the spawns
+// (MAE 0.34) while 8 inches bent window frames, so geometry that still exceeds the allowance stays
+// over budget. Borders stay locked so neighbouring ranges and lightmap seams keep meeting.
+const fixedTriangles = estimate - fineSimplifiable * (estimate / fineTriangles);
+const simplifyError = estimate * bytesPerTriangle > geometryAllowance ? 2 : 0;
+const ratio = simplifyError
+  ? Math.max(
       0.05,
-      (ratio * (geometryAllowance / bytesPerTriangle - fixedTriangles)) /
-        (triangles - fixedTriangles),
-    );
-  }
-  simplified = before - triangles;
-}
+      (geometryAllowance / bytesPerTriangle - fixedTriangles) / (estimate - fixedTriangles),
+    )
+  : 1;
+if (simplifyError) await simplifierReady;
 // Radar artwork the game files lack is rendered from the world, against the official calibration
 // when only the image is missing.
-let generatedOverview;
-if (!existsSync(join(source, 'overview.png'))) {
-  const official = existsSync(join(source, 'overview.txt'))
+let overview, generatedOverview;
+const official =
+  !existsSync(join(source, 'overview.png')) && existsSync(join(source, 'overview.txt'))
     ? overviewCalibration(readFileSync(join(source, 'overview.txt'), 'utf8'))
     : undefined;
-  const main = environments.find((env) => !env.sky);
+if (!existsSync(join(source, 'overview.png'))) {
+  const main = Object.entries(scene.worlds).find(([name]) => name === `maps/${scene.map}`)?.[1];
   const calibration = official
     ? { ...official, ceiling: playableCalibration(main?.entities ?? [])?.ceiling }
     : playableCalibration(main?.entities ?? []);
-  const rendered = calibration && renderOverview(scene.map, ranges, calibration);
+  if (calibration) overview = overviewRaster(scene.map, calibration);
+}
+// Pass two simplifies and encodes each range as it is decoded and keeps only its compressed
+// streams and local indices. A material's optional streams depend on its texture slots, not on
+// the texture plan, so encoding precedes planning.
+const hasLayer = (material, role) =>
+  Object.entries(material.slots).some(
+    ([slot, texture]) =>
+      roles[role].includes(slot) &&
+      scene.textures[texture] &&
+      scene.textures[texture].levels.at(-1).d === 1,
+  );
+const encodeMaterials = materialList.map((material) => ({
+  ...material,
+  bindings: hasLayer(material, 'color2') ? { color2: true } : {},
+}));
+await MeshoptEncoder.ready;
+const archive = vertexArchive();
+const records = [];
+let triangles = 0,
+  retainedIndexBytes = 0;
+const { entities, environments } = geometry(
+  scene,
+  read,
+  materialId,
+  new Map(),
+  coarse,
+  new Map(),
+  (range) => {
+    if (simplifyError && simplifiable(range)) {
+      const count = range.indices.length / 4;
+      const indices = new Uint32Array(count);
+      for (let i = 0; i < count; i++) indices[i] = range.indices.readUInt32LE(i * 4);
+      const kept = simplifyRange(range.v, stride, indices, ratio, simplifyError);
+      if (kept) {
+        const remap = new Map();
+        for (const index of kept) if (!remap.has(index)) remap.set(index, remap.size);
+        const v = Buffer.alloc(remap.size * stride);
+        for (const [from, to] of remap)
+          range.v.copy(v, to * stride, from * stride, (from + 1) * stride);
+        const out = Buffer.alloc(kept.length * 4);
+        kept.forEach((index, i) => out.writeUInt32LE(remap.get(index), i * 4));
+        range.v = v;
+        range.indices = out;
+      }
+    }
+    overview?.add(range);
+    const count = range.indices.length / 4;
+    triangles += count / 3;
+    retainedIndexBytes += range.indices.length;
+    if (retainedIndexBytes > 512 * 1024 ** 2) throw Error('Geometry exceeds retained index budget');
+    records.push({
+      sky: range.sky,
+      family: range.family,
+      side: range.side,
+      cell: range.cell,
+      mat: range.mat,
+      entityIndex: range.entityIndex,
+      bounds: range.bounds,
+      cubeHandshake: range.cubeHandshake,
+      probeHandshake: range.probeHandshake,
+      vertices: range.v.length / stride,
+      indices: range.indices,
+      vertexData: archive.encode(range, encodeMaterials[range.mat]),
+    });
+  },
+);
+clearCache();
+const simplified = estimate - triangles > 0 && simplifyError ? estimate - triangles : 0;
+if (overview) {
+  const rendered = overview.finish();
   if (rendered) {
     writeFileSync(join(source, 'overview.png'), rendered.png);
     if (!official) writeFileSync(join(source, 'overview.txt'), rendered.text);
     generatedOverview = official ? 'image comes' : 'calibration and image come';
   }
 }
-cache.clear();
 // Drop whole authored levels, preserving the remaining Valve block payloads.
 // The desktop tier takes the first plan whose estimate fits its budget: distant 3D-sky
 // lightmaps, then the sun shadow, material texel density and baked lighting resolution give way.
@@ -198,6 +238,7 @@ const desktopPlans = [
   { target: 1, max: 512, irradiance: 2048, shadow: 2048, skyLightmap: 1024 },
   { target: 1, max: 256, irradiance: 2048, shadow: 2048, skyLightmap: 512 },
   { target: 0.75, max: 256, irradiance: 1024, shadow: 1024, skyLightmap: 512 },
+  { target: 0.75, max: 256, irradiance: 1024, shadow: 1024, skyLightmap: 512, cube: 64 },
 ];
 const wireRatio = { textures: 0.8, lightmaps: 0.4, cubemaps: 1, sky: 0.5, probes: 0.6 };
 const mainWorld = 'maps/' + scene.map + '/';
@@ -211,7 +252,8 @@ function texturePlanCaps(plan) {
   return caps;
 }
 function capFor(name, category, plan, caps) {
-  if (category === 'cubemaps' || category === 'sky') return 128;
+  if (category === 'cubemaps') return plan.cube ?? 128;
+  if (category === 'sky') return 128;
   if (category === 'lightmaps') {
     const own = /direct_light_shadows/.test(name) ? plan.shadow : plan.irradiance;
     return name.startsWith(mainWorld) ? own : Math.min(own, plan.skyLightmap);
@@ -220,7 +262,9 @@ function capFor(name, category, plan, caps) {
 }
 function desktopEstimate(plan) {
   const caps = texturePlanCaps(plan);
-  let bytes = triangles * bytesPerTriangle;
+  // Encoded vertex streams lose about 14% more to deflate; indices cost about 0.35 bytes each
+  // (de_inferno: 45.7 MB of streams for 53.4 MB encoded, 1.4 MB for 12.1M indices).
+  let bytes = archive.size() * 0.86 + triangles * 3 * 0.12;
   for (const [name, texture] of Object.entries(scene.textures)) {
     const category = scene.files[texture.file].category;
     const cap = capFor(name, category, plan, caps);
@@ -282,25 +326,6 @@ function layer(name, role, srgb) {
   refs.set(key, ref);
   return ref;
 }
-const roles = {
-  color: ['g_tColor', 'g_tColor1', 'g_tGlassTintColor'],
-  normal: ['g_tLayer1NormalRoughness', 'g_tNormal', 'g_tNormal1'],
-  ao: ['g_tLayer1AmbientOcclusion', 'g_tAmbientOcclusion'],
-  // csgo_environment_blend names its second layer g_tColor2/g_tNormal2.
-  color2: ['g_tLayer2Color', 'g_tColor2'],
-  normal2: ['g_tLayer2NormalRoughness', 'g_tNormal2'],
-  blend: ['g_tBlendModulation'],
-  detail: ['g_tLayer1Detail', 'g_tDetail'],
-  metal: ['g_tMetalness'],
-  aux0: ['g_tGlassDust', 'g_tMask1', 'g_tTransmissiveColor'],
-  aux1: ['g_tMask2', 'g_tTintMask'],
-  aux2: ['g_tMask3'],
-  illum: ['g_tSelfIllumMask'],
-  detailMask: ['g_tDetailMask'],
-  ao2: ['g_tLayer2AmbientOcclusion'],
-  height: ['g_tHeight1'],
-  rough: ['g_tRoughness'],
-};
 const mats = Object.entries(scene.materials).map(([name, m]) => {
   const bindings = {},
     slots = {};
@@ -399,7 +424,7 @@ for (const [name, p] of Object.entries(scene.post))
   if (name !== 'default' || !defaultGrade) keep(p.lut);
 if (scene.visibility) keep(scene.visibility.file);
 const batches = new Map();
-for (const r of ranges) {
+for (const r of records) {
   const bankIds = Object.keys(roles).map((role) => mats[r.mat].bindings[role]?.[0] ?? -1);
   const key = [r.sky, r.family, r.side, ...bankIds].join('/');
   let batch = batches.get(key);
@@ -411,8 +436,6 @@ for (const r of ranges) {
   if (!batch.cells.has(keyCell)) batch.cells.set(keyCell, []);
   batch.cells.get(keyCell).push(r);
 }
-await MeshoptEncoder.ready;
-const archive = vertexArchive();
 const indices = [],
   chunks = [];
 let first = 0,
@@ -431,13 +454,12 @@ for (const batch of batches.values()) {
     chunks.push(chunk);
     for (const r of rs) {
       const count = r.indices.length / 4;
-      const vertexData = archive.encode(r, mats[r.mat]);
       for (let i = 0; i < count; i++)
         r.indices.writeUInt32LE(r.indices.readUInt32LE(i * 4) + base, i * 4);
 
       indices.push(r.indices);
       chunk.ranges.push({
-        ...vertexData,
+        ...r.vertexData,
         first,
         count,
         bounds: r.bounds,
@@ -451,7 +473,7 @@ for (const batch of batches.values()) {
         chunk.bounds[j + 3] = Math.max(chunk.bounds[j + 3], r.bounds[j + 3]);
       }
       first += count;
-      base += r.v.length / stride;
+      base += r.vertices;
     }
   }
 }
@@ -469,7 +491,7 @@ const manifest = {
   roles: Object.keys(roles),
   geometry: { vb, ib, stride, vertices: base, indices: first },
   counts: {
-    drawRanges: ranges.length,
+    drawRanges: records.length,
     chunks: chunks.length,
     triangles: first / 3,
     materials: mats.length,

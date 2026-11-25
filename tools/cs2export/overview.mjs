@@ -46,14 +46,21 @@ export function playableCalibration(entities) {
 
 /** Rasterizes upward-facing surfaces below the ceiling, shaded by height and slope. */
 export function renderOverview(map, ranges, calibration) {
+  const raster = overviewRaster(map, calibration);
+  for (const range of ranges) raster.add(range);
+  return raster.finish();
+}
+
+/** The same rasterizer, fed one range at a time. */
+export function overviewRaster(map, calibration) {
   const { x: left, y: top, scale } = calibration;
   const ceiling = calibration.ceiling ?? Infinity;
   const height = new Float32Array(SIZE * SIZE).fill(-Infinity);
   const shade = new Float32Array(SIZE * SIZE);
   const light = [0.35, 0.45, 0.82];
   const lightLength = Math.hypot(...light);
-  for (const range of ranges) {
-    if (range.sky || !['opaque', 'cutout', 'water'].includes(range.family)) continue;
+  function add(range) {
+    if (range.sky || !['opaque', 'cutout', 'water'].includes(range.family)) return;
     const v = range.v,
       indices = range.indices,
       stride = 60;
@@ -66,15 +73,29 @@ export function renderOverview(map, ranges, calibration) {
     // Indices are little-endian uint32 values.
     for (let t = 0; t + 2 < indices.length / 4; t += 3) {
       const [a, b, c] = [t, t + 1, t + 2].map((k) => indices.readUInt32LE(k * 4));
-      const ax = at(a, 0), ay = at(a, 1), az = at(a, 2);
-      const bx = at(b, 0), by = at(b, 1), bz = at(b, 2);
-      const cx = at(c, 0), cy = at(c, 1), cz = at(c, 2);
+      const ax = at(a, 0),
+        ay = at(a, 1),
+        az = at(a, 2);
+      const bx = at(b, 0),
+        by = at(b, 1),
+        bz = at(b, 2);
+      const cx = at(c, 0),
+        cy = at(c, 1),
+        cz = at(c, 2);
       if (Math.max(az, bz, cz) > ceiling) continue;
-      const ux = bx - ax, uy = by - ay, uz = bz - az, wx = cx - ax, wy = cy - ay, wz = cz - az;
-      const nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx;
+      const ux = bx - ax,
+        uy = by - ay,
+        uz = bz - az,
+        wx = cx - ax,
+        wy = cy - ay,
+        wz = cz - az;
+      const nx = uy * wz - uz * wy,
+        ny = uz * wx - ux * wz,
+        nz = ux * wy - uy * wx;
       const length = Math.hypot(nx, ny, nz);
       if (!(length > 0) || Math.abs(nz) / length < 0.35) continue;
-      const lambert = Math.abs(nx * light[0] + ny * light[1] + nz * light[2]) / (length * lightLength);
+      const lambert =
+        Math.abs(nx * light[0] + ny * light[1] + nz * light[2]) / (length * lightLength);
       const px = [ax, bx, cx].map((x) => (x - left) / scale),
         py = [ay, by, cy].map((y) => (top - y) / scale),
         pz = [az, bz, cz];
@@ -112,36 +133,39 @@ export function renderOverview(map, ranges, calibration) {
         }
     }
   }
-  let lo = Infinity,
-    hi = -Infinity;
-  for (const z of height) if (z > -Infinity) (lo = Math.min(lo, z)), (hi = Math.max(hi, z));
-  if (!(hi >= lo)) return undefined;
-  const rgba = Buffer.alloc(SIZE * SIZE * 4);
-  for (let y = 0; y < SIZE; y++)
-    for (let x = 0; x < SIZE; x++) {
-      const index = y * SIZE + x,
-        z = height[index];
-      if (z === -Infinity) continue;
-      const t = hi > lo ? (z - lo) / (hi - lo) : 0.5;
-      // Steps in height outline walls and ledges.
-      let edge = 1;
-      for (const [dx, dy] of [
-        [1, 0],
-        [0, 1],
-        [-1, 0],
-        [0, -1],
-      ]) {
-        const n = height[(y + dy) * SIZE + x + dx];
-        if (x + dx < 0 || y + dy < 0 || x + dx >= SIZE || y + dy >= SIZE) continue;
-        if (n === -Infinity || Math.abs(n - z) > 48) edge = 0.6;
+  function finish() {
+    let lo = Infinity,
+      hi = -Infinity;
+    for (const z of height) if (z > -Infinity) ((lo = Math.min(lo, z)), (hi = Math.max(hi, z)));
+    if (!(hi >= lo)) return undefined;
+    const rgba = Buffer.alloc(SIZE * SIZE * 4);
+    for (let y = 0; y < SIZE; y++)
+      for (let x = 0; x < SIZE; x++) {
+        const index = y * SIZE + x,
+          z = height[index];
+        if (z === -Infinity) continue;
+        const t = hi > lo ? (z - lo) / (hi - lo) : 0.5;
+        // Steps in height outline walls and ledges.
+        let edge = 1;
+        for (const [dx, dy] of [
+          [1, 0],
+          [0, 1],
+          [-1, 0],
+          [0, -1],
+        ]) {
+          const n = height[(y + dy) * SIZE + x + dx];
+          if (x + dx < 0 || y + dy < 0 || x + dx >= SIZE || y + dy >= SIZE) continue;
+          if (n === -Infinity || Math.abs(n - z) > 48) edge = 0.6;
+        }
+        const tone = (0.55 + 0.45 * shade[index]) * edge;
+        const base = [58 + 150 * t, 72 + 140 * t, 76 + 128 * t];
+        base.forEach((value, channel) => (rgba[index * 4 + channel] = Math.min(255, value * tone)));
+        rgba[index * 4 + 3] = 255;
       }
-      const tone = (0.55 + 0.45 * shade[index]) * edge;
-      const base = [58 + 150 * t, 72 + 140 * t, 76 + 128 * t];
-      base.forEach((value, channel) => (rgba[index * 4 + channel] = Math.min(255, value * tone)));
-      rgba[index * 4 + 3] = 255;
-    }
-  const text = `"${map}"\n{\n\t"pos_x"\t\t"${calibration.x}"\n\t"pos_y"\t\t"${calibration.y}"\n\t"scale"\t\t"${calibration.scale}"\n}\n`;
-  return { png: encodePng(rgba, SIZE, SIZE), text };
+    const text = `"${map}"\n{\n\t"pos_x"\t\t"${calibration.x}"\n\t"pos_y"\t\t"${calibration.y}"\n\t"scale"\t\t"${calibration.scale}"\n}\n`;
+    return { png: encodePng(rgba, SIZE, SIZE), text };
+  }
+  return { add, finish };
 }
 
 const crcTable = Array.from({ length: 256 }, (_, n) => {
