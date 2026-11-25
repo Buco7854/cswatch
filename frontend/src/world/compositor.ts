@@ -55,13 +55,16 @@ export function compositor(renderer: WebGLRenderer, native: NativeRenderer) {
   } as unknown as Object3D;
   // X-ray shells are display overlays and keep their unlit shader.
   const xray = (material: Material) => material.depthFunc === GreaterDepth && 'color' in material;
+  const custom = (material: Material) =>
+    Boolean((material as Material & { isShaderMaterial?: boolean }).isShaderMaterial);
   function prepare(scene: Scene, camera: PerspectiveCamera) {
     scene.traverse((object) => {
       const material = (object as Mesh).material;
       if (!material) return;
       let added = false;
       for (const entry of Array.isArray(material) ? material : [material]) {
-        if (prepared.has(entry)) continue;
+        // Custom shader effects warm their own programs in the state they draw in.
+        if (prepared.has(entry) || custom(entry)) continue;
         prepared.add(entry);
         if (!xray(entry)) lighting.bind(entry);
         added = true;
@@ -74,12 +77,12 @@ export function compositor(renderer: WebGLRenderer, native: NativeRenderer) {
       // Keep each linked built-in material variant for the renderer's lifetime
       // (a bounded set). A corpse's instance-owned materials are disposed at the
       // round's end; without this lease the next round's first death would link
-      // the same program again mid-playback. Custom shader programs are keyed by
-      // shader-cache entries that are renumbered once released, so they are not kept.
+      // the same program again mid-playback. (Custom shader programs are keyed by
+      // shader-cache entries that are renumbered once released.)
       for (const object of fresh) {
         const material = (object as Mesh).material;
         for (const entry of Array.isArray(material) ? material : [material]) {
-          if ((entry as Material & { isShaderMaterial?: boolean }).isShaderMaterial) continue;
+          if (custom(entry)) continue;
           const program = (renderer.properties.get(entry) as { currentProgram?: LinkedProgram })
             .currentProgram;
           if (program && !retained.has(program)) {
