@@ -27,34 +27,8 @@ const vec3 = (value, bound) =>
   value.every((n) => Number.isFinite(n) && Math.abs(n) <= bound);
 const yes = (value) => [1, true, '1', 'true'].includes(value);
 
-// The CS2 resource string table uses MurmurHash64B, with two little-endian uint32 lanes.
-// Keep the full handle as a decimal string throughout JSON and replay comparisons.
-export function modelResourceId(path) {
-  const bytes = Buffer.from(path, 'utf8');
-  const multiplier = 0x5bd1e995;
-  const mixWord = (hash, word) => {
-    const scaled = Math.imul(word, multiplier);
-    return Math.imul(hash, multiplier) ^ Math.imul(scaled ^ (scaled >>> 24), multiplier);
-  };
-  let high = 0xedabcdef ^ bytes.length;
-  let low = 0;
-  let at = 0;
-  for (; at + 8 <= bytes.length; at += 8) {
-    high = mixWord(high, bytes.readUInt32LE(at));
-    low = mixWord(low, bytes.readUInt32LE(at + 4));
-  }
-  if (at + 4 <= bytes.length) {
-    high = mixWord(high, bytes.readUInt32LE(at));
-    at += 4;
-  }
-  if (at < bytes.length) low = Math.imul(low ^ bytes.readUIntLE(at, bytes.length - at), multiplier);
-  high = Math.imul(high ^ (low >>> 18), multiplier);
-  low = Math.imul(low ^ (high >>> 22), multiplier);
-  high = Math.imul(high ^ (low >>> 17), multiplier);
-  low = Math.imul(low ^ (high >>> 19), multiplier);
-  return ((BigInt(high >>> 0) << 32n) | BigInt(low >>> 0)).toString();
-}
-
+import { modelResourceId } from '../../shared/model-resource-id.mjs';
+export { modelResourceId };
 export function preparedMapEntity(value, className) {
   if (
     !value ||

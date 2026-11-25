@@ -85,7 +85,12 @@ export interface Manifest {
   chunks: Chunk[];
   specials: Record<string, Texture>;
   environments: Environment[];
-  entities: { initialVisibility: boolean }[];
+  entities: (Entity & {
+    initialVisibility: boolean;
+    parentEntity?: number;
+    model?: string;
+    hammeruniqueid?: string;
+  })[];
   post: Record<
     string,
     {

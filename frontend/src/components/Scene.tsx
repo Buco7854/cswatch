@@ -1,3 +1,4 @@
+import { entityPlayback } from '../world/entity-playback';
 import { ReplayFrameContext } from '../replay-frames';
 import { NativePasses } from '../world/frame-context';
 import { NativeWorld, type LoadedWorld } from '../world/NativeWorld';
@@ -742,6 +743,20 @@ function World({
   const nativePasses = useMemo<FramePasses>(() => ({}), [model]);
   const [nativeWorld, registerNative] = useState<LoadedWorld | null>(null);
   const labelSmoke = useRef<SmokeSample[]>([]);
+  const seekNative = useMemo(
+    () =>
+      nativeWorld &&
+      entityPlayback(
+        nativeWorld.manifest.entities,
+        data.mapBreakables,
+        data.mapDoors,
+        data.mapVisibility,
+        nativeWorld.native.updateEntity,
+        nativeWorld.queries.updateEntity,
+      ),
+    [nativeWorld, data.mapBreakables, data.mapDoors, data.mapVisibility],
+  );
+  useFrame(() => seekNative?.(replayFrames?.tick ?? tick), -90);
   useActorOverlayFrame(
     overlays,
     overlayLayout,

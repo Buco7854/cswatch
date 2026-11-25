@@ -205,6 +205,32 @@ export async function createRenderer(
       box: bounds(chunk.bounds),
       ranges: chunk.ranges.map((range) => ({ ...range, box: bounds(range.bounds) })),
     }));
+    const identity = new Matrix4();
+    const transforms = new Map<number, Matrix4>();
+    const visibility = manifest.entities.map((entity) => entity.initialVisibility);
+    const entityChunks = new Map<number, typeof chunks>();
+    for (const chunk of chunks) {
+      const entity = chunk.ranges[0]?.entity ?? -1;
+      if (entity >= 0) {
+        const list = entityChunks.get(entity) ?? [];
+        entityChunks.set(entity, list);
+        list.push(chunk);
+      }
+    }
+    function updateEntity(entity: number, matrix: Matrix4, visible: boolean) {
+      visibility[entity] = visible;
+      const previous = transforms.get(entity) ?? identity;
+      if (matrix.equals(previous)) return;
+      if (matrix.equals(identity)) transforms.delete(entity);
+      else transforms.set(entity, matrix.clone());
+      for (const chunk of entityChunks.get(entity) ?? []) {
+        chunk.box.makeEmpty();
+        for (const r of chunk.ranges) {
+          r.box.copy(bounds(r.bounds)).applyMatrix4(matrix);
+          chunk.box.union(r.box);
+        }
+      }
+    }
     const transparent = (family: string) =>
       ['glass', 'blended', 'overlay', 'additive', 'modulate'].includes(family);
     function bind(unit: number, target: number, tex: WebGLTexture | null) {
@@ -406,6 +432,7 @@ export async function createRenderer(
             banks: number[];
             side: boolean;
             family: string;
+            entity?: number;
             list: { first: number; count: number }[];
           };
           const groups: Group[] = [],
@@ -430,10 +457,18 @@ export async function createRenderer(
               !frustum.intersectsBox(chunk.box)
             )
               continue;
-            const key = chunk.family + '/' + chunk.side + '/' + chunk.banks.join();
+            const placed = chunk.ranges[0].entity;
+            const key =
+              chunk.family +
+              '/' +
+              chunk.side +
+              '/' +
+              chunk.banks.join() +
+              '/' +
+              (transforms.has(placed) ? placed : -1);
             for (const range of chunk.ranges) {
               if (
-                (range.entity >= 0 && !manifest.entities[range.entity].initialVisibility) ||
+                (range.entity >= 0 && !visibility[range.entity]) ||
                 !frustum.intersectsBox(range.box)
               )
                 continue;
@@ -448,13 +483,20 @@ export async function createRenderer(
                   first: range.first,
                   count: range.count,
                   depth: center.z,
-                  rect: projectedBounds(range.bounds, viewProjection.elements, width, height),
+                  rect: projectedBounds(
+                    transforms.has(placed)
+                      ? [...range.box.min.toArray(), ...range.box.max.toArray()]
+                      : range.bounds,
+                    viewProjection.elements,
+                    width,
+                    height,
+                  ),
                 });
                 continue;
               }
               let group = opaqueGroups.get(key);
               if (!group) {
-                group = { ...chunk, list: [] };
+                group = { ...chunk, entity: placed, list: [] };
                 opaqueGroups.set(key, group);
                 groups.push(group);
               }
@@ -463,12 +505,21 @@ export async function createRenderer(
           }
           byDepth.sort((a, b) => a.depth - b.depth || a.first - b.first);
           for (const batch of transparentGroups(byDepth)) {
-            const group: Group = { ...batch[0].chunk, list: [] };
+            const group: Group = {
+              ...batch[0].chunk,
+              entity: batch[0].chunk.ranges[0].entity,
+              list: [],
+            };
             groups.push(group);
             for (const range of batch) append(group, range.first, range.count);
           }
-          for (const { side, family, banks, list } of groups) {
+          for (const { side, family, banks, list, entity } of groups) {
             if (!list.length) continue;
+            gl.uniformMatrix4fv(
+              world.u('entityTransform'),
+              false,
+              (transforms.get(entity ?? -1) ?? identity).elements,
+            );
             if (mode === 7) gl.disable(gl.BLEND);
             if (blended && mode !== 7) {
               if (family === 'additive') gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
@@ -561,6 +612,7 @@ export async function createRenderer(
     }
     return {
       render,
+      updateEntity,
       environments,
       geometry: { vertices, indices },
       dispose() {

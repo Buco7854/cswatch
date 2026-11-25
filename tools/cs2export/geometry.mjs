@@ -372,19 +372,28 @@ export function geometry(scene, read, materialId) {
         Number(e.rendermode ?? 0) !== 10;
       const id = entities.push({ ...e, world: worldName, initialVisibility: visible }) - 1;
       if (/^(prop_|func_(brush|breakable|door))/.test(e.classname))
-        submit(
-          e.model,
-          root.clone().multiply(placement(e)),
-          [
-            ...vec(e.rendercolor ?? [255, 255, 255])
-              .slice(0, 3)
-              .map((x) => x / 255),
-            (e.renderamt ?? 255) / 255,
-          ],
-          {},
-          null,
-          id,
-        );
+        for (const [stage, model] of [e.model, ...(e.damageStages ?? [])].entries())
+          submit(
+            model,
+            root.clone().multiply(placement(e)),
+            [
+              ...vec(e.rendercolor ?? [255, 255, 255])
+                .slice(0, 3)
+                .map((x) => x / 255),
+              (e.renderamt ?? 255) / 255,
+            ],
+            {},
+            null,
+            stage === 0
+              ? id
+              : entities.push({
+                  ...e,
+                  model,
+                  world: worldName,
+                  initialVisibility: false,
+                  parentEntity: id,
+                }) - 1,
+          );
     }
   }
   return { ranges, entities, environments };

@@ -129,7 +129,25 @@ sealed class NativeScene(ResourceStore store, string game, string output)
             var lump = (EntityLump)entityResource.DataBlock!;
             foreach (var entity in lump.GetEntities())
             {
-                entities.Add(Plain(entity));
+                var record = (Dictionary<string,object?>)Plain(entity)!;
+                entities.Add(record);
+                if (entity.GetStringProperty("classname") == "prop_door_rotating" && entity.GetStringProperty("model") is { Length: > 0 } doorName)
+                {
+                    using var door = store.Read(doorName);
+                    var defaults = ((Model)door.DataBlock!).KeyValues.GetSubCollection("door_options")?.GetSubCollection("defaults");
+                    var stages = new List<string>();
+                    for (int stage = 1; stage <= 4; stage++)
+                    {
+                        var declared = defaults?.GetStringProperty($"damage{stage}");
+                        if (string.IsNullOrWhiteSpace(declared)) continue;
+                        var path = "models/" + declared.Replace('\\', '/').ToLowerInvariant() + ".vmdl";
+                        if (door.ExternalReferences?.ResourceRefInfoList.Any(r => r.Name == path || r.Name == path + "_c") != true)
+                            throw new InvalidDataException($"Unbound damage stage {path} for {doorName}");
+                        Model(path);
+                        stages.Add(path);
+                    }
+                    record["damageStages"] = stages;
+                }
                 Model(entity.GetStringProperty("model"));
                 var cls = entity.GetStringProperty("classname");
                 if (cls == "env_sky") Material(entity.GetStringProperty("skyname"));
