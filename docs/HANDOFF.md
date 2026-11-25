@@ -14,6 +14,8 @@ For a network-denied administrator, inspect the connection and verified client a
 
 Use the late-catalog Mirage windows when changing gameplay sound scheduling. Both sides have an approved classic announcer WAV. The viewer schedules it at the recorded winner tick even when catalog discovery finishes during lookahead. [Browser evidence](VERIFICATION.md#recorded-round-announcements)
 
+For a playback stutter, first check for a shader link inside a frame: `world/compositor.ts` links built-in actor and equipment materials when they mount and keeps those programs, custom effects warm their own programs, and `smoke-volume.ts` keeps its pass between clouds. Recorded positions use `poseTimingAt` neighbours; a camera kink at a respawn, teleport or round boundary is the intended straight segment. [Measurements](VERIFICATION.md#playback-frame-cost-and-motion-2026-11-25)
+
 POV arms and third-person foot planting share an airborne weight from the live pawn’s vertical path. Keep it local to actor presentation and sample its two endpoints once per spatial frame. [Matched AK frames and seek checks](VERIFICATION.md#airborne-arm-and-boot-motion)
 
 The opening screen is shared by demo processing, map discovery, worker preparation and client-side map loading. Keep its return link at the top left and preserve the link's DOM identity through stage changes so keyboard focus survives. Programmatically focused headings announce navigation and form transitions. Text fields and compound search controls each own one visible focus indicator.
