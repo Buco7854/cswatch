@@ -3,6 +3,7 @@ import {
   Camera,
   Color,
   Data3DTexture,
+  DepthStencilFormat,
   DepthTexture,
   Frustum,
   Group,
@@ -17,6 +18,7 @@ import {
   RGFormat,
   Scene,
   ShaderMaterial,
+  UnsignedInt248Type,
   Vector2,
   Vector3,
   Vector4,
@@ -191,10 +193,14 @@ export class SmokeVolumePass {
       complete: boolean;
     }
   >();
+  // Matches the compositor's depth-stencil target: depth blits require identical formats.
   private readonly depth = new WebGLRenderTarget(1, 1, {
     minFilter: NearestFilter,
     magFilter: NearestFilter,
-    depthTexture: new DepthTexture(1, 1),
+    stencilBuffer: true,
+    depthTexture: Object.assign(new DepthTexture(1, 1, UnsignedInt248Type), {
+      format: DepthStencilFormat,
+    }),
   });
   private readonly depthPass = new SmokeDepthPass();
   private readonly depthCamera = new PerspectiveCamera();

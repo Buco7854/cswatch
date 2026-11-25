@@ -22,7 +22,7 @@ export const qaEnvironment: MapEnvironment = {
     brightness: 1,
   },
 };
-const rooms = [
+export const rooms = [
   [128, 256, 384, 768],
   [640, 256, 896, 768],
   [384, 448, 640, 576],

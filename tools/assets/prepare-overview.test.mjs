@@ -58,6 +58,17 @@ test('Valve overview scalar calibration accepts ordinary loading fields and reje
     parseValveOverview(Buffer.from('de_fixture { pos_x -2500 pos_y 3000 scale 5 }'), 'de_fixture'),
     { origin: { x: -2500, y: 3000 }, scale: 5 },
   );
+  // A variant may keep its base map's root key; an unrelated or prefix-only key is refused.
+  assert.deepEqual(
+    parseValveOverview(Buffer.from('de_fixture { pos_x 1 pos_y 2 scale 5 }'), 'de_fixture_night'),
+    { origin: { x: 1, y: 2 }, scale: 5 },
+  );
+  for (const [text, map] of [
+    ['de { pos_x 0 pos_y 0 scale 5 }', 'de_fixture'],
+    ['de_fixture_night { pos_x 0 pos_y 0 scale 5 }', 'de_fixture'],
+    ['de_fix { pos_x 0 pos_y 0 scale 5 }', 'de_fixture'],
+  ])
+    assert.throws(() => parseValveOverview(Buffer.from(text), map));
   for (const text of [
     'de_other { pos_x 0 pos_y 0 scale 5 }',
     'de_fixture { pos_x 0 pos_y 0 }',

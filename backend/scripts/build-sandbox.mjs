@@ -12,7 +12,6 @@ for (const name of [
   'recorded-equipment',
   'equipment-models',
   'map-previews',
-  'compact-map',
   'gameplay-sounds',
 ])
   copyFileSync(resolve(root, `../shared/${name}.json`), resolve(root, `dist/${name}.json`));
@@ -24,13 +23,12 @@ for (const name of [
   'roles',
   'smoke-state',
   'inferno-state',
-  'map-breakables',
   'stride-distance',
   'aim-track',
   'agent-deaths',
   'agent-gait-history',
   'equipment-key',
-  'map-grade',
+  'map-breakables',
   'native-world-format',
 ])
   copyFileSync(resolve(root, `../shared/${name}.mjs`), resolve(root, `dist/${name}.mjs`));

@@ -82,7 +82,8 @@ export async function runAssetProcess(
               if (maxRss) {
                 const status = await readFile('/proc/' + child.pid + '/status', 'utf8').catch(
                   (error) => {
-                    if (error.code !== 'ENOENT') throw error;
+                    // The child can exit between the timer and the read.
+                    if (error.code !== 'ENOENT' && error.code !== 'ESRCH') throw error;
                     return '';
                   },
                 );

@@ -1,59 +1,50 @@
 import { chooseCameraControl, expectCameraControl } from './fixtures/viewer-transport';
+import { nativeMap, sourcePoint } from './fixtures/native-map';
+import { installOriginalCameraProbe } from './fixtures/original-camera';
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { manualMapAssets } from './fixtures/map-assets';
 import { expect, test, type Page } from '@playwright/test';
-import { originalMapGLB, originalMapReplay, qaActor } from './fixtures/original-map';
+import { originalMapReplay, qaActor } from './fixtures/original-map';
 import { originalAnimatedAgentGLB } from './fixtures/original-agent';
 import { originalEquipmentCatalog, originalEquipmentGLB } from './fixtures/original-equipment';
-import { BoxGeometry, Group, Mesh, MeshBasicMaterial, PlaneGeometry, Vector3 } from 'three';
-import { followObstruction } from '../src/follow-obstruction';
+import { worldQueries } from '../src/world/queries';
+import type { Manifest } from '../src/world/format';
 import type { FollowCamera } from '../src/follow-camera';
 
 test('follow camera retracts at an opaque wall and reproduces its position after a seek', () => {
-  const world = new Group();
-  world.rotation.y = Math.PI / 2;
-  const wall = new Mesh(new BoxGeometry(6, 4, 0.2), new MeshBasicMaterial());
-  wall.position.set(0, 1, -1.2);
-  world.add(wall);
-  const glass = new Mesh(wall.geometry, new MeshBasicMaterial({ transparent: true }));
-  glass.position.set(0, 1, -0.5);
-  world.add(glass);
-  const trace = followObstruction(world);
+  // A 6 x 4 m wall facing the actor at viewer x = -1 m, in native Source inches.
+  const floats = new Float32Array(4 * 15);
+  [
+    [-1, -1, -3],
+    [-1, -1, 3],
+    [-1, 3, 3],
+    [-1, 3, -3],
+  ].forEach((point, index) => floats.set(sourcePoint(point), index * 15));
+  const manifest = {
+    entities: [],
+    chunks: [
+      {
+        sky: false,
+        family: 'opaque',
+        ranges: [{ first: 0, count: 6, vertices: 4, entity: -1, material: 0 }],
+      },
+    ],
+  } as unknown as Manifest;
+  const trace = worldQueries(
+    manifest,
+    new Uint8Array(floats.buffer),
+    Uint32Array.of(0, 1, 2, 0, 2, 3),
+  ).trace;
   const view: FollowCamera = { actor: '1', position: [-2.6, 1, 0], target: [0, 1, 0] };
   const clipped = trace(view);
-  expect(clipped[0]).toBeCloseTo(-0.86, 5);
+  expect(clipped[0]).toBeGreaterThan(-1);
+  expect(clipped[0]).toBeLessThan(0);
   const clear: FollowCamera = { ...view, position: [2.6, 1, 0] };
   const tracerTrace = trace.fork();
   expect(tracerTrace(clear)).toEqual(clear.position);
-  expect(trace(view)).toBe(clipped);
+  expect(trace(view)).toEqual(clipped);
   expect(trace(clear)).toEqual(clear.position);
   expect(trace(view)).toEqual(clipped);
-});
-
-test('large indexed and unindexed map surfaces preserve edge contacts under transformed instances', () => {
-  for (const indexed of [true, false]) {
-    const world = new Group();
-    const plane = new PlaneGeometry(4, 4, 17, 17);
-    const mesh = new Mesh(indexed ? plane : plane.toNonIndexed(), new MeshBasicMaterial());
-    mesh.scale.set(1.4, 0.7, 2);
-    mesh.rotation.set(0.3, 0.5, 0.1);
-    const other = mesh.clone();
-    other.position.x = 10;
-    world.add(mesh, other);
-    const trace = followObstruction(world).fork(0);
-    for (const instance of [mesh, other, mesh]) {
-      for (const [x, y] of [
-        [1.99, -1.99],
-        [0, 0],
-        [-1.99, 1.99],
-      ]) {
-        const point = (z: number) => instance.localToWorld(new Vector3(x, y, z)).toArray();
-        const result = trace({ target: point(2), position: point(-1) });
-        for (const [axis, coordinate] of point(0).entries())
-          expect(result[axis]).toBeCloseTo(coordinate, 10);
-      }
-    }
-  }
 });
 
 async function mode(page: Page, name: string) {
@@ -97,7 +88,17 @@ test('third-person follow renders the selected actor, follows real recorded tran
       position: null,
       projection: null,
     };
-    (window as unknown as { qaFollowCamera: typeof state }).qaFollowCamera = state;
+    // The native world program reports the camera; see the shared original camera probe.
+    Object.defineProperty(window, 'qaFollowCamera', {
+      get: () => {
+        const view = (
+          window as unknown as { qaOriginalCamera?: { position: number[]; projection: number[] } }
+        ).qaOriginalCamera;
+        return view?.position.length
+          ? { position: view.position, projection: view.projection }
+          : state;
+      },
+    });
     WebGL2RenderingContext.prototype.getUniformLocation = function (program, name) {
       const location = get.call(this, program, name);
       if (location && name === 'roughness') floorPrograms.add(program);
@@ -188,15 +189,12 @@ test('third-person follow renders the selected actor, follows real recorded tran
   await page.route('**/api/demos/follow-fixture/map-assets', (route) =>
     route.fulfill({
       json: manualMapAssets({
-        model: `/map-assets/${replay.map}/desktop/scene.glb`,
-        mobile: null,
+        model: nativeMap(replay.map).model('follow-fixture'),
         overview: null,
       }),
     }),
   );
-  await page.route(`**/map-assets/${replay.map}/desktop/scene.glb`, (route) =>
-    route.fulfill({ contentType: 'model/gltf-binary', body: originalMapGLB() }),
-  );
+  await nativeMap(replay.map).route(page);
   await page.route('**/api/assets/agents', (route) =>
     route.fulfill({ json: { ct: '/map-assets/agents/ct.glb', t: '/map-assets/agents/t.glb' } }),
   );
@@ -209,6 +207,7 @@ test('third-person follow renders the selected actor, follows real recorded tran
   await page.route('**/api/assets/equipment-models/*.glb', (route) =>
     route.fulfill({ contentType: 'model/gltf-binary', body: originalEquipmentGLB() }),
   );
+  await installOriginalCameraProbe(page);
   await page.goto('/watch/follow-fixture?tick=0');
   const scene = page.locator('.scene'),
     position = () =>

@@ -56,19 +56,7 @@ export const mapJobResultSchema = z
     schemaVersion: z.literal(mapPreparerRevision),
     packId: packIdSchema,
     status: z.enum(['processing', 'ready', 'failed']),
-    phase: z
-      .enum([
-        'tools',
-        'source',
-        'geometry',
-        'environment',
-        'lighting',
-        'desktop',
-        'mobile',
-        'compact',
-        'publishing',
-      ])
-      .optional(),
+    phase: z.enum(['tools', 'source', 'geometry', 'desktop', 'mobile', 'publishing']).optional(),
     updatedAt: z.number().int().min(0).max(8640000000000),
     assetPackId: packIdSchema.optional(),
     repairing: z.literal(true).optional(),

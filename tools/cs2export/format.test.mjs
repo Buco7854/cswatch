@@ -67,7 +67,7 @@ function manifest() {
         },
       ],
       specials: {},
-      rgbm: {},
+      hdr: {},
       lightmaps: {},
       volumes: {},
     },

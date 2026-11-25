@@ -4,7 +4,6 @@ import { open } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { steamAssetLimits } from './steam-assets-plan.mjs';
 import { MeshoptDecoder } from './meshopt-glb.mjs';
-import compactLimits from '../../shared/compact-map.json' with { type: 'json' };
 
 const integer = (value, minimum = 0) => Number.isSafeInteger(value) && value >= minimum;
 const identity = (info) => `${info.dev}:${info.ino}:${info.size}:${info.mtimeNs}:${info.ctimeNs}`;
@@ -156,7 +155,7 @@ async function readFully(file, length, position) {
   return result;
 }
 
-export async function verifyPreparedGlb(path, { compact = false } = {}) {
+export async function verifyPreparedGlb(path) {
   const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   try {
     const info = await file.stat({ bigint: true });
@@ -164,7 +163,7 @@ export async function verifyPreparedGlb(path, { compact = false } = {}) {
       !info.isFile() ||
       info.nlink !== 1n ||
       info.size < 48n ||
-      info.size > BigInt(compact ? compactLimits.bytes : steamAssetLimits.modelBytes)
+      info.size > BigInt(steamAssetLimits.modelBytes)
     )
       throw new Error('Expected a bounded regular prepared GLB no larger than 2 GiB.');
     const size = Number(info.size);
@@ -201,11 +200,7 @@ export async function verifyPreparedGlb(path, { compact = false } = {}) {
       throw new Error(
         'Prepared map must contain real scene meshes and self-contained buffers/textures.',
       );
-    const compressed = validateBuffers(
-      data,
-      binaryBytes,
-      compact ? 64 * 1024 ** 2 : steamAssetLimits.modelBytes,
-    );
+    const compressed = validateBuffers(data, binaryBytes, steamAssetLimits.modelBytes);
     const images = data.images ?? [];
     if (
       !Array.isArray(images) ||
@@ -223,35 +218,6 @@ export async function verifyPreparedGlb(path, { compact = false } = {}) {
       )
     )
       throw new Error('Prepared GLB textures must reference bounded embedded image views.');
-    let compactGeometry;
-    if (compact) {
-      const primitives = data.meshes.flatMap((mesh) => mesh.primitives ?? []);
-      let triangles = 0;
-      if (
-        images.length ||
-        data.animations?.length ||
-        data.skins?.length ||
-        data.nodes.length > 4 * compactLimits.primitives ||
-        !primitives.length ||
-        primitives.length > compactLimits.primitives
-      )
-        throw new Error('Invalid compact map surfaces.');
-      for (const primitive of primitives) {
-        const accessor = data.accessors[primitive.indices];
-        if (
-          (primitive.mode ?? 4) !== 4 ||
-          accessor?.type !== 'SCALAR' ||
-          accessor.count % 3 ||
-          ![5123, 5125].includes(accessor.componentType) ||
-          !Object.hasOwn(primitive.attributes ?? {}, 'COLOR_0')
-        )
-          throw new Error('Compact maps require indexed triangles with vertex colors.');
-        triangles += accessor.count / 3;
-      }
-      if (triangles > compactLimits.triangles)
-        throw new Error('Compact map triangle limit exceeded.');
-      compactGeometry = { triangles, primitives: primitives.length };
-    }
     if (compressed.length) {
       await MeshoptDecoder.ready;
       for (const view of compressed) {
@@ -287,7 +253,7 @@ export async function verifyPreparedGlb(path, { compact = false } = {}) {
     }
     if (identity(info) !== identity(await file.stat({ bigint: true })))
       throw new Error('Prepared GLB changed during verification.');
-    return { bytes: size, sha256: hash.digest('hex'), ...compactGeometry };
+    return { bytes: size, sha256: hash.digest('hex') };
   } finally {
     await file.close();
   }

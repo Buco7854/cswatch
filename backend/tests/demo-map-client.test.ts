@@ -8,7 +8,7 @@ import {
 } from '../../frontend/src/demo-map-assets.js';
 const map = 'de_qa',
   pack = 'a'.repeat(64),
-  empty = { model: null, mobile: null, overview: null, environment: null };
+  empty = { model: null, overview: null };
 const validateDemoMapAssets = (value: unknown, name: string) =>
   validateNative(value, name, 'test-demo');
 const pending = {
@@ -21,23 +21,12 @@ const pending = {
 };
 const full = {
   model: `/api/demos/test-demo/world/${pack}/${'b'.repeat(64)}/map.json`,
-  mobile: null,
   overview: {
     image: `/api/map-packs/${pack}/maps/${map}/overview.png`,
     origin: { x: -3230, y: 1713 },
     scale: 5,
     referenceSize: 1024,
     assetVersion: 'original-qa',
-  },
-  environment: {
-    assetVersion: 'original-qa',
-    landscape: false,
-    sky: {
-      faces: ['px', 'nx', 'py', 'ny', 'pz', 'nz'].map(
-        (face) => `/api/map-packs/${pack}/maps/${map}/environment/${face}.png`,
-      ),
-      brightness: 1,
-    },
   },
 };
 test('demo discovery accepts only matching immutable complete packs and explicit manual provenance', () => {
@@ -84,7 +73,7 @@ test('demo discovery accepts only matching immutable complete packs and explicit
         acquisition: 'disabled',
         verification: 'version-unverified',
         packId: null,
-        assets: { ...empty, environment: full.environment },
+        assets: { ...empty, environment: {} },
       },
       map,
     ),
@@ -308,7 +297,7 @@ test('latest official readiness never accepts manual URLs, incomplete assets or 
 });
 
 test('operational map readiness is distinct from historical matching and cannot authorize a new source', () => {
-  const empty = { model: null, mobile: null, overview: null, environment: null };
+  const empty = { model: null, overview: null };
   for (const [reason, description] of [
     ['automatic_disabled', 'enable automatic'],
     ['worker_unavailable', 'assets service'],

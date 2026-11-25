@@ -13,6 +13,7 @@ sealed class NativeScene(ResourceStore store, string game, string output, string
 {
     readonly Dictionary<string, object> models = [];
     readonly Dictionary<string, object> materials = [];
+    readonly SortedSet<string> missing = new(StringComparer.Ordinal), missingSkies = new(StringComparer.Ordinal);
     readonly Dictionary<string, object> textures = [];
     readonly Dictionary<string, object> worlds = [];
     readonly Dictionary<string, object> post = [];
@@ -47,12 +48,12 @@ sealed class NativeScene(ResourceStore store, string game, string output, string
         return file;
     }
 
-    // A sky prefab must live under the selected map's own prefab folder, with or without its mode prefix.
+    // A 3D sky prefab is a compiled map under maps/. The installer downloads only prefab VPKs in the
+    // selected map's own folder; any other reference must already be present in the read-only game root.
     public static string SkyPrefab(string map, string? reference)
     {
-        var match = System.Text.RegularExpressions.Regex.Match(reference ?? "", @"\Amaps/prefabs/([a-z0-9_]+)/[a-z0-9_]{1,100}\.vmap\z");
-        if (!match.Success || (match.Groups[1].Value != map && match.Groups[1].Value != System.Text.RegularExpressions.Regex.Replace(map, @"\A(?:de|cs|ar|dz|gd|tr)_", "")))
-            throw new InvalidDataException("Sky prefab outside selected map");
+        if (!System.Text.RegularExpressions.Regex.IsMatch(reference ?? "", @"\Amaps/(?:[a-z0-9_]{1,80}/){0,4}[a-z0-9_]{1,100}\.vmap\z"))
+            throw new InvalidDataException($"Unsupported sky prefab reference for {map}: {reference}");
         return reference![..^5];
     }
 
@@ -94,9 +95,9 @@ sealed class NativeScene(ResourceStore store, string game, string output, string
         using var brdf = new Resource();
         brdf.Read(Path.Combine(Export.ToolDirectory(), ".vrf/ValveResourceFormat-21.1/Renderer/Resources/brdf_lut.vtex_c"));
         StoreTexture("vrf/brdf_lut", "lighting", (Texture)brdf.DataBlock!);
-        var scene = new { map, manifest, worlds, models, materials, textures, post, visibility, files };
+        var scene = new { map, manifest, worlds, models, materials, missingResources = missing, missingSkies, textures, post, visibility, files };
         using var stream = File.Create(Path.Combine(output, "source.json"));
-        JsonSerializer.Serialize(stream, scene);
+        JsonSerializer.Serialize(stream, scene, new JsonSerializerOptions { Converters = { new FiniteDouble(), new FiniteSingle() } });
     }
 
     void World(string prefix)
@@ -142,7 +143,12 @@ sealed class NativeScene(ResourceStore store, string game, string output, string
                 entities.Add(record);
                 if (entity.GetStringProperty("classname") == "prop_door_rotating" && entity.GetStringProperty("model") is { Length: > 0 } doorName)
                 {
-                    using var door = store.Read(doorName);
+                    using var door = store.ReadOptional(doorName);
+                    if (door == null)
+                    {
+                        missing.Add(doorName);
+                        continue;
+                    }
                     var defaults = ((Model)door.DataBlock!).KeyValues.GetSubCollection("door_options")?.GetSubCollection("defaults");
                     var stages = new List<string>();
                     for (int stage = 1; stage <= 4; stage++)
@@ -163,23 +169,32 @@ sealed class NativeScene(ResourceStore store, string game, string output, string
                 foreach (var slot in new[] { "cubemaptexture", "lightprobetexture", "lightprobetexture_dlshd", "lightprobetexture_sh2_dc", "lightprobetexture_sh2_l1" })
                     if (entity.GetStringProperty(slot) is { Length: > 0 } tex)
                         Texture(tex, slot == "cubemaptexture" ? "cubemaps" : "probes");
-                if (entity.GetStringProperty("postprocessing") is { Length: > 0 } pp && !post.ContainsKey(pp))
+                if (entity.GetStringProperty("postprocessing") is { Length: > 0 } pp && !post.ContainsKey(pp) && !missing.Contains(pp))
                 {
-                    using var asset = store.Read(pp);
-                    var settings = (PostProcessing)asset.DataBlock!;
-                    post.Add(pp, new {
-                        tonemap = settings.GetTonemapParams() is { } tone ? Plain(tone) : null,
-                        bloom = settings.GetBloomParams() is { } bloom ? Plain(bloom) : null,
-                        dimension = settings.GetColorCorrectionLUTDimension(),
-                        lut = Write("grading", settings.GetColorCorrectionLUT())
-                    });
+                    // A volume may name settings the game files lack; the packer uses another volume's.
+                    using var asset = store.ReadOptional(pp);
+                    if (asset == null) missing.Add(pp);
+                    else
+                    {
+                        var settings = (PostProcessing)asset.DataBlock!;
+                        post.Add(pp, new {
+                            tonemap = settings.GetTonemapParams() is { } tone ? Plain(tone) : null,
+                            bloom = settings.GetBloomParams() is { } bloom ? Plain(bloom) : null,
+                            dimension = settings.GetColorCorrectionLUTDimension(),
+                            lut = Write("grading", settings.GetColorCorrectionLUT())
+                        });
+                    }
                 }
                 if (cls == "skybox_reference" && !entity.GetBooleanProperty("startdisabled"))
                 {
                     if (prefix != "maps/" + map) throw new InvalidDataException("Nested sky prefab");
                     var sky = SkyPrefab(map, entity.GetStringProperty("targetmapname"));
-                    using var prefab = store.MountPrefab(Path.Combine(game, "csgo", sky + ".vpk"));
-                    World(sky);
+                    var package = Path.Combine(game, "csgo", sky + ".vpk");
+                    using var prefab = File.Exists(package) ? store.MountPrefab(package) : null;
+                    // A shipped map may name a 3D sky the game files lack; it is listed and skipped.
+                    using (var probe = store.ReadOptional(sky + "/world.vwrld"))
+                        if (probe == null) missingSkies.Add(sky);
+                    if (!missingSkies.Contains(sky)) World(sky);
                 }
             }
         }
@@ -194,8 +209,14 @@ sealed class NativeScene(ResourceStore store, string game, string output, string
 
     void Model(string? name)
     {
-        if (string.IsNullOrEmpty(name) || models.ContainsKey(name)) return;
-        using var asset = store.Read(name);
+        if (string.IsNullOrEmpty(name) || models.ContainsKey(name) || missing.Contains(name)) return;
+        // Like materials, a model the game files lack is listed and its placements are skipped.
+        using var asset = store.ReadOptional(name);
+        if (asset == null)
+        {
+            missing.Add(name);
+            return;
+        }
         var model = (Model)asset.DataBlock!;
         var meshes = new List<object>();
         foreach (var embedded in model.GetEmbeddedMeshesForLod(0))
@@ -220,11 +241,19 @@ sealed class NativeScene(ResourceStore store, string game, string output, string
 
     void Material(string? name)
     {
-        if (string.IsNullOrEmpty(name) || materials.ContainsKey(name)) return;
-        using var asset = store.Read(name);
+        if (string.IsNullOrEmpty(name) || materials.ContainsKey(name) || missing.Contains(name)) return;
+        // Shipped maps can name a material the game files lack; its draws are skipped and listed.
+        Resource asset;
+        try { asset = store.Read(name); }
+        catch (FileNotFoundException)
+        {
+            missing.Add(name);
+            return;
+        }
+        using var _ = asset;
         var mat = (Material)asset.DataBlock!;
         foreach (var tex in mat.TextureParams.Values)
-            Texture(tex, mat.ShaderName == "sky.vfx" ? "sky" : "textures");
+            Texture(tex, mat.ShaderName.Contains("sky", StringComparison.Ordinal) ? "sky" : "textures");
         materials.Add(name, new { shader = mat.ShaderName, ints = mat.IntParams, scalars = mat.FloatParams,
             vectors = mat.VectorParams.ToDictionary(v => v.Key, v => new[] { v.Value.X, v.Value.Y, v.Value.Z, v.Value.W }),
             slots = mat.TextureParams, attrs = mat.IntAttributes,
@@ -256,5 +285,26 @@ sealed class NativeScene(ResourceStore store, string game, string output, string
         }
         textures.Add(name, new { file = Write(category, payload.GetBuffer().AsSpan(0, (int)payload.Length)),
             radiance = tex.RadianceCoefficients, format = tex.Format.ToString(), flags = (int)tex.Flags, depth = tex.Depth, first, levels });
+    }
+}
+
+// Some authored values are infinite or NaN; JSON has no such numbers, so they are written as null.
+sealed class FiniteDouble : System.Text.Json.Serialization.JsonConverter<double>
+{
+    public override double Read(ref Utf8JsonReader reader, Type type, JsonSerializerOptions options) => reader.GetDouble();
+    public override void Write(Utf8JsonWriter writer, double value, JsonSerializerOptions options)
+    {
+        if (double.IsFinite(value)) writer.WriteNumberValue(value);
+        else writer.WriteNullValue();
+    }
+}
+
+sealed class FiniteSingle : System.Text.Json.Serialization.JsonConverter<float>
+{
+    public override float Read(ref Utf8JsonReader reader, Type type, JsonSerializerOptions options) => reader.GetSingle();
+    public override void Write(Utf8JsonWriter writer, float value, JsonSerializerOptions options)
+    {
+        if (float.IsFinite(value)) writer.WriteNumberValue(value);
+        else writer.WriteNullValue();
     }
 }

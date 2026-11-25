@@ -300,15 +300,34 @@ export async function installSteamAssets(options, adapters = {}) {
       };
       const closure = await scanPackage(main, overviewResources(map));
       for (const resource of closure.unknown.filter(
-        (name) => name.startsWith('maps/prefabs/') && name.endsWith('.vmap_c'),
+        (name) =>
+          (name.startsWith('maps/prefabs/') || /^maps\/[a-z0-9_]{1,100}\.vmap_c$/.test(name)) &&
+          name.endsWith('.vmap_c'),
       )) {
-        const { file } = skyPrefabPackage(map, resource.slice(0, -2));
-        permittedPrefabs.add(file);
+        // Only prefabs inside the selected map's folder, or a top-level companion named after
+        // the map, can be fetched; the exporter reports a 3D sky that names any other.
+        let file;
+        try {
+          ({ file } = skyPrefabPackage(map, resource.slice(0, -2)));
+        } catch {
+          continue;
+        }
         const listing = await execute(
           tools.downloader,
           ['ls', STEAM_APP, `${STEAM_DEPOT}:${plan.manifest}`, '--anonymous', '--', file],
           'prefab-preflight',
+          { allowFailure: true },
         );
+        // A referenced 3D sky that the pinned manifest lacks is exported without it.
+        if (
+          listing.code !== 0 &&
+          (listing.stdout + listing.stderr).includes(
+            `"${file}" matched nothing in ${STEAM_DEPOT}:${plan.manifest}.`,
+          )
+        )
+          continue;
+        if (listing.code !== 0) throw Error('Sky prefab listing failed.');
+        permittedPrefabs.add(file);
         const pinned = parseSteamListing(listing.stdout, [file]);
         if (pinned.manifest !== plan.manifest) throw Error('Sky prefab manifest changed.');
         const entry = pinned.files[0];

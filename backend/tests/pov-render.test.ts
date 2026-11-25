@@ -9,10 +9,10 @@ import {
   type WebGLRenderer,
 } from '../../frontend/node_modules/three/build/three.module.js';
 import { renderPovEquipment } from '../../frontend/src/pov-render.js';
-import { renderSkyBehindMap } from '../../frontend/src/sky-render.js';
 
-test('first-person composition preserves world/sky ordering and renderer state, including render failures', () => {
-  for (const withSky of [false, true])
+test('first-person composition preserves world ordering and renderer state, including render failures', () => {
+  const withSky = false;
+  {
     for (const throwing of [undefined, 'world', 'equipment']) {
       const world = new Scene(),
         sky = new Scene(),
@@ -84,14 +84,12 @@ test('first-person composition preserves world/sky ordering and renderer state, 
         },
       };
       const compose = () => {
-        if (withSky) renderSkyBehindMap(renderer, world, sky, worldCamera, skyCamera);
         renderPovEquipment(
           renderer as unknown as WebGLRenderer,
           world,
           equipment,
           worldCamera,
           equipmentCamera,
-          withSky,
           0.75,
         );
       };
@@ -119,4 +117,5 @@ test('first-person composition preserves world/sky ordering and renderer state, 
       assert.deepEqual(equipment.children, [equipmentSun]);
       assert.equal(equipmentSun.intensity, 0.396);
     }
+  }
 });

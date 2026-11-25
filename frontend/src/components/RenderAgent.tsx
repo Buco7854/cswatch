@@ -31,13 +31,13 @@ import type { GaitHistory } from '../../../shared/agent-gait-history.mjs';
 import { agentPoseVisibility } from '../agent-culling';
 import { agentCenteredMotionAt, agentPhaseAt } from '../agent-phase';
 import { disposeEquipmentInstance } from '../equipment-model';
-import { assertMapBaseColorTextures } from '../map-model';
+import { assertBaseColorTextures } from '../model-textures';
 import type { AgentDeathSample } from '../agent-replay';
 import { weaponAnchor, type WeaponAnchor } from '../agent-attachment';
 import { agentXray } from '../agent-xray';
 import { createAgentFootLock, type FootPoseAt } from '../agent-feet';
 import { createCorpseFloor } from '../agent-corpse-floor';
-import type { followObstruction } from '../follow-obstruction';
+import type { SceneTrace } from '../world/queries';
 
 /** A stable reference: inline userData redraws a paused scene on every React update. */
 const playerShadowCaster = { playerShadowCaster: true };
@@ -154,7 +154,7 @@ type AgentProps = {
   registerWeaponAnchor?: (anchor: WeaponAnchor) => () => void;
   registerHeadAnchor?: (bone: Bone) => () => void;
   footPoseAt?: FootPoseAt;
-  floor?: ReturnType<ReturnType<typeof followObstruction>['fork']>;
+  floor?: ReturnType<SceneTrace['fork']>;
   airborne?: number;
 };
 function LoadedAgent({
@@ -184,7 +184,7 @@ function LoadedAgent({
     const clips = clipsForModel(gltf);
     const prepared = prepareAgentModel(gltf.scene);
     try {
-      assertMapBaseColorTextures({ scene: gltf.scene, parser: gltf.parser });
+      assertBaseColorTextures({ scene: gltf.scene, parser: gltf.parser });
       const pose = createDirectionalAgent(prepared.instance, clips);
       if (!pose) throw Error('Agent model has unsupported directional tracks.');
       return {

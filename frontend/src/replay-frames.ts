@@ -25,7 +25,8 @@ export class ReplayFrames {
     this.invalidate?.();
     this.timer = setInterval(() => {
       if (document.hidden) return;
-      if (!this.invalidate) this.sample(performance.now());
+      // Publish the tick at this moment, even if the next canvas frame has not run yet.
+      this.sample(performance.now());
       publish(this.tick);
     }, 100);
     return () => {

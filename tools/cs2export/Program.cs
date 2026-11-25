@@ -1,11 +1,15 @@
 using ValveResourceFormat.ResourceTypes;
 using ValveResourceFormat.Serialization.KeyValues;
 
-if (args is ["--astc-inputs", var plan, var sourceDir, var astcDir])
+if (args is ["--astc-inputs" or "--astc-group", var plan, var sourceDir, var astcDir, ..] &&
+    args.Length == (args[0] == "--astc-group" ? 5 : 4))
 {
     try
     {
-        AstcInputs.Run(plan, sourceDir, astcDir);
+        int? group = args[0] == "--astc-group"
+            ? (System.Text.RegularExpressions.Regex.IsMatch(args[4], @"\A[0-9]{1,5}\z") ? int.Parse(args[4]) : throw new ArgumentException("Phone texture group"))
+            : null;
+        AstcInputs.Run(plan, sourceDir, astcDir, group);
         return 0;
     }
     catch (Exception error)
@@ -31,7 +35,7 @@ if (args is ["--extract", "--game", var input, "--map", var map, "--manifest", v
 
 if (args is not ["--check-model-inputs", "--game", var game, "--map", var checkedMap])
 {
-    Console.Error.WriteLine("Usage: cs2export --extract|--astc-inputs|--check-model-inputs ... (see README.md)");
+    Console.Error.WriteLine("Usage: cs2export --extract|--astc-inputs|--astc-group|--check-model-inputs ... (see README.md)");
     return 2;
 }
 
@@ -66,7 +70,8 @@ try
                     !entity.GetBooleanProperty("startdisabled"))
                 {
                     var target = NativeScene.SkyPrefab(checkedMap, entity.GetStringProperty("targetmapname"));
-                    using var prefab = store.MountPrefab(Path.Combine(game, "csgo", target + ".vpk"));
+                    var package = Path.Combine(game, "csgo", target + ".vpk");
+                    using var prefab = File.Exists(package) ? store.MountPrefab(package) : null;
                     CheckWorld(target);
                 }
             }

@@ -1,5 +1,6 @@
 // Volume order and edge tests from ValveResourceFormat 21.1, Renderer/Scene.cs and envmap.slang (MIT).
 // Copyright (c) 2015 ValveResourceFormat Contributors. See tools/cs2export/THIRD_PARTY_NOTICES.txt.
+import { Euler, Matrix4 } from 'three';
 import type { Entity } from './format';
 
 export const asVector = (v: unknown): number[] =>
@@ -10,12 +11,22 @@ export function probeGrid(entries: Entity[]) {
       const origin = asVector(e.origin),
         lo = asVector(e.box_mins),
         hi = asVector(e.box_maxs);
-      const angles = asVector(e.angles);
-      if (angles.some((x) => x !== 0))
-        throw Error('Rotated probe grid is unsupported for this map version');
+      // World bounds of the (possibly rotated) box, for cell assignment only.
+      const [pitch, yaw, roll] = asVector(e.angles ?? [0, 0, 0]).map((a) => (a * Math.PI) / 180);
+      const r = new Matrix4().makeRotationFromEuler(new Euler(roll, pitch, yaw, 'ZYX')).elements;
+      const min = [Infinity, Infinity, Infinity],
+        max = [-Infinity, -Infinity, -Infinity];
+      for (let corner = 0; corner < 8; corner++) {
+        const local = [0, 1, 2].map((i) => (corner & (1 << i) ? hi[i] : lo[i]));
+        for (let i = 0; i < 3; i++) {
+          const world = origin[i] + r[i] * local[0] + r[4 + i] * local[1] + r[8 + i] * local[2];
+          min[i] = Math.min(min[i], world);
+          max[i] = Math.max(max[i], world);
+        }
+      }
       return {
-        lo: lo.map((x, i) => x + origin[i] - 0.1),
-        hi: hi.map((x, i) => x + origin[i] + 0.1),
+        lo: min.map((x) => x - 0.1),
+        hi: max.map((x) => x + 0.1),
         volume: lo.reduce((v, x, i) => v * (hi[i] - x), 1),
         priority: Number(e.indoor_outdoor_level),
         index: Number(e.array_index),

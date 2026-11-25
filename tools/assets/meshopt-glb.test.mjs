@@ -12,7 +12,7 @@ import {
   MeshoptDecoder,
 } from './meshopt-glb.mjs';
 import { verifyPreparedGlb } from './prepared-glb.mjs';
-import { meshoptMapFixture } from './fixtures/meshopt-map.mjs';
+import { meshoptModelFixture } from './fixtures/meshopt-model.mjs';
 import { applyTextureBudget } from './texture-budget.mjs';
 const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const raw = (accessor) => {
@@ -50,7 +50,7 @@ async function scratch(t) {
 
 test('lossless Meshopt meaningfully shrinks original multi-vertex geometry and preserves exact attributes/indices/tags/images', async (t) => {
   const root = await scratch(t),
-    original = await meshoptMapFixture(),
+    original = await meshoptModelFixture(),
     result = await compressGlbGeometry(original);
   assert.ok(result.bytes.length < original.length * 0.75);
   assert.ok(result.report.compressedViews > 0);
@@ -97,7 +97,7 @@ test('lossless Meshopt meaningfully shrinks original multi-vertex geometry and p
 
 test('required virtual fallback validates real compressed data and rejects bad references/strides/counts/external buffers', async (t) => {
   const root = await scratch(t),
-    encoded = (await compressGlbGeometry(await meshoptMapFixture())).bytes;
+    encoded = (await compressGlbGeometry(await meshoptModelFixture())).bytes;
   for (const change of [
     (d) => (d.buffers[1].uri = 'https://example.test/buffer'),
     (d) => delete d.extensionsRequired,
@@ -131,7 +131,7 @@ test('required virtual fallback validates real compressed data and rejects bad r
 
 test('preparing a document writes the same lossless pack directly from its binary resource', async () => {
   const io = new NodeIO().registerExtensions(ALL_EXTENSIONS);
-  const document = await io.readBinary(await meshoptMapFixture());
+  const document = await io.readBinary(await meshoptModelFixture());
   const fromGlb = await compressGlbGeometry(await io.writeBinary(document));
   const direct = await compressMapDocumentGeometry(io, document);
   assert.deepEqual(direct, fromGlb);

@@ -1,7 +1,7 @@
 // Material and lighting bindings adapted from ValveResourceFormat 21.1 (MIT). See tools/cs2export/THIRD_PARTY_NOTICES.txt.
 import type { Manifest, Entity } from './format';
 import type { TextureTier } from './textures';
-import { Matrix4 } from 'three';
+import { Euler, Matrix4 } from 'three';
 import { probeGrid, asVector } from './probe-grid';
 const rad = Math.PI / 180;
 export function worldEnvironments(
@@ -15,10 +15,10 @@ export function worldEnvironments(
   return manifest.environments.map((environment) => {
     const entries = environment.entities.filter((x) => x.cubemaptexture && x.array_index != null);
     const height = Math.max(...entries.map((probe) => Number(probe.array_index))) + 1,
-      values = new Float32Array(9 * height * 4);
+      values = new Float32Array(12 * height * 4);
     for (const probe of entries) {
       const index = Number(probe.array_index),
-        offset = 36 * index;
+        offset = 48 * index;
       values.set(asVector(probe.edge_fade_dists ?? [0, 0, 0]), offset + 32);
       const key = String(probe.cubemaptexture),
         coefficients = textures.specials[key]?.radiance;
@@ -36,6 +36,10 @@ export function worldEnvironments(
       }
       values.set(asVector(probe.boxproject_mins ?? probe.box_mins), offset + 24);
       values.set(asVector(probe.boxproject_maxs ?? probe.box_maxs), offset + 28);
+      // Rows 9-11 hold the probe's rotation columns, so local = (c0, c1, c2) . (p - origin).
+      const [pitch, yaw, roll] = asVector(probe.angles ?? [0, 0, 0]).map((a) => a * rad);
+      const r = new Matrix4().makeRotationFromEuler(new Euler(roll, pitch, yaw, 'ZYX')).elements;
+      values.set([r[0], r[1], r[2], 0, r[4], r[5], r[6], 0, r[8], r[9], r[10], 0], offset + 36);
       for (const [index, value] of [
         asVector(probe.origin),
         asVector(probe.box_mins),
@@ -70,7 +74,7 @@ export function worldEnvironments(
     for (let row = 0; row < rows; row++)
       data.set(materials.subarray(row * 144, row * 144 + 144), row * width * 4);
     for (let row = 0; row < height; row++)
-      data.set(values.subarray(row * 36, row * 36 + 36), (rows + row) * width * 4);
+      data.set(values.subarray(row * 48, row * 48 + 48), (rows + row) * width * 4);
     for (let row = 0; row < spatial.height; row++)
       data.set(
         spatial.data.subarray(row * spatial.width * 4, (row + 1) * spatial.width * 4),
@@ -82,7 +86,7 @@ export function worldEnvironments(
     const phoneVolume = tier === 'phone' ? manifest.phone.volumes[lpvName] : undefined;
     if (tier === 'phone' && !phoneVolume) throw Error('Missing phone probe volume');
     const lpvLayers = phoneVolume ? phoneVolume.shadowBase : layers(lpvName);
-    const range = (name: string) => (tier === 'phone' ? (manifest.phone.rgbm[name] ?? 0) : 0);
+    const range = (name: string) => (tier === 'phone' ? (manifest.phone.hdr[name] ?? 0) : 0);
     const lightmapNames =
       tier === 'phone'
         ? [manifest.phone.lightmaps[environment.world]]
@@ -93,7 +97,7 @@ export function worldEnvironments(
       ...environment,
       spatial,
       grid: table(spatial.width, spatial.height, spatial.data),
-      probes: table(9, height, values),
+      probes: table(12, height, values),
       data: table(width, tableHeight, data),
       probeBase: rows,
       cellColumn,
@@ -109,8 +113,8 @@ export function worldEnvironments(
       volumeLayers: phoneVolume
         ? [0, lpvLayers, lpvLayers, layers(lpvName) - lpvLayers]
         : [0, lpvLayers, 0, layers(shadowName)],
-      // Irradiance, cubemap and probe volume RGBM ranges.
-      rgbm: [range(lightmapNames[0]), range(String(entries[0].cubemaptexture)), range(lpvName)],
+      // Irradiance, cubemap and probe volume log-encoding ranges.
+      hdr: [range(lightmapNames[0]), range(String(entries[0].cubemaptexture)), range(lpvName)],
       lightmaps: lightmapNames.map((name) => special.get(name.replaceAll('\\', '/'))!),
       lightmapSamplers:
         tier === 'phone' ? ['lightAtlas'] : ['irradiance', 'directional', 'shadowMap'],

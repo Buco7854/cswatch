@@ -13,7 +13,6 @@ import { PlayerContactShadow, PlayerSunPass } from './PlayerShadow';
 import { t } from '../i18n';
 import {
   Component,
-  Suspense,
   useContext,
   useCallback,
   useEffect,
@@ -32,7 +31,7 @@ import {
   mapDetailDpr,
   type RenderQuality,
 } from '../adaptive-resolution';
-import { Canvas, createPortal, useFrame, useThree, type RootState } from '@react-three/fiber';
+import { Canvas, useFrame, useThree, type RootState } from '@react-three/fiber';
 import { renderDevice, type RenderDevice } from '../render-device';
 import { OrbitControls } from '@react-three/drei';
 import ActorOverlays, {
@@ -68,7 +67,6 @@ import {
   frameAt,
   playbackBounds,
   defaultSettings,
-  RENDER_RESOLUTION_MIN,
   shotTracersEnabled,
   type ViewerSettings,
 } from '../playback';
@@ -76,7 +74,7 @@ import { Line } from '@react-three/drei';
 import { freeCameraAction, typingOrDialog } from '../free-camera';
 import { installFreeCameraLook } from '../free-camera-look';
 import { thirdPersonFollow } from '../follow-camera';
-import { followObstruction } from '../follow-obstruction';
+import type { SceneTrace } from '../world/queries';
 import {
   firstPersonView,
   overheadDistance,
@@ -89,12 +87,6 @@ import { mapSurface, type MapUnavailableReason } from '../map-availability';
 import MapUnavailable from './MapUnavailable';
 import { mapAcquisitionMessage, type DemoMapState } from '../demo-map-assets';
 import type { AssetStatus } from '../map-assets';
-import { assertMapBaseColorTextures, prepareMapModel } from '../map-model';
-import { beginFinalGradePass } from '../map-grade-target';
-import { renderSkyBehindMap, skyCameraFor, updateSkyCamera } from '../sky-render';
-import { bindMapBreakables } from '../map-breakables';
-import { useMapGLTF, useMapModelScope } from '../map-loader';
-import type { ModelProgressSource, ModelScope } from '../model-cache';
 import { useEquipmentAssets, type EquipmentRenderState } from '../equipment-assets';
 import { equipmentIconKey } from '../equipment-icons';
 import { projectileEquipment } from '../projectile-equipment';
@@ -129,23 +121,11 @@ import {
   ProjectileFallback,
   type EquipmentInstanceStatus,
 } from './RenderEquipment';
-import {
-  installSourceBlackMaterials,
-  installSourceWorldFog,
-  type SourceFogResources,
-} from '../source-black-material';
-type SourceFogReference = { current: SourceFogResources };
-import type { MapEnvironment } from '../../../shared/map-assets';
-import { daylightFallback, mapEnvironmentKey, useMapEnvironment } from '../map-environment';
 import EquipmentFire from './EquipmentFire';
 import PovEquipmentPass from './PovEquipmentPass';
+import SampleLighting from './SampleLighting';
 import PovViewmodel from './PovViewmodel';
-import { useMapShadowCache } from '../useMapShadowCache';
-import SceneGrade from './SceneGrade';
-import { installMapDrawRanges } from '../map-draw-range';
-import SceneLighting from './SceneLighting';
-import { mapSun, type MapSun } from '../map-sun';
-import { useMapSkyLighting } from '../useMapSkyLighting';
+import { type MapSun } from '../actor-sun';
 import { indexBombShockwaves, type BombShockwaveSample } from '../bomb-shockwave';
 import GrenadeBurst from './GrenadeBurst';
 import InfernoEffects from './InfernoEffects';
@@ -154,14 +134,9 @@ import { useReducedMotion } from '../reduced-motion';
 export type MapRenderState = {
   map: string;
   model: AssetStatus;
-  compact?: boolean;
   compactTracerProfile?: boolean;
-  modelProgress?: ModelProgressSource;
   renderer: '3d' | '2d';
   failure?: 'webgl' | 'textures' | 'model' | 'assets';
-  environment: AssetStatus;
-  environmentVersion: string | null;
-  landscape: AssetStatus;
   resolution?: number;
   shadowsPaused?: boolean;
   smokeUnavailable?: boolean;
@@ -297,229 +272,6 @@ function Courtyard() {
     </group>
   );
 }
-function Model({
-  url,
-  loaded,
-  fogResources,
-  worldFog,
-  landscapeFog,
-  scope,
-  registerFollowModel,
-  playerLighting,
-  mapBreakables,
-  mapDoors,
-  mapVisibility,
-  tick,
-}: {
-  url: string;
-  mapBreakables: Playback['mapBreakables'];
-  mapDoors: Playback['mapDoors'];
-  mapVisibility: Playback['mapVisibility'];
-  tick: number;
-  fogResources: SourceFogReference;
-  worldFog: boolean;
-  landscapeFog: boolean;
-  playerLighting: ReturnType<typeof playerShadows> | null;
-  scope: ModelScope;
-  registerFollowModel: (model: THREE.Group) => () => void;
-  loaded: (
-    url: string,
-    status: 'ready' | 'error',
-    sky?: THREE.Scene | null,
-    landscape?: AssetStatus,
-    sun?: MapSun | null,
-  ) => void;
-}) {
-  // Prepared map URLs are fixed. Operator pack installs require reloading open
-  // tabs to clear this positive loader cache, as documented in tools/assets.
-  const gltf = useMapGLTF(url);
-  useLayoutEffect(() => scope.acquire(), [scope]);
-  // Recordings can share a map asset while their collision and shadow states differ.
-  const prepared = useMemo(() => {
-    const result = prepareMapModel(gltf.scene, gltf.animations);
-    assertMapBaseColorTextures({ scene: result.main, parser: gltf.parser });
-    let landscape: AssetStatus = result.sky ? 'ready' : 'missing';
-    if (result.sky) {
-      try {
-        assertMapBaseColorTextures({ scene: result.sky, parser: gltf.parser });
-      } catch {
-        result.sky = null;
-        landscape = 'error';
-      }
-    }
-    const mainFog = () => fogResources.current;
-    const skyFog = () => ({
-      ...fogResources.current,
-      gradient: fogResources.current.landscapeGradient,
-    });
-    const compatibility = installSourceBlackMaterials([result.main], mainFog);
-    const skyCompatibility = result.sky && installSourceBlackMaterials([result.sky], skyFog);
-    const disposeFog = worldFog ? installSourceWorldFog(result.main, mainFog) : undefined;
-    const disposeSkyFog =
-      result.sky && landscapeFog ? installSourceWorldFog(result.sky, skyFog) : undefined;
-    const sun = mapSun(result.sun, new THREE.Box3().setFromObject(result.main));
-    return {
-      ...result,
-      sun,
-      landscape,
-      compatibility,
-      skyCompatibility,
-      disposeFog,
-      disposeSkyFog,
-    };
-  }, [gltf, fogResources, worldFog, landscapeFog, mapBreakables, mapDoors, mapVisibility]);
-  useEffect(
-    () => () => {
-      prepared.compatibility.dispose();
-      prepared.skyCompatibility?.dispose();
-      prepared.disposeFog?.();
-      prepared.disposeSkyFog?.();
-    },
-    [prepared],
-  );
-  const { gl, scene } = useThree();
-  const breakables = useRef<ReturnType<typeof bindMapBreakables>>(undefined);
-  useLayoutEffect(() => {
-    const index = bindMapBreakables(prepared.main, mapBreakables, mapDoors, mapVisibility);
-    breakables.current = index;
-    return () => {
-      index?.dispose();
-      breakables.current = undefined;
-    };
-  }, [prepared.main, mapBreakables, mapDoors, mapVisibility]);
-  useLayoutEffect(() => {
-    breakables.current?.seek(tick);
-  }, [tick, prepared.main, mapBreakables, mapDoors, mapVisibility]);
-  useLayoutEffect(
-    () => installMapDrawRanges(gl, scene, prepared.main, prepared.sky),
-    [gl, scene, prepared],
-  );
-  useLayoutEffect(() => {
-    if (prepared.sun) return playerLighting?.receivers(prepared.main);
-  }, [prepared, playerLighting]);
-  useLayoutEffect(() => {
-    if (!gltf.animations.length && scope.isCurrent()) return registerFollowModel(prepared.main);
-  }, [gltf, prepared, registerFollowModel, scope]);
-  useLayoutEffect(() => {
-    if (scope.isCurrent()) loaded(url, 'ready', prepared.sky, prepared.landscape, prepared.sun);
-  }, [url, loaded, prepared, scope]);
-  return <primitive object={prepared.main} />;
-}
-function SkyPass({
-  sky,
-  sun,
-  skylight,
-  fallbackSun,
-  povFollows,
-}: {
-  sky: THREE.Scene;
-  sun: MapSun | null;
-  skylight: boolean;
-  fallbackSun: boolean;
-  povFollows: boolean;
-}) {
-  const camera = useMemo(() => skyCameraFor(sky), [sky]);
-  useFrame(({ gl, scene, camera: main }) => {
-    const backgroundCamera =
-      main instanceof THREE.PerspectiveCamera ? updateSkyCamera(main, camera) : main;
-    renderSkyBehindMap(
-      gl,
-      scene,
-      sky,
-      main,
-      backgroundCamera,
-      povFollows ? undefined : () => beginFinalGradePass(gl),
-    );
-  }, 1);
-  return createPortal(
-    <SceneLighting sample={false} sun={sun} skylight={skylight} fallbackSun={fallbackSun} />,
-    sky,
-  );
-}
-function EnvironmentBackground({
-  environment,
-  sample,
-  report,
-  resources,
-  low,
-}: {
-  environment: MapEnvironment | null;
-  sample: boolean;
-  report: (identity: string | null, status: AssetStatus, skylight?: boolean) => void;
-  resources: SourceFogReference;
-  low: boolean;
-}) {
-  const { scene, invalidate } = useThree();
-  const state = useMapEnvironment(sample ? null : environment);
-  const lighting = useMapSkyLighting(state.texture, low);
-  useLayoutEffect(() => {
-    const previous = scene.environment,
-      intensity = scene.environmentIntensity,
-      rotation = scene.environmentRotation.clone();
-    scene.environment = lighting;
-    // The exported backdrop is clamped LDR artwork, not measured HDR radiance.
-    // Keep its broad reflected fill below the normalized directional sunlight.
-    scene.environmentIntensity = lighting ? (environment?.sky?.brightness ?? 1) * 0.35 : 1;
-    scene.environmentRotation.copy(scene.backgroundRotation);
-    invalidate();
-    return () => {
-      scene.environment = previous;
-      scene.environmentIntensity = intensity;
-      scene.environmentRotation.copy(rotation);
-    };
-  }, [scene, lighting, environment?.sky?.brightness, invalidate]);
-  useLayoutEffect(() => {
-    resources.current = {
-      fog: environment?.fog || null,
-      cube: state.texture,
-      gradient: environment?.gradientFog?.world,
-      landscapeGradient: environment?.gradientFog?.landscape,
-    };
-    invalidate();
-    return () => {
-      resources.current = { fog: null, cube: null };
-    };
-  }, [resources, environment?.fog, environment?.gradientFog, state.texture, invalidate]);
-  useLayoutEffect(() => {
-    const previous = scene.background,
-      intensity = scene.backgroundIntensity;
-    scene.background = state.texture || new THREE.Color(sample ? '#aeb6b0' : daylightFallback);
-    scene.backgroundIntensity = state.texture ? (environment?.sky?.brightness ?? 1) : 1;
-    invalidate();
-    return () => {
-      scene.background = previous;
-      scene.backgroundIntensity = intensity;
-    };
-  }, [scene, state.texture, sample, environment?.sky?.brightness, invalidate]);
-  useLayoutEffect(() => {
-    report(state.identity, state.status, Boolean(lighting));
-    return () => report(state.identity, 'pending');
-  }, [state.identity, state.status, lighting, report]);
-  return null;
-}
-class MapModelBoundary extends Component<
-  {
-    url: string;
-    scope: ModelScope;
-    report: (url: string, status: 'ready' | 'error') => void;
-    children: ReactNode;
-  },
-  { error: boolean }
-> {
-  state = { error: false };
-  static getDerivedStateFromError() {
-    return { error: true };
-  }
-  componentDidCatch() {
-    // Clear the rejected loader entry immediately. R3F canvas teardown is
-    // deferred, and a new viewer must not inherit that rejected promise.
-    if (this.props.scope.isCurrent()) this.props.report(this.props.url, 'error');
-    this.props.scope.invalidate();
-  }
-  render() {
-    return this.state.error ? null : this.props.children;
-  }
-}
 function Agent({
   data,
   position,
@@ -551,7 +303,7 @@ function Agent({
   labels: boolean;
   overlays?: ActorOverlay;
   hideNearCamera: boolean;
-  contactTrace: ReturnType<ReturnType<typeof followObstruction>['fork']> | null;
+  contactTrace: ReturnType<SceneTrace['fork']> | null;
   contactShadow: boolean;
   footPoseAt?: FootPoseAt;
   airborne?: number;
@@ -666,13 +418,16 @@ function Agent({
     </group>
   );
 }
-function ComposedChildren({ children }: { children: ReactNode }) {
-  return <>{children}</>;
+// The synthetic courtyard has no native world, so it renders the scene directly.
+function SampleFrame({ active }: { active: boolean }) {
+  useFrame(({ gl, scene, camera }) => {
+    if (active) gl.render(scene, camera);
+  }, 1);
+  return null;
 }
 function World({
   data,
   low,
-  multisample,
   tick,
   shadows,
   mode,
@@ -680,14 +435,7 @@ function World({
   model,
   modelReady,
   reportModel,
-  modelScope,
-  sky,
   sun,
-  skylight,
-  fallbackSun,
-  environment,
-  gradeEnvironment,
-  reportEnvironment,
   preview,
   settings,
   tracers,
@@ -702,28 +450,14 @@ function World({
 }: {
   data: Playback;
   low: boolean;
-  multisample: boolean;
   tick: number;
   shadows: boolean;
   mode: string;
   selected: string;
   model: string | null;
   modelReady: boolean;
-  reportModel: (
-    url: string,
-    status: 'ready' | 'error',
-    sky?: THREE.Scene | null,
-    landscape?: AssetStatus,
-    sun?: MapSun | null,
-  ) => void;
-  sky: THREE.Scene | null;
+  reportModel: (url: string, status: 'ready' | 'error', sun?: MapSun | null) => void;
   sun: MapSun | null;
-  skylight: boolean;
-  fallbackSun: boolean;
-  modelScope: ModelScope | null;
-  environment: MapEnvironment | null;
-  gradeEnvironment: MapEnvironment | null;
-  reportEnvironment: (identity: string | null, status: AssetStatus, skylight?: boolean) => void;
   preview: boolean;
   settings: ViewerSettings;
   tracers: boolean;
@@ -777,15 +511,9 @@ function World({
     gl.domElement.addEventListener('webglcontextrestored', restored);
     return () => gl.domElement.removeEventListener('webglcontextrestored', restored);
   }, [gl, invalidate]);
-  useMapShadowCache(!data.sample && shadows);
   const actors = useRef<THREE.Group>(null);
   const playerLighting = useMemo(playerShadows, [contextRevision]);
   useLayoutEffect(() => () => playerLighting.dispose(), [playerLighting]);
-  const [followModel, setFollowModel] = useState<THREE.Group | null>(null);
-  const registerFollowModel = useCallback((map: THREE.Group) => {
-    setFollowModel(map);
-    return () => setFollowModel((current) => (current === map ? null : current));
-  }, []);
   const traceWallAudio =
     Boolean(data.gameplaySounds && data.gameplaySounds.coverage.weapon !== 'unavailable') &&
     !preview &&
@@ -803,10 +531,8 @@ function World({
     tracers ||
     items.some(({ kind }) => kind !== 'projectile');
   const followTrace = useMemo(
-    () =>
-      nativeWorld?.queries.trace ??
-      (traceMap && followModel ? followObstruction(followModel) : null),
-    [traceMap, followModel, nativeWorld],
+    () => (traceMap && nativeWorld?.queries.trace) || null,
+    [traceMap, nativeWorld],
   );
   const wallAudioTrace = useMemo(
     () => (traceWallAudio ? followTrace?.fork(0) : undefined),
@@ -826,7 +552,6 @@ function World({
     () => recordedFootPose(data),
     [data.frames, data.rounds, data.tickRate],
   );
-  const fogResources = useRef<SourceFogResources>({ fog: null, cube: null });
   const movement = useRef(new Set<string>());
   const fastMovement = useRef(false);
   useLayoutEffect(
@@ -843,7 +568,6 @@ function World({
       settings,
       focus,
       utilityState,
-      sky,
       items,
     ],
   );
@@ -1201,43 +925,14 @@ function World({
     !death &&
     (data.sample || modelReady);
 
-  const FrameRoot = isNative ? ComposedChildren : SceneGrade;
   return (
     <NativePasses.Provider value={isNative ? nativePasses : null}>
-      <FrameRoot
-        environment={data.sample ? null : gradeEnvironment}
-        low={low}
-        multisample={multisample}
-        revision={contextRevision}
-        manualWorld={!sky && !showPovEquipment}
-      >
-        {!isNative && (
-          <EnvironmentBackground
-            key={contextRevision}
-            environment={environment}
-            sample={Boolean(data.sample)}
-            report={reportEnvironment}
-            resources={fogResources}
-            low={low}
-          />
-        )}
-        {sky && (
-          <SkyPass
-            povFollows={Boolean(showPovEquipment)}
-            sky={sky}
-            sun={sun}
-            skylight={skylight}
-            fallbackSun={fallbackSun}
-          />
-        )}
-        {!isNative && (
-          <SceneLighting
-            sample={Boolean(data.sample)}
-            sun={sun}
-            skylight={skylight}
-            fallbackSun={fallbackSun}
-            shadows={shadows}
-          />
+      <>
+        {data.sample && (
+          <>
+            <SampleLighting />
+            <SampleFrame active={!showPovEquipment} />
+          </>
         )}
         {isNative && (
           <NativeWorld
@@ -1249,32 +944,7 @@ function World({
             loaded={reportModel}
           />
         )}
-        {data.sample ? (
-          <Courtyard />
-        ) : (
-          <>
-            {!isNative && model && modelScope && (
-              <MapModelBoundary key={model} url={model} scope={modelScope} report={reportModel}>
-                <Suspense fallback={null}>
-                  <Model
-                    url={model}
-                    scope={modelScope}
-                    loaded={reportModel}
-                    fogResources={fogResources}
-                    worldFog={Boolean(environment?.fog || environment?.gradientFog?.world)}
-                    landscapeFog={Boolean(environment?.gradientFog?.landscape)}
-                    registerFollowModel={registerFollowModel}
-                    mapBreakables={data.mapBreakables}
-                    mapDoors={data.mapDoors}
-                    mapVisibility={data.mapVisibility}
-                    tick={tick}
-                    playerLighting={low ? null : playerLighting}
-                  />
-                </Suspense>
-              </MapModelBoundary>
-            )}
-          </>
-        )}
+        {data.sample && <Courtyard />}
         <PlayerSunPass
           root={actors}
           pipeline={playerLighting}
@@ -1342,13 +1012,7 @@ function World({
             ))}
           </group>
           {showPovEquipment && (
-            <PovEquipmentPass
-              hasSky={Boolean(sky)}
-              sample={Boolean(data.sample)}
-              sun={sun}
-              skylight={skylight}
-              trace={followTrace}
-            >
+            <PovEquipmentPass sample={Boolean(data.sample)} sun={sun} trace={followTrace}>
               <PovViewmodel
                 agentModel={viewedPlayer.team === 3 ? agents.ct : agents.t}
                 gaitHistory={gaitHistory}
@@ -1400,7 +1064,7 @@ function World({
               data={data}
               tick={tick}
               nativeVolume={modelReady}
-              staticMap={nativeWorld?.queries ?? followModel}
+              staticMap={nativeWorld?.queries ?? null}
               lightBursts={!low}
               selected={selected}
               settings={settings}
@@ -1437,7 +1101,7 @@ function World({
             maxDistance={bounds.extent * 3}
           />
         )}
-      </FrameRoot>
+      </>
     </NativePasses.Provider>
   );
 }
@@ -1720,21 +1384,10 @@ export default function Scene({
   const auto = settings.quality === 'auto';
   const probingGpu = auto && gpu === undefined;
   const autoMobile = auto && (gpu === 'integrated' || (gpu === 'unknown' && fallbackLow));
-  const prefersCompact =
-    settings.quality === 'compact' ||
-    (auto && (gpu === 'software' || gpu === 'limited')) ||
-    (autoMobile && !mapAssets.assets.mobile);
+  const prefersCompact = (auto && (gpu === 'software' || gpu === 'limited')) || autoMobile;
   const wantsLow = settings.quality === 'low' || prefersCompact || autoMobile;
-  const detailedModel = wantsLow
-    ? mapAssets.assets.mobile || mapAssets.assets.model
-    : mapAssets.assets.model || mapAssets.assets.mobile;
-  const compactModel = mapAssets.assets.compact;
-  const [failedCompact, setFailedCompact] = useState<string>();
-  const compact = Boolean(
-    compactModel && (!detailedModel || (prefersCompact && failedCompact !== compactModel)),
-  );
-  const model = compact ? compactModel! : detailedModel;
-  const low = wantsLow || compact;
+  const model = mapAssets.assets.model;
+  const low = wantsLow;
   const [adaptiveQuality, setAdaptiveQuality] = useState({
     resolution: settings.renderResolution,
     shadows: true,
@@ -1750,10 +1403,7 @@ export default function Scene({
       : settings.renderResolution;
   const shadows = !low && (!adaptive || adaptiveQuality.shadows);
   const detailedLow =
-    low &&
-    !compact &&
-    !preview &&
-    (settings.quality === 'low' || (gpu !== 'software' && gpu !== 'limited'));
+    low && !preview && (settings.quality === 'low' || (gpu !== 'software' && gpu !== 'limited'));
   const targetDpr = useSyncExternalStore(
     subscribeToDevicePixelRatio,
     low
@@ -1777,8 +1427,7 @@ export default function Scene({
     [data.events, data.tickRate],
   );
   const reducedMotion = useReducedMotion();
-  const compactTracerProfile =
-    mobile || compact || (model !== null && model === mapAssets.assets.mobile);
+  const compactTracerProfile = mobile || prefersCompact;
   const tracers = !preview && !reducedMotion && shotTracersEnabled(settings, compactTracerProfile);
   const utilityState = useMemo(
     () => ({
@@ -1820,34 +1469,20 @@ export default function Scene({
   const [modelLoad, setModelLoad] = useState<{
     url: string;
     status: 'ready' | 'error';
-    sky: THREE.Scene | null;
-    landscape: AssetStatus;
     sun: MapSun | null;
   }>();
   const currentModel = useRef(model);
   currentModel.current = model;
   const reportModel = useCallback(
-    (
-      url: string,
-      status: 'ready' | 'error',
-      sky: THREE.Scene | null = null,
-      landscape: AssetStatus = 'missing',
-      sun: MapSun | null = null,
-    ) => {
-      if (currentModel.current === url) {
-        if (status === 'error' && url === compactModel && detailedModel) setFailedCompact(url);
+    (url: string, status: 'ready' | 'error', sun: MapSun | null = null) => {
+      if (currentModel.current === url)
         setModelLoad((previous) =>
-          previous?.url === url &&
-          previous.status === status &&
-          previous.sky === sky &&
-          previous.landscape === landscape &&
-          previous.sun === sun
+          previous?.url === url && previous.status === status && previous.sun === sun
             ? previous
-            : { url, status, sky, landscape, sun },
+            : { url, status, sun },
         );
-      }
     },
-    [compactModel, detailedModel],
+    [],
   );
   const modelStatus: AssetStatus =
     mapAssets.status === 'pending'
@@ -1868,40 +1503,6 @@ export default function Scene({
   );
   const currentRendererAttempt = useRef(rendererAttempt);
   currentRendererAttempt.current = rendererAttempt;
-  const modelScope = useMapModelScope(
-    data.sample || probingGpu || model?.endsWith('/map.json') ? null : model,
-    rendererAttempt,
-  );
-  const gradeEnvironment = mapAssets.assets.environment ?? null,
-    environment = compact ? null : gradeEnvironment,
-    environmentIdentity = mapEnvironmentKey(environment);
-  const [environmentLoad, setEnvironmentLoad] = useState<{
-    identity: string | null;
-    status: AssetStatus;
-    skylight: boolean;
-  }>();
-  const currentEnvironment = useRef(environmentIdentity);
-  currentEnvironment.current = environmentIdentity;
-  const reportEnvironment = useCallback(
-    (identity: string | null, status: AssetStatus, skylight = false) => {
-      if (currentEnvironment.current === identity)
-        setEnvironmentLoad((previous) =>
-          previous?.identity === identity &&
-          previous.status === status &&
-          previous.skylight === skylight
-            ? previous
-            : { identity, status, skylight },
-        );
-    },
-    [],
-  );
-  const environmentStatus: AssetStatus = environment
-    ? environmentLoad?.identity === environmentIdentity
-      ? environmentLoad.status
-      : 'pending'
-    : 'missing';
-  const landscapeStatus: AssetStatus = modelLoad?.url === model ? modelLoad.landscape : 'missing';
-  const skylight = environmentLoad?.identity === environmentIdentity && environmentLoad.skylight;
   const reportRendererFallback = useCallback(() => {
     if (currentRendererAttempt.current !== rendererAttempt) return;
     rendererAttempt.failed = true;
@@ -1967,10 +1568,7 @@ export default function Scene({
       onMapStatus?.({
         map: data.map,
         model: data.sample ? 'ready' : modelStatus,
-        compact,
         compactTracerProfile,
-        modelProgress:
-          surface === '3d' && modelStatus === 'pending' ? modelScope?.progress : undefined,
         renderer: surface === 'plot' ? '2d' : '3d',
         failure:
           !data.sample && textureTier === null
@@ -1982,9 +1580,6 @@ export default function Scene({
                 : modelStatus === 'error'
                   ? 'model'
                   : undefined,
-        environment: environmentStatus,
-        environmentVersion: environment?.assetVersion || null,
-        landscape: landscapeStatus,
         resolution: surface === '3d' ? resolution : undefined,
         shadowsPaused: surface === '3d' && adaptive && !low && !shadows,
         smokeUnavailable: smokeFailed,
@@ -1994,18 +1589,13 @@ export default function Scene({
       data.map,
       data.sample,
       modelStatus,
-      compact,
       compactTracerProfile,
-      modelScope,
       mode,
       rendererFailure,
-      environmentStatus,
-      landscapeStatus,
       resolution,
       adaptive,
       low,
       shadows,
-      environment?.assetVersion,
       onMapStatus,
       surface,
       mapAssets.status,
@@ -2059,15 +1649,7 @@ export default function Scene({
       className="scene"
       data-quality={probingGpu ? 'probing' : low ? 'low' : 'high'}
       data-render-device={gpu}
-      data-map-tier={
-        probingGpu || !model
-          ? undefined
-          : compact
-            ? 'compact'
-            : model === mapAssets.assets.mobile
-              ? 'mobile'
-              : 'desktop'
-      }
+      data-map-tier={probingGpu || !model ? undefined : (textureTier ?? undefined)}
       data-render-resolution={resolution}
       data-live-shadows={shadows}
       data-agent-model-state={agentAssets.status}
@@ -2090,10 +1672,6 @@ export default function Scene({
       data-camera-mode={mode}
       data-camera-fov={settings.cameraFov}
       data-map-model-state={data.sample ? 'ready' : modelStatus}
-      data-environment-state={environmentStatus}
-      data-skylight-state={skylight ? 'ready' : 'fallback'}
-      data-environment-version={environment?.assetVersion}
-      data-landscape-state={landscapeStatus}
       data-focus-x={focus?.target.x}
       data-focus-y={focus?.target.y}
       data-focus-z={focus?.target.z}
@@ -2158,11 +1736,6 @@ export default function Scene({
                       <World
                         data={data}
                         low={low}
-                        multisample={
-                          !adaptive ||
-                          resolution > RENDER_RESOLUTION_MIN ||
-                          resolution === settings.renderResolution
-                        }
                         tick={tick}
                         shadows={shadows}
                         mode={mode}
@@ -2170,25 +1743,11 @@ export default function Scene({
                         model={model}
                         modelReady={modelStatus === 'ready'}
                         reportModel={reportModel}
-                        modelScope={modelScope}
                         sun={
                           modelLoad?.url === model && modelLoad.status === 'ready'
                             ? modelLoad.sun
                             : null
                         }
-                        skylight={Boolean(skylight)}
-                        fallbackSun={
-                          !mapAssets.acquisition ||
-                          mapAssets.acquisition.verification === 'version-unverified'
-                        }
-                        sky={
-                          modelLoad?.url === model && modelLoad.status === 'ready'
-                            ? modelLoad.sky
-                            : null
-                        }
-                        environment={environment}
-                        gradeEnvironment={gradeEnvironment}
-                        reportEnvironment={reportEnvironment}
                         preview={preview}
                         settings={settings}
                         tracers={tracers}

@@ -210,7 +210,7 @@ test('shot tracers inherit desktop quality defaults and preserve explicit stored
     value: { getItem: () => JSON.stringify(stored) },
   });
   try {
-    for (const quality of ['auto', 'high', 'low', 'compact']) {
+    for (const quality of ['auto', 'high', 'low']) {
       stored = { quality };
       const settings = readSettings();
       assert.equal(shotTracersEnabled(settings, false), ['auto', 'high'].includes(quality));
@@ -219,7 +219,7 @@ test('shot tracers inherit desktop quality defaults and preserve explicit stored
     }
     stored = { quality: 'auto', shotTracers: false };
     assert.equal(shotTracersEnabled(readSettings(), false), false);
-    stored = { quality: 'compact', shotTracers: true };
+    stored = { quality: 'low', shotTracers: true };
     assert.equal(shotTracersEnabled(readSettings(), true), true);
   } finally {
     if (original) Object.defineProperty(globalThis, 'localStorage', original);

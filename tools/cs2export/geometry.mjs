@@ -96,8 +96,12 @@ export function geometry(scene, read, materialId, density = new Map()) {
     let root = new Matrix4();
     if (sky) {
       const camera = world.entities.find((e) => e.classname === 'sky_camera');
+      // Each sky world is placed by the enabled reference that names it.
       const ref = scene.worlds[`maps/${scene.map}`].entities.find(
-        (e) => e.classname === 'skybox_reference',
+        (e) =>
+          e.classname === 'skybox_reference' &&
+          !e.startdisabled &&
+          e.targetmapname === worldName + '.vmap',
       );
       root = placement(ref)
         .multiply(new Matrix4().makeScale(camera.scale, camera.scale, camera.scale))
@@ -130,6 +134,7 @@ export function geometry(scene, read, materialId, density = new Map()) {
     function submit(name, transform, tint, binding, fragment, entityIndex = -1) {
       if (!name) return;
       const model = scene.models[name];
+      if (!model && scene.missingResources?.includes(name)) return;
       const placement = transform.equals(identity) ? undefined : transform.toArray();
       for (const mesh of model.meshes) {
         const draws = fragment === null ? mesh.draws : [mesh.draws[fragment]];
@@ -137,6 +142,7 @@ export function geometry(scene, read, materialId, density = new Map()) {
           if (!draw) throw Error('Unknown fragment draw in ' + name);
           const matName = draw.m_material || draw.m_pMaterial;
           const mat = scene.materials[matName];
+          if (!mat && scene.missingResources?.includes(matName)) continue;
           if (!mat) throw Error('Unresolved draw material in ' + name + ': ' + matName);
           if (mat.attrs['tools.toolsmaterial']) continue;
           const fields = new Map();

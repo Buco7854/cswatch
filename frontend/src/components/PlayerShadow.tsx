@@ -1,7 +1,7 @@
 import { useFrame } from '@react-three/fiber';
 import { useRef, type RefObject } from 'react';
 import { Group, Mesh, Vector3 } from 'three';
-import type { MapSun } from '../map-sun';
+import type { MapSun } from '../actor-sun';
 import type { playerShadows } from '../player-shadows';
 import type { FollowCamera } from '../follow-camera';
 

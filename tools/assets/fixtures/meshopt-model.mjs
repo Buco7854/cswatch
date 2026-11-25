@@ -1,7 +1,7 @@
 /** Original grid geometry and checker pixels, never Counter-Strike content. */
 import { Document, NodeIO } from '@gltf-transform/core';
 import sharp from 'sharp';
-export async function meshoptMapFixture() {
+export async function meshoptModelFixture() {
   const document = new Document(),
     buffer = document.createBuffer(),
     side = 33,

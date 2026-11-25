@@ -87,7 +87,7 @@ import { equipmentAssetRoutes } from './equipment-assets.js';
 import { equipmentModelAssetRoutes } from './equipment-model-assets.js';
 import { viewmodelAssetRoutes } from './viewmodel-assets.js';
 import { mapAssetRoutes } from './map-assets.js';
-import { mapModelFileRoutes } from './map-model-files.js';
+import { mapModelFileRoutes } from './model-files.js';
 import { mapPreviewRoutes } from './map-preview.js';
 import { mapManagementRoutes } from './map-management.js';
 import { demoMapAssetRoutes } from './demo-map-assets.js';

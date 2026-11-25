@@ -58,11 +58,8 @@ const preparationPhaseLabels = {
   tools: 'Preparing conversion tools',
   source: 'Retrieving map files',
   geometry: 'Converting map geometry',
-  environment: 'Preparing the map environment',
-  lighting: 'Preparing map lighting',
   desktop: 'Building the desktop map',
-  mobile: 'Building the mobile map',
-  compact: 'Building the compact map',
+  mobile: 'Building the phone map',
   publishing: 'Installing the prepared map',
 } satisfies Record<MapPreparationPhase, string>;
 export const retryableMapFailures = new Set([
@@ -194,8 +191,8 @@ export function validateDemoMapAssets(value: unknown, map: string, demoId?: stri
     typeof input.packId === 'string' ? input.packId : undefined,
     demoId,
   );
-  const hasModel = Boolean(assets.model || assets.mobile || assets.compact);
-  const hasAssets = hasModel || Boolean(assets.overview || assets.environment);
+  const hasModel = Boolean(assets.model);
+  const hasAssets = hasModel || Boolean(assets.overview);
   if (input.verification === 'operator-approved' || input.verification === 'latest-official') {
     if (
       input.acquisition !== 'ready' ||

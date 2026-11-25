@@ -1,30 +1,8 @@
 # Feature status
 
-The standalone WebGL2 Mirage lab streams a fixed-exposure native world. Its desktop pack transfers 84.63 MB with HTTP Brotli. The four player views submit 88–175 draws at 1280×720 on SwiftShader. Fog and 3D sky can be disabled per frame. [Measurements](VERIFICATION.md#native-mirage-world-lab) · [Viewer cutover plan](product/NATIVE-WORLD-INTEGRATION.md)
+Maps are native world packs exported from Valve's compiled resources (ValveResourceFormat 21.1) and drawn by a WebGL2 port of the CS2 shaders in one graded frame with actors, smoke and the first-person rig. The confined assets worker prepares any official map with a desktop BC tier and a phone ASTC tier. Devices with neither texture format get the 2D map with an explanation. Doors, breakables and recorded visibility drive both drawing and camera, label, floor and sound queries. Eleven of the 22 playable official maps were prepared on the test host; the rest lack Valve overview data or exceeded its disk or the installer's read budget. Water is an opaque approximation. [Native rendering](product/NATIVE-RENDERER.md) · [Map assets](MAP-ASSETS.md) · [Verification](VERIFICATION.md#native-worlds)
 
-Detailed and Compact map preparation now respects source-disabled brush and prop placements. Replay visibility, matched by class, model and transform, can enable them. New demos open on a living player's POV when one is available. A recorded death can produce the POV vignette even without a hurt event. The spectator view turns toward the attacker when the recording supplies both poses and permits replay. Throw releases, knife actions and surface sounds follow recorded events. [Verification and limits](VERIFICATION.md#mode-geometry-and-playback)
-
-The renderer prepares geometry bounds when first needed and during idle periods. Playback keeps its learned resolution through buffering, and applies an explicit resolution scale once on high-density displays. [Three-map checks](VERIFICATION.md#first-view-geometry-and-display-resolution)
-
-The viewer shows the current worker phase while an official map is being prepared. An intact, manifest-verified source cache can skip the initial Steam transfer. Prepared maps keep the same format and reuse rules. [Operator instructions](product/MAP-ACQUISITION.md)
-
-Detailed packs restore the verified source opacity and printed markings on supported glass. Three native Nuke materials now use per-pixel coverage in the existing transparency pass. [Window measurements](VERIFICATION.md#textured-breakable-glass)
-
-New broadcast replays can drive rotating doors and native damage stages. Nuke shows the same panel dented, perforated, removed and restored on rewind. Cache shows its door swinging and its grates disappearing separately. Nuke also supplies verified individual window removals using both prop and brush entities. The source map supplies the hinge and meshes. [Door verification](VERIFICATION.md#recorded-doors-and-progressive-damage)
-
-Textured mobile maps use a bounded high-density render target and stronger filtering on opaque angled surfaces. Auto restores the configured resolution on pause. Explicit High can use up to three physical pixels per CSS pixel on a small high-density screen. Newly parsed recordings can hide independently identified destructible props on the recorded tick and restore them on rewind or at the next round. Two Cache vents have a verified viewer sequence; the desktop and mobile Nuke packs also identify a skinned grate. [Measurements and coverage](VERIFICATION.md#display-resolution-and-recorded-map-breakables)
-
-The viewer lights the playable world with its own authored sun. Detailed tiers restore supported tint masks and native metalness switches. Desktop materials can also recover painted albedos and their authored colour correction. The recorded first-person rigs, smoke and selected surfaces have matched-camera measurements across eight maps. [Rendering corrections](VERIFICATION.md#rendering-corrections-against-matched-external-scenes)
-
-Detailed maps can cull off-camera triangles across larger world meshes while retaining the existing limit on stored bounds. Clip-free maps with large hierarchies reuse static sun shadows until a caster or light changes. [Four-map playback measurements](VERIFICATION.md#high-quality-playback-on-four-official-maps)
-
-Large maps can rebuild a bounded Compact tier when the original mesh simplification exceeds the triangle cap. Native equipment shares compatible packed PBR samples and the cache retains its render resources and authored clip and material evidence after parsing. [Multi-map playback](VERIFICATION.md#multi-map-playback)
-
-The viewer reuses native character animation data and recently displayed equipment during playback. Map and sky rendering skip blocks of triangles outside the camera. Auto responds earlier when repeated long frames dominate playback and can turn off HDR multisampling at its resolution floor. [Measured behavior and remaining stalls](VERIFICATION.md#in-game-playback-stalls)
-
-Official map coverage can be inspected by Steam manifest, shader family, prepared tier and capture result. A new map using known material inputs follows the same preparation path. Desktop and mobile support a static approximation of verified Source water. Unsupported water stays listed in the audit. The production viewer can be captured privately at a known player and tick for regression checks. Dropped equipment holds its last resting pose until the recorded movement interval. [Coverage and limitations](VERIFICATION.md#map-graphics-and-recorded-equipment)
-
-Map surfaces with packed occlusion, roughness and metalness can read all three channels in one texture lookup. Mirage and Dust2 use this layout across hundreds of native materials. [Playback measurements](VERIFICATION.md#packed-world-materials)
+The viewer shows the current worker phase while an official map is being prepared, and an intact, manifest-verified source cache can skip the initial Steam transfer.
 
 Recorded body, head and armor hits, named bullet impacts, surface footsteps, jump takeoffs and landings use the native sound bank. The 3D viewer can also position a representative impact where a recorded shot meets nearby opaque map geometry. [Player hits and steps](VERIFICATION.md#recorded-hits-and-steps) · [Wall impacts](VERIFICATION.md#nearby-wall-impacts)
 
@@ -34,13 +12,7 @@ First-person stride bob and third-person boot contact now fade through recorded 
 
 Demo processing and map loading use one screen with a stable return link. Account titles retain assistive focus, and text fields and library search show one focus outline.
 
-Newly prepared map packs carry source-derived transparency for supported constant glass, including the Nuke door pane. The opening screen shows the worker’s queue or preparation status. Members can open the timeline there while the worker downloads or converts the selected map. Native actors retain their moving gait on streamed chunks and blend consecutive firing poses. [Viewer checks](VERIFICATION.md#map-preparation-nuke-door-glass-and-native-player-poses)
-
 A LAN administrator can connect directly or through a trusted proxy that sends `X-Real-IP` or `X-Forwarded-For`, including when the proxy also sends `CF-Connecting-IP`. Server-side Steam import diagnostics record the failed stage and any numeric Steam result. [Operator guide](ACCESS-SETUP.md)
-
-During 3D playback, detailed map batches skip triangle blocks outside the camera view. The graded renderer reuses the same multisampled color buffer for sky, map and first-person equipment. Smoke reuses its depth buffer as its screen coverage changes. Timeline markers update when the recorded events or layout change. [Viewer measurements](VERIFICATION.md)
-
-The viewer decodes supported embedded map images directly and skips disjoint triangle groups during camera and terrain queries. [Matched Mirage measurements](VERIFICATION.md#viewer-opening-and-playback-2026-11-23)
 
 Library and administration use the same dropdown and pagination controls. Members can pair a manual upload with a listed match, including when an automatic provider download is offered.
 
@@ -71,14 +43,13 @@ Library rows show native map emblems, local map previews or a map-name fallback.
 - Scene labels use posed heads and avoid each other and the HUD. Overhead shows team direction arrows through roofs, with a ring on the observed player. The north-up radar crops the recorded playable bounds when they fit the calibrated overview. Living and eliminated roster cards share a row height.
 - Recorded events and sampled state drive economy, objectives, recorded player input, crosshairs, combat recap, native sound and grenade paths. Flash and damage feedback follow demo time. Tracers use recorded aim and bounded prepared-map occlusion. Reduced motion keeps steady feedback and disables tracers.
 - The directional CT/T bank uses 101 native clips with recorded movement, aim and available action evidence. Missing rigs use capsule bodies. The dedicated first-person pass discovers automatically prepared, hash-bound weapon and hand rigs. Static equipment, movement inference and recorded event cues cover missing assets or evidence.
-- Third-person equipment packs use the authored weapon root and the recorded animation’s weapon axes. Held items follow the posed grip, including independent left and right grips for Dual Berettas. The agent bank adds grenade and dual-pistol upper-body poses and weapon-class defuse loops. Live sun shadows render player and equipment depth separately from the cached map shadow. Compact 3D uses a floor-traced contact shadow.
+- Third-person equipment packs use the authored weapon root and the recorded animation’s weapon axes. Held items follow the posed grip, including independent left and right grips for Dual Berettas. The agent bank adds grenade and dual-pistol upper-body poses and weapon-class defuse loops. Live sun shadows render player and equipment depth separately from the cached map shadow. Low quality uses a floor-traced contact shadow.
 - The directional player renderer uses demo-time foot plants and nearby rendered floor support. Corpse support uses bounded skin samples. Compact devices scale world equipment textures before resident-budget checks. The POV pass applies source weapon-metal parameters and its own highlight response inside the shared grade.
 
 ## Assets and rendering
 
-- The separate assets service handles pinned official preparation, pending jobs and operator-authorized removal. Automatic acquisition defaults off. Latest snapshots are disclosed, manual map-name assets remain version-unverified, and publication requires complete validated packs with bound models and texture plans. Invalid worker-owned map packs enter preparation again.
-- Detailed and optional Compact 3D share the replay cameras and calibrated overview. The graded output pass uses authored lighting data where available. One smoke volume pass uses journal or analytic density and reports an unavailable renderer.
-- Detailed official map packs can use world-verified v8.2 lightmaps, sourced sun channels, supported cubemap and untextured gradient fog, and authored grading. Preparation reports PBR fallback reasons and removes unresolved non-solid effects from the playable world and sky geometry.
-- Local 3D map evidence covers Mirage, Dust2, Inferno, Nuke, Ancient, Anubis, Overpass, Train, Vertigo and Office. Earlier 2D evidence covers Cache. Native animation graphs, exact Source 2 materials and mixing, Workshop acquisition, and physical-device performance remain outside the verified feature set.
+- The separate assets service handles pinned official preparation, pending jobs and operator-authorized removal. Automatic acquisition defaults off. Latest snapshots are disclosed; manual map-name assets remain version-unverified.
+- Every map job runs the native exporter, desktop packer, phone ASTC encoder and publication as separate networkless children with CPU, memory, time, output and scratch limits. Packs are immutable and hash-bound, and served only to viewers of a demo using that map.
+- Smoke uses one volume pass with journal or analytic density. Native animation graphs, dynamic local lights, vertex animation and wind remain outside the renderer; each pack lists its limits in `unsupported`.
 
 See [verification](VERIFICATION.md), [active work](product/WORK.md), [acceptance](product/ACCEPTANCE.md) and [security](../SECURITY.md).

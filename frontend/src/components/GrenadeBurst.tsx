@@ -1,7 +1,5 @@
-import { useThree } from '@react-three/fiber';
-import { useLayoutEffect, useMemo, useRef } from 'react';
-import { Vector4, type Group, type PointLight, type ShaderMaterial } from 'three';
-import { mapGradeBurstLights } from '../map-grade';
+import { useMemo, useRef } from 'react';
+import { Vector4, type Group, type ShaderMaterial } from 'three';
 import { maxBursts, maxImpactSprites, sampleGrenadeBursts } from '../grenade-burst';
 import { impactPlaneCount, impactSurfaces } from '../impact-surfaces';
 import type { UtilityZone } from '../utility-state';
@@ -173,20 +171,6 @@ export default function GrenadeBurst({
     undefined,
   );
 
-  const scene = useThree((state) => state.scene);
-  const pointLight = useRef<PointLight>(null);
-  const nominalIntensity = useRef(0);
-  useLayoutEffect(() => {
-    nominalIntensity.current = light?.light ?? 0;
-  }, [light?.light]);
-  useLayoutEffect(() => {
-    if (!pointLight.current) return;
-    const entry = { light: pointLight.current, intensity: () => nominalIntensity.current };
-    mapGradeBurstLights.set(scene, entry);
-    return () => {
-      if (mapGradeBurstLights.get(scene) === entry) mapGradeBurstLights.delete(scene);
-    };
-  }, [scene, lighting]);
   return (
     <>
       <BurstContactDepth vertices={vertices} materialRef={materialRef} warm={warm} />
@@ -205,7 +189,6 @@ export default function GrenadeBurst({
       {/* Reserve one light slot for the lifetime of this quality profile. */}
       {lighting && (
         <pointLight
-          ref={pointLight}
           name="utility-detonation-light"
           color={light?.flash ? '#e6efff' : '#ffb078'}
           position={light && [light.origin[0], light.origin[1] + 0.3, light.origin[2]]}

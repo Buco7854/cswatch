@@ -743,9 +743,7 @@ test('manual environment-only remnants remain unavailable with an entirely empty
     assert.equal(descriptor.verification, 'unavailable');
     assert.deepEqual(descriptor.assets, {
       model: null,
-      mobile: null,
       overview: null,
-      environment: null,
     });
   } finally {
     await f.close();

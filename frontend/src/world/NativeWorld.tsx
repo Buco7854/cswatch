@@ -6,7 +6,7 @@ import { compositor, type FramePasses } from './compositor';
 import { createRenderer, type NativeRenderer } from './renderer';
 import { loadManifest, type Manifest } from './format';
 import { sourceToViewer } from './space';
-import { mapSun, type MapSun } from '../map-sun';
+import { mapSun, type MapSun } from '../actor-sun';
 import type { playerShadows } from '../player-shadows';
 
 export interface LoadedWorld {
@@ -19,13 +19,7 @@ interface Props {
   tactical: boolean;
   passes: FramePasses;
   shadows: ReturnType<typeof playerShadows>;
-  loaded: (
-    url: string,
-    status: 'ready' | 'error',
-    sky: null,
-    landscape: 'ready' | 'error',
-    sun: MapSun | null,
-  ) => void;
+  loaded: (url: string, status: 'ready' | 'error', sun: MapSun | null) => void;
   register: (world: LoadedWorld | null) => void;
 }
 // Only this positive-priority callback submits the composed frame. Other scene
@@ -80,7 +74,7 @@ export function NativeWorld({ url, tactical, passes, shadows, loaded, register }
         native,
         queries: worldQueries(manifest, native.geometry.vertices, native.geometry.indices),
       });
-      loaded(url, 'ready', null, 'ready', sun);
+      loaded(url, 'ready', sun);
       invalidate();
       await native.refine(invalidate);
       renderer.resetState();
@@ -89,7 +83,7 @@ export function NativeWorld({ url, tactical, passes, shadows, loaded, register }
     load().catch((error) => {
       if (!controller.signal.aborted) {
         console.error('Native world:', error);
-        loaded(url, 'error', null, 'error', null);
+        loaded(url, 'error', null);
       }
     });
     return () => {

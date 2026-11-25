@@ -1,5 +1,6 @@
 import { Box3, Matrix4, Vector3, type DirectionalLight } from 'three';
-import type { SourceSun } from './source-sun';
+/** Unit direction toward the sun and linear RGB color, in viewer coordinates. */
+export type SourceSun = Readonly<{ directionToSun: Triplet; color: Triplet }>;
 
 type Triplet = [number, number, number];
 export type MapSun = {

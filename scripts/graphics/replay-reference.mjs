@@ -11,8 +11,8 @@ export async function compareReplayFrame(frame, bytes, referencePath) {
     reasons.push('reference-kind');
   for (const key of [
     'map',
-    'assetVersion',
-    'sourceSha256',
+    'sourceManifest',
+    'textureTier',
     'replaySha256',
     'tick',
     'player',
@@ -55,7 +55,7 @@ export async function compareReplayFrame(frame, bytes, referencePath) {
   if (external) {
     const p = ref.provenance;
     if (
-      !['CS2', 'reference'].includes(p?.producer) ||
+      p?.producer !== 'CS2' ||
       ['version', 'captureSource', 'renderSettings', 'mapRevisionEvidence'].some(
         (k) => typeof p[k] !== 'string' || !p[k].trim() || p[k].length > 1000,
       )

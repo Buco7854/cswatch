@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { graphicsLimits } from '../../tools/assets/map-graphics-contract.mjs';
 import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
 import { open } from 'node:fs/promises';
@@ -8,6 +7,7 @@ import { isDeepStrictEqual as equal } from 'node:util';
 import { createRequire } from 'node:module';
 const sharp = createRequire(new URL('../../tools/assets/package.json', import.meta.url))('sharp');
 
+const maxViews = 24;
 export const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const sha = (s) => typeof s === 'string' && /^[a-f0-9]{64}$/.test(s);
 export const captureKind = 'cswatch-graphics-capture';
@@ -91,7 +91,7 @@ export async function compareView(report, view, image, reference, file) {
     reference.schemaVersion === 1 &&
       [captureKind, externalKind].includes(reference.kind) &&
       Array.isArray(reference.views) &&
-      reference.views.length <= graphicsLimits.views,
+      reference.views.length <= maxViews,
     'Invalid reference manifest',
   );
   const candidates = reference.views.filter((v) => v.index === view.index);
@@ -114,7 +114,7 @@ export async function compareView(report, view, image, reference, file) {
   if (external) {
     const p = reference.provenance;
     if (
-      !['CS2', 'reference'].includes(p?.producer) ||
+      p?.producer !== 'CS2' ||
       !text(p?.version, 200) ||
       !p.version.trim() ||
       !text(p?.captureSource, 500) ||

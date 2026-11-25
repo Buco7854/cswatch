@@ -51,34 +51,58 @@ export function overviewResources(map) {
   selectedMaps([map]);
   return [`resource/overviews/${map}.txt`, `panorama/images/overheadmaps/${map}_radar_psd.vtex_c`];
 }
-const skyPrefabFolders = (map) => [map, map.replace(/^(?:de|cs|ar|dz|gd|tr)_/, '')];
+// A map's own prefab folder is its name, with or without the mode prefix, and an optional suffix
+// such as `cs_italy_s2`.
+const ownPrefabFolder = (map, folder) =>
+  [map, map.replace(/^(?:de|cs|ar|dz|gd|tr)_/, '')].some(
+    (name) =>
+      folder === name ||
+      new RegExp(`^${name}_[a-z0-9]{1,20}$`).test(folder) ||
+      // A variant such as de_ancient_night can use its base map's folder.
+      (folder.length > 3 && new RegExp(`^${folder}_[a-z0-9]{1,20}$`).test(name)),
+  );
+// A top-level companion such as de_poseidon_3dskybox or fy_pool_day_3d_skybox for
+// ar_pool_day: after the mode prefix, its name extends the map's own name.
+const modeless = (name) => name.replace(/^[a-z]{2,3}_/, '');
+const skyCompanion = (map, name) =>
+  name !== map && /^[a-z0-9_]{1,100}$/.test(name) && modeless(name).startsWith(modeless(map) + '_');
 export function selectedSkyPrefabFile(map, file) {
   selectedMaps([map]);
-  return (
-    validPrefabFile(file) &&
-    skyPrefabFolders(map).some((folder) => file.startsWith(`game/csgo/maps/prefabs/${folder}/`))
-  );
+  const companion = /^game\/csgo\/maps\/([a-z0-9_]{1,100})\.vpk$/.exec(file ?? '')?.[1];
+  if (companion) return skyCompanion(map, companion);
+  const folder = /^game\/csgo\/maps\/prefabs\/([a-z0-9_]{1,80})\//.exec(file ?? '')?.[1];
+  return validPrefabFile(file) && Boolean(folder) && ownPrefabFolder(map, folder);
 }
 /** An enabled skybox_reference from the selected map may name exactly one
  * prefab inside that map's own directory, never another depot path or glob. */
 export function skyPrefabPackage(map, reference) {
   selectedMaps([map]);
-  const prefix =
-    typeof reference === 'string' &&
-    skyPrefabFolders(map)
-      .map((folder) => `maps/prefabs/${folder}/`)
-      .find((candidate) => reference.startsWith(candidate));
-  if (!prefix) throw new Error('Sky reference must belong to the selected map prefab directory.');
+  const companion =
+    typeof reference === 'string' && /^maps\/([a-z0-9_]{1,100})\.vmap$/.exec(reference)?.[1];
+  if (companion) {
+    if (!skyCompanion(map, companion))
+      throw new Error('Sky reference must belong to the selected map.');
+    return { file: `game/csgo/maps/${companion}.vpk`, resource: `${reference}_c` };
+  }
+  const folder =
+    typeof reference === 'string' && /^maps\/prefabs\/([a-z0-9_]{1,80})\//.exec(reference)?.[1];
+  if (!folder || !ownPrefabFolder(map, folder))
+    throw new Error('Sky reference must belong to the selected map prefab directory.');
+  const prefix = `maps/prefabs/${folder}/`;
   const leaf = reference.slice(prefix.length);
-  if (!/^[a-z0-9_]{1,100}\.vmap$/.test(leaf))
+  if (!/^(?:[a-z0-9_]{1,80}\/){0,3}[a-z0-9_]{1,100}\.vmap$/.test(leaf))
     throw new Error('Sky reference must be one exact compiled map name.');
   return { file: `game/csgo/${reference.slice(0, -5)}.vpk`, resource: `${reference}_c` };
 }
 function validPrefabFile(file) {
   if (typeof file !== 'string') return false;
-  const match = /^game\/csgo\/maps\/prefabs\/([a-z][a-z0-9_]{1,79})\/([a-z0-9_]{1,100})\.vpk$/.exec(
-    file,
-  );
+  const companion = /^game\/csgo\/maps\/([a-z0-9_]{1,100})\.vpk$/.exec(file)?.[1];
+  // Callers have already bound a companion to its selected map.
+  if (companion) return modeless(companion) !== companion && modeless(companion).includes('_');
+  const match =
+    /^game\/csgo\/maps\/prefabs\/([a-z][a-z0-9_]{1,79})\/((?:[a-z0-9_]{1,80}\/){0,3}[a-z0-9_]{1,100})\.vpk$/.exec(
+      file,
+    );
   return Boolean(
     match && skyPrefabPackage(match[1], `maps/prefabs/${match[1]}/${match[2]}.vmap`).file === file,
   );

@@ -240,39 +240,3 @@ test('identical source images share an encoding only for matching dimensions and
     assert.equal((await sharp(textures[i].getImage()).metadata()).width, row.planned.width);
   }
 });
-
-test('ordinary map packing applies both default decoded budgets and binds complete texture plans', async (t) => {
-  const root = await mkdtemp(join(tmpdir(), 'cswatch-pack-budget-'));
-  t.after(() => rm(root, { recursive: true, force: true }));
-  const input = join(root, 'source.glb'),
-    output = join(root, 'new-packs');
-  await new NodeIO().registerExtensions(ALL_EXTENSIONS).write(input, await model());
-  await promisify(execFile)(
-    process.execPath,
-    [
-      fileURLToPath(new URL('./prepare-map.mjs', import.meta.url)),
-      '--input',
-      input,
-      '--output',
-      output,
-      '--map',
-      'de_qa',
-      '--asset-version',
-      'texture-fixture',
-    ],
-    { timeout: 30000, maxBuffer: 128 * 1024 },
-  );
-  for (const tier of ['desktop', 'mobile']) {
-    const target = join(output, 'de_qa', tier),
-      manifest = JSON.parse(await readFile(join(target, 'manifest.json'), 'utf8')),
-      plan = await readFile(join(target, 'texture-plan.json'));
-    assert.equal(manifest.textureBudget.budgetBytes, textureBudgetPolicies[tier].budgetBytes);
-    assert.equal(manifest.textureBudget.maxEdge, textureBudgetPolicies[tier].maxEdge);
-    assert.equal(
-      manifest.textureBudget.planSha256,
-      createHash('sha256').update(plan).digest('hex'),
-    );
-    assert.equal(manifest.bytes, (await readFile(join(target, 'scene.glb'))).length);
-    assert.equal(JSON.parse(plan).images.length, 2);
-  }
-});

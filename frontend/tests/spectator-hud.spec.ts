@@ -3,70 +3,33 @@ import { fulfillReplayFixture, replayFixture } from './fixtures/streamed-replay'
 import { expect, test, type Page } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
 import { installDemoMapDescriptor } from './fixtures/map-assets';
-import { originalMapGLB, originalMapReplay, qaActor } from './fixtures/original-map';
+import { originalMapReplay, qaActor } from './fixtures/original-map';
+import { nativeMap } from './fixtures/native-map';
+import { installOriginalCameraProbe } from './fixtures/original-camera';
 import { selectOptionsCategory } from './fixtures/viewer-options';
 import { originalAnimatedAgentGLB } from './fixtures/original-agent';
 
 const opponent = '76561198000000002',
   teammate = '76561198000000003';
-function mapWithOccluder(roof = false) {
-  const source = originalMapGLB();
-  const jsonLength = source.readUInt32LE(12),
-    offset = 20 + jsonLength;
-  const document = JSON.parse(source.subarray(20, offset).toString());
-  const sourceBin = source.subarray(offset + 8, offset + 8 + source.readUInt32LE(offset));
-  const points = roof
-    ? [-60, 4, -60, 60, 4, -60, 60, 4, 60, -60, 4, -60, 60, 4, 60, -60, 4, 60]
-    : [-5, 0, 0, 5, 0, 0, 5, 4, 0, -5, 0, 0, 5, 4, 0, -5, 4, 0];
-  const wall = Buffer.alloc(points.length * 4);
-  points.forEach((part, index) => wall.writeFloatLE(part, index * 4));
-  const bin = Buffer.concat([sourceBin, wall]);
-  const view = document.bufferViews.length,
-    accessor = document.accessors.length;
-  document.bufferViews.push({
-    buffer: 0,
-    byteOffset: sourceBin.length,
-    byteLength: wall.length,
-    target: 34962,
-  });
-  document.accessors.push({
-    bufferView: view,
-    componentType: 5126,
-    count: 6,
-    type: 'VEC3',
-    min: roof ? [-60, 4, -60] : [-5, 0, 0],
-    max: roof ? [60, 4, 60] : [5, 4, 0],
-  });
-  const material = document.materials.length;
-  document.materials.push({
-    pbrMetallicRoughness: {
-      baseColorFactor: [0.2, 0.22, 0.24, 1],
-      metallicFactor: 0,
-      roughnessFactor: 1,
-    },
-    doubleSided: true,
-  });
-  const mesh = document.meshes.length,
-    node = document.nodes.length;
-  document.meshes.push({ primitives: [{ attributes: { POSITION: accessor }, material }] });
-  document.nodes.push({ name: 'Original QA occluder, not CS2 artwork', mesh });
-  document.scenes[0].nodes.push(node);
-  document.buffers[0].byteLength = bin.length;
-  const raw = Buffer.from(JSON.stringify(document)),
-    json = Buffer.alloc(Math.ceil(raw.length / 4) * 4, 32);
-  raw.copy(json);
-  const output = Buffer.alloc(28 + json.length + bin.length);
-  output.writeUInt32LE(0x46546c67, 0);
-  output.writeUInt32LE(2, 4);
-  output.writeUInt32LE(output.length, 8);
-  output.writeUInt32LE(json.length, 12);
-  output.writeUInt32LE(0x4e4f534a, 16);
-  json.copy(output, 20);
-  output.writeUInt32LE(bin.length, 20 + json.length);
-  output.writeUInt32LE(0x004e4942, 24 + json.length);
-  bin.copy(output, 28 + json.length);
-  return output;
-}
+// Viewer-space wall or roof added to the original floor rooms.
+const occluder = (roof = false) =>
+  roof
+    ? [
+        [
+          [-60, 4, -60],
+          [60, 4, -60],
+          [60, 4, 60],
+          [-60, 4, 60],
+        ],
+      ]
+    : [
+        [
+          [-5, 0, 0],
+          [5, 0, 0],
+          [5, 4, 0],
+          [-5, 4, 0],
+        ],
+      ];
 async function fixture(
   page: Page,
   id: string,
@@ -162,19 +125,16 @@ async function fixture(
     }),
   );
   await page.route(`**/api/demos/${id}/playback`, (route) => fulfillReplayFixture(route, data));
-  const model = `/map-assets/${data.map}/desktop/scene.glb`;
+  const world = nativeMap(
+    data.map,
+    options.wall || options.crowded ? occluder(options.crowded) : [],
+  );
+  const model = world.model(id);
   await installDemoMapDescriptor(page, id, {
     model,
-    mobile: null,
     overview: null,
-    environment: null,
   });
-  await page.route('**' + model, (route) =>
-    route.fulfill({
-      contentType: 'model/gltf-binary',
-      body: options.wall || options.crowded ? mapWithOccluder(options.crowded) : originalMapGLB(),
-    }),
-  );
+  await world.route(page);
   if (options.native) {
     await page.route('**/api/assets/agents', (route) =>
       route.fulfill({ json: { ct: '/map-assets/agents/ct.glb', t: '/map-assets/agents/t.glb' } }),
@@ -733,45 +693,10 @@ test('recorded-map free camera turns in place, moves with ZQSD, preserves its vi
   page,
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE));
+  await installOriginalCameraProbe(page);
   await page.addInitScript(() => {
-    const locations = new WeakMap<WebGLUniformLocation, string>();
-    const programs = new WeakMap<WebGL2RenderingContext, WebGLProgram | null>();
-    const matrices = new WeakMap<WebGLProgram, number[]>();
-    const capture = { position: [] as number[], matrix: [] as number[] };
-    (window as unknown as { qaFreeView: typeof capture }).qaFreeView = capture;
-    const location = WebGL2RenderingContext.prototype.getUniformLocation;
-    const matrix = WebGL2RenderingContext.prototype.uniformMatrix4fv;
-    const use = WebGL2RenderingContext.prototype.useProgram;
-    const draw = WebGL2RenderingContext.prototype.drawArrays;
-    WebGL2RenderingContext.prototype.getUniformLocation = function (program, name) {
-      const value = location.call(this, program, name);
-      if (value) locations.set(value, name);
-      return value;
-    };
-    WebGL2RenderingContext.prototype.useProgram = function (program) {
-      programs.set(this, program);
-      return use.call(this, program);
-    };
-    WebGL2RenderingContext.prototype.uniformMatrix4fv = function (at, transpose, values) {
-      const program = programs.get(this);
-      if (program && at && locations.get(at) === 'modelViewMatrix')
-        matrices.set(program, Array.from(values));
-      return matrix.call(this, at, transpose, values);
-    };
-    WebGL2RenderingContext.prototype.drawArrays = function (mode, first, count) {
-      const program = programs.get(this),
-        m = program && matrices.get(program);
-      if (count === 18 && m) {
-        // The original floor is the only18-vertex non-indexed draw. Invert its
-        // actual orthonormal model-view transform, then apply S2V's +90Y base.
-        const x = -(m[0] * m[12] + m[1] * m[13] + m[2] * m[14]),
-          y = -(m[4] * m[12] + m[5] * m[13] + m[6] * m[14]),
-          z = -(m[8] * m[12] + m[9] * m[13] + m[10] * m[14]);
-        capture.position = [z, y, -x];
-        capture.matrix = [...m];
-      }
-      return draw.call(this, mode, first, count);
-    };
+    const host = window as unknown as { qaFreeView: unknown; qaOriginalCamera: unknown };
+    Object.defineProperty(host, 'qaFreeView', { get: () => host.qaOriginalCamera });
   });
   await fixture(page, 'spectator-free');
   await page.goto('/watch/spectator-free?tick=0');

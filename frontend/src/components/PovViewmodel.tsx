@@ -33,7 +33,7 @@ import { agentModelClips, agentStrideProfile } from '../directional-agent';
 import { agentPhaseAt } from '../agent-phase';
 import type { GaitHistory } from '../../../shared/agent-gait-history.mjs';
 import type { ModelScope } from '../model-cache';
-import { assertMapBaseColorTextures } from '../map-model';
+import { assertBaseColorTextures } from '../model-textures';
 import { disposeEquipmentInstance, prepareEquipmentModel } from '../equipment-model';
 import type { Playback, Position } from '../types';
 import type { PovAction } from '../agent-replay';
@@ -194,7 +194,7 @@ function AuthoredViewmodel({
       throw new Error('Missing authored first-person action or anchor');
     const origin = cameraAnchor.getWorldPosition(cameraAnchor.position.clone());
     if (origin.lengthSq() > 1e-8) throw new Error('Unsupported first-person rest origin');
-    assertMapBaseColorTextures({ scene: gltf.scene, parser: gltf.parser });
+    assertBaseColorTextures({ scene: gltf.scene, parser: gltf.parser });
     const model = prepareEquipmentModel(gltf.scene);
     const disposeMaterials = viewmodelWeaponMaterials(model);
     const mixer = new AnimationMixer(model);

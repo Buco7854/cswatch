@@ -16,7 +16,7 @@ import {
   tracerLifetime,
   traceRecordedShot,
 } from '../shot-tracer';
-import type { followObstruction } from '../follow-obstruction';
+import type { SceneTrace } from '../world/queries';
 import type { Playback } from '../types';
 import { useTracerEvidence } from './EquipmentFire';
 
@@ -52,7 +52,7 @@ export default function ShotTracers({
   data: Playback;
   tick: number;
   pov?: string;
-  trace: ReturnType<ReturnType<typeof followObstruction>['fork']>;
+  trace: ReturnType<SceneTrace['fork']>;
 }) {
   const evidence = useTracerEvidence();
   const invalidate = useThree((state) => state.invalidate);

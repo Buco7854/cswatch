@@ -149,7 +149,9 @@ export function allocateTexture(
                 gl.UNSIGNED_BYTE,
                 bytes,
               );
-            if (last) gl.texParameteri(target, gl.TEXTURE_BASE_LEVEL, mip.level);
+            if (!last) return;
+            gl.texParameteri(target, gl.TEXTURE_BASE_LEVEL, mip.level);
+            // getError waits for the GPU process; check once per completed level.
             const error = gl.getError();
             if (error)
               throw Error(

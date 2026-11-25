@@ -42,10 +42,6 @@ export function retainEquipmentModel({ scene, scenes, animations, parser }: GLTF
   };
 }
 
-export function mapModelResources(gltf: GLTF): ModelResource[] {
-  return modelResources(gltf, gltf);
-}
-
 export function equipmentModelResources(gltf: RenderedModel): ModelResource[] {
   return modelResources(gltf);
 }

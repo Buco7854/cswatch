@@ -42,7 +42,7 @@ try {
   page.on('pageerror', console.error);
   await page.goto(
     server.url +
-      (process.env.CS2_LAB_VIEW === 'material-id' ? '&view=material-id' : '') +
+      (process.env.CS2_LAB_VIEW ? '&view=' + encodeURIComponent(process.env.CS2_LAB_VIEW) : '') +
       (process.env.CS2_LAB_TIER ? '&tier=' + encodeURIComponent(process.env.CS2_LAB_TIER) : ''),
   );
   await page.waitForFunction(

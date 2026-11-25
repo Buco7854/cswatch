@@ -1,10 +1,11 @@
 import { chooseCameraControl } from './fixtures/viewer-transport';
+import { nativeMap } from './fixtures/native-map';
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { expect, test } from '@playwright/test';
 import { indexBombShockwaves } from '../src/bomb-shockwave';
 import { indexItems, type PresentItem } from '../src/item-state';
 import { installDemoMapDescriptor } from './fixtures/map-assets';
-import { originalMapGLB, originalMapReplay } from './fixtures/original-map';
+import { originalMapReplay } from './fixtures/original-map';
 
 const bomb: PresentItem = {
   id: 'item:8:4:80',
@@ -73,20 +74,15 @@ test('the normal WebGL viewer draws the C4 wave during the recorded window and r
   };
   replay.itemSamples = [bomb, removed];
   const id = 'bomb-wave-qa',
-    model = `/map-assets/${replay.map}/desktop/scene.glb`;
+    model = nativeMap(replay.map).model(id);
   await page.route(`**/api/demos/${id}`, (route) =>
     route.fulfill({
       json: { id, name: 'Original C4 effect QA', status: 'ready', public: true, map: replay.map },
     }),
   );
   await page.route(`**/api/demos/${id}/playback`, (route) => fulfillReplayFixture(route, replay));
-  await installDemoMapDescriptor(page, id, { model, mobile: null, overview: null });
-  await page.route(`**${model}`, (route) =>
-    route.fulfill({
-      contentType: 'model/gltf-binary',
-      body: originalMapGLB(),
-    }),
-  );
+  await installDemoMapDescriptor(page, id, { model, overview: null });
+  await nativeMap(replay.map).route(page);
   await page.goto(`/watch/${id}`);
   const scene = page.locator('.scene'),
     slider = page.getByRole('slider', { name: 'Playback position' });

@@ -1,4 +1,5 @@
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
+import { nativeMap } from './fixtures/native-map';
 import { expect, test } from '@playwright/test';
 import { BoxGeometry, Group, Mesh, MeshBasicMaterial } from 'three';
 import { indexFireEffects, maxFireSprites } from '../src/utility-effects';
@@ -8,7 +9,7 @@ import { buildUtilityZoneIndex } from '../src/utility-state';
 import type { InfernoBank } from '../../shared/inferno-state.mjs';
 
 import { installDemoMapDescriptor } from './fixtures/map-assets';
-import { originalMapGLB, originalMapReplay } from './fixtures/original-map';
+import { originalMapReplay } from './fixtures/original-map';
 
 const events = [
   { type: 'inferno_startburn', tick: 101, entityid: 10, x: 96, y: -32, z: 12 },
@@ -219,7 +220,7 @@ test('the production WebGL viewer submits only active, depth-tested utility spri
   };
   replay.grenades = [];
   const id = 'utility-sprite-qa';
-  const model = `/map-assets/${replay.map}/desktop/scene.glb`;
+  const model = nativeMap(replay.map).model(id);
   await page.route(`**/api/demos/${id}`, (route) =>
     route.fulfill({
       json: {
@@ -232,10 +233,8 @@ test('the production WebGL viewer submits only active, depth-tested utility spri
     }),
   );
   await page.route(`**/api/demos/${id}/playback`, (route) => fulfillReplayFixture(route, replay));
-  await installDemoMapDescriptor(page, id, { model, mobile: null, overview: null });
-  await page.route(`**${model}`, (route) =>
-    route.fulfill({ contentType: 'model/gltf-binary', body: originalMapGLB() }),
-  );
+  await installDemoMapDescriptor(page, id, { model, overview: null });
+  await nativeMap(replay.map).route(page);
   const shaderFaults: string[] = [];
   page.on('console', (message) => {
     if (message.type() === 'error' && /shader|WebGL/i.test(message.text()))

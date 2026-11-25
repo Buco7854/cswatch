@@ -221,3 +221,5 @@ export function worldQueries(manifest: Manifest, vertices: Uint8Array, indices: 
   };
 }
 export type WorldQueries = ReturnType<typeof worldQueries>;
+/** Static-scene ray queries shared by the follow camera, feet, labels, tracers and sounds. */
+export type SceneTrace = WorldQueries['trace'];

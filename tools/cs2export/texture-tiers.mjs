@@ -1,8 +1,16 @@
 // Texture size and phone encoding decisions derived from the exported data.
 const target = Number(process.env.CS2EXPORT_TEXELS_PER_INCH ?? 1.25);
 if (!(target > 0 && target <= 64)) throw Error('Invalid texel density target');
-const phoneCap = Number(process.env.CS2EXPORT_PHONE_CAP ?? 512);
-if (![256, 512, 1024].includes(phoneCap)) throw Error('Phone cap must be 256, 512 or 1024');
+const maxPhoneCap = Number(process.env.CS2EXPORT_PHONE_CAP ?? 512);
+if (![256, 512, 1024].includes(maxPhoneCap)) throw Error('Phone cap must be 256, 512 or 1024');
+const MiB = 1024 ** 2;
+// Phone budgets: 70 MB (66.8 MiB) download and 120 MB of GPU memory at 1280x720, of which about
+// 11 MB is render targets. Compression factors are Vertigo's measured Brotli/raw ratios per
+// category (0.73, 0.45, 0.46 and 0.77), rounded up. Across ten official maps the download estimate
+// was 7.3 MiB high to 2.0 MiB low, so the plan keeps 2.3 MiB in reserve.
+const phoneWire = 64.5 * MiB,
+  phoneTextures = 100 * MiB;
+const wireFactor = { array: 0.75, lightmap: 0.5, volume: 0.5, special: 0.8 };
 
 /** Smallest retained size at which UV0 reaches the target texels per placed inch. */
 export function materialCap(material, area) {
@@ -30,20 +38,25 @@ const slice = (texture, level, profile) => ({
 const hdr = (format) => format === 'BC6H' || format === 'RGBA16161616F';
 
 /** Phone items reuse the desktop bank layers and levels, so material bindings stay valid. */
-export function phonePlan(manifest, scene, sourceLevels) {
+function planWith(manifest, scene, sourceLevels, phoneCap, lightmapBlock) {
   const items = [],
     targets = [];
   for (const bank of manifest.arrays) {
-    const levels = scene.textures[bank.textures[0]].levels
-      .map((level, index) => ({ level, index }))
-      .filter(({ level }) => Math.max(level.w, level.h) <= phoneCap);
+    const all = scene.textures[bank.textures[0]].levels.map((level, index) => ({ level, index }));
+    const fitting = all.filter(({ level }) => Math.max(level.w, level.h) <= phoneCap);
+    // A texture stored without smaller mips keeps its smallest level.
+    const levels = fitting.length ? fitting : all.slice(0, 1);
     items.push({
       block: roleBlocks[bank.role] ?? [6, 6],
       levels: levels.map(({ level, index }) => ({
         w: level.w,
         h: level.h,
         slices: bank.textures.map((name) =>
-          slice(scene.textures[name], scene.textures[name].levels[index], bank.srgb ? 'srgb' : 'linear'),
+          slice(
+            scene.textures[name],
+            scene.textures[name].levels[index],
+            bank.srgb ? 'srgb' : 'linear',
+          ),
         ),
       })),
     });
@@ -57,21 +70,38 @@ export function phonePlan(manifest, scene, sourceLevels) {
     const [irradiance, directional] = kinds.map((name) => scene.textures[name]);
     if (!irradiance || !directional || !scene.textures[kinds[2]])
       throw Error('Missing baked lighting for ' + env.world);
-    const top = irradiance.levels.at(-1);
-    const shadow = sourceLevels.get(kinds[2]).find((level) => level.w === top.w && level.h === top.h);
-    const direction = directional.levels.find((level) => level.w === top.w && level.h === top.h);
-    if (!shadow || !direction) throw Error('Unmatched lightmap extents for ' + env.world);
-    // Lightmap charts are small; 4x4 blocks match the desktop BC grid and avoid cross-chart bleeding.
+    // The atlas takes the irradiance extent. Larger directional or shadow levels are
+    // box-reduced and smaller ones (a 3D sky's 4x4 placeholder shadow) are repeated, each by a
+    // whole factor while decoding.
+    const levelsOf = (name) => sourceLevels.get(name);
+    // Like the desktop tier, irradiance is capped at 4096.
+    const size =
+      levelsOf(kinds[0]).findLast((l) => Math.max(l.w, l.h) <= 4096) ?? levelsOf(kinds[0])[0];
+    const whole = (a, b) => a.w % b.w === 0 && a.h % b.h === 0 && a.w / b.w === a.h / b.h;
+    const pick = (name) => {
+      const levels = levelsOf(name);
+      const level =
+        levels.find((l) => l.w >= size.w && l.h >= size.h && whole(l, size)) ??
+        levels.findLast((l) => l.w <= size.w && l.h <= size.h && whole(size, l));
+      if (!level) throw Error('Unmatched lightmap extents for ' + env.world);
+      return level;
+    };
+    const [irradianceLevel, directionLevel, shadowLevel] = kinds.map(pick);
+    const reduced = (texture, level, profile) => ({
+      ...slice(texture, level, profile),
+      w: level.w,
+      h: level.h,
+    });
     items.push({
       block: lightmapBlock,
       levels: [
         {
-          w: top.w,
-          h: top.h,
+          w: size.w,
+          h: size.h,
           slices: [
-            slice(irradiance, top, hdr(irradiance.format) ? 'rgbm' : 'linear'),
-            slice(directional, direction, 'linear'),
-            slice(scene.textures[kinds[2]], shadow, 'linear'),
+            reduced(irradiance, irradianceLevel, hdr(irradiance.format) ? 'hdr' : 'linear'),
+            reduced(directional, directionLevel, 'linear'),
+            reduced(scene.textures[kinds[2]], shadowLevel, 'linear'),
           ],
         },
       ],
@@ -94,7 +124,7 @@ export function phonePlan(manifest, scene, sourceLevels) {
             w: a.w,
             h: a.h,
             slices: [
-              slice(volume, a, hdr(volume.format) ? 'rgbm' : 'linear'),
+              slice(volume, a, hdr(volume.format) ? 'hdr' : 'linear'),
               slice(occlusion, b, 'linear'),
             ],
           },
@@ -111,10 +141,54 @@ export function phonePlan(manifest, scene, sourceLevels) {
       levels: scene.textures[name].levels.map((level) => ({
         w: level.w,
         h: level.h,
-        slices: [slice(scene.textures[name], level, hdr(texture.format) ? 'rgbm' : 'linear')],
+        slices: [slice(scene.textures[name], level, hdr(texture.format) ? 'hdr' : 'linear')],
       })),
     });
     targets.push({ kind: 'special', name });
   }
   return { items, targets };
+}
+
+const astcBytes = (item) =>
+  item.levels.reduce(
+    (sum, level) =>
+      sum +
+      Math.ceil(level.w / item.block[0]) *
+        Math.ceil(level.h / item.block[1]) *
+        16 *
+        level.slices.reduce((n, slice) => n + slice.layers, 0),
+    0,
+  );
+/** The largest phone texture cap, then the finest lightmap block, whose estimate fits the budget. */
+export function phonePlan(manifest, scene, sourceLevels) {
+  const base = [manifest.geometry.vb, manifest.geometry.ib, manifest.visibility?.file]
+    .filter(Boolean)
+    .reduce((sum, file) => sum + manifest.files[file].size, 0);
+  // Lower the material cap first, then coarsen the lightmap atlas at the smallest cap.
+  const caps = [512, 256, 128].filter((cap) => cap <= maxPhoneCap);
+  const candidates = [
+    ...caps.map((cap) => [cap, lightmapBlock]),
+    [caps.at(-1), [5, 5]],
+    [caps.at(-1), [6, 6]],
+  ];
+  let plan;
+  for (const [cap, block] of candidates) {
+    plan = planWith(manifest, scene, sourceLevels, cap, block);
+    let gpu = 0,
+      wire = base;
+    plan.items.forEach((item, index) => {
+      const bytes = astcBytes(item),
+        kind = plan.targets[index].kind;
+      gpu += bytes;
+      wire += bytes * (wireFactor[kind] ?? 1);
+    });
+    plan.estimate = {
+      cap,
+      lightmapBlock: block,
+      gpuMiB: +(gpu / MiB).toFixed(1),
+      wireMiB: +(wire / MiB).toFixed(1),
+    };
+    if (gpu <= phoneTextures && wire <= phoneWire) break;
+  }
+  return plan;
 }

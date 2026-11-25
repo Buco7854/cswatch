@@ -27,15 +27,13 @@ test('map discovery accepts only a demo-scoped native manifest URL and bounded f
   const hash = 'b'.repeat(64),
     model = `/api/demos/demo-1/world/manual/${hash}/map.json`;
   assert.deepEqual(
-    validateMapAssets({ model, mobile: null, overview }, map, undefined, 'demo-1').overview,
+    validateMapAssets({ model, overview }, map, undefined, 'demo-1').overview,
     overview,
   );
-  assert.equal(validateMapAssets({ model, mobile: null }, map, undefined, 'demo-1').model, model);
-  assert.deepEqual(validateMapAssets({ model: null, mobile: null }, map), {
+  assert.equal(validateMapAssets({ model }, map, undefined, 'demo-1').model, model);
+  assert.deepEqual(validateMapAssets({ model: null }, map), {
     model: null,
-    mobile: null,
     overview: null,
-    environment: null,
   });
   for (const invalid of [
     { ...overview, image: 'https://outside.invalid/map.png' },
@@ -49,7 +47,7 @@ test('map discovery accepts only a demo-scoped native manifest URL and bounded f
     { ...overview, assetVersion: '' },
     { ...overview, assetVersion: 'x'.repeat(101) },
   ])
-    assert.throws(() => validateMapAssets({ model: null, mobile: null, overview: invalid }, map));
+    assert.throws(() => validateMapAssets({ model: null, overview: invalid }, map));
   for (const [value, demo] of [
     ['https://outside.invalid/map.json', 'demo-1'],
     [model, undefined],
@@ -58,51 +56,11 @@ test('map discovery accepts only a demo-scoped native manifest URL and bounded f
     [`/api/demos/demo-1/world/manual/${hash}/../map.json`, 'demo-1'],
     [`/api/demos/demo-1/world/manual/${hash}/${hash}.bin`, 'demo-1'],
   ] as const)
-    assert.throws(() =>
-      validateMapAssets({ model: value, mobile: null, overview: null }, map, undefined, demo),
-    );
+    assert.throws(() => validateMapAssets({ model: value, overview: null }, map, undefined, demo));
   assert.throws(() =>
     validateMapAssets(
       { model: null, mobile: `/map-assets/another/mobile/scene.glb`, overview: null },
       map,
     ),
   );
-});
-
-test('environment discovery requires six fixed local cube faces and finite recorded brightness', () => {
-  const environment = {
-    assetVersion: 'original-qa-sky-v1',
-    landscape: false,
-    sky: {
-      faces: ['px', 'nx', 'py', 'ny', 'pz', 'nz'].map(
-        (face) => `/api/maps/${map}/environment/${face}.png`,
-      ),
-      brightness: 1,
-    },
-  };
-  assert.deepEqual(validateMapAssets({ environment }, map).environment, environment);
-  for (const invalid of [
-    { ...environment, assetVersion: '' },
-    { ...environment, landscape: 'yes' },
-    { ...environment, sky: { ...environment.sky, brightness: NaN } },
-    { ...environment, sky: { ...environment.sky, brightness: 17 } },
-    { ...environment, sky: { ...environment.sky, brightness: -1 } },
-    { ...environment, sky: { ...environment.sky, faces: environment.sky.faces.slice(0, 5) } },
-    { ...environment, sky: { ...environment.sky, faces: [...environment.sky.faces].reverse() } },
-    {
-      ...environment,
-      sky: {
-        ...environment.sky,
-        faces: ['https://outside.invalid/sky.png', ...environment.sky.faces.slice(1)],
-      },
-    },
-    {
-      ...environment,
-      sky: {
-        ...environment.sky,
-        faces: environment.sky.faces.map((face) => face.replace(map, 'another_map')),
-      },
-    },
-  ])
-    assert.throws(() => validateMapAssets({ environment: invalid }, map));
 });

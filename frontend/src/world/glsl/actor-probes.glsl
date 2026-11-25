@@ -6,9 +6,9 @@ uniform sampler2D actorProbes;
 uniform sampler2D actorCells;
 uniform vec3 actorGridMin;
 uniform vec3 actorGridInv;
-// First layer and count of the probe volume, then of sun occlusion; then the RGBM range.
+// First layer and count of the probe volume, then of sun occlusion; then the log-encoding range.
 uniform vec4 actorVolumeLayers;
-uniform float actorRgbm;
+uniform float actorHdr;
 varying vec3 actorSourcePosition;
 
 vec4 actorVolume(highp sampler2DArray atlas, vec3 uv, float lobes, vec2 range) {
@@ -25,7 +25,10 @@ vec4 actorLightingAt(vec3 normalSource) {
   for (int entry = 0; entry < 64; entry++) {
     int index = int(texelFetch(actorCells, ivec2(entry / 4, row), 0)[entry % 4]);
     if (index < 0 || coverage > 0.99) break;
-    vec3 local = actorSourcePosition - texelFetch(actorProbes, ivec2(0,index),0).xyz;
+    vec3 offsetFromProbe = actorSourcePosition - texelFetch(actorProbes, ivec2(0,index),0).xyz;
+    vec3 local = vec3(dot(texelFetch(actorProbes, ivec2(9,index),0).xyz, offsetFromProbe),
+                      dot(texelFetch(actorProbes, ivec2(10,index),0).xyz, offsetFromProbe),
+                      dot(texelFetch(actorProbes, ivec2(11,index),0).xyz, offsetFromProbe));
     vec3 low = texelFetch(actorProbes, ivec2(1,index),0).xyz;
     vec3 high = texelFetch(actorProbes, ivec2(2,index),0).xyz;
     vec3 fade = (min(local-low,high-local)+0.1) / max(vec3(0.000001),texelFetch(actorProbes,ivec2(8,index),0).xyz);
@@ -39,7 +42,7 @@ vec4 actorLightingAt(vec3 normalSource) {
     for (int axis=0;axis<3;axis++) {
       float face = float(axis) + (normalSource[axis] <= 0.0 ? 3.0 : 0.0);
       vec4 lobe = actorVolume(actorIrradiance,vec3(uv.xy,uv.z+face),6.0,actorVolumeLayers.xy);
-      lighting.rgb += (actorRgbm > 0.0 ? lobe.rgb * lobe.a * actorRgbm : lobe.rgb) *
+      lighting.rgb += (actorHdr > 0.0 ? (exp2(lobe.rgb * 10.) - 1.) / 1023. * actorHdr : lobe.rgb) *
                       normalSource[axis] * normalSource[axis] * weight;
     }
     lighting.a += actorVolume(actorSunShadow,(boxUV*extent+offset)/size,1.0,actorVolumeLayers.zw).r * weight;

@@ -245,9 +245,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
   const using2D = mode === '2d' || mapRender?.renderer === '2d';
   const fallbackCamera = using2D && mode !== '2d';
   const activeCamera = fallbackCamera ? 'fallback' : mode;
-  const has3DMap = Boolean(
-    data?.sample || mapAssets.assets.model || mapAssets.assets.mobile || mapAssets.assets.compact,
-  );
+  const has3DMap = Boolean(data?.sample || mapAssets.assets.model);
   const mapStatus: AssetStatus =
     mapAssets.status === 'pending'
       ? 'pending'
@@ -260,12 +258,6 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
             : has3DMap
               ? 'pending'
               : 'missing';
-  const environmentStatus: AssetStatus =
-    !mapRender?.compact && mapAssets.assets.environment
-      ? mapRender?.environmentVersion === mapAssets.assets.environment.assetVersion
-        ? mapRender.environment
-        : 'pending'
-      : 'missing';
   const preparation = acquisitionNotice?.preparing ? acquisitionNotice : undefined;
   const mapLoading = Boolean(
     data &&
@@ -273,12 +265,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     earlyReviewScene !== sceneKey &&
     (preparation || (mapStatus === 'pending' && !acquisitionNotice)),
   );
-  const mapNoticeStatus =
-    !using2D &&
-    mapStatus === 'ready' &&
-    (environmentStatus === 'pending' || environmentStatus === 'error')
-      ? environmentStatus
-      : mapStatus;
+  const mapNoticeStatus = mapStatus;
   const mapStatusText =
     acquisitionNotice && mapAssets.status !== 'ready'
       ? acquisitionNotice.title
@@ -299,13 +286,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
               ? 'Map overview failed to load'
               : 'Map unavailable'
         : mapStatus === 'ready'
-          ? mapRender?.compact
-            ? 'Compact 3D'
-            : environmentStatus === 'pending'
-              ? '3D map · loading sky…'
-              : environmentStatus === 'error'
-                ? '3D map · sky unavailable'
-                : '3D map'
+          ? '3D map'
           : mapStatus === 'pending'
             ? 'Loading 3D map…'
             : mapStatus === 'error'
@@ -2073,7 +2054,6 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
               {preparation && t(preparation.description)}
             </>
           }
-          model={preparation || using2D ? undefined : mapRender?.modelProgress}
         >
           {preparation && (
             <button

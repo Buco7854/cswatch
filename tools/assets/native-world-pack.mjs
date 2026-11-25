@@ -176,17 +176,25 @@ export async function installLocalWorld(options) {
         [join(exportRoot, 'pack.mjs'), sourceDir, packed, stage],
         'desktop',
       );
-      // Phone tier: decode to stacked images, encode each group with the pinned astcenc, then page.
-      await execute(
-        dotnet,
-        [exporter, '--astc-inputs', join(stage, 'astc-plan.json'), sourceDir, join(stage, 'astc')],
-        'mobile',
+      // Phone tier: lay out stacked images, then decode and encode one group at a time with the
+      // pinned astcenc so scratch holds a single uncompressed group, then page.
+      const plan = join(stage, 'astc-plan.json'),
+        astcDir = join(stage, 'astc');
+      // After desktop packing the phone stage reads only its planned texture payloads.
+      const planned = new Set(
+        JSON.parse(await readBounded(plan, 64 * MiB)).items.flatMap((item) =>
+          item.levels.flatMap((level) => level.slices.map((slice) => slice.file)),
+        ),
       );
-      const layout = JSON.parse(await readBounded(join(stage, 'astc', 'layout.json'), 64 * MiB));
-      for (const group of layout.groups) {
-        if (!/^group-\d{1,5}$/.test(group.name) || !/^[4568]$/.test(String(group.block[0])))
+      for (const name of await readdir(sourceDir))
+        if (/^[0-9a-f]{64}\.bin$/.test(name) && !planned.has(name)) await rm(join(sourceDir, name));
+      await execute(dotnet, [exporter, '--astc-inputs', plan, sourceDir, astcDir], 'mobile');
+      const layout = JSON.parse(await readBounded(join(astcDir, 'layout.json'), 64 * MiB));
+      for (const [index, group] of layout.groups.entries()) {
+        if (group.name !== 'group-' + index || !/^[4568]$/.test(String(group.block[0])))
           throw Error('Invalid phone texture group.');
-        const input = join(stage, 'astc', group.name);
+        await execute(dotnet, [exporter, '--astc-group', plan, sourceDir, astcDir, String(index)]);
+        const input = join(astcDir, group.name);
         await execute(options.astcenc || astcenc, [
           group.srgb ? '-cs' : '-cl',
           input + '.tga',

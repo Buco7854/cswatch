@@ -1,7 +1,7 @@
 // Local development export. The assets worker runs the same stages as separate confined children.
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -42,28 +42,32 @@ try {
   const pack = join(stage, 'pack');
   mkdirSync(pack);
   step('desktop', process.execPath, [join(here, 'pack.mjs'), source, pack, stage]);
-  step('phone-inputs', 'dotnet', [
-    join(here, 'bin/Release/net11.0/cs2export.dll'),
-    '--astc-inputs',
-    join(stage, 'astc-plan.json'),
-    source,
-    join(stage, 'astc'),
-  ]);
-  const start = performance.now();
-  for (const name of readdirSync(join(stage, 'astc')).filter((n) => n.endsWith('.tga'))) {
-    const group = JSON.parse(readFileSync(join(stage, 'astc', 'layout.json'), 'utf8')).groups.find(
-      (g) => g.name + '.tga' === name,
-    );
+  const exporter = join(here, 'bin/Release/net11.0/cs2export.dll'),
+    plan = join(stage, 'astc-plan.json'),
+    astc = join(stage, 'astc');
+  step('phone-inputs', 'dotnet', [exporter, '--astc-inputs', plan, source, astc]);
+  const layout = JSON.parse(readFileSync(join(astc, 'layout.json'), 'utf8'));
+  let start = performance.now();
+  time.phoneGroups = 0;
+  time.astcenc = 0;
+  for (const [index, group] of layout.groups.entries()) {
+    execFileSync('dotnet', [exporter, '--astc-group', plan, source, astc, String(index)]);
+    time.phoneGroups += performance.now() - start;
+    start = performance.now();
     execFileSync(values.astcenc, [
       group.srgb ? '-cs' : '-cl',
-      join(stage, 'astc', name),
-      join(stage, 'astc', group.name + '.astc'),
+      join(astc, group.name + '.tga'),
+      join(astc, group.name + '.astc'),
       group.block.join('x'),
       '-medium',
       '-silent',
     ]);
+    rmSync(join(astc, group.name + '.tga'));
+    time.astcenc += performance.now() - start;
+    start = performance.now();
   }
-  time.astcenc = Math.round(performance.now() - start);
+  time.phoneGroups = Math.round(time.phoneGroups);
+  time.astcenc = Math.round(time.astcenc);
   step('finish', process.execPath, [join(here, 'finish.mjs'), pack, stage]);
   renameSync(pack, out);
   console.log(JSON.stringify({ timeMs: time }));

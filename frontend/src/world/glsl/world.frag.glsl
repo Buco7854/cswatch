@@ -31,8 +31,9 @@ uniform sampler2DArray skyMap;
 uniform sampler2DArray lpv;
 // Probe volume first layer and layer count, then sun occlusion first layer and count.
 uniform vec4 volumeLayers;
-// RGBM ranges for irradiance, cubemaps, sky and probe volumes. Zero means linear HDR storage.
-uniform vec4 rgbmRange;
+// Phone log-encoding ranges for irradiance, cubemaps, sky and probe volumes. Zero means linear
+// HDR storage.
+uniform vec4 hdrRange;
 uniform vec3 eye;
 uniform vec3 sunDir;
 uniform vec3 sunColor;
@@ -74,7 +75,8 @@ vec4 probeRow(int x, int probeIndex) {
   return texelFetch(sceneData, ivec2(x, probeBase + probeIndex), 0);
 }
 vec3 hdr(vec4 value, float range) {
-  return range > 0. ? value.rgb * value.a * range : value.rgb;
+  // Phone ASTC stores HDR channels as log2(1 + 1023 v / range) / 10.
+  return range > 0. ? (exp2(value.rgb * 10.) - 1.) / 1023. * range : value.rgb;
 }
 
 vec4 sampleLayer(sampler2DArray tex, vec2 uv, float layer, vec4 fallback) {
@@ -131,7 +133,10 @@ void sampleEnvironment(vec3 localPosition, int cellRow, vec3 viewDirection, vec3
     int probeIndex = int(texelFetch(sceneData, ivec2(cellColumn + entry / 4, cellRow), 0)[entry % 4]);
     if (probeIndex < 0)
       break;
-    vec3 local = localPosition - probeRow(0, probeIndex).xyz;
+    vec3 axisX = probeRow(9, probeIndex).xyz, axisY = probeRow(10, probeIndex).xyz,
+         axisZ = probeRow(11, probeIndex).xyz;
+    vec3 offset = localPosition - probeRow(0, probeIndex).xyz;
+    vec3 local = vec3(dot(axisX, offset), dot(axisY, offset), dot(axisZ, offset));
     vec3 boxMin = probeRow(1, probeIndex).xyz;
     vec3 boxMax = probeRow(2, probeIndex).xyz;
     vec3 edge = min(local - boxMin, boxMax - local);
@@ -139,15 +144,17 @@ void sampleEnvironment(vec3 localPosition, int cellRow, vec3 viewDirection, vec3
     vec3 fade = edge * inverseFade;
     float weight = smoothstep(0., 1., min(min(fade.x, fade.y), fade.z)) * (1. - environmentWeight);
     if (weight > 0.) {
-      vec3 nearPlane = (boxMin - local) / (reflectionDir + vec3(1e-10));
-      vec3 farPlane = (boxMax - local) / (reflectionDir + vec3(1e-10));
+      vec3 ray = vec3(dot(axisX, reflectionDir), dot(axisY, reflectionDir), dot(axisZ, reflectionDir));
+      vec3 nearPlane = (boxMin - local) / (ray + vec3(1e-10));
+      vec3 farPlane = (boxMax - local) / (ray + vec3(1e-10));
       vec3 hit = max(nearPlane, farPlane);
-      vec3 projectedDirection = local + reflectionDir * abs(min(min(hit.x, hit.y), hit.z));
+      vec3 projected = local + ray * abs(min(min(hit.x, hit.y), hit.z));
+      vec3 projectedDirection = axisX * projected.x + axisY * projected.y + axisZ * projected.z;
       environmentLight +=
           hdr(textureLod(envMap,
                          cubeUv(mix(projectedDirection, reflectionDir, roughness), probeIndex),
                          roughness * envLastMip),
-              rgbmRange.y) *
+              hdrRange.y) *
           weight;
       harmonic += probeRow(5, probeIndex) * weight;
       environmentWeight += weight;
@@ -166,7 +173,7 @@ void sampleEnvironment(vec3 localPosition, int cellRow, vec3 viewDirection, vec3
           float face = float(axis) + (normal[axis] <= 0. ? 3. : 0.);
           volumeLight += hdr(sampleProbeVolume(lpv, vec3(atlasUv.xy, atlasUv.z + face), 6.,
                                                volumeLayers.xy),
-                             rgbmRange.w) *
+                             hdrRange.w) *
                          normal[axis] * normal[axis] * weight;
         }
         volumeShadow +=
@@ -188,7 +195,7 @@ void sampleEnvironment(vec3 localPosition, int cellRow, vec3 viewDirection, vec3
 void sampleBakedLighting(vec3 geometryNormal, vec3 tangentNormal, vec3 volumeLight,
                          float volumeShadow, out vec3 light, out float sunVisibility) {
   if (binding.z == 1) {
-    vec3 irradianceSample = hdr(texture(irradiance, vec3(lightmapUv, irradianceLayer)), rgbmRange.x);
+    vec3 irradianceSample = hdr(texture(irradiance, vec3(lightmapUv, irradianceLayer)), hdrRange.x);
     vec3 directionSample = texture(directional, vec3(lightmapUv, directionLayer)).rgb;
     vec2 directionXY = directionSample.xy * 2. - 1.;
     const float cap = .99619;
@@ -231,7 +238,7 @@ vec3 applyFog(vec3 lit) {
             hdr(textureLod(skyMap, cubeUv(worldPosition - eye, 0),
                            clamp(1. - fog * fogHeight.w, 0., 1.) *
                                (log2(float(textureSize(skyMap, 0).x)) - 3.)),
-                rgbmRange.z),
+                hdrRange.z),
             fog);
   return lit;
 }
@@ -318,6 +325,10 @@ void main() {
                                         0., 1.),
                                   .333)),
                           .02, 1.);
+  // csgo_water_fancy: opaque fog-coloured surface at its minimum roughness. Refraction, column
+  // fog, SSR, caustics, waves, foam and debris are not ported.
+  if (flags.z == 7.)
+    roughness = clamp(materialRow(35).y, .02, 1.);
   vec3 environmentLight;
   vec3 volumeLight;
   float volumeShadow;

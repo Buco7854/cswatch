@@ -48,7 +48,9 @@ import {
   mapWorkerLimits,
 } from './map-worker.mjs';
 
-import { writeNativeWorld, vertexFile } from './fixtures/native-world.mjs';
+import { writeNativeWorld, vertexFile, nativeWorldPack } from './fixtures/native-world.mjs';
+// map.json and its Brotli sibling plus every fixture payload.
+const packEntries = nativeWorldPack({ map: 'fixture' }).files.size + 2;
 import { validatePreparedMap } from './native-world-pack.mjs';
 import { buildNetworkDeny } from './build-network-deny.mjs';
 import { refreshOfficialMapInventory } from './official-map-inventory.mjs';
@@ -371,9 +373,9 @@ test('latest official source publishes a distinct content-bound immutable pack a
     });
     assert.equal(options.expectedMapHashes, undefined);
     await options.onSourceVerified({ ...f.selection, mapSha256: f.entry.source.mapSha256 });
-    await options.onPhase('lighting');
+    await options.onPhase('mobile');
     const processing = await readMapResult(f.options.jobs, f.packId);
-    assert.equal(processing.phase, 'lighting');
+    assert.equal(processing.phase, 'mobile');
     assert.equal(processing.status, 'processing');
     assert.equal(processing.assetPackId, f.assetPackId);
     await originalPack(options.output, f.entry);
@@ -573,7 +575,7 @@ test('worker passes exact approved provenance and publishes a complete immutable
   assert.equal(markerData.approval, canonicalMapApproval(f.entry));
   assert.ok(
     (await validatePreparedMap(join(f.target, 'maps'), f.entry.identity.map, versionOf(f.entry)))
-      .size === 4,
+      .size === packEntries,
   );
   const before = await lstat(f.target),
     model = await readFile(join(f.target, 'maps', f.entry.identity.map, 'map.json'));
@@ -725,7 +727,7 @@ test('processing recovery validates an already-published pack and never overwrit
   assert.equal((await lstat(f.target)).ino, before.ino);
   assert.ok(
     (await validatePreparedMap(join(f.target, 'maps'), f.entry.identity.map, versionOf(f.entry)))
-      .size === 4,
+      .size === packEntries,
   );
 });
 

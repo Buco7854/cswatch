@@ -26,7 +26,7 @@ function read(file) {
 const { files, store, addMip, flush } = packFiles(out);
 function keep(file) {
   if (!files[file]) {
-    writeFileSync(join(out, file), readFileSync(join(source, file)), { flag: "wx" });
+    writeFileSync(join(out, file), readFileSync(join(source, file)), { flag: 'wx' });
     files[file] = scene.files[file];
   }
   return file;
@@ -55,7 +55,10 @@ for (const [name, material] of Object.entries(scene.materials)) {
 }
 const sourceLevels = new Map();
 for (const [name, texture] of Object.entries(scene.textures)) {
-  sourceLevels.set(name, texture.levels.map((level) => ({ ...level })));
+  sourceLevels.set(
+    name,
+    texture.levels.map((level) => ({ ...level })),
+  );
   const category = scene.files[texture.file].category;
   const cap =
     category === 'cubemaps' || category === 'sky'
@@ -186,6 +189,7 @@ flush();
 for (const bank of arrays) bank.file = bank.mips[0].file;
 for (const texture of Object.values(specials))
   if (texture.levels[0].file) texture.file = texture.levels[0].file;
+if (!Object.keys(scene.post).length) throw Error('No post-processing settings in the game files');
 for (const p of Object.values(scene.post)) keep(p.lut);
 if (scene.visibility) keep(scene.visibility.file);
 const batches = new Map();
@@ -282,6 +286,21 @@ const manifest = {
     'Box cubemaps use six array layers and lack cross-face filtering. Small-scale material response and glass transmission are approximations.',
     'Dynamic direct lights and animated shadow casters are omitted. On this snapshot all local lights use baked or disabled direct illumination.',
     'The map master volume sets fixed exposure. Color grading uses its neutral LUT diagonal.',
+    ...(Object.values(scene.materials).some((m) => m.shader.includes('water'))
+      ? [
+          'Water is an opaque surface in its fog colour with cubemap reflection. Refraction, column fog, screen-space reflection, caustics, waves, foam and debris are omitted.',
+        ]
+      : []),
+    ...(scene.missingSkies?.length
+      ? ['Referenced 3D skies absent from the game files: ' + scene.missingSkies.join(', ') + '.']
+      : []),
+    ...(scene.missingResources?.length
+      ? [
+          'Referenced models, materials and post-processing absent from the game files are skipped: ' +
+            scene.missingResources.slice(0, 8).join(', ') +
+            (scene.missingResources.length > 8 ? ' and others.' : '.'),
+        ]
+      : []),
   ],
   textureConversions: [],
 };

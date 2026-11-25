@@ -1,10 +1,11 @@
 import { chooseCameraControl } from './fixtures/viewer-transport';
+import { nativeMap } from './fixtures/native-map';
+import { installOriginalCameraProbe } from './fixtures/original-camera';
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { test, expect } from '@playwright/test';
 import { originalAnimatedAgentGLB } from './fixtures/original-agent';
 import {
   originalMapReplay,
-  originalMapGLB,
   qaActor,
   qaMap,
   qaOverview,
@@ -152,13 +153,10 @@ test('directional clips deform skinned actors from recorded speed and duck on de
     fulfillReplayFixture(route, replay),
   );
   await installDemoMapDescriptor(page, 'native-locomotion-fixture', {
-    model: `/map-assets/${qaMap}/desktop/scene.glb`,
-    mobile: null,
+    model: nativeMap(qaMap).model('native-locomotion-fixture'),
     overview: qaOverview,
   });
-  await page.route(`**/map-assets/${qaMap}/desktop/scene.glb`, (route) =>
-    route.fulfill({ contentType: 'model/gltf-binary', body: originalMapGLB() }),
-  );
+  await nativeMap(qaMap).route(page);
   await page.route(`**/api/maps/${qaMap}/overview.png`, (route) =>
     route.fulfill({ contentType: 'image/png', body: originalOverviewPNG() }),
   );
@@ -180,6 +178,7 @@ test('directional clips deform skinned actors from recorded speed and duck on de
   ] as const) {
     await page.setViewportSize({ width, height });
     await page.addInitScript((theme) => localStorage.setItem('theme', theme), theme);
+    await installOriginalCameraProbe(page);
     await page.goto('/watch/native-locomotion-fixture');
     const scene = page.locator('.scene');
     await expect(scene).toHaveAttribute('data-map-model-state', 'ready');
@@ -212,26 +211,28 @@ test('directional clips deform skinned actors from recorded speed and duck on de
           ),
         )
         .toBe(true);
-      const world = await page.evaluate(
-        () =>
-          (
-            window as unknown as {
-              qaHeldMatrices: { floor: number[] | null; held: number[] | null };
-            }
-          ).qaHeldMatrices,
-      );
-      expect(world.floor).not.toBeNull();
-      expect(world.held).not.toBeNull();
-      const view = new Matrix4()
-        .fromArray(world.floor!)
-        .multiply(new Matrix4().makeRotationY(-Math.PI / 2));
-      const actual = new Vector3().setFromMatrixPosition(
-        view.invert().multiply(new Matrix4().fromArray(world.held!)),
-      );
       const source = replay.frames.find((frame) => frame.tick === tick)!.players[0];
-      expect(
-        actual.distanceTo(new Vector3(source.x * 0.0254 + 0.4, 1.3 + expected, 0)),
-      ).toBeLessThan(0.0001);
+      // The camera and the held item are read from separate draws; wait for one frame
+      // in which both are current.
+      await expect
+        .poll(async () => {
+          const world = await page.evaluate(() => {
+            const host = window as unknown as {
+              qaHeldMatrices: { floor: number[] | null; held: number[] | null };
+              qaOriginalCamera: { matrix: number[] };
+            };
+            // The native world's view stands in for the old floor's model-view transform.
+            return { ...host.qaHeldMatrices, floor: host.qaOriginalCamera.matrix };
+          });
+          if (!world.floor?.length || !world.held) return Infinity;
+          const view = new Matrix4()
+            .fromArray(world.floor)
+            .multiply(new Matrix4().makeRotationY(-Math.PI / 2));
+          return new Vector3()
+            .setFromMatrixPosition(view.invert().multiply(new Matrix4().fromArray(world.held)))
+            .distanceTo(new Vector3(source.x * 0.0254 + 0.4, 1.3 + expected, 0));
+        })
+        .toBeLessThan(0.0001);
     };
     await check(16, 0.04);
     await check(80, 0.15);

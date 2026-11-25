@@ -10,7 +10,6 @@ import {
   requiredShaderPrograms,
   shaderNameFromMaterialData,
 } from './shader-preflight.mjs';
-import { exportMapGltf } from './install-map-resources.mjs';
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'cswatch-material-shader-')),
@@ -261,35 +260,5 @@ test('changed material bytes, source escapes or malformed native metadata fail b
     } finally {
       await s.close();
     }
-  }
-});
-
-test('native export remains fatal after complete preflight instead of inferring a cause from asynchronous progress text', async () => {
-  const s = await fixture();
-  try {
-    let exports = 0;
-    await assert.rejects(
-      exportMapGltf({
-        ...s.context,
-        map: 'de_fixture',
-        resource: 'maps/de_fixture.vmap_c',
-        storage: async () => {},
-        execute: async (tool, args, ...rest) => {
-          if (args.includes('--block')) return s.context.execute(tool, args, ...rest);
-          exports++;
-          return {
-            code: 2,
-            stdout:
-              '--- Loading material: materials/previous-success.vmat\nValveResourceFormat.Utils.UnexpectedMagicException: for variable HeaderVersion:0',
-            stderr: '',
-          };
-        },
-      }),
-      /real map and required materials/,
-    );
-    assert.equal(exports, 1);
-    assert.equal(s.commands.length, 1);
-  } finally {
-    await s.close();
   }
 });

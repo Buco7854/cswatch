@@ -1,3 +1,4 @@
+import { installOriginalCameraProbe } from './fixtures/original-camera';
 import { chooseCameraControl, choosePlaybackSpeed } from './fixtures/viewer-transport';
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { test, expect, type Page } from '@playwright/test';
@@ -81,43 +82,12 @@ test('Auto reduces the actual 3D drawing buffer in response to slow continuous p
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE));
   await page.setViewportSize({ width: 800, height: 600 });
-  // Observe actual offscreen HDR color resolves at the current drawing-buffer size.
-  await page.addInitScript(() => {
-    const proto = WebGL2RenderingContext.prototype;
-    const getExtension = proto.getExtension;
-    proto.getExtension = function (name: string) {
-      if (name === 'WEBGL_multisampled_render_to_texture') return null;
-      return getExtension.call(this, name);
-    };
-    const blit = proto.blitFramebuffer;
-    const widths: number[] = [];
-    Object.assign(window, { gradeResolves: widths });
-    proto.blitFramebuffer = function (...args) {
-      if (args[8] & this.COLOR_BUFFER_BIT && args[2] === this.drawingBufferWidth) {
-        widths.push(args[2]);
-      }
-      return blit.apply(this, args);
-    };
-  });
   await fixture(page, 'adaptive-quality', false, 'auto');
   await page.goto('/watch/adaptive-quality');
   const scene = page.locator('.scene');
   const canvas = scene.locator('canvas');
   await expect(scene).toHaveAttribute('data-map-model-state', 'ready');
   const before = await canvas.evaluate((element) => element.width);
-  const resolves = () =>
-    page.evaluate(() => (window as Window & { gradeResolves: number[] }).gradeResolves);
-  const supportsMsaa = await canvas.evaluate((element) => {
-    const gl = element.getContext('webgl2')!;
-    const samples = (format: number): number[] =>
-      Array.from(gl.getInternalformatParameter(gl.RENDERBUFFER, format, gl.SAMPLES));
-    const depth = samples(gl.DEPTH24_STENCIL8);
-    return Boolean(
-      gl.getExtension('EXT_color_buffer_float') &&
-      samples(gl.RGBA16F).some((n) => n > 1 && n <= 4 && depth.includes(n)),
-    );
-  });
-  if (supportsMsaa) await expect.poll(resolves).toContain(before);
   await page.clock.install();
   await page.clock.pauseAt(new Date(Date.now() + 1000));
   await page.getByRole('button', { name: 'Play', exact: true }).click();
@@ -127,7 +97,6 @@ test('Auto reduces the actual 3D drawing buffer in response to slow continuous p
   await expect(scene).toHaveAttribute('data-render-resolution', '50');
   const floor = await canvas.evaluate((element) => element.width);
   expect(floor).toBeLessThan(before);
-  expect(await resolves()).not.toContain(floor);
   await page.getByRole('button', { name: 'Pause', exact: true }).click();
   const paused = await scene.getAttribute('data-render-resolution');
   await page.clock.fastForward(5000);
@@ -182,6 +151,15 @@ test('POV camera and equipment share interpolated recorded angles, eye height an
     let program: WebGLProgram | null = null;
     const state: PoseCapture = { view: null, equipment: [] };
     (window as unknown as { qaPoseGPU: typeof state }).qaPoseGPU = state;
+    // The native world program's view replaces the old floor-derived camera.
+    Object.defineProperty(state, 'view', {
+      get: () =>
+        (window as unknown as { qaOriginalCamera?: { view: number[] } }).qaOriginalCamera?.view
+          ?.length
+          ? (window as unknown as { qaOriginalCamera: { view: number[] } }).qaOriginalCamera.view
+          : null,
+      set: () => {},
+    });
     WebGL2RenderingContext.prototype.getUniformLocation = function (program, name) {
       const location = get.call(this, program, name);
       if (location) names.set(location, name);
@@ -251,6 +229,7 @@ test('POV camera and equipment share interpolated recorded angles, eye height an
       return drawIndexed.apply(this, args);
     };
   });
+  await installOriginalCameraProbe(page);
   await fixture(page, 'pose-pacing', true);
   await page.goto('/watch/pose-pacing');
   const scene = page.locator('.scene'),

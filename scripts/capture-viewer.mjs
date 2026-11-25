@@ -22,7 +22,6 @@ import { frameBreakables } from './graphics/frame-breakables.mjs';
 import { readManagedPack, snapshotManagedPack } from './graphics/managed-pack.mjs';
 import { compareReplayFrame } from './graphics/replay-reference.mjs';
 import { bindViewerResponseBytes, observeViewerNetwork } from './graphics/viewer-network.mjs';
-import { verifyPreparedGlb } from '../tools/assets/prepared-glb.mjs';
 
 const options = Object.fromEntries(
   [
@@ -53,7 +52,7 @@ const { values: o } = parseArgs({
 });
 if (o.help) {
   console.log(
-    'node scripts/capture-viewer.mjs --demo FILE.dem --assets MAP_ASSETS_DIR --player STEAM_ID --tick N --out NEW_DIR [--jobs MAP_JOBS_DIR --catalog MAP_CATALOG_FILE --quality auto|compact|low|high --width W --height H --device-scale DPR --fov V --port PORT --software --reference FILE --max-mae N --play-seconds N --play-camera pov|follow|free --max-p95-ms N --min-display-scale FRACTION --min-intervals N]',
+    'node scripts/capture-viewer.mjs --demo FILE.dem --assets MAP_ASSETS_DIR --player STEAM_ID --tick N --out NEW_DIR [--jobs MAP_JOBS_DIR --catalog MAP_CATALOG_FILE --quality auto|low|high --width W --height H --device-scale DPR --fov V --port PORT --software --reference FILE --max-mae N --play-seconds N --play-camera pov|follow|free --max-p95-ms N --min-display-scale FRACTION --min-intervals N]',
   );
   process.exit(0);
 }
@@ -104,7 +103,7 @@ assert(
   '--min-intervals requires a playback budget',
 );
 const quality = o.quality ?? 'high';
-assert(['auto', 'compact', 'high', 'low'].includes(quality), 'Unsupported quality');
+assert(['auto', 'high', 'low'].includes(quality), 'Unsupported quality');
 const maxMae = o['max-mae'] === undefined ? undefined : numeric('max-mae', 0, 0, 255, false);
 assert(maxMae === undefined || o.reference, '--max-mae requires --reference');
 const { frameAt, defaultSettings } = await tsImport('../frontend/src/playback.ts', import.meta.url);
@@ -402,24 +401,11 @@ try {
   // Adaptation runs only during moving playback. The paused reference uses the preset ceiling.
   assert.equal(shot.status.renderResolution, '100');
   const tier = shot.status.mapTier;
-  assert(['desktop', 'mobile', 'compact'].includes(tier), 'Missing delivered map tier');
-  if (quality === 'compact')
-    assert.equal(tier, 'compact', 'Compact tier was requested but is unavailable');
-  if (quality === 'high' || quality === 'low') {
-    assert.equal(shot.status.quality, quality);
-    assert.notEqual(tier, 'compact', 'Expected detailed map');
-    const preferred = quality === 'high' ? 'desktop' : 'mobile';
-    if (discovery.assets[preferred === 'desktop' ? 'model' : preferred])
-      assert.equal(tier, preferred);
-  }
-  if (tier === 'compact') assert.equal(shot.status.quality, 'low');
-  const modelUrl = discovery.assets[tier === 'desktop' ? 'model' : tier];
+  assert(['desktop', 'phone'].includes(tier), 'Missing delivered texture tier');
+  if (quality === 'high' || quality === 'low') assert.equal(shot.status.quality, quality);
+  const modelUrl = discovery.assets.model;
   const modelSha256 = resources.get(modelUrl);
-  assert(modelSha256, 'Missing delivered map fingerprint');
-  if (shot.status.environmentState === 'ready') {
-    for (const face of discovery.assets.environment?.sky?.faces ?? [])
-      assert(resources.has(face), 'Missing delivered environment face ' + face);
-  }
+  assert(modelSha256, 'Missing delivered native world manifest');
   if (shot.nativePovModel) {
     const id = /^native-([a-z0-9]+)-viewmodel$/.exec(shot.nativePovModel)?.[1];
     assert(
@@ -441,40 +427,11 @@ try {
     assert.deepEqual(mapSource, managed.source, 'Discovery selected a different source');
   }
   assert(/^[A-Za-z0-9_-]{1,80}$/.test(manifest.map));
-  const tierRoot = pack ? join(assets, 'packs', pack, 'maps') : assets;
-  const tierManifest = JSON.parse(
-    await boundedFile(join(tierRoot, manifest.map, tier, 'manifest.json'), 64 * 1024),
-  );
-  assert(
-    tierManifest.map === manifest.map &&
-      tierManifest.tier === tier &&
-      tierManifest.outputSha256 === modelSha256 &&
-      /^[a-f0-9]{64}$/.test(tierManifest.sourceSha256) &&
-      tierManifest.assetVersion,
-    'Rendered map differs from tier manifest',
-  );
-  let parentMobile;
-  if (tier === 'compact') {
-    const folder = join(tierRoot, manifest.map, 'mobile');
-    const parent = JSON.parse(await boundedFile(join(folder, 'manifest.json'), 64 * 1024));
-    const verified = await verifyPreparedGlb(join(folder, 'scene.glb'));
-    assert(
-      parent.map === manifest.map &&
-        parent.tier === 'mobile' &&
-        parent.assetVersion === tierManifest.assetVersion &&
-        parent.outputSha256 === verified.sha256 &&
-        parent.bytes === verified.bytes &&
-        tierManifest.sourceSha256 === verified.sha256 &&
-        tierManifest.sourceBytes === verified.bytes &&
-        /^[a-f0-9]{64}$/.test(parent.sourceSha256),
-      'Compact tier does not match its prepared mobile source',
-    );
-    parentMobile = {
-      modelSha256: verified.sha256,
-      bytes: verified.bytes,
-      sourceSha256: parent.sourceSha256,
-    };
-  }
+  const worldRoot = pack ? join(assets, 'packs', pack, 'maps') : assets;
+  const published = await boundedFile(join(worldRoot, manifest.map, 'map.json'), 16 * 1024 ** 2);
+  assert.equal(digest(published), modelSha256, 'Rendered world differs from the published pack');
+  const world = JSON.parse(published);
+  assert(world.map === manifest.map && /^\d+$/.test(world.sourceManifest), 'Unexpected world');
   await settle();
   assert(scripts.size > 0, 'Missing production application fingerprint');
   const image = shot.image;
@@ -499,9 +456,8 @@ try {
         ? 'viewer-standing-height'
         : 'viewer-height-from-duck',
     modelSha256,
-    sourceSha256: parentMobile?.sourceSha256 ?? tierManifest.sourceSha256,
-    ...(parentMobile && { parentMobile }),
-    assetVersion: tierManifest.assetVersion,
+    textureTier: tier,
+    sourceManifest: world.sourceManifest,
     mapVerification: discovery.verification,
     mapSource,
     packId: pack ?? null,

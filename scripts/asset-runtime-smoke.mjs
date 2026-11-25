@@ -18,6 +18,7 @@ import {
   chmod,
   symlink,
   rename,
+  cp,
 } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -49,6 +50,14 @@ if (process.argv[2] === '--prepare-catalog') {
     JSON.stringify({ schemaVersion: 1, entries: approvals }) + '\n',
     { flag: 'wx', mode: 0o644 },
   );
+  // Original synthetic native worlds for the confined publication checks. The assets image
+  // does not ship test fixtures, so they arrive beside the read-only catalog.
+  const { writeNativeWorld } = await import('../tools/assets/fixtures/native-world.mjs');
+  for (const [map, manifest] of [
+    ...approvals.map((entry) => [entry.identity.map, entry.source.manifest]),
+    ['de_ci_latest', approvals[0].source.manifest],
+  ])
+    writeNativeWorld(join(directory, 'native'), map, manifest);
   await chmod(directory, 0o755);
   await chmod(join(directory, 'catalog.json'), 0o644);
   console.log('Prepared original synthetic CI catalog. No official map source or artwork.');
@@ -76,10 +85,7 @@ const { mapWorkerOptions, lockMapWorker, processOneMapRequest } = await import(
   pathToFileURL(join(root, 'tools/assets/map-worker.mjs')).href
 );
 const { validatePreparedMap } = await import(
-  pathToFileURL(join(root, 'tools/assets/prepared-map-publication.mjs')).href
-);
-const { writeMapTier } = await import(
-  pathToFileURL(join(root, 'tools/assets/map-tier-output.mjs')).href
+  pathToFileURL(join(root, 'tools/assets/native-world-pack.mjs')).href
 );
 const options = mapWorkerOptions(process.env),
   boundary = options.networkDeny;
@@ -438,23 +444,9 @@ assert.equal(
 async function prepareOriginal(output, entry) {
   const map = entry.identity.map,
     assetVersion = entry.assetVersion;
-  const io = new NodeIO();
-  await mkdir(join(output, map), { recursive: true });
-  for (const tier of ['desktop', 'mobile'])
-    await writeMapTier({
-      document: await io.readBinary(model),
-      io,
-      target: join(output, map, tier),
-      map,
-      tier,
-      assetVersion,
-      source: { file: 'original-ci.glb', sha256: hash(model), bytes: model.length },
-      s2v: 'original CI',
-    });
-  const overview = join(output, 'overviews', map),
-    environment = join(output, 'environments', map);
+  await cp(join(dirname(options.catalog), 'native', map), join(output, map), { recursive: true });
+  const overview = join(output, 'overviews', map);
   await mkdir(overview, { recursive: true });
-  await mkdir(environment, { recursive: true });
   await writeFile(join(overview, 'overview.png'), png);
   await writeFile(
     join(overview, 'overview.json'),
@@ -469,23 +461,6 @@ async function prepareOriginal(output, entry) {
     }),
   );
   await writeFile(join(overview, 'provenance.json'), '{}');
-  const faces = {};
-  for (const face of ['px', 'nx', 'py', 'ny', 'pz', 'nz']) {
-    await writeFile(join(environment, `${face}.png`), png);
-    faces[face] = hash(png);
-  }
-  await writeFile(
-    join(environment, 'environment.json'),
-    JSON.stringify({
-      schemaVersion: 2,
-      map,
-      assetVersion,
-      source: 'Original CI pixels, not game content',
-      landscape: false,
-      sky: { brightness: 1, faces },
-    }),
-  );
-  await writeFile(join(environment, 'provenance.json'), '{}');
 }
 const release = await lockMapWorker(options.jobs);
 assert.equal(typeof release, 'function');
@@ -518,7 +493,7 @@ try {
     good.identity.map,
     good.assetVersion,
   );
-  assert.ok(validated.length >= 15);
+  assert.ok(validated.size >= 15);
   assert.equal((await lstat(target)).mode & 0o777, 0o755);
   assert.equal(
     await processOneMapRequest(options, {
@@ -581,10 +556,9 @@ try {
     await processOneMapRequest(options, {
       prepare: async (input) => {
         await prepareOriginal(input.output, broken);
-        await writeFile(
-          join(input.output, 'environments', broken.identity.map, 'px.png'),
-          'corrupt original fixture',
-        );
+        const pack = join(input.output, broken.identity.map);
+        const payload = (await readdir(pack)).find((name) => name.endsWith('.bin'));
+        await writeFile(join(pack, payload), 'corrupt original fixture');
       },
     }),
     true,

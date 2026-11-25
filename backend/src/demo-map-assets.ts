@@ -1,6 +1,5 @@
 import { nativeIndex, nativePayload, nativePayloadName } from './native-map-files.js';
 import { requireMutationRequest } from './request-security.js';
-import { mapGradeFile } from './map-grade-wire.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { MapAssets } from '../../shared/map-assets.js';
@@ -39,10 +38,8 @@ import {
   retryLatestMapRequest,
 } from './map-jobs.js';
 import type { mapAssetRoutes } from './map-assets.js';
-import { environmentFaces } from './map-environment.js';
-import { mapModelFileRoutes } from './map-model-files.js';
 import type { MapAssetLocation } from './map-asset-location.js';
-const emptyAssets: MapAssets = { model: null, mobile: null, overview: null, environment: null };
+const emptyAssets: MapAssets = { model: null, overview: null };
 const packLocation = (c: Config, packId: string): MapAssetLocation => ({
   root: c.mapAssetsDir,
   parts: ['packs', packId, 'maps'],
@@ -301,9 +298,7 @@ export async function demoMapAssetRoutes(
     // Automatic mode never quietly substitutes a same-name/current map pack.
     if (!enabled && /^[a-zA-Z0-9_-]{1,80}$/.test(demo.map || '')) {
       const assets = await repository.describe(demo.map);
-      const renderable = Boolean(
-        assets.model || assets.mobile || assets.compact || assets.overview,
-      );
+      const renderable = Boolean(assets.model || assets.overview);
       return {
         resolution,
         acquisition: 'disabled',
@@ -490,11 +485,6 @@ export async function demoMapAssetRoutes(
     if (name && (await latestReadyPack(id.data, name))) return packLocation(c, id.data);
     throw new HttpError(404, 'Map pack not found.');
   };
-  await mapModelFileRoutes(app, c.mapAssetsDir, {
-    url: '/api/map-packs/:packId/models/*',
-    resolveLocation: readyLocation,
-    authorize: livePrincipals,
-  });
   app.get<{ Params: { packId: string; name: string } }>(
     '/api/map-packs/:packId/maps/:name',
     async (request) => {
@@ -510,32 +500,6 @@ export async function demoMapAssetRoutes(
       livePrincipals(request);
       if (!item) throw new HttpError(404, 'Map overview not found.');
       return reply.header('Cache-Control', 'private, no-store').type('image/png').send(item.image);
-    },
-  );
-  app.get<{ Params: { packId: string; name: string } }>(
-    `/api/map-packs/:packId/maps/:name/environment/${mapGradeFile}`,
-    async (request, reply) => {
-      const location = await readyLocation(request);
-      const item = await repository.loadEnvironment(request.params.name, location);
-      livePrincipals(request);
-      if (!item?.gradeLut) throw new HttpError(404, 'Map grading LUT not found.');
-      return reply
-        .header('Cache-Control', 'private, no-store')
-        .type('application/octet-stream')
-        .send(item.gradeLut);
-    },
-  );
-  app.get<{ Params: { packId: string; name: string; face: string } }>(
-    '/api/map-packs/:packId/maps/:name/environment/:face.png',
-    async (request, reply) => {
-      const location = await readyLocation(request);
-      if (!environmentFaces.includes(request.params.face as (typeof environmentFaces)[number]))
-        throw new HttpError(404, 'Map environment not found.');
-      const item = await repository.loadEnvironment(request.params.name, location);
-      livePrincipals(request);
-      const image = item?.images[request.params.face as (typeof environmentFaces)[number]];
-      if (!image) throw new HttpError(404, 'Map environment not found.');
-      return reply.header('Cache-Control', 'private, no-store').type('image/png').send(image);
     },
   );
 }

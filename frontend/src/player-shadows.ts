@@ -23,7 +23,7 @@ import {
   type Texture,
   type WebGLRenderer,
 } from 'three';
-import type { MapSun } from './map-sun';
+import type { MapSun } from './actor-sun';
 
 const size = 1536;
 // A normal-mapped surface can face away from the sun even when the source

@@ -1,28 +1,24 @@
 import { selectOptionsCategory } from './fixtures/viewer-options';
 import { accountStatus, configForSyntheticAccount } from './fixtures/account-status';
 import { chooseSelectOption } from './fixtures/select-control';
-import { installMapBreakableProbe, renderedMapBreakables } from './fixtures/map-breakables';
 import { chooseCameraControl, expectCameraControl } from './fixtures/viewer-transport';
 import { fulfillReplayFixture, replayFixture } from './fixtures/streamed-replay';
 import { manualMapAssets } from './fixtures/map-assets';
+import { nativeMap } from './fixtures/native-map';
 import { installMemberWorkspace, memberUser } from './fixtures/member-workspace';
 import { installOriginalCameraProbe, originalFloorPixel } from './fixtures/original-camera';
 import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
 import {
-  originalMapGLB,
-  originalMapReplay,
   originalEnvironmentPNG,
-  originalEnvironmentReplay,
+  originalMapReplay,
   originalOverviewPNG,
   qaActor,
   qaMap,
   qaOverview,
-  qaEnvironment,
 } from './fixtures/original-map';
 import type { MapAssets } from '../../shared/map-assets';
 
-const image = originalOverviewPNG(),
-  model = originalMapGLB();
+const image = originalOverviewPNG();
 async function install(
   page: Page,
   assets: MapAssets,
@@ -43,6 +39,8 @@ async function install(
     id = options.id || 'original-map-fixture';
   let discoveries = 0,
     models = 0;
+  const world = nativeMap(map);
+  const resolved = assets.model ? { ...assets, model: world.model(id) } : assets;
   await page.addInitScript(
     ({ theme, crosshair, language, quality, renderResolution }) => {
       localStorage.setItem('theme', theme);
@@ -88,16 +86,15 @@ async function install(
   );
   await page.route(`**/api/demos/${id}/map-assets`, (route) => {
     discoveries++;
-    return route.fulfill({ json: manualMapAssets(assets) });
+    return route.fulfill({ json: manualMapAssets(resolved) });
   });
   await page.route(`**/api/maps/${map}/overview.png`, (route) =>
     options.image ? options.image(route) : route.fulfill({ contentType: 'image/png', body: image }),
   );
-  await page.route(`**/map-assets/${map}/**`, (route) => {
+  await world.route(page);
+  await page.route(`**/api/demos/${id}/world/**/map.json`, (route) => {
     models++;
-    return options.model
-      ? options.model(route)
-      : route.fulfill({ contentType: 'model/gltf-binary', body: model });
+    return options.model ? options.model(route) : route.fallback();
   });
   await page.route('**/api/assets/agents', (route) =>
     route.fulfill({ json: { ct: null, t: null } }),
@@ -117,6 +114,33 @@ async function open(page: Page, id = 'original-map-fixture') {
   await expect(page.locator('.timeline-slider')).toBeVisible();
   return response;
 }
+/** Report matching compressed texture extensions as unavailable, before the app's first context. */
+async function hideTextureExtensions(page: Page, hidden: RegExp) {
+  await page.addInitScript((source) => {
+    const pattern = new RegExp(source);
+    const gl = WebGL2RenderingContext.prototype;
+    const getExtension = gl.getExtension;
+    gl.getExtension = function (name: string) {
+      return pattern.test(name) ? null : getExtension.call(this, name);
+    } as typeof getExtension;
+  }, hidden.source);
+}
+for (const [language, message] of [
+  ['en', 'This device lacks the texture support needed for 3D'],
+  ['fr', 'Cet appareil ne prend pas en charge les textures nécessaires à la 3D'],
+] as const)
+  for (const theme of ['light', 'dark'])
+    test(`without BC or ASTC textures the viewer shows the 2D map and explains why (${language}, ${theme})`, async ({
+      page,
+    }) => {
+      test.skip(Boolean(process.env.E2E_PRIVATE));
+      await install(page, { model: 'native', overview: qaOverview }, { language, theme });
+      await hideTextureExtensions(page, /^(EXT_texture_compression_|WEBGL_compressed_texture_)/);
+      await open(page);
+      await expect(page.locator('.viewer-map-status')).toHaveText(message);
+      await expect(page.locator('.scene')).not.toHaveAttribute('data-map-tier', /./);
+      await expect(page.locator('.tactical-plot')).toBeVisible();
+    });
 async function setRendererEvidence(page: Page, adapter: string) {
   await page.addInitScript((adapter) => {
     Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 2 });
@@ -133,41 +157,6 @@ async function setRendererEvidence(page: Page, adapter: string) {
     };
   }, adapter);
 }
-for (const profile of [
-  { adapter: 'ANGLE (NVIDIA GeForce RTX 4060)', device: 'hardware', tier: 'desktop' },
-  { adapter: 'ANGLE (Google, Vulkan SwiftShader Device)', device: 'software', tier: 'compact' },
-  { adapter: 'ANGLE (Intel(R) Iris Xe Graphics)', device: 'integrated', tier: 'mobile' },
-  { adapter: 'WebKit WebGL', device: 'unknown', tier: 'mobile' },
-]) {
-  test(`Auto starts with the ${profile.tier} map for ${profile.device} renderer evidence`, async ({
-    page,
-  }) => {
-    test.skip(Boolean(process.env.E2E_PRIVATE));
-    await page.setViewportSize({ width: 1280, height: 720 });
-    await setRendererEvidence(page, profile.adapter);
-    const paths: string[] = [];
-    page.on('request', (request) => {
-      const path = new URL(request.url()).pathname;
-      if (path.startsWith(`/map-assets/${qaMap}/`)) paths.push(path);
-    });
-    await install(
-      page,
-      {
-        model: `/map-assets/${qaMap}/desktop/scene.glb`,
-        mobile: `/map-assets/${qaMap}/mobile/scene.glb`,
-        compact: `/map-assets/${qaMap}/compact/scene.glb`,
-        overview: qaOverview,
-      },
-      { quality: 'auto' },
-    );
-    await open(page);
-    const scene = page.locator('.scene');
-    await expect(scene).toHaveAttribute('data-render-device', profile.device);
-    await expect(scene).toHaveAttribute('data-map-tier', profile.tier);
-    await expect(scene).toHaveAttribute('data-map-model-state', 'ready');
-    expect(paths).toEqual([`/map-assets/${qaMap}/${profile.tier}/scene.glb`]);
-  });
-}
 
 test.describe('dense displays', () => {
   test.use({ deviceScaleFactor: 3 });
@@ -180,15 +169,17 @@ test.describe('dense displays', () => {
     await install(
       page,
       {
-        model: `/map-assets/${qaMap}/desktop/scene.glb`,
-        mobile: `/map-assets/${qaMap}/mobile/scene.glb`,
-        compact: `/map-assets/${qaMap}/compact/scene.glb`,
+        model: 'native',
         overview: qaOverview,
       },
       { quality: 'auto' },
     );
+    await hideTextureExtensions(
+      page,
+      /^(EXT_texture_compression_(bptc|rgtc)|WEBGL_compressed_texture_s3tc)/,
+    );
     await open(page);
-    await expect(page.locator('.scene')).toHaveAttribute('data-map-tier', 'mobile');
+    await expect(page.locator('.scene')).toHaveAttribute('data-map-tier', 'phone');
     await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
     const buffer = () =>
       page.locator('.scene canvas').evaluate((el) => {
@@ -208,7 +199,7 @@ test.describe('dense displays', () => {
     await page.getByRole('button', { name: 'Options', exact: true }).click();
     await selectOptionsCategory(page, 'Performance');
     await chooseSelectOption(page, 'Rendering quality', 'High · shadows, higher resolution');
-    await expect(page.locator('.scene')).toHaveAttribute('data-map-tier', 'desktop');
+    await expect(page.locator('.scene')).toHaveAttribute('data-map-tier', 'phone');
     await expect.poll(buffer).toEqual([1170, 1200]);
     await page.setViewportSize({ width: 1280, height: 720 });
     // Wide and narrow layouts have independent saved quality preferences.
@@ -227,7 +218,7 @@ test.describe('dense displays', () => {
     replay.frames[1].tick = 6400;
     await install(
       page,
-      { model: null, mobile: `/map-assets/${qaMap}/mobile/scene.glb`, overview: null },
+      { model: null, model: 'native', overview: null },
       { quality: 'auto', renderResolution: 50, playback: replay },
     );
     await open(page);
@@ -265,7 +256,7 @@ test.describe('dense displays', () => {
     }));
     const fixture = await install(
       page,
-      { model: null, mobile: `/map-assets/${qaMap}/mobile/scene.glb`, overview: null },
+      { model: null, model: 'native', overview: null },
       { quality: 'auto', playback: replay },
     );
     const { manifest, chunks } = await replayFixture(replay);
@@ -364,36 +355,6 @@ async function expectRadarCompositing(page: Page, radar: Locator) {
     ).toBeLessThanOrEqual(3);
 }
 
-async function centerPixel(page: Page) {
-  const pixels = await page.locator('.scene canvas').screenshot();
-  return page.evaluate(
-    async (bytes) => {
-      const bitmap = await createImageBitmap(
-        new Blob([new Uint8Array(bytes)], { type: 'image/png' }),
-      );
-      const surface = new OffscreenCanvas(bitmap.width, bitmap.height),
-        context = surface.getContext('2d')!;
-      context.drawImage(bitmap, 0, 0);
-      const pixel = Array.from(
-        context.getImageData(Math.floor(bitmap.width / 2), Math.floor(bitmap.height / 2), 1, 1)
-          .data,
-      ).slice(0, 3);
-      bitmap.close();
-      return pixel;
-    },
-    [...pixels],
-  );
-}
-
-async function installSky(page: Page, body: (face: number, route: Route) => Promise<void>) {
-  await page.route(`**/api/maps/${qaMap}/environment/*.png`, (route) => {
-    const face = ['px', 'nx', 'py', 'ny', 'pz', 'nz'].indexOf(
-      new URL(route.request().url()).pathname.split('/').pop()!.replace('.png', ''),
-    );
-    return body(face, route);
-  });
-}
-
 test('original QA overview aligns players, utility and radar across desktop, tablet, phone and both themes', async ({
   page,
 }, info) => {
@@ -406,11 +367,7 @@ test('original QA overview aligns players, utility and radar across desktop, tab
       { width: 390, height: 844 },
     ]) {
       await page.setViewportSize(size);
-      const requests = await install(
-        page,
-        { model: `/map-assets/${qaMap}/desktop/scene.glb`, mobile: null, overview: qaOverview },
-        { theme },
-      );
+      const requests = await install(page, { model: 'native', overview: qaOverview }, { theme });
       await open(page);
       const radar = page.locator('.position-radar');
       await expect(radar).toHaveAttribute('data-map-image-state', 'ready');
@@ -476,8 +433,7 @@ test('the radar crops the playable bounds without changing recorded positions on
   await install(
     page,
     {
-      model: `/map-assets/${qaMap}/desktop/scene.glb`,
-      mobile: null,
+      model: 'native',
       overview: qaOverview,
     },
     { playback },
@@ -515,11 +471,7 @@ test('a real 3D map without an overview omits the compact radar and explains una
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE));
   for (const theme of ['dark', 'light']) {
-    await install(
-      page,
-      { model: `/map-assets/${qaMap}/desktop/scene.glb`, mobile: null, overview: null },
-      { theme },
-    );
+    await install(page, { model: 'native', overview: null }, { theme });
     await open(page);
     await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
     await expect(page.locator('.position-radar')).toHaveCount(0);
@@ -544,11 +496,7 @@ test('known and unknown map names without instance packs show localized unavaila
     ['de_unknown_qa', 'fr'],
   ]) {
     const id = 'missing-' + language;
-    await install(
-      page,
-      { model: null, mobile: null, overview: null },
-      { id, map, language, theme: 'light' },
-    );
+    await install(page, { model: null, overview: null }, { id, map, language, theme: 'light' });
     await open(page, id);
     await expect(
       page.getByRole('status', {
@@ -571,11 +519,7 @@ test('the same library link keeps its position and keyboard focus through demo p
   test.skip(Boolean(process.env.E2E_PRIVATE) || Boolean(process.env.E2E_SETUP));
   await installMemberWorkspace(page);
   const id = 'member-design-0';
-  await install(
-    page,
-    { model: null, mobile: null, overview: null },
-    { id, map: 'de_cache', language: 'fr' },
-  );
+  await install(page, { model: null, overview: null }, { id, map: 'de_cache', language: 'fr' });
   let ready = false;
   await page.route('**/api/demos/' + id, (route) =>
     ready
@@ -587,7 +531,7 @@ test('the same library link keeps its position and keyboard focus through demo p
     await discovery.promise;
     await route.fulfill({
       json: {
-        ...manualMapAssets({ model: null, mobile: null, overview: null }),
+        ...manualMapAssets({ model: null, overview: null }),
         resolution: {
           status: 'latest',
           selection: {
@@ -649,7 +593,7 @@ test('discovery and overview image decoding keep recorded markers hidden until a
     raster = new Promise<void>((resolve) => (revealImage = resolve));
   await install(
     page,
-    { model: null, mobile: null, overview: qaOverview },
+    { model: null, overview: qaOverview },
     {
       image: async (route) => {
         await raster;
@@ -660,7 +604,7 @@ test('discovery and overview image decoding keep recorded markers hidden until a
   await page.route('**/api/demos/original-map-fixture/map-assets', async (route) => {
     await descriptor;
     await route.fulfill({
-      json: manualMapAssets({ model: null, mobile: null, overview: qaOverview }),
+      json: manualMapAssets({ model: null, overview: qaOverview }),
     });
   });
   await page.goto('/watch/original-map-fixture');
@@ -687,7 +631,7 @@ test('failed3D without an overview and noWebGL without an overview expose distin
   test.skip(Boolean(process.env.E2E_PRIVATE));
   await install(
     page,
-    { model: `/map-assets/${qaMap}/desktop/scene.glb`, mobile: null, overview: null },
+    { model: 'native', overview: null },
     {
       model: (route) =>
         route.fulfill({
@@ -797,11 +741,7 @@ test('recorded world equipment shares radar calibration and survives seeking wit
   await page.route('**/api/assets/equipment/*.png', (route) =>
     route.fulfill({ contentType: 'image/png', body: originalEnvironmentPNG(0) }),
   );
-  await install(
-    page,
-    { model: `/map-assets/${qaMap}/desktop/scene.glb`, mobile: null, overview: qaOverview },
-    { playback, theme: 'light' },
-  );
+  await install(page, { model: 'native', overview: qaOverview }, { playback, theme: 'light' });
   await open(page);
   const radar = page.locator('.position-radar');
   await expect(radar.locator('.tactical-item[data-kind="dropped"]')).toHaveAttribute(
@@ -855,164 +795,11 @@ test('recorded world equipment shares radar calibration and survives seeking wit
   await expect(page.locator('.viewer-frame')).toBeInViewport();
 });
 
-test('3D map readiness waits for an actual GLB and a failed map retries without removing the scene or overview', async ({
-  page,
-}, info) => {
-  test.skip(Boolean(process.env.E2E_PRIVATE));
-  let release: () => void = () => {},
-    good = false;
-  const gate = new Promise<void>((resolve) => (release = resolve));
-  const assets = {
-    model: `/map-assets/${qaMap}/desktop/scene.glb`,
-    mobile: null,
-    overview: qaOverview,
-  };
-  const requests = await install(page, assets, {
-    model: async (route) => {
-      if (!good) await gate;
-      await route.fulfill({
-        contentType: 'model/gltf-binary',
-        body: good ? model : Buffer.from('Explicit original QA bad GLB'),
-      });
-    },
-  });
-  await page.goto('/watch/original-map-fixture');
-  await expect(page.locator('.viewer-map-loading [role="status"]')).toHaveText('Loading 3D map…');
-  await expect(page.getByRole('slider', { name: 'Playback position' })).toHaveCount(0);
-  await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'pending');
-  release();
-  await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'error');
-  await expect(page.locator('.viewer-map-status')).toHaveText('3D failed');
-  await expect(page.locator('.viewer-map-loading')).toHaveCount(0);
-  const canvas = page.locator('.scene canvas');
-  await expect(canvas).toHaveCount(0);
-  await expect(page.locator('.tactical-plot')).toHaveAttribute('data-map-image-state', 'ready');
-  await expect(page.locator('.position-radar')).toHaveCount(0);
-  const failed = await page.locator('.viewer-stage').screenshot();
-  good = true;
-  await page.getByRole('link', { name: 'Back to home', exact: true }).click();
-  await expect(page.locator('.viewer-frame')).toHaveCount(0);
-  await page.goBack();
-  await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
-  await expect(page.locator('.viewer-map-status')).toHaveText('3D map');
-  await page.waitForTimeout(150);
-  expect(
-    (await page.locator('.viewer-stage').screenshot()).equals(failed),
-    'The valid original GLB must change real rendered scene pixels',
-  ).toBe(false);
-  expect(requests.models).toBe(2);
-  await page.screenshot({ path: info.outputPath('original-QA-real-loaded-GLB.png') });
-});
-
-test('map loading shows measured byte progress and waits for decoded textures', async ({
-  page,
-}) => {
-  test.skip(Boolean(process.env.E2E_PRIVATE));
-  await install(
-    page,
-    { model: `/map-assets/${qaMap}/desktop/scene.glb`, mobile: null, overview: qaOverview },
-    {
-      model: (route) =>
-        route.fulfill({
-          contentType: 'model/gltf-binary',
-          body: originalMapGLB(false, 'webp'),
-        }),
-    },
-  );
-  await page.addInitScript(() => {
-    const gates = {
-      start: Promise.withResolvers<void>(),
-      finish: Promise.withResolvers<void>(),
-      decode: Promise.withResolvers<void>(),
-    };
-    Object.assign(window, {
-      advanceOriginalMap: (stage: keyof typeof gates) => gates[stage].resolve(),
-    });
-    const fetch = window.fetch;
-    window.fetch = async (input, options) => {
-      const response = await fetch(input, options);
-      const url = input instanceof Request ? input.url : input.toString();
-      if (!url.endsWith('/scene.glb')) return response;
-      const bytes = new Uint8Array(await response.arrayBuffer());
-      const halfway = Math.ceil(bytes.length / 2);
-      return new Response(
-        new ReadableStream({
-          async start(controller) {
-            await gates.start.promise;
-            controller.enqueue(bytes.subarray(0, halfway));
-            await gates.finish.promise;
-            controller.enqueue(bytes.subarray(halfway));
-            controller.close();
-          },
-        }),
-        { headers: { 'Content-Length': String(bytes.length) } },
-      );
-    };
-    const decode = window.createImageBitmap;
-    window.createImageBitmap = async (...args: Parameters<typeof decode>) => {
-      if (args[0] instanceof Blob) await gates.decode.promise;
-      return decode(...args);
-    };
-  });
-  const advance = (stage: 'start' | 'finish' | 'decode') =>
-    page.evaluate((next) => {
-      (window as unknown as { advanceOriginalMap: (stage: string) => void }).advanceOriginalMap(
-        next,
-      );
-    }, stage);
-  await page.goto('/watch/original-map-fixture');
-  const download = page.getByRole('progressbar', { name: 'Loading 3D map…' });
-  await expect(download).toBeVisible();
-  expect(await download.getAttribute('aria-valuenow')).toBeNull();
-  await advance('start');
-  await expect(download).toHaveAttribute('aria-valuenow', '50');
-  await expect(page.locator('.viewer-loading-percent')).toHaveText('50%');
-  await expect(page.getByRole('slider', { name: 'Playback position' })).toHaveCount(0);
-  await advance('finish');
-  const preparing = page.getByRole('progressbar', { name: 'Preparing 3D map…' });
-  await expect(preparing).toBeVisible();
-  expect(await preparing.getAttribute('aria-valuenow')).toBeNull();
-  await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'pending');
-  await advance('decode');
-  await expect(page.locator('.viewer-map-loading')).toHaveCount(0);
-  await expect(page.locator('.scene[data-map-model-state="ready"] canvas')).toBeVisible();
-});
-
-test('high quality accepts an installed mobile-only GLB and no WebGL still shows the aligned map overview', async ({
-  page,
-}) => {
-  test.skip(Boolean(process.env.E2E_PRIVATE));
-  await install(page, {
-    model: null,
-    mobile: `/map-assets/${qaMap}/mobile/scene.glb`,
-    overview: qaOverview,
-  });
-  await open(page);
-  await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
-  await expect(page.locator('.viewer-map-status')).toHaveText('3D map');
-  await page.addInitScript(() => {
-    const original = HTMLCanvasElement.prototype.getContext;
-    HTMLCanvasElement.prototype.getContext = function (type: string, ...args: unknown[]) {
-      if (type === 'webgl' || type === 'webgl2' || type === 'experimental-webgl') return null;
-      return Reflect.apply(original, this, [type, ...args]);
-    } as typeof original;
-  });
-  await page.reload();
-  await expect(page.locator('.tactical-plot')).toHaveAttribute('data-map-image-state', 'ready');
-  await expect(page.locator('.tactical-plot image')).toHaveAttribute('href', qaOverview.image);
-  await expect(page.locator('.viewer-map-status')).toHaveText('3D unavailable');
-  await expect(page.locator('.position-radar')).toHaveCount(0);
-});
-
 test('an explicit camera retries failed WebGL and stale same-map context events leave its HUD intact', async ({
   page,
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE));
-  await install(
-    page,
-    { model: `/map-assets/${qaMap}/desktop/scene.glb`, mobile: null, overview: qaOverview },
-    { crosshair: true },
-  );
+  await install(page, { model: 'native', overview: qaOverview }, { crosshair: true });
   await page.addInitScript(() => {
     const original = HTMLCanvasElement.prototype.getContext,
       failed = new Set<HTMLCanvasElement>();
@@ -1066,251 +853,6 @@ test('an explicit camera retries failed WebGL and stale same-map context events 
   await expect(page.locator('.viewer-crosshair')).toBeVisible();
 });
 
-test.describe('touch camera recovery', () => {
-  test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } });
-
-  test('Auto uses Compact on a software-rendered phone and retries a detailed map if it fails', async ({
-    page,
-  }) => {
-    test.skip(Boolean(process.env.E2E_PRIVATE));
-    let failCompact = false;
-    const requests: string[] = [];
-    await install(
-      page,
-      {
-        model: `/map-assets/${qaMap}/desktop/scene.glb`,
-        mobile: `/map-assets/${qaMap}/mobile/scene.glb`,
-        compact: `/map-assets/${qaMap}/compact/scene.glb`,
-        overview: qaOverview,
-      },
-      {
-        quality: 'auto',
-        model: (route) => {
-          const path = new URL(route.request().url()).pathname;
-          requests.push(path);
-          return route.fulfill({
-            contentType: 'model/gltf-binary',
-            body:
-              failCompact && path.includes('/compact/')
-                ? Buffer.from('Invalid compact GLB')
-                : model,
-          });
-        },
-      },
-    );
-    await open(page);
-    await expect(
-      page.locator('.scene[data-map-tier="compact"][data-map-model-state="ready"] canvas'),
-    ).toBeVisible();
-    expect(requests).toEqual([`/map-assets/${qaMap}/compact/scene.glb`]);
-    const cameraPicker = page.getByRole('combobox', { name: 'Camera mode' });
-    await cameraPicker.tap();
-    await page.getByRole('option', { name: 'Player perspective', exact: true }).tap();
-    await expect(page.locator('.scene[data-camera-mode="pov"] canvas')).toBeVisible();
-    await expect(page.locator('.position-radar')).toBeVisible();
-
-    failCompact = true;
-    requests.length = 0;
-    await page.reload();
-    await expect(
-      page.locator('.scene[data-map-tier="mobile"][data-map-model-state="ready"] canvas'),
-    ).toBeVisible();
-    await expect(page.locator('.tactical-plot')).toHaveCount(0);
-    expect(requests).toEqual([
-      `/map-assets/${qaMap}/compact/scene.glb`,
-      `/map-assets/${qaMap}/mobile/scene.glb`,
-    ]);
-  });
-
-  test('an explicit 3D camera retries a failed phone map and keeps the actual view selected', async ({
-    page,
-  }) => {
-    test.skip(Boolean(process.env.E2E_PRIVATE));
-    let available = false;
-    const requests = await install(
-      page,
-      { model: null, mobile: `/map-assets/${qaMap}/mobile/scene.glb`, overview: qaOverview },
-      {
-        model: (route) =>
-          route.fulfill({
-            contentType: 'model/gltf-binary',
-            body: available ? model : Buffer.from('Original QA bad mobile GLB'),
-          }),
-      },
-    );
-    await open(page);
-    const picker = page.getByRole('combobox', { name: 'Camera mode', exact: true });
-    const slider = page.getByRole('slider', { name: 'Playback position' });
-    const choose = async (name: string) => {
-      await picker.tap();
-      await page.getByRole('option', { name, exact: true }).tap();
-    };
-    await expect(page.locator('.tactical-plot')).toBeVisible();
-    await expect(page.locator('.viewer-map-status')).toBeVisible();
-    expect(await page.locator('.viewer-map-status').evaluate((status) => status.scrollWidth)).toBe(
-      await page.locator('.viewer-map-status').evaluate((status) => status.clientWidth),
-    );
-    await slider.fill('128');
-    await expect(picker).toHaveText('2D map fallback');
-    await choose('Player perspective');
-    await expect(page.locator('.tactical-plot')).toBeVisible();
-    await expect(picker).toHaveText('2D map fallback');
-    expect(requests.models).toBe(2);
-
-    available = true;
-    await choose('Player perspective');
-    await expect(page.locator('.scene[data-camera-mode="pov"] canvas')).toBeVisible();
-    await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
-    await expect(page.locator('.tactical-plot')).toHaveCount(0);
-    await expect(picker).toHaveText('Player perspective');
-    await expect(slider).toHaveValue('128');
-    expect(requests.models).toBe(3);
-    await choose('2D tactical · low power');
-    await expect(page.locator('.tactical-plot')).toBeVisible();
-    await choose('Overhead');
-    await expect(page.locator('.scene[data-camera-mode="tactical"] canvas')).toBeVisible();
-    await expect(page.locator('.position-radar')).toBeVisible();
-    expect(requests.models).toBe(3);
-  });
-});
-
-test('imported engine light intensity cannot wash out the original map material colors', async ({
-  page,
-}, info) => {
-  test.skip(Boolean(process.env.E2E_PRIVATE));
-  let engineLight = false;
-  await install(
-    page,
-    {
-      model: `/map-assets/${qaMap}/desktop/scene.glb`,
-      mobile: null,
-      overview: qaOverview,
-    },
-    {
-      model: (route) =>
-        route.fulfill({
-          contentType: 'model/gltf-binary',
-          body: originalMapGLB(engineLight),
-        }),
-    },
-  );
-  await open(page);
-  await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
-  const canvas = page.locator('.scene canvas');
-  const unlitImport = await canvas.screenshot();
-  const coloredPixels = await page.evaluate(
-    async (bytes) => {
-      const bitmap = await createImageBitmap(
-        new Blob([new Uint8Array(bytes)], { type: 'image/png' }),
-      );
-      const surface = new OffscreenCanvas(bitmap.width, bitmap.height);
-      const context = surface.getContext('2d')!;
-      context.drawImage(bitmap, 0, 0);
-      const pixels = context.getImageData(0, 0, bitmap.width, bitmap.height).data;
-      let green = 0;
-      for (let i = 0; i < pixels.length; i += 4)
-        if (
-          pixels[i + 1] > 60 &&
-          pixels[i + 1] > pixels[i] * 1.07 &&
-          pixels[i + 1] > pixels[i + 2] * 1.03
-        )
-          green++;
-      bitmap.close();
-      return green;
-    },
-    [...unlitImport],
-  );
-  expect(
-    coloredPixels,
-    'The original green map material must remain visibly colored',
-  ).toBeGreaterThan(1000);
-  engineLight = true;
-  await page.reload();
-  await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
-  expect(
-    (await canvas.screenshot()).equals(unlitImport),
-    'Adding an exported 2049-intensity Source light must not change viewer-owned lighting',
-  ).toBe(true);
-  await page.screenshot({ path: info.outputPath('original-QA-imported-light-neutralized.png') });
-});
-
-test('embedded WebP map textures render under production CSP and missing required textures cannot report ready', async ({
-  page,
-}, info) => {
-  test.skip(Boolean(process.env.E2E_PRIVATE));
-  await page.addInitScript(() => {
-    const fetch = window.fetch.bind(window);
-    window.fetch = (resource, options) => {
-      const url = resource instanceof Request ? resource.url : String(resource);
-      if (url.startsWith('blob:')) throw new Error('Embedded map images should decode directly');
-      return fetch(resource, options);
-    };
-  });
-  let broken = true;
-  const cspErrors: string[] = [];
-  page.on('console', (message) => {
-    if (message.text().includes('Content Security Policy')) cspErrors.push(message.text());
-  });
-  const requests = await install(
-    page,
-    {
-      model: `/map-assets/${qaMap}/desktop/scene.glb`,
-      mobile: null,
-      overview: qaOverview,
-    },
-    {
-      model: (route) =>
-        route.fulfill({
-          contentType: 'model/gltf-binary',
-          body: originalMapGLB(false, broken ? 'broken' : 'webp'),
-        }),
-    },
-  );
-  const response = await open(page);
-  expect(response?.headers()['content-security-policy']).toMatch(/connect-src\s+[^;]*blob:/);
-  await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'error');
-  await expect(page.locator('.viewer-map-status')).toHaveText('3D failed');
-  await expect(page.locator('.scene canvas')).toHaveCount(0);
-  await expect(page.locator('.tactical-plot')).toHaveAttribute('data-map-image-state', 'ready');
-  broken = false;
-  await page.getByRole('link', { name: 'Back to home', exact: true }).click();
-  await expect(page.locator('.viewer-frame')).toHaveCount(0);
-  await page.goBack();
-  await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
-  const pixels = await page.locator('.scene canvas').screenshot();
-  const colors = await page.evaluate(
-    async (bytes) => {
-      const bitmap = await createImageBitmap(
-        new Blob([new Uint8Array(bytes)], { type: 'image/png' }),
-      );
-      const surface = new OffscreenCanvas(bitmap.width, bitmap.height);
-      const context = surface.getContext('2d')!;
-      context.drawImage(bitmap, 0, 0);
-      const pixels = context.getImageData(0, 0, bitmap.width, bitmap.height).data;
-      let red = 0,
-        blue = 0;
-      for (let i = 0; i < pixels.length; i += 4) {
-        if (pixels[i] > 60 && pixels[i] > pixels[i + 2] * 1.5) red++;
-        if (pixels[i + 2] > 60 && pixels[i + 2] > pixels[i] * 1.5) blue++;
-      }
-      bitmap.close();
-      return { red, blue };
-    },
-    [...pixels],
-  );
-  expect(
-    colors.red,
-    'Embedded original red texture pixels must reach the rendered map',
-  ).toBeGreaterThan(1000);
-  expect(
-    colors.blue,
-    'Embedded original blue texture pixels must reach the rendered map',
-  ).toBeGreaterThan(1000);
-  expect(cspErrors).toEqual([]);
-  expect(requests.models).toBe(2);
-  await page.screenshot({ path: info.outputPath('original-QA-WebP-textured-map.png') });
-});
-
 test('overview image failure stays explicit and a new viewer retries updated calibration instead of a negative cache', async ({
   page,
 }) => {
@@ -1319,7 +861,6 @@ test('overview image failure stays explicit and a new viewer retries updated cal
     version = 'original-QA-v1';
   const assets = {
     model: null,
-    mobile: null,
     overview: {
       ...qaOverview,
       get assetVersion() {
@@ -1360,7 +901,7 @@ test('switching demos clears the old map image before delayed discovery resolves
   page,
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE));
-  await install(page, { model: null, mobile: null, overview: qaOverview });
+  await install(page, { model: null, overview: qaOverview });
   const nextMap = 'de_other_original_map_qa',
     nextId = 'other-original-map-fixture';
   const nextOverview = {
@@ -1370,17 +911,13 @@ test('switching demos clears the old map image before delayed discovery resolves
     scale: 4,
     assetVersion: 'original-QA-other-calibration',
   };
-  await install(
-    page,
-    { model: null, mobile: null, overview: nextOverview },
-    { map: nextMap, id: nextId },
-  );
+  await install(page, { model: null, overview: nextOverview }, { map: nextMap, id: nextId });
   let release: () => void = () => {};
   const gate = new Promise<void>((resolve) => (release = resolve));
   await page.route(`**/api/demos/${nextId}/map-assets`, async (route) => {
     await gate;
     await route.fulfill({
-      json: manualMapAssets({ model: null, mobile: null, overview: nextOverview }),
+      json: manualMapAssets({ model: null, overview: nextOverview }),
     });
   });
   await open(page);
@@ -1403,262 +940,7 @@ test('switching demos clears the old map image before delayed discovery resolves
   );
 });
 
-test('original sky cube waits for all faces, preserves cardinal and asymmetric rays, and ignores the HUD theme', async ({
-  page,
-}, info) => {
-  test.skip(Boolean(process.env.E2E_PRIVATE));
-  let release: () => void = () => {};
-  const gate = new Promise<void>((resolve) => (release = resolve));
-  await install(
-    page,
-    {
-      model: `/map-assets/${qaMap}/desktop/scene.glb`,
-      mobile: null,
-      overview: qaOverview,
-      environment: qaEnvironment,
-    },
-    { playback: originalEnvironmentReplay() },
-  );
-  await installSky(page, async (face, route) => {
-    if (face === 0) await gate;
-    await route.fulfill({ contentType: 'image/png', body: originalEnvironmentPNG(face) });
-  });
-  const response = await open(page);
-  expect(response?.headers()['content-security-policy']).toMatch(/img-src\s+[^;]*'self'/);
-  await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
-  await expect(page.locator('.scene')).toHaveAttribute('data-environment-state', 'pending');
-  await expect(page.locator('.viewer-map-status')).toHaveText('3D map · loading sky…');
-  release();
-  await expect(page.locator('.scene')).toHaveAttribute('data-environment-state', 'ready');
-  await camera(page, 'Player perspective');
-  // Standard Three loaded-cube semantics flip X: +X samples nx; other axes keep their slot.
-  const expected = [
-    [false, true, false],
-    [true, false, false],
-    [false, true, true],
-    [true, false, true],
-    [false, false, true],
-    [true, true, false],
-  ];
-  for (let index = 0; index < expected.length; index++) {
-    await page.locator('.timeline-slider').fill(String(index * 64));
-    await expect
-      .poll(async () => (await centerPixel(page)).map((channel) => channel > 100), {
-        message: `Original cube cardinal ray ${index}`,
-      })
-      .toEqual(expected[index]);
-  }
-  await page.locator('.timeline-slider').fill('384');
-  await expect
-    .poll(async () => (await centerPixel(page)).every((channel) => channel > 150))
-    .toBe(true);
-  await page.locator('.timeline-slider').fill('448');
-  await expect
-    .poll(async () => (await centerPixel(page)).map((channel) => channel > 100))
-    .toEqual([false, true, false]);
-  await page.locator('.timeline-slider').fill('512');
-  await expect
-    .poll(async () => (await centerPixel(page)).every((channel) => channel < 50))
-    .toBe(true);
-  await page.locator('.timeline-slider').fill('0');
-  const dark = await centerPixel(page);
-  await page.evaluate(() => (document.documentElement.dataset.theme = 'light'));
-  expect(await centerPixel(page)).toEqual(dark);
-  await page.screenshot({ path: info.outputPath('original-QA-sky-cube-light-HUD.png') });
-});
-
-test('failed sky stays separate from map readiness and retries a new version with recorded brightness', async ({
-  page,
-}, info) => {
-  test.skip(Boolean(process.env.E2E_PRIVATE));
-  let broken = true;
-  const assets = {
-    model: `/map-assets/${qaMap}/desktop/scene.glb`,
-    mobile: null,
-    overview: qaOverview,
-    environment: qaEnvironment,
-  };
-  await install(page, assets, { playback: originalEnvironmentReplay() });
-  await installSky(page, async (face, route) =>
-    route.fulfill(
-      broken && face === 0
-        ? { status: 404, body: 'Original QA absent cube face' }
-        : { contentType: 'image/png', body: originalEnvironmentPNG(face) },
-    ),
-  );
-  await open(page);
-  await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
-  await expect(page.locator('.scene')).toHaveAttribute('data-environment-state', 'error');
-  await expect(page.locator('.viewer-map-status')).toHaveText('3D map · sky unavailable');
-  await expect(page.locator('.scene canvas')).toBeVisible();
-  await expect(page.locator('.position-radar')).toHaveAttribute('data-map-image-state', 'ready');
-  broken = false;
-  assets.environment = {
-    ...qaEnvironment,
-    assetVersion: 'original-qa-sky-v2',
-    sky: { ...qaEnvironment.sky, brightness: 0.25 },
-  };
-  await page.getByRole('link', { name: 'Back to home', exact: true }).click();
-  await expect(page.locator('.viewer-frame')).toHaveCount(0);
-  await page.goBack();
-  await expect(page.locator('.scene')).toHaveAttribute(
-    'data-environment-version',
-    'original-qa-sky-v2',
-  );
-  await expect(page.locator('.scene')).toHaveAttribute('data-environment-state', 'ready');
-  await camera(page, 'Player perspective');
-  const dim = await centerPixel(page);
-  assets.environment = {
-    ...assets.environment,
-    assetVersion: 'original-qa-sky-v3',
-    sky: { ...qaEnvironment.sky, brightness: 1 },
-  };
-  await page.getByRole('link', { name: 'Back to home', exact: true }).click();
-  await expect(page.locator('.viewer-frame')).toHaveCount(0);
-  await page.goBack();
-  await expect(page.locator('.scene')).toHaveAttribute(
-    'data-environment-version',
-    'original-qa-sky-v3',
-  );
-  await expect(page.locator('.scene')).toHaveAttribute('data-environment-state', 'ready');
-  const bright = await centerPixel(page);
-  expect(bright[1], 'Recorded brightness must affect actual sky pixels').toBeGreaterThan(
-    dim[1] + 15,
-  );
-  await page.screenshot({ path: info.outputPath('original-QA-sky-recovery.png') });
-});
-
-test('graded sky and world resolve once across POV, follow, free camera and resize', async ({
-  page,
-}) => {
-  test.skip(Boolean(process.env.E2E_PRIVATE));
-  await page.addInitScript(() => {
-    const gl = WebGL2RenderingContext.prototype;
-    // Exercise the standard WebGL2 resolve path even on implementations with implicit resolves.
-    const extension = gl.getExtension;
-    gl.getExtension = function (name: string) {
-      return name === 'WEBGL_multisampled_render_to_texture' ? null : extension.call(this, name);
-    } as typeof extension;
-    const blit = gl.blitFramebuffer;
-    const draw = gl.drawArrays;
-    let count = 0;
-    gl.blitFramebuffer = function (...args) {
-      if (
-        args[0] === 0 &&
-        args[1] === 0 &&
-        args[2] === this.drawingBufferWidth &&
-        args[3] === this.drawingBufferHeight &&
-        args[8] === this.COLOR_BUFFER_BIT
-      )
-        count++;
-      return blit.apply(this, args);
-    };
-    gl.drawArrays = function (mode, start, vertices) {
-      if (
-        mode === this.TRIANGLES &&
-        vertices === 3 &&
-        !this.getParameter(this.DRAW_FRAMEBUFFER_BINDING)
-      ) {
-        if (this.canvas instanceof HTMLCanvasElement) {
-          const scene = this.canvas.closest<HTMLElement>('.scene[data-landscape-state="ready"]');
-          if (scene)
-            this.canvas.dataset.qaGradeFrame = `${scene.dataset.cameraMode}/${this.drawingBufferWidth}x${this.drawingBufferHeight}/${count}`;
-        }
-        count = 0;
-      }
-      return draw.call(this, mode, start, vertices);
-    };
-  });
-  await page.setViewportSize({ width: 800, height: 480 });
-  await install(
-    page,
-    { model: `/map-assets/${qaMap}/desktop/scene.glb`, mobile: null, overview: qaOverview },
-    {
-      model: (route) =>
-        route.fulfill({
-          contentType: 'model/gltf-binary',
-          body: originalMapGLB(false, undefined, 'tagged'),
-        }),
-    },
-  );
-  await open(page);
-  for (const [width, height] of [
-    [800, 480],
-    [860, 500],
-  ]) {
-    await page.setViewportSize({ width, height });
-    await expect(page.locator('.scene canvas')).toHaveAttribute(
-      'data-qa-grade-frame',
-      `pov/${width}x${height}/1`,
-    );
-  }
-  for (const [label, mode] of [
-    ['Third-person follow', 'follow'],
-    ['Free camera', 'orbit'],
-  ]) {
-    await camera(page, label);
-    await expect(page.locator('.scene canvas')).toHaveAttribute(
-      'data-qa-grade-frame',
-      `${mode}/860x500/1`,
-    );
-  }
-});
-
-test('tagged original landscape stays behind main geometry even when it is physically closer to the camera', async ({
-  page,
-}, info) => {
-  test.skip(Boolean(process.env.E2E_PRIVATE));
-  let tagged = false;
-  await installOriginalCameraProbe(page);
-  await install(
-    page,
-    { model: `/map-assets/${qaMap}/desktop/scene.glb`, mobile: null, overview: qaOverview },
-    {
-      model: (route) =>
-        route.fulfill({
-          contentType: 'model/gltf-binary',
-          body: originalMapGLB(false, undefined, tagged ? 'tagged' : 'untagged'),
-        }),
-    },
-  );
-  await open(page);
-  await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
-  await expect(page.locator('.scene')).toHaveAttribute('data-landscape-state', 'missing');
-  await camera(page, 'Overhead');
-  await expect
-    .poll(
-      async () => {
-        const pixel = await originalFloorPixel(page);
-        return pixel[2] > pixel[1] * 1.8;
-      },
-      { message: 'Untagged nearer original blue geometry must occlude the green floor' },
-    )
-    .toBe(true);
-  tagged = true;
-  await page.getByRole('link', { name: 'Back to home', exact: true }).click();
-  await expect(page.locator('.viewer-frame')).toHaveCount(0);
-  // New document clears the positive model cache because this fixture intentionally changes bytes at one URL.
-  await page.goBack();
-  await page.reload();
-  await expect(page.locator('.scene')).toHaveAttribute('data-landscape-state', 'ready');
-  await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
-  await camera(page, 'Overhead');
-  await expect
-    .poll(
-      async () => {
-        const pixel = await originalFloorPixel(page);
-        return pixel[1] > pixel[2] + 5;
-      },
-      {
-        message:
-          'The same nearer blue geometry tagged as native sky must draw behind the main green floor',
-      },
-    )
-    .toBe(true);
-  await page.screenshot({ path: info.outputPath('original-QA-landscape-behind-main.png') });
-});
-
-test('paused viewer stops native rendering and camera, held keys, POV seeks and loaded sky explicitly request frames', async ({
+test('paused viewer stops native rendering and camera, held keys and POV seeks explicitly request frames', async ({
   page,
 }) => {
   test.skip(Boolean(process.env.E2E_PRIVATE));
@@ -1670,21 +952,9 @@ test('paused viewer stops native rendering and camera, held keys, POV seeks and 
       return clear.call(this, mask);
     };
   });
-  let release: () => void = () => {};
-  const gate = new Promise<void>((resolve) => (release = resolve));
-  await install(
-    page,
-    {
-      model: `/map-assets/${qaMap}/desktop/scene.glb`,
-      mobile: null,
-      overview: qaOverview,
-      environment: qaEnvironment,
-    },
-    { playback: originalEnvironmentReplay() },
-  );
-  await installSky(page, async (face, route) => {
-    await gate;
-    await route.fulfill({ contentType: 'image/png', body: originalEnvironmentPNG(face) });
+  await install(page, {
+    model: 'native',
+    overview: qaOverview,
   });
   const catalogs = {
     '/api/assets/agents': { ct: null, t: null },
@@ -1773,72 +1043,4 @@ test('paused viewer stops native rendering and camera, held keys, POV seeks and 
   await page.locator('.timeline-slider').fill('64');
   await expect.poll(frames).toBeGreaterThan(before);
   await idle();
-  before = await frames();
-  release();
-  await expect(page.locator('.scene')).toHaveAttribute('data-environment-state', 'ready');
-  await expect.poll(frames).toBeGreaterThan(before);
-  await expect
-    .poll(async () => (await centerPixel(page)).map((value) => value > 100))
-    .toEqual([true, false, false]);
-  await idle();
 });
-
-for (const kind of ['prop_dynamic', 'func_breakable'] as const) {
-  test(`a recorded ${kind} opens absent, returns at the round reset and restores on rewind`, async ({
-    page,
-  }) => {
-    if (process.env.E2E_PRIVATE) {
-      await configForSyntheticAccount(page);
-      await page.route('**/api/auth/me', (route) =>
-        route.fulfill({ json: accountStatus({ ...memberUser, role: 'member' }) }),
-      );
-    }
-    const pose = {
-      modelId: '7001',
-      origin: [3.28125, 5, 7] as [number, number, number],
-      angles: [0, 90, 0] as [number, number, number],
-    };
-    const replay = originalMapReplay();
-    replay.mapBreakables = [
-      {
-        ...pose,
-        ...(kind === 'func_breakable'
-          ? { className: kind }
-          : { poseCodec: 'cell32-angle20' as const }),
-        hidden: [[192, 384]],
-      },
-    ];
-    replay.rounds.push({ number: 2, tick: 384 });
-    const mesh = originalMapGLB(false, undefined, undefined, undefined, false, {
-      cswatchBreakable: {
-        ...pose,
-        hammerId: '44',
-        className: kind,
-        ...(kind === 'prop_dynamic' && { origin: [3.279175, 5, 7] }),
-        model: 'models/original.vmdl',
-      },
-    });
-    await installMapBreakableProbe(page);
-    const { id } = await install(
-      page,
-      { model: `/map-assets/${qaMap}/desktop/scene.glb`, mobile: null, overview: qaOverview },
-      {
-        playback: replay,
-        model: (r) => r.fulfill({ contentType: 'model/gltf-binary', body: mesh }),
-      },
-    );
-    await page.goto('/watch/' + id + '?tick=256');
-    await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
-    await expect.poll(() => renderedMapBreakables(page)).toEqual({ '44': false });
-    for (const [tick, visible] of [
-      [384, true],
-      [191, true],
-      [192, false],
-      [383, false],
-      [384, true],
-    ] as const) {
-      await page.locator('.timeline-slider').fill(String(tick));
-      await expect.poll(() => renderedMapBreakables(page)).toEqual({ '44': visible });
-    }
-  });
-}

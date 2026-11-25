@@ -2,27 +2,22 @@ import { useContext, useLayoutEffect, useMemo, useRef, type ReactNode } from 're
 import { createPortal, useFrame } from '@react-three/fiber';
 import { PerspectiveCamera, Scene, Vector3, type DirectionalLight } from 'three';
 import { NativePasses } from '../world/frame-context';
-import { beginFinalGradePass } from '../map-grade-target';
 import { renderPovEquipment, updatePovCamera } from '../pov-render';
 import { povFar, povNear } from '../pov-camera';
-import SceneLighting from './SceneLighting';
-import type { MapSun } from '../map-sun';
-import type { followObstruction } from '../follow-obstruction';
+import SampleLighting from './SampleLighting';
+import type { MapSun } from '../actor-sun';
+import type { SceneTrace } from '../world/queries';
 
 /** Dedicated first-person depth pass for both authored rigs and static equipment. */
 export default function PovEquipmentPass({
-  hasSky,
   sample,
   sun,
-  skylight,
   trace,
   children,
 }: {
-  hasSky: boolean;
   sample: boolean;
   sun: MapSun | null;
-  skylight: boolean;
-  trace: ReturnType<typeof followObstruction> | null;
+  trace: SceneTrace | null;
   children: ReactNode;
 }) {
   const native = useContext(NativePasses);
@@ -76,23 +71,14 @@ export default function PovEquipmentPass({
     }
     const exposure = sunlight?.(camera.position) ?? 1;
     if (directional.current) directional.current.intensity = (sample ? 3.5 : 1.8) * exposure;
-    renderPovEquipment(
-      gl,
-      scene,
-      equipment,
-      worldCamera,
-      camera,
-      hasSky,
-      0.72 + 0.28 * exposure,
-      () => beginFinalGradePass(gl),
-    );
+    renderPovEquipment(gl, scene, equipment, worldCamera, camera, 0.72 + 0.28 * exposure);
   }, 2);
   return createPortal(
     <>
       {native ? (
         <directionalLight ref={directional} />
       ) : (
-        <SceneLighting sample={sample} sun={sun} skylight={skylight} directionalRef={directional} />
+        <SampleLighting directionalRef={directional} />
       )}
       {children}
     </>,

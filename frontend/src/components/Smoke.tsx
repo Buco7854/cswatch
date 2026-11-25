@@ -5,8 +5,7 @@ import { Color, Group, PerspectiveCamera, Vector3 } from 'three';
 import type { SmokeTrack } from '../../../shared/smoke-state.mjs';
 import type { UtilityZone } from '../utility-state';
 import type { Playback } from '../types';
-import type { MapSun } from '../map-sun';
-import { MapGradeContext } from '../map-grade';
+import type { MapSun } from '../actor-sun';
 import { useReducedMotion } from '../reduced-motion';
 import { useSmokeDensity } from '../smoke-render-state';
 import {
@@ -22,8 +21,6 @@ import {
   type SmokeSample,
 } from '../smoke-field';
 import { SmokeVolumePass, type SmokeDraw, type SmokeSunTrace } from '../smoke-volume';
-
-const luminance = (c: Color) => c.r * 0.2126 + c.g * 0.7152 + c.b * 0.0722;
 
 function VolumePass({
   draws,
@@ -47,10 +44,6 @@ function VolumePass({
   const group = useMemo(() => new Group(), []);
   const pass = useMemo(() => new SmokeVolumePass(group, sun, sunTrace), [group, sun, sunTrace]);
   const { gl, invalidate } = useThree();
-  const authoredSun = useContext(MapGradeContext)?.lighting?.sun;
-  // Use a bounded fraction of the authored sun's additional scene-linear energy.
-  const addedSun = authoredSun ? luminance(new Color(...authoredSun)) - 1.8 / Math.PI : 0;
-  const sceneLightScale = 1 + 0.35 * Math.min(2, Math.max(0, addedSun));
   const available = useRef(true);
   useLayoutEffect(() => {
     labelSmoke.current = available.current ? draws : [];
@@ -92,7 +85,7 @@ function VolumePass({
     const prepare = (framebuffer?: WebGLFramebuffer) => {
       const ready =
         camera instanceof PerspectiveCamera &&
-        pass.render(gl, scene, camera, draws, color, low, xray, sceneLightScale, framebuffer);
+        pass.render(gl, scene, camera, draws, color, low, xray, 1, framebuffer);
       if (available.current === ready) return;
       if (!ready) pass.hide();
       available.current = ready;

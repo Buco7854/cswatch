@@ -30,13 +30,15 @@ if (french) {
   document.querySelector('#sky-label')!.textContent = 'Décor 3D';
   document.querySelector('#fog-label')!.textContent = 'Brouillard';
   select.ariaLabel = 'Mode de rendu';
-  canvas.ariaLabel = 'Caméra libre Mirage';
+  canvas.ariaLabel = 'Caméra libre';
   document.querySelector('aside')!.textContent =
     'ZQSD ou WASD · Glisser pour regarder · E pour monter';
   stats.textContent = 'Chargement…';
 }
 select.add(new Option(french ? 'Identifiant matériau' : 'Material ID', '7'));
-if (params.get('view') === 'material-id') select.value = '7';
+const view = params.get('view');
+if (view === 'material-id') select.value = '7';
+else if (view && /^[0-6]$/.test(view)) select.value = view;
 const parse = (text: string | null, fallback: number[]) => {
   const v = text?.split(',').map(Number);
   return v?.length === fallback.length && v.every(Number.isFinite) ? v : fallback;

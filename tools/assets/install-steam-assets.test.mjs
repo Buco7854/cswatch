@@ -16,9 +16,7 @@ import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
-import { writeOriginalMapTier } from './fixtures/original-map-tier.mjs';
 import { triangle } from './fixtures/embedded-glb.mjs';
-import { authoredFog, invalidFogCases } from './fixtures/fog-cases.mjs';
 import { prepareOverview } from './prepare-overview.mjs';
 import { installSteamAssets, runAssetProcess } from './install-steam-assets.mjs';
 import {
@@ -294,7 +292,25 @@ test('only an enabled selected-map reference permits one exact prefab package an
     { selector: sky.file + ':materials/sky.vmat_c', bytes: 12 },
   ]);
   assert.throws(() => dependencyBatch(pending, 'de_other', { packageFile: sky.file }));
+  // A top-level 3D sky companion extends the map's name after its mode prefix.
+  assert.deepEqual(skyPrefabPackage('de_fixture', 'maps/de_fixture_3dskybox.vmap'), {
+    file: 'game/csgo/maps/de_fixture_3dskybox.vpk',
+    resource: 'maps/de_fixture_3dskybox.vmap_c',
+  });
+  assert.equal(
+    skyPrefabPackage('ar_fixture', 'maps/fy_fixture_sky.vmap').file,
+    'game/csgo/maps/fy_fixture_sky.vpk',
+  );
+  assert.equal(selectedSkyPrefabFile('de_fixture', 'game/csgo/maps/de_fixture_3dskybox.vpk'), true);
+  assert.equal(selectedSkyPrefabFile('de_other', 'game/csgo/maps/de_fixture_3dskybox.vpk'), false);
+  assert.throws(() =>
+    dependencyBatch(pending, 'de_other', { packageFile: 'game/csgo/maps/de_fixture_3dskybox.vpk' }),
+  );
   for (const name of [
+    'maps/de_other_3dskybox.vmap',
+    'maps/de_fixture.vmap',
+    'maps/de_fixturesky.vmap',
+    'maps/sub/de_fixture_sky.vmap',
     'maps/prefabs/de_other/sky.vmap',
     'maps/prefabs/de_fixture/../sky.vmap',
     'maps/prefabs/de_fixture/sky.vmap_c',

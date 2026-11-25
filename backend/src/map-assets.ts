@@ -15,8 +15,7 @@ import {
   regularFile,
   withDirectory,
 } from './map-asset-files.js';
-import { mapEnvironmentAssets } from './map-environment.js';
-import { openMapModel } from './map-model-files.js';
+import { openMapModel } from './model-files.js';
 import { manualMapLocation, type MapAssetLocation } from './map-asset-location.js';
 
 export const overviewLimits = {
@@ -60,7 +59,6 @@ export async function mapAssetRoutes(
   dataRoot: string,
   defaultLocation = manualMapLocation(dataRoot),
 ) {
-  const loadEnvironment = mapEnvironmentAssets(app, dataRoot, defaultLocation);
   const cache = new Map<
     string,
     {
@@ -167,9 +165,7 @@ export async function mapAssetRoutes(
     ]);
     return {
       model: world ? world.hash : null,
-      mobile: null,
       overview: overview?.overview ?? null,
-      environment: null,
     };
   };
   app.get<{ Params: { name: string } }>('/api/maps/:name', async (request, reply) => {
@@ -192,5 +188,5 @@ export async function mapAssetRoutes(
       t: (await hasGlb(defaultLocation, parts, 't.glb')) ? '/map-assets/agents/t.glb' : null,
     };
   });
-  return { describe, loadOverview, loadEnvironment, defaultLocation };
+  return { describe, loadOverview, defaultLocation };
 }

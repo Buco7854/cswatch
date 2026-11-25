@@ -1,9 +1,10 @@
 import { chooseCameraControl } from './fixtures/viewer-transport';
+import { nativeMap } from './fixtures/native-map';
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { manualMapAssets } from './fixtures/map-assets';
 import { originalOverviewPNG, qaOverview } from './fixtures/original-map';
 import { expect, test, type Page } from '@playwright/test';
-import { originalMapGLB, originalMapReplay } from './fixtures/original-map';
+import { originalMapReplay } from './fixtures/original-map';
 import { originalAgentGLB, originalAnimatedAgentGLB } from './fixtures/original-agent';
 
 async function camera(page: Page, name: string) {
@@ -56,15 +57,12 @@ async function install(page: Page, badT = false) {
   await page.route('**/api/demos/agent-fixture/map-assets', (route) =>
     route.fulfill({
       json: manualMapAssets({
-        model: `/map-assets/${replay.map}/desktop/scene.glb`,
-        mobile: null,
+        model: nativeMap(replay.map).model('agent-fixture'),
         overview: { ...qaOverview, image: `/api/maps/${replay.map}/overview.png` },
       }),
     }),
   );
-  await page.route(`**/map-assets/${replay.map}/desktop/scene.glb`, (route) =>
-    route.fulfill({ contentType: 'model/gltf-binary', body: originalMapGLB() }),
-  );
+  await nativeMap(replay.map).route(page);
   await page.route('**/api/assets/equipment-models', (route) =>
     route.fulfill({ json: { schemaVersion: 1, items: {} } }),
   );
@@ -199,7 +197,8 @@ test('skinned original native-axis agents release cloned bone textures on POV re
       let blue = 0,
         green = 0;
       for (let i = 0; i < pixels.length; i += 4) {
-        if (pixels[i] < 100 && pixels[i + 1] < 100 && pixels[i + 2] > 180) blue++;
+        // The native map grade maps the original blue material to about (26, 39, 180).
+        if (pixels[i] < 100 && pixels[i + 1] < 100 && pixels[i + 2] > 150) blue++;
         // ACES maps the original green material to approximately(142,224,103).
         // Channel contrast distinguishes it from the neutral/gray-green courtyard.
         if (

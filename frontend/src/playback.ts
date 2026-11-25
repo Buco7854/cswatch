@@ -120,7 +120,7 @@ export type ViewerSettings = {
   soundUtility: boolean;
   soundObjectives: boolean;
   soundRounds: boolean;
-  quality: 'auto' | 'compact' | 'low' | 'high';
+  quality: 'auto' | 'low' | 'high';
 };
 export const defaultSettings: ViewerSettings = {
   xray: true,
@@ -213,7 +213,7 @@ export function readSettings(mobile = false): ViewerSettings {
           (Number.isInteger(saved[k]) &&
             saved[k] >= RENDER_RESOLUTION_MIN &&
             saved[k] <= RENDER_RESOLUTION_MAX)) &&
-        (k !== 'quality' || ['auto', 'compact', 'low', 'high'].includes(saved[k])) &&
+        (k !== 'quality' || ['auto', 'low', 'high'].includes(saved[k])) &&
         (k !== 'lookSensitivity' ||
           (Number.isFinite(saved[k]) && saved[k] >= 0.25 && saved[k] <= 2)) &&
         (k !== 'freeCameraSpeed' ||

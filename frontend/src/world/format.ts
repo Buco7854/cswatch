@@ -96,7 +96,7 @@ export interface Manifest {
   phone: {
     arrays: Bank[];
     specials: Record<string, Texture>;
-    rgbm: Record<string, number>;
+    hdr: Record<string, number>;
     lightmaps: Record<string, string>;
     volumes: Record<string, { shadow: string; shadowBase: number }>;
   };

@@ -179,7 +179,7 @@ export function validate(value) {
     !Array.isArray(p.arrays) ||
     p.arrays.length !== m.arrays.length ||
     !p.specials ||
-    !p.rgbm ||
+    !p.hdr ||
     !p.lightmaps ||
     !p.volumes
   )
@@ -203,8 +203,8 @@ export function validate(value) {
     for (const mip of 'mips' in texture ? texture.mips : texture.levels) phoneBytes += mip.size;
     if (phoneBytes > 512 * MiB) throw Error('Phone texture allocation budget exceeded');
   }
-  for (const [name, range] of Object.entries(p.rgbm))
-    if (!p.specials[name] || !(range > 0 && range <= 64)) throw Error('Invalid phone RGBM range');
+  for (const [name, range] of Object.entries(p.hdr))
+    if (!p.specials[name] || !(range > 0 && range <= 64)) throw Error('Invalid phone HDR range');
   for (const env of m.environments)
     if (p.specials[p.lightmaps[env.world]]?.levels.at(-1).d !== 3)
       throw Error('Invalid phone lightmap atlas');

@@ -28,7 +28,7 @@ export function actorLighting(renderer: WebGLRenderer, native: NativeRenderer) {
     actorGridMin: { value: new Vector3(...env.spatial.min) },
     actorGridInv: { value: new Vector3(...env.spatial.invStep) },
     actorVolumeLayers: { value: new Vector4(...env.volumeLayers) },
-    actorRgbm: { value: env.rgbm[2] },
+    actorHdr: { value: env.hdr[2] },
   };
   const patched = new Map<Material, () => void>();
   function bind(material: Material) {

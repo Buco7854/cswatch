@@ -1,9 +1,10 @@
 import { chooseCameraControl } from './fixtures/viewer-transport';
+import { nativeMap } from './fixtures/native-map';
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { manualMapAssets } from './fixtures/map-assets';
 import { originalOverviewPNG, qaOverview } from './fixtures/original-map';
 import { expect, test, type Page, type Route } from '@playwright/test';
-import { originalMapGLB, qaActor } from './fixtures/original-map';
+import { qaActor } from './fixtures/original-map';
 import {
   originalEquipmentCatalog,
   originalEquipmentGLB,
@@ -75,15 +76,12 @@ async function install(
   await page.route('**/api/demos/equipment-model-fixture/map-assets', (route) =>
     route.fulfill({
       json: manualMapAssets({
-        model: `/map-assets/${replay.map}/desktop/scene.glb`,
-        mobile: null,
+        model: nativeMap(replay.map).model('equipment-model-fixture'),
         overview: { ...qaOverview, image: `/api/maps/${replay.map}/overview.png` },
       }),
     }),
   );
-  await page.route(`**/map-assets/${replay.map}/desktop/scene.glb`, (route) =>
-    route.fulfill({ contentType: 'model/gltf-binary', body: originalMapGLB() }),
-  );
+  await nativeMap(replay.map).route(page);
   await page.route(`**/api/maps/${replay.map}/overview.png`, (route) =>
     route.fulfill({ contentType: 'image/png', body: originalOverviewPNG() }),
   );

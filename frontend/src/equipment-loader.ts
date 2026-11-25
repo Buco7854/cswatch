@@ -3,7 +3,7 @@ import { useLayoutEffect, useMemo } from 'react';
 import { useLoader } from '@react-three/fiber';
 import { Loader, LoadingManager } from 'three';
 import { ModelCache } from './model-cache';
-import { equipmentModelResources, retainEquipmentModel } from './map-model-resources';
+import { equipmentModelResources, retainEquipmentModel } from './model-resources';
 
 import { packEquipmentJoints } from './equipment-geometry';
 import { loadScopedGLTF } from './scoped-gltf-loader';

@@ -37,7 +37,7 @@ async function operatorMaps(
   const found = [];
   for (const map of [...names].sort()) {
     const assets = await describe(map);
-    if (assets.model || assets.mobile || assets.compact || assets.overview) found.push({ map });
+    if (assets.model || assets.overview) found.push({ map });
   }
   return found;
 }

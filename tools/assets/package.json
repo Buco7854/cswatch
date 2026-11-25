@@ -3,7 +3,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "prepare-map": "node prepare-map.mjs",
     "prepare-equipment": "node prepare-equipment.mjs",
     "prepare-overview": "node prepare-overview.mjs",
     "install-steam": "node install-steam-assets.mjs",

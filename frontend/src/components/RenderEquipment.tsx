@@ -22,13 +22,13 @@ import type {
   EquipmentModelTransform,
 } from '../../../shared/equipment-models';
 import type { Position } from '../types';
-import type { followObstruction } from '../follow-obstruction';
+import type { SceneTrace } from '../world/queries';
 import type { PresentItem } from '../item-state';
 import { itemPose } from '../item-state';
 import { equipmentIconKey } from '../equipment-icons';
 import { useEquipmentGLTF, useEquipmentScope } from '../equipment-loader';
 import type { ModelScope } from '../model-cache';
-import { assertMapBaseColorTextures } from '../map-model';
+import { assertBaseColorTextures } from '../model-textures';
 import { EquipmentMuzzle, useEquipmentFire } from './EquipmentFire';
 
 export type EquipmentInstanceStatus = 'pending' | 'ready' | 'error';
@@ -77,7 +77,7 @@ function LoadedEquipment({
       // The native model contains the off-hand lighter on a separate skin branch.
       instance.getObjectByName('weapon_hand_l')?.scale.setScalar(0);
     }
-    assertMapBaseColorTextures({ scene: instance, parser: gltf.parser });
+    assertBaseColorTextures({ scene: instance, parser: gltf.parser });
     return instance;
   }, [gltf, asset.model, projectile]);
   useEffect(() => () => disposeEquipmentInstance(model), [model]);
@@ -309,13 +309,7 @@ export type PovEquipmentProps = {
   alpha: number;
   timing?: PoseTiming;
 };
-function WorldEquipment({
-  item,
-  floor,
-}: {
-  item: PresentItem;
-  floor: ReturnType<typeof followObstruction> | null;
-}) {
+function WorldEquipment({ item, floor }: { item: PresentItem; floor: SceneTrace | null }) {
   const context = useContext(EquipmentModels);
   const trace = useMemo(
     () => (item.kind !== 'projectile' ? floor?.fork(0) : undefined),
@@ -363,7 +357,7 @@ export function RecordedEquipment({
   floor,
 }: {
   items: PresentItem[];
-  floor: ReturnType<typeof followObstruction> | null;
+  floor: SceneTrace | null;
 }) {
   return items.map((item) => <WorldEquipment key={item.id} item={item} floor={floor} />);
 }

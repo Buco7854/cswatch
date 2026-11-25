@@ -2,23 +2,22 @@ import type { Page } from '@playwright/test';
 
 type CameraView = {
   position: number[];
+  view: number[];
   matrix: number[];
   projection: number[];
   drawingBuffer: number[];
 };
 
-/** Observe the actual rendered camera through the original QA floor's draw,
+/** Observe the actual rendered camera through the native world program's own uniforms,
  * without depending on React/Three private instance fields or test app hooks. */
 export async function installOriginalCameraProbe(page: Page) {
   await page.addInitScript(() => {
     const locations = new WeakMap<WebGLUniformLocation, string>();
     const programs = new WeakMap<WebGL2RenderingContext, WebGLProgram | null>();
-    const matrices = new WeakMap<WebGLProgram, number[]>();
-    const worldMatrices = new WeakMap<WebGLProgram, number[]>();
-    const viewMatrices = new WeakMap<WebGLProgram, number[]>();
-    const projections = new WeakMap<WebGLProgram, number[]>();
+    const eyes = new WeakMap<WebGLProgram, number[]>();
     const capture = {
       position: [] as number[],
+      view: [] as number[],
       matrix: [] as number[],
       projection: [] as number[],
       drawingBuffer: [] as number[],
@@ -26,8 +25,37 @@ export async function installOriginalCameraProbe(page: Page) {
     (window as unknown as { qaOriginalCamera: typeof capture }).qaOriginalCamera = capture;
     const location = WebGL2RenderingContext.prototype.getUniformLocation;
     const matrix = WebGL2RenderingContext.prototype.uniformMatrix4fv;
+    const vector = WebGL2RenderingContext.prototype.uniform3fv;
     const use = WebGL2RenderingContext.prototype.useProgram;
-    const draw = WebGL2RenderingContext.prototype.drawArrays;
+    // Column-major 4x4 product a * b.
+    const multiply = (a: number[], b: number[]) =>
+      Array.from({ length: 16 }, (_, index) => {
+        const row = index % 4,
+          column = index - row;
+        return [0, 1, 2, 3].reduce((sum, k) => sum + a[k * 4 + row] * b[column + k], 0);
+      });
+    // General 4x4 inverse by cofactors, column-major.
+    const invert = (m: number[]) => {
+      const out = new Array<number>(16);
+      for (let i = 0; i < 16; i++) {
+        const row = i % 4,
+          column = Math.floor(i / 4);
+        const minor = [0, 1, 2, 3]
+          .filter((r) => r !== column)
+          .map((r) => [0, 1, 2, 3].filter((c) => c !== row).map((c) => m[c * 4 + r]));
+        const det3 =
+          minor[0][0] * (minor[1][1] * minor[2][2] - minor[1][2] * minor[2][1]) -
+          minor[0][1] * (minor[1][0] * minor[2][2] - minor[1][2] * minor[2][0]) +
+          minor[0][2] * (minor[1][0] * minor[2][1] - minor[1][1] * minor[2][0]);
+        out[i] = ((row + column) % 2 ? -1 : 1) * det3;
+      }
+      const det = m[0] * out[0] + m[1] * out[4] + m[2] * out[8] + m[3] * out[12];
+      return out.map((x) => x / det);
+    };
+    const inch = 1 / 0.0254;
+    // Viewer metres (Y up) to Source inches (Z up), and the original map root's +90 degree Y turn.
+    const viewerToSource = [inch, 0, 0, 0, 0, 0, inch, 0, 0, -inch, 0, 0, 0, 0, 0, 1];
+    const mapRoot = [0, 0, -1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1];
     WebGL2RenderingContext.prototype.getUniformLocation = function (program, name) {
       const value = location.call(this, program, name);
       if (value) locations.set(value, name);
@@ -37,49 +65,51 @@ export async function installOriginalCameraProbe(page: Page) {
       programs.set(this, program);
       return use.call(this, program);
     };
+    WebGL2RenderingContext.prototype.uniform3fv = function (at, values, ...rest) {
+      const program = programs.get(this);
+      if (program && at && locations.get(at) === 'eye') {
+        const eye = Array.from(values as number[]);
+        eyes.set(program, eye);
+        capture.position = [eye[0] * 0.0254, eye[2] * 0.0254, -eye[1] * 0.0254];
+      }
+      return (vector as (...args: unknown[]) => void).call(this, at, values, ...rest);
+    };
     WebGL2RenderingContext.prototype.uniformMatrix4fv = function (at, transpose, values) {
       const program = programs.get(this);
-      if (program && at) {
-        const name = locations.get(at);
-        if (name === 'modelViewMatrix') matrices.set(program, Array.from(values));
-        if (name === 'modelMatrix') worldMatrices.set(program, Array.from(values));
-        if (name === 'viewMatrix') viewMatrices.set(program, Array.from(values));
-        if (name === 'projectionMatrix') projections.set(program, Array.from(values));
+      const eye = program && eyes.get(program);
+      const name = program && at ? locations.get(at) : undefined;
+      // The sky pass draws every frame with the inverse view-projection; culling can skip
+      // every world draw, so both supply the camera.
+      if (name === 'viewProjection' || name === 'unproject') {
+        // Split the native view-projection: rows 0 and 1 are the projection scales times
+        // orthonormal view rows, and row 3 is the negated view Z row.
+        const m =
+          name === 'unproject'
+            ? invert(Array.from(values as number[]))
+            : Array.from(values as number[]);
+        const row = (r: number) => [m[r], m[4 + r], m[8 + r], m[12 + r]];
+        const [r0, r1, r2, r3] = [0, 1, 2, 3].map(row);
+        // The view rows carry the 0.0254 inch-to-metre scale of the Source world.
+        const p00 = Math.hypot(r0[0], r0[1], r0[2]) / 0.0254,
+          p11 = Math.hypot(r1[0], r1[1], r1[2]) / 0.0254;
+        const p22 =
+            -(r2[0] * r3[0] + r2[1] * r3[1] + r2[2] * r3[2]) /
+            (r3[0] * r3[0] + r3[1] * r3[1] + r3[2] * r3[2]),
+          p23 = r2[3] + p22 * r3[3];
+        const viewRows = [
+          r0.map((x) => x / p00),
+          r1.map((x) => x / p11),
+          r3.map((x) => -x),
+          [0, 0, 0, 1],
+        ];
+        const sourceView = Array.from({ length: 16 }, (_, i) => viewRows[i % 4][Math.floor(i / 4)]);
+        capture.view = multiply(sourceView, viewerToSource);
+        capture.matrix = multiply(capture.view, mapRoot);
+        capture.projection = [p00, 0, 0, 0, 0, p11, 0, 0, 0, 0, p22, -1, 0, 0, p23, 0];
+        capture.drawingBuffer = [this.drawingBufferWidth, this.drawingBufferHeight];
+        if (eye) capture.position = [eye[0] * 0.0254, eye[2] * 0.0254, -eye[1] * 0.0254];
       }
       return matrix.call(this, at, transpose, values);
-    };
-    WebGL2RenderingContext.prototype.drawArrays = function (mode, first, count) {
-      const program = programs.get(this);
-      if (count !== 18 || !program) return draw.call(this, mode, first, count);
-      let m = matrices.get(program);
-      if (!m) {
-        // The original Source shader supplies model and view matrices separately.
-        const world = worldMatrices.get(program),
-          view = viewMatrices.get(program);
-        if (world && view)
-          m = world.map((_, index) => {
-            const row = index % 4,
-              column = index - row;
-            return (
-              view[row] * world[column] +
-              view[row + 4] * world[column + 1] +
-              view[row + 8] * world[column + 2] +
-              view[row + 12] * world[column + 3]
-            );
-          });
-      }
-      if (m && Math.abs(Math.hypot(m[0], m[1], m[2]) - 1) < 0.001) {
-        // The original floor is the unscaled 18-vertex non-indexed draw. Invert its
-        // orthonormal model-view transform, then apply the documented +90Y base.
-        const x = -(m[0] * m[12] + m[1] * m[13] + m[2] * m[14]),
-          y = -(m[4] * m[12] + m[5] * m[13] + m[6] * m[14]),
-          z = -(m[8] * m[12] + m[9] * m[13] + m[10] * m[14]);
-        capture.position = [z, y, -x];
-        capture.matrix = [...m];
-        capture.projection = projections.get(program) || [];
-        capture.drawingBuffer = [this.drawingBufferWidth, this.drawingBufferHeight];
-      }
-      return draw.call(this, mode, first, count);
     };
   });
 }

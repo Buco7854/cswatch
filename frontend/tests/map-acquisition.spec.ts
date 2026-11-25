@@ -1,14 +1,8 @@
+import { nativeMap } from './fixtures/native-map';
 import { accountStatus, configForSyntheticAccount } from './fixtures/account-status';
 import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { test, expect, type Page } from '@playwright/test';
-import {
-  originalMapReplay,
-  originalMapGLB,
-  originalOverviewPNG,
-  originalEnvironmentPNG,
-  qaMap,
-  qaOverview,
-} from './fixtures/original-map';
+import { originalMapReplay, originalOverviewPNG, qaMap, qaOverview } from './fixtures/original-map';
 test.beforeEach(() => {
   test.skip(
     Boolean(process.env.E2E_PRIVATE) || Boolean(process.env.E2E_SETUP),
@@ -16,7 +10,8 @@ test.beforeEach(() => {
   );
 });
 const pack = 'a'.repeat(64),
-  empty = { model: null, mobile: null, overview: null, environment: null };
+  empty = { model: null, overview: null },
+  world = nativeMap(qaMap);
 const eligible = {
   resolution: { status: 'approved', packId: pack },
   canAcquire: true,
@@ -31,19 +26,8 @@ const ready = {
   acquisition: 'ready',
   verification: 'operator-approved',
   assets: {
-    model: `/api/map-packs/${pack}/models/${qaMap}/desktop/scene.glb`,
-    mobile: `/api/map-packs/${pack}/models/${qaMap}/mobile/scene.glb`,
+    model: world.model('acquisition-a', pack),
     overview: { ...qaOverview, image: `/api/map-packs/${pack}/maps/${qaMap}/overview.png` },
-    environment: {
-      assetVersion: 'original-qa-acquisition',
-      landscape: false,
-      sky: {
-        faces: ['px', 'nx', 'py', 'ny', 'pz', 'nz'].map(
-          (face) => `/api/map-packs/${pack}/maps/${qaMap}/environment/${face}.png`,
-        ),
-        brightness: 1,
-      },
-    },
   },
 };
 const latestSelection = {
@@ -124,21 +108,9 @@ async function install(page: Page, controlsHidden = false) {
     directDiscoveryRequests++;
     return route.abort();
   });
-  await page.route(`**/api/map-packs/${pack}/models/${qaMap}/*/scene.glb`, (route) =>
-    route.fulfill({ contentType: 'model/gltf-binary', body: originalMapGLB() }),
-  );
+  await world.route(page);
   await page.route(`**/api/map-packs/${pack}/maps/${qaMap}/overview.png`, (route) =>
     route.fulfill({ contentType: 'image/png', body: originalOverviewPNG() }),
-  );
-  await page.route(`**/api/map-packs/${pack}/maps/${qaMap}/environment/*.png`, (route) =>
-    route.fulfill({
-      contentType: 'image/png',
-      body: originalEnvironmentPNG(
-        ['px', 'nx', 'py', 'ny', 'pz', 'nz'].indexOf(
-          route.request().url().split('/').pop()!.replace('.png', ''),
-        ),
-      ),
-    }),
   );
   return () => directDiscoveryRequests;
 }
@@ -189,7 +161,7 @@ test('map discovery overlaps replay loading and preparation waits for a readable
   await expect.poll(async () => Number(await timeline.inputValue())).toBeGreaterThan(start);
   const modelRequested = Promise.withResolvers<void>();
   const modelResponse = Promise.withResolvers<void>();
-  await page.route('**/api/map-packs/*/models/*/*/scene.glb', async (route) => {
+  await page.route('**/api/demos/*/world/*/*/map.json', async (route) => {
     modelRequested.resolve();
     await modelResponse.promise;
     await route.fallback();
@@ -277,7 +249,7 @@ test('worker phases update the existing waiting screen and review without hiding
     ...latestEligible,
     canAcquire: false,
     acquisition: 'queued',
-    phase: 'lighting',
+    phase: 'geometry',
   };
   let posts = 0;
   await page.route('**/api/demos/acquisition-a/map-assets', (route) => {
@@ -294,11 +266,8 @@ test('worker phases update the existing waiting screen and review without hiding
     ['tools', 'Preparing conversion tools'],
     ['source', 'Retrieving map files'],
     ['geometry', 'Converting map geometry'],
-    ['environment', 'Preparing the map environment'],
-    ['lighting', 'Preparing map lighting'],
     ['desktop', 'Building the desktop map'],
-    ['mobile', 'Building the mobile map'],
-    ['compact', 'Building the compact map'],
+    ['mobile', 'Building the phone map'],
   ];
   for (const [phase, label] of phases) {
     descriptor = { ...processing, phase };
@@ -322,7 +291,7 @@ test('worker phases update the existing waiting screen and review without hiding
   await expect(loading.getByRole('link', { name: 'Back to home' })).toBeInViewport();
   await loading.getByRole('button', { name: 'Open timeline' }).click();
   await expect(page.locator('.viewer-map-status')).toHaveText('Installing the prepared map');
-  descriptor = { ...latestReady, phase: 'lighting' };
+  descriptor = { ...latestReady, phase: 'geometry' };
   await page.clock.fastForward(11000);
   await expect(page.locator('.scene')).toHaveAttribute('data-map-model-state', 'ready');
   await expect(page.locator('.viewer-map-status')).toHaveText('3D map');

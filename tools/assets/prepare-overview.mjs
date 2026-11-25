@@ -78,7 +78,11 @@ function readValveOverview(data, map) {
     }
     if (tokens.length > 256) throw new Error('Overview text is too complex.');
   }
-  if (!mapName(map) || tokens[0] !== map || tokens[1] !== '{' || tokens.at(-1) !== '}')
+  // Variants such as de_ancient_night keep their base map's root key.
+  const root =
+    tokens[0] === map ||
+    (/^[a-z0-9]+_[a-z0-9_]+$/i.test(tokens[0] ?? '') && map.startsWith(tokens[0] + '_'));
+  if (!mapName(map) || !root || tokens[1] !== '{' || tokens.at(-1) !== '}')
     throw new Error('Overview map name or root block does not match.');
   const fields = new Map();
   let sections;

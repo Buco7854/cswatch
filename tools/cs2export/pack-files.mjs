@@ -17,9 +17,12 @@ export function packFiles(out, files = {}) {
       const stride = laneBytes(format);
       const original = bytes;
       for (const lanes of stride ? [1, stride] : [1]) {
-        const packed = deflateSync(lanes === 1 ? original : transposeBlocks(original, lanes, false), {
-          level: 6,
-        });
+        const packed = deflateSync(
+          lanes === 1 ? original : transposeBlocks(original, lanes, false),
+          {
+            level: 6,
+          },
+        );
         if (packed.length + 64 < bytes.length) {
           bytes = packed;
           packing = lanes;

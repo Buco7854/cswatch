@@ -64,13 +64,26 @@ export async function createRenderer(
     for (const b of textures.arrays) {
       arrays.push(streaming.register(b.file, b.format, b.srgb, b.mips, b.textures.length, b.flags));
     }
-    const skyEntity = manifest.environments
-      .find((e) => !e.sky)
-      ?.entities.find((e) => e.classname === 'env_sky' && !e.startdisabled);
-    const skyMaterial = manifest.materials.find((mat) => mat.name === skyEntity?.skyname);
-    const skyName = skyMaterial?.slots?.g_tSkyTexture;
-    if (typeof skyName !== 'string') throw Error('Missing sky material texture');
-    const required = new Set([skyName, 'vrf/brdf_lut']);
+    // The main world's enabled env_sky, else any world's; its cube texture, else no backdrop.
+    const skies = [...manifest.environments]
+      .sort((a, b) => Number(a.sky) - Number(b.sky))
+      .flatMap((environment) => environment.entities.filter((e) => e.classname === 'env_sky'))
+      .sort((a, b) => Number(Boolean(a.startdisabled)) - Number(Boolean(b.startdisabled)));
+    const isCube = (name: unknown) =>
+      typeof name === 'string' && (textures.specials[name]?.levels.at(-1)?.d ?? 0) % 6 === 0;
+    let skyEntity: (typeof skies)[number] | undefined,
+      skyMaterial: (typeof manifest.materials)[number] | undefined,
+      skyName: string | undefined;
+    for (const entity of skies) {
+      const material = manifest.materials.find((mat) => mat.name === entity.skyname);
+      const slots = Object.entries(material?.slots ?? {});
+      const name = [material?.slots.g_tSkyTexture, ...slots.map(([, value]) => value)].find(isCube);
+      if (material && typeof name === 'string') {
+        [skyEntity, skyMaterial, skyName] = [entity, material, name];
+        break;
+      }
+    }
+    const required = new Set(['vrf/brdf_lut', ...(skyName ? [skyName] : [])]);
     for (const env of manifest.environments) {
       if (tier === 'phone') required.add(manifest.phone.lightmaps[env.world]);
       else
@@ -194,8 +207,8 @@ export async function createRenderer(
     camera.up.set(0, 0, 1);
     camera.near = 1;
     camera.far = 250000;
-    const skyTexture = special.get(skyName)!;
-    const skyRange = tier === 'phone' ? (manifest.phone.rgbm[skyName] ?? 0) : 0;
+    const skyTexture = skyName ? special.get(skyName.replaceAll('\\', '/')) : undefined;
+    const skyRange = tier === 'phone' && skyName ? (manifest.phone.hdr[skyName] ?? 0) : 0;
     const skyGain =
       Number(skyEntity?.brightnessscale ?? 1) *
       2 **
@@ -351,6 +364,7 @@ export async function createRenderer(
     for (const chunk of manifest.chunks) variant(chunk.banks);
     const multiCounts = new Int32Array(8192),
       multiOffsets = new Int32Array(8192);
+    let renderedFrames = 0;
     function render(pose: Pose, mode: number, options: ViewOptions = {}) {
       const start = performance.now();
       const composed = options.composed;
@@ -398,8 +412,8 @@ export async function createRenderer(
       gl.uniform3fv(sky.u('eye'), pose.pos);
       gl.uniform1f(sky.u('gain'), mode === 7 ? 0 : skyGain);
       gl.uniform1i(sky.u('skyMap'), 12);
-      gl.uniform1f(sky.u('rgbm'), skyRange);
-      bind(12, arrayTarget, skyTexture);
+      gl.uniform1f(sky.u('hdrRange'), skyRange);
+      bind(12, arrayTarget, skyTexture ?? null);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       let draws = 1,
         triangles = 1;
@@ -413,11 +427,15 @@ export async function createRenderer(
       uniform('uniform1i', 'mode', mode);
       bind(unit.brdf, arrayTarget, special.get('vrf/brdf_lut')!);
       uniform('uniform1i', 'hasActorShadow', Number(!!options.shadow));
+      // A shadow sampler must never see an ordinary colour texture left on its unit.
+      bind(unit.actorShadow, gl.TEXTURE_2D, options.shadow?.texture ?? null);
       if (options.shadow) {
-        bind(unit.actorShadow, gl.TEXTURE_2D, options.shadow.texture);
         uniform('uniformMatrix4fv', 'actorProjection', false, options.shadow.projection);
         uniform('uniform1f', 'actorBias', options.shadow.bias);
       }
+      gl.stencilMask(0xff);
+      gl.clearStencil(0);
+      gl.clear(gl.STENCIL_BUFFER_BIT);
       for (const env of environments) {
         if (env.sky && options.skybox3D === false) continue;
         gl.depthMask(true);
@@ -491,20 +509,20 @@ export async function createRenderer(
             gl.depthFunc(gl.LEQUAL);
             gl.cullFace(gl.BACK);
             bind(unit.brdf, arrayTarget, special.get('vrf/brdf_lut')!);
-            if (options.shadow) bind(unit.actorShadow, gl.TEXTURE_2D, options.shadow.texture);
+            bind(unit.actorShadow, gl.TEXTURE_2D, options.shadow?.texture ?? null);
           }
           env.lightmaps.forEach((texture, index) =>
             bind(unit[env.lightmapSamplers[index]], arrayTarget, texture),
           );
           bind(unit.envMap, arrayTarget, env.env);
-          bind(unit.skyMap, arrayTarget, skyTexture);
+          bind(unit.skyMap, arrayTarget, skyTexture ?? null);
           bind(unit.lpv, arrayTarget, env.lpv);
           if (tier === 'desktop') bind(unit.lpvShadow, arrayTarget, env.shadow);
           bind(unit.sceneData, gl.TEXTURE_2D, env.data);
           uniform('uniform1i', 'probeBase', env.probeBase);
           uniform('uniform1i', 'cellColumn', env.cellColumn);
           uniform('uniform4fv', 'volumeLayers', env.volumeLayers);
-          uniform('uniform4f', 'rgbmRange', env.rgbm[0], env.rgbm[1], skyRange, env.rgbm[2]);
+          uniform('uniform4f', 'hdrRange', env.hdr[0], env.hdr[1], skyRange, env.hdr[2]);
           uniform('uniform3fv', 'gridMin', env.spatial.min);
           uniform('uniform3fv', 'gridInv', env.spatial.invStep);
           if (blended && mode !== 7) {
@@ -683,8 +701,11 @@ export async function createRenderer(
       gl.uniform1i(post.u('materialIds'), Number(mode === 7));
       gl.uniform1i(post.u('bypass'), mode === 0 ? 0 : 1);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
-      const error = gl.getError();
-      if (error) throw Error('Render GL error 0x' + error.toString(16));
+      // getError waits for the GPU process, so it samples the first and every 60th frame.
+      if (renderedFrames++ % 60 === 0) {
+        const error = gl.getError();
+        if (error) throw Error('Render GL error 0x' + error.toString(16));
+      }
       return {
         draws: draws + 1,
         triangles: triangles + 1,
@@ -693,9 +714,14 @@ export async function createRenderer(
         multiDraw: Boolean(ext),
       };
     }
+    const tone = params.tonemap;
     return {
       render,
       updateEntity,
+      // Display-referred overlays (x-ray shells) scale by this so the fixed exposure and
+      // white point of the map grade return their authored colour.
+      displayScale:
+        (2.8 * tone.m_flWhitePoint) / (2.8 * exposure * 2 ** (tone.m_flExposureBias - 0.4)),
       environments,
       geometry: { vertices, indices },
       dispose() {

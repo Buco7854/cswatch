@@ -4,7 +4,8 @@ import { fulfillReplayFixture } from './fixtures/streamed-replay';
 import { createHash } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 import { installDemoMapDescriptor } from './fixtures/map-assets';
-import { originalMapGLB, qaActor } from './fixtures/original-map';
+import { qaActor } from './fixtures/original-map';
+import { nativeMap } from './fixtures/native-map';
 import { installOriginalCameraProbe, originalCameraView } from './fixtures/original-camera';
 import {
   originalEquipmentCatalog,
@@ -100,24 +101,26 @@ async function fixture(page: Page, wall = false) {
     }),
   );
   await page.route('**/api/demos/fire-qa/playback', (route) => fulfillReplayFixture(route, replay));
-  const model = `/map-assets/${replay.map}/desktop/scene.glb`;
+  // A wall facing the shooter, in viewer meters, when the scenario needs a surface hit.
+  const world = nativeMap(
+    replay.map,
+    wall
+      ? [
+          [
+            [-1.5, -1.85, -512 * 0.0254 + 0.2],
+            [1.5, -1.85, -512 * 0.0254 + 0.2],
+            [1.5, 5.15, -512 * 0.0254 + 0.2],
+            [-1.5, 5.15, -512 * 0.0254 + 0.2],
+          ],
+        ]
+      : [],
+  );
+  const model = world.model('fire-qa');
   await installDemoMapDescriptor(page, 'fire-qa', {
     model,
-    mobile: null,
     overview: null,
-    environment: null,
   });
-  await page.route('**' + model, (route) =>
-    route.fulfill({
-      contentType: 'model/gltf-binary',
-      body: wall
-        ? originalEquipmentGLB([0.1, 0.35, 0.5], false, {
-            position: [0, 1.65, -512 * 0.0254 + 0.2],
-            scale: [30, 70, 1],
-          })
-        : originalMapGLB(),
-    }),
-  );
+  await world.route(page);
   await page.route('**/api/assets/agents', (route) =>
     route.fulfill({ json: { ct: null, t: null } }),
   );

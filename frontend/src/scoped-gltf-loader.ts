@@ -8,7 +8,7 @@ import {
 } from 'three';
 import { GLTFLoader, MeshoptDecoder, type GLTF } from 'three-stdlib';
 import type { ModelLoadCallbacks } from './model-cache';
-import { modelDecodedBuffers } from './map-model-resources';
+import { modelDecodedBuffers } from './model-resources';
 type ScopedGLTFJob = (
   url: string,
   callbacks: ModelLoadCallbacks<GLTF>,

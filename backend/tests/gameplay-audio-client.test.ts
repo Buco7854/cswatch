@@ -25,14 +25,32 @@ const cue = (id: string, tick: number): GameplaySoundCue => ({
   selection: 'representative',
 });
 test('only nearby rendered triangles produce a spatial contact from a recorded shot', async () => {
-  const { Group, BoxGeometry, Mesh, MeshBasicMaterial } =
-    await import('../../frontend/node_modules/three/build/three.module.js');
-  const { followObstruction } = await import('../../frontend/src/follow-obstruction.js');
+  const { worldQueries } = await import('../../frontend/src/world/queries.ts');
   const { nearWallContact } = await import('../../frontend/src/shot-wall-audio.js');
-  const world = new Group();
-  const box = new Mesh(new BoxGeometry(2, 4, 0.2), new MeshBasicMaterial());
-  box.position.set(0, 0, -6);
-  world.add(box);
+  // A 2 x 4 m wall whose near face is 5.9 m along Source +Y, in inches.
+  const inch = 1 / 0.0254,
+    floats = new Float32Array(4 * 15);
+  [
+    [-inch, 5.9 * inch, -2 * inch],
+    [inch, 5.9 * inch, -2 * inch],
+    [inch, 5.9 * inch, 2 * inch],
+    [-inch, 5.9 * inch, 2 * inch],
+  ].forEach((corner, index) => floats.set(corner, index * 15));
+  const manifest = {
+    entities: [],
+    chunks: [
+      {
+        sky: false,
+        family: 'opaque',
+        ranges: [{ first: 0, count: 6, vertices: 4, entity: -1, material: 0 }],
+      },
+    ],
+  } as unknown as Parameters<typeof worldQueries>[0];
+  const query = worldQueries(
+    manifest,
+    new Uint8Array(floats.buffer),
+    Uint32Array.of(0, 1, 2, 0, 2, 3),
+  );
   const cue = {
     id: 'fire',
     tick: 12,
@@ -44,7 +62,7 @@ test('only nearby rendered triangles produce a spatial contact from a recorded s
     position: { x: 0, y: 0, z: 0 },
     shotAngles: { pitch: 0, yaw: 90 },
   } as const;
-  const trace = followObstruction(world).fork(0);
+  const trace = query.trace.fork(0);
   const hit = nearWallContact(cue, trace);
   assert.ok(
     hit &&
@@ -62,8 +80,6 @@ test('only nearby rendered triangles produce a spatial contact from a recorded s
   const clock = new GameplayAudioTimeline();
   const plan = clock.plan([cue], 0, 64, 1, 0, () => true, 'impact-default-impact-bullet1');
   assert.ok(plan.prefetch.has('impact-default-impact-bullet1'));
-  box.geometry.dispose();
-  box.material.dispose();
 });
 
 test('game sound timeline de-duplicates chunk boundaries and discards historical cues after seeks and speed changes', () => {

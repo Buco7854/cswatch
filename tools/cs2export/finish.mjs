@@ -51,7 +51,14 @@ function mips(item, index, category) {
     );
   });
 }
-const phone = { arrays: [], specials: {}, rgbm: {}, lightmaps: {}, volumes: {} };
+const phone = {
+  arrays: [],
+  specials: {},
+  hdr: {},
+  lightmaps: {},
+  volumes: {},
+  budget: plan.estimate,
+};
 const range = (index) => layout.ranges[String(index)];
 plan.items.forEach((item, index) => {
   const target = plan.targets[index];
@@ -81,7 +88,7 @@ plan.items.forEach((item, index) => {
     first: 0,
     levels: mips(item, index, target.kind === 'special' ? 'cubemaps' : 'lightmaps'),
   };
-  if (range(index) !== undefined) phone.rgbm[name] = range(index);
+  if (range(index) !== undefined) phone.hdr[name] = range(index);
   if (target.kind === 'lightmap') phone.lightmaps[target.world] = name;
   if (target.kind === 'volume')
     phone.volumes[name] = { shadow: target.shadow, shadowBase: target.shadowBase };

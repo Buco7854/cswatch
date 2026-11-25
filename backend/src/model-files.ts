@@ -4,7 +4,6 @@ import { createGzip, type Gzip } from 'node:zlib';
 import { presentationParts } from './presentation-assets.js';
 import type { FastifyInstance } from 'fastify';
 import type { FileHandle } from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
 import type { ReadStream } from 'node:fs';
 import {
   bytesFrom,
@@ -18,16 +17,8 @@ import { manualMapLocation, type MapAssetLocation } from './map-asset-location.j
 import type { FastifyRequest } from 'fastify';
 
 export const mapModelBytes = 2 * 1024 ** 3;
-const compactMapBytes = JSON.parse(
-  readFileSync(
-    new URL(
-      import.meta.url.endsWith('.ts') ? '../../shared/compact-map.json' : './compact-map.json',
-      import.meta.url,
-    ),
-    'utf8',
-  ),
-).bytes as number;
-const modelLimit = (parts: string[]) => (parts[1] === 'compact' ? compactMapBytes : mapModelBytes);
+// Agent models are the only GLBs on this route; native worlds use the demo world route.
+const modelLimit = (_parts: string[]) => mapModelBytes;
 type ModelFile = { file: FileHandle; size: number; version: string };
 
 /** Discovery and delivery share the same no-follow, single-link, bounded GLB boundary. */
@@ -64,22 +55,9 @@ export async function openMapModel(
   });
 }
 
-const reserved = new Set([
-  'agents',
-  'equipment',
-  'equipment-models',
-  'viewmodels',
-  'overviews',
-  'environments',
-  'previews',
-  'packs',
-]);
 function modelPath(value: string) {
   const agent = /^agents\/(ct|t)\.glb$/.exec(value);
   if (agent) return { parts: ['agents'], filename: `${agent[1]}.glb` };
-  const map = /^([a-zA-Z0-9_-]{1,80})\/(desktop|mobile|compact)\/scene\.glb$/.exec(value);
-  if (map && !reserved.has(map[1].toLowerCase()))
-    return { parts: [map[1], map[2]], filename: 'scene.glb' };
 }
 function singleRange(
   value: string | undefined,

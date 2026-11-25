@@ -653,7 +653,6 @@ export default function ViewerOptions({
                 }
                 options={[
                   { value: 'auto', label: t('Auto · based on GPU') },
-                  { value: 'compact', label: t('Compact 3D · simplified map') },
                   { value: 'low', label: t('Low · reduced resolution, no shadows') },
                   { value: 'high', label: t('High · shadows, higher resolution') },
                 ]}

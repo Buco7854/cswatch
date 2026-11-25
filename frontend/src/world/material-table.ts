@@ -3,6 +3,7 @@ import type { Manifest, Material } from './format';
 const rad = Math.PI / 180;
 function familyNumber(material: Material) {
   const shader = material.shader;
+  if (shader.includes('water')) return 7;
   if (shader.includes('effects')) return 4;
   if (shader.includes('foliage')) return 5;
   if (shader.includes('black_unlit')) return 3;
@@ -38,7 +39,8 @@ export function materialRows(manifest: Manifest) {
           : 0,
         family,
         scalars.g_flOpacityScale ?? 1,
-        ...linearTint('g_vColorTint'),
+        // Water is an opaque surface in its fog colour; the shader's PBR path adds reflection.
+        ...linearTint(family === 7 ? 'g_vWaterFogColor' : 'g_vColorTint'),
         1,
         scalars.g_flAlphaTestReference ?? 0.5,
         scalars.g_flModelTintAmount ?? 1,
@@ -122,7 +124,7 @@ export function materialRows(manifest: Manifest) {
         Math.cos((scalars.g_flDetailTexCoordRotation ?? 0) * rad),
         Math.sin((scalars.g_flDetailTexCoordRotation ?? 0) * rad),
         scalars.g_flAmbientOcclusionScale ?? 0,
-        0,
+        family === 7 ? (scalars.g_flWaterRoughnessMin ?? 0.25) : 0,
         0,
         0,
       ];

@@ -61,15 +61,7 @@ type MapJobFailureCode =
   | 'worker_interrupted'
   | 'removed_by_admin';
 export type MapPreparationPhase =
-  | 'tools'
-  | 'source'
-  | 'geometry'
-  | 'environment'
-  | 'lighting'
-  | 'desktop'
-  | 'mobile'
-  | 'compact'
-  | 'publishing';
+  'tools' | 'source' | 'geometry' | 'desktop' | 'mobile' | 'publishing';
 export type MapJobResult = {
   schemaVersion: MapJobIdentity['schemaVersion'];
   repairing?: true;

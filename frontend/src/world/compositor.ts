@@ -1,6 +1,10 @@
 import {
+  Color,
+  DepthStencilFormat,
+  GreaterDepth,
   DepthTexture,
   HalfFloatType,
+  UnsignedInt248Type,
   NoToneMapping,
   PerspectiveCamera,
   Vector3,
@@ -22,9 +26,13 @@ export interface FramePasses {
 
 export function compositor(renderer: WebGLRenderer, native: NativeRenderer) {
   const gl = renderer.getContext() as WebGL2RenderingContext;
+  // Actor x-ray shells test the stencil mask written by their own bodies.
+  const depth = new DepthTexture(1, 1, UnsignedInt248Type);
+  depth.format = DepthStencilFormat;
   const hdr = new WebGLRenderTarget(1, 1, {
     type: HalfFloatType,
-    depthTexture: new DepthTexture(1, 1),
+    depthTexture: depth,
+    stencilBuffer: true,
     samples: 0,
   });
   const lighting = actorLighting(renderer, native);
@@ -47,6 +55,7 @@ export function compositor(renderer: WebGLRenderer, native: NativeRenderer) {
       renderer.autoClear = false;
     }
     const hidden: Material[] = [];
+    const scaled: [Color, Color][] = [];
     function objects(transparent: boolean) {
       bindTarget();
       scene.traverseVisible((object) => {
@@ -57,6 +66,11 @@ export function compositor(renderer: WebGLRenderer, native: NativeRenderer) {
           if (entry.transparent !== transparent) {
             entry.visible = false;
             hidden.push(entry);
+          } else if (entry.depthFunc === GreaterDepth && 'color' in entry) {
+            // X-ray shells are display overlays: undo the grade's fixed scale for their tint.
+            const color = (entry as Material & { color: Color }).color;
+            scaled.push([color, color.clone()]);
+            color.multiplyScalar(native.displayScale);
           } else lighting.bind(entry);
         }
       });
@@ -64,7 +78,9 @@ export function compositor(renderer: WebGLRenderer, native: NativeRenderer) {
         renderer.render(scene, camera);
       } finally {
         for (const entry of hidden) entry.visible = true;
+        for (const [color, original] of scaled) color.copy(original);
         hidden.length = 0;
+        scaled.length = 0;
       }
     }
     try {
