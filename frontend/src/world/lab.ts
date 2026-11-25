@@ -1,12 +1,16 @@
 import './lab.css';
 import { loadManifest } from './format';
 import { capabilities } from './textures';
-import { createRenderer, type Pose } from './renderer';
+import { createRenderer, type Pose, type ViewOptions } from './renderer';
 
 const canvas = document.querySelector('canvas')!,
   stats = document.querySelector('output')!,
   select = document.querySelector('select')!;
 const params = new URLSearchParams(location.search);
+const skybox = document.querySelector<HTMLInputElement>('#skybox')!;
+const fog = document.querySelector<HTMLInputElement>('#fog')!;
+skybox.checked = params.get('sky3d') !== '0';
+fog.checked = params.get('fog') !== '0';
 const french = (params.get('lang') ?? navigator.language).startsWith('fr');
 const labels = french
   ? [
@@ -22,6 +26,9 @@ const labels = french
 labels.forEach((name, i) => select.add(new Option(name, String(i))));
 if (french) {
   document.documentElement.lang = 'fr';
+  document.querySelector('section')!.ariaLabel = 'Commandes de la scène';
+  document.querySelector('#sky-label')!.textContent = 'Décor 3D';
+  document.querySelector('#fog-label')!.textContent = 'Brouillard';
   select.ariaLabel = 'Mode de rendu';
   canvas.ariaLabel = 'Caméra libre Mirage';
   document.querySelector('aside')!.textContent =
@@ -84,7 +91,7 @@ async function start() {
     }
     try {
       const frameStart = performance.now(),
-        s = render(pose, Number(select.value));
+        s = render(pose, Number(select.value), { skybox3D: skybox.checked, fog: fog.checked });
       tick++;
       stats.textContent = `${s.draws} ${french ? 'appels' : 'draws'} · ${s.triangles.toLocaleString()} △ · ${(s.textureBytes / 1048576).toFixed(1)} MiB · CPU ${s.submissionMs.toFixed(1)} ms`;
       const sample = {
@@ -94,6 +101,11 @@ async function start() {
         tick,
         pose,
         completionMs: 0,
+        setViewOptions: (options: ViewOptions) => {
+          if (options.skybox3D !== undefined) skybox.checked = options.skybox3D;
+          if (options.fog !== undefined) fog.checked = options.fog;
+          request();
+        },
         setPose: (p: Pose) => {
           Object.assign(pose, p);
           request();
@@ -146,6 +158,8 @@ async function start() {
     if (!raf) raf = requestAnimationFrame(frame);
   }
   select.onchange = request;
+  skybox.onchange = request;
+  fog.onchange = request;
   new ResizeObserver(request).observe(canvas);
   canvas.onkeydown = (e) => {
     if (/^(Key[WASDQEZ]|ShiftLeft)$/.test(e.code)) {

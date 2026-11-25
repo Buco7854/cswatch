@@ -12,6 +12,10 @@ import { type Manifest } from './format';
 import { createTextureStream } from './stream';
 import { vertex, worldFrag, screenVertex, skyFrag, postFrag } from './shaders';
 
+export interface ViewOptions {
+  skybox3D?: boolean;
+  fog?: boolean;
+}
 export interface Pose {
   pos: number[];
   ang: number[];
@@ -209,7 +213,7 @@ export async function createRenderer(gl: WebGL2RenderingContext, dir: URL, manif
   samplerNames.forEach((k, i) => gl.uniform1i(world.u(k), i));
   const multiCounts = new Int32Array(8192),
     multiOffsets = new Int32Array(8192);
-  function render(pose: Pose, mode: number) {
+  function render(pose: Pose, mode: number, options: ViewOptions = {}) {
     const start = performance.now();
     if (width !== gl.drawingBufferWidth || height !== gl.drawingBufferHeight) resize();
     camera.aspect = width / height;
@@ -256,6 +260,7 @@ export async function createRenderer(gl: WebGL2RenderingContext, dir: URL, manif
     bind(15, gl.TEXTURE_2D, materialTable);
     bind(20, arrayTarget, special.get('vrf/brdf_lut')!);
     for (const env of environments) {
+      if (env.sky && options.skybox3D === false) continue;
       gl.depthMask(true);
       gl.clear(gl.DEPTH_BUFFER_BIT);
       gl.uniformMatrix4fv(world.u('localFromWorld'), false, env.inverse.elements);
@@ -263,9 +268,9 @@ export async function createRenderer(gl: WebGL2RenderingContext, dir: URL, manif
       gl.uniform1f(world.u('envLastMip'), env.envLastMip);
       gl.uniform3fv(world.u('sunDir'), env.lightDir);
       gl.uniform3fv(world.u('sunColor'), env.color);
-      const gradient = env.entities.find(
-        (e) => e.classname === 'env_gradient_fog' && !e.startdisabled,
-      );
+      const gradient =
+        options.fog !== false &&
+        env.entities.find((e) => e.classname === 'env_gradient_fog' && !e.startdisabled);
       gl.uniform4fv(
         world.u('gradientColor'),
         gradient
@@ -302,7 +307,7 @@ export async function createRenderer(gl: WebGL2RenderingContext, dir: URL, manif
         Number(fog?.cubemapfogstartdistance ?? 0),
         Number(fog?.cubemapfogenddistance ?? 1),
         Number(fog?.cubemapfogfalloffexponent ?? 1),
-        Number(fog?.cubemapfogmaxopacity ?? 0),
+        options.fog === false ? 0 : Number(fog?.cubemapfogmaxopacity ?? 0),
       );
       gl.uniform4f(
         world.u('fogHeight'),

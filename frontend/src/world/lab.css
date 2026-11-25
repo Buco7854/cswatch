@@ -67,3 +67,15 @@ output {
     display: none;
   }
 }
+label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  gap: 3px;
+  cursor: pointer;
+}
+@media (pointer: coarse) {
+  label {
+    min-height: 44px;
+  }
+}

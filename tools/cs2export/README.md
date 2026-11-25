@@ -33,6 +33,8 @@ node --test format.test.mjs
 node capture.mjs "$NEW_MAP_DIR" "$CAPTURE_DIR" poses.json
 ```
 
+Fog and the 3D prefab have independent per-frame switches. The lab accepts `&sky3d=0&fog=0` and the capture script reads boolean `skybox3D` and `fog` pose fields. The 2D sky backdrop remains visible.
+
 Capture builds the lab entry in a temporary directory, serves it on loopback and uses the frontend's Playwright Chromium with ANGLE/SwiftShader. Install that lockfile's Chromium beforehand if needed. The default sizes are 720×480 and 1280×720. Two final integer arguments select a single size. Each screenshot has a matching record in the output `poses.json`. Draws count WebGL submissions, including sky and fullscreen passes. Triangles count submitted primitives. GPU texture bytes are logical texel/block allocations including HDR and grading targets. Depth renderbuffers, geometry buffers, the default framebuffer and driver overhead are separate. CPU submission and wall time to a signalled GL fence appear separately. The fence measurement includes queueing and polling.
 
 ## Format version 3

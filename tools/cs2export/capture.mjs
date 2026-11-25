@@ -64,6 +64,7 @@ try {
     for (const p of poses) {
       const previous = await page.evaluate((p) => {
         const tick = window.worldLab.tick;
+        window.worldLab.setViewOptions({ skybox3D: p.skybox3D ?? true, fog: p.fog ?? true });
         window.worldLab.setPose(p);
         return tick;
       }, p);

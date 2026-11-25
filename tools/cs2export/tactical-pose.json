@@ -1,0 +1,10 @@
+[
+  {
+    "name": "overhead-clear",
+    "pos": [-527, -905, 4400],
+    "ang": [89.9, 90],
+    "fov": 73.74,
+    "skybox3D": false,
+    "fog": false
+  }
+]
