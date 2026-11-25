@@ -614,6 +614,14 @@ for (const language of ['en', 'fr'] as const)
         });
       // Include the actual optional radar once, without running WebGL at every size.
       await setCamera(page, language, 'Free camera');
+      // Free camera mounts the 3D map lazily. Its opening screen ignores viewer
+      // keys and takes focus, so keyboard checks wait until that load is done.
+      // The scene is an image only once the 3D surface (not the plot) is shown.
+      await expect(page.locator('.scene[role="img"]')).toHaveAttribute(
+        'data-map-model-state',
+        'ready',
+      );
+      await expect(page.locator('.viewer-map-loading')).toHaveCount(0);
       await expect(page.locator('.position-radar')).toBeVisible();
       expect((await page.locator('.position-radar').boundingBox())!.width).toBeGreaterThanOrEqual(
         80,

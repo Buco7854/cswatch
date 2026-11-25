@@ -1537,6 +1537,13 @@ export default function Scene({
     rendererFailed: rendererFailure === data.map && rendererAttempt.failed,
     textureSupport: data.sample || textureTier !== null,
   });
+  // The plot unmounts the canvas and native world; the next 3D mount loads the
+  // world again. A ready load must not report the new world as drawn before it
+  // reports itself. Errors persist so the plot fallback cannot retry in a loop.
+  useEffect(() => {
+    if (surface === 'plot')
+      setModelLoad((previous) => (previous?.status === 'ready' ? undefined : previous));
+  }, [surface]);
   const equipmentActive = surface === '3d';
   const equipmentPending =
     equipmentAssets.status === 'pending'
