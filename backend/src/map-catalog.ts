@@ -23,12 +23,18 @@ const approvedIdentitySchema = mapIdentitySchema
   .required()
   .omit({ conflicted: true })
   .extend({ map: officialMapName, addonPresence: z.literal('none') });
+const sha1 = z.string().regex(/^[a-f0-9]{40}$/);
 export const officialMapSourceSchema = z
   .object({
     appId: z.literal(730),
     depotId: z.literal(2347770),
     manifest: decimal64,
     mapSha256: z.string().regex(/^[a-f0-9]{64}$/),
+    // gameinfo's OfficialAddonRoot ships in the platform depot.
+    addon: z
+      .object({ depotId: z.literal(2347773), manifest: decimal64, sha1 })
+      .strict()
+      .optional(),
   })
   .strict();
 export const officialMapInventoryLimits = {
@@ -36,15 +42,17 @@ export const officialMapInventoryLimits = {
   maps: 256,
   maxAgeSeconds: 24 * 60 * 60,
 } as const;
+const sourceBytes = z
+  .number()
+  .int()
+  .min(1)
+  .max(2 * 1024 ** 3);
 const officialMapInventoryItemSchema = z
   .object({
     map: officialMapName,
-    sha1: z.string().regex(/^[a-f0-9]{40}$/),
-    bytes: z
-      .number()
-      .int()
-      .min(1)
-      .max(2 * 1024 ** 3),
+    sha1,
+    bytes: sourceBytes,
+    addon: z.object({ manifest: decimal64, sha1, bytes: sourceBytes }).strict().optional(),
   })
   .strict();
 export const officialMapInventorySchema = z
@@ -78,6 +86,7 @@ export function latestMapRequestId(value: LatestOfficialSelection): string {
         manifest: item.manifest,
         sha1: item.sha1,
         bytes: item.bytes,
+        ...(item.addon ? { addon: item.addon } : {}),
       }),
     )
     .digest('hex');
@@ -95,6 +104,7 @@ export function latestMapPackId(map: string, value: OfficialMapSource): string {
         depotId: source.depotId,
         manifest: source.manifest,
         mapSha256: source.mapSha256,
+        ...(source.addon ? { addon: source.addon } : {}),
       }),
     )
     .digest('hex');
@@ -123,7 +133,9 @@ export const latestMapPackMarkerSchema = z
     (value) =>
       value.requestId === latestMapRequestId(value.selection) &&
       value.packId === latestMapPackId(value.selection.map, value.source) &&
-      value.source.manifest === value.selection.manifest,
+      value.source.manifest === value.selection.manifest &&
+      value.source.addon?.manifest === value.selection.addon?.manifest &&
+      value.source.addon?.sha1 === value.selection.addon?.sha1,
   );
 export const approvedMapEntrySchema = z
   .object({

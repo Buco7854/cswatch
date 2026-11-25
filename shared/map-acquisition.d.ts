@@ -11,11 +11,14 @@ export type MapIdentity = {
 type ApprovedMapIdentity = Required<Omit<MapIdentity, 'conflicted'>> & {
   addonPresence: 'none';
 };
+/** A map's official community addon VPK in the platform depot (gameinfo OfficialAddonRoot). */
+export type OfficialMapAddon = { manifest: string; sha1: string; bytes: number };
 export type OfficialMapSource = {
   appId: 730;
   depotId: 2347770;
   manifest: string;
   mapSha256: string;
+  addon?: { depotId: 2347773; manifest: string; sha1: string };
 };
 /** Worker-observed official depot membership, never inferred from a recording. */
 export type OfficialMapInventory = {
@@ -24,7 +27,7 @@ export type OfficialMapInventory = {
   depotId: 2347770;
   manifest: string;
   updatedAt: number;
-  maps: { map: string; sha1: string; bytes: number }[];
+  maps: { map: string; sha1: string; bytes: number; addon?: OfficialMapAddon }[];
 };
 export type LatestOfficialSelection = {
   map: string;
@@ -33,6 +36,7 @@ export type LatestOfficialSelection = {
   manifest: string;
   sha1: string;
   bytes: number;
+  addon?: OfficialMapAddon;
 };
 export type ApprovedMapEntry = {
   identity: ApprovedMapIdentity;

@@ -29,7 +29,7 @@ node lab-server.mjs "$NEW_MAP_DIR" 4198
 
 The stages are the ones the assets worker runs as separate confined, networkless children:
 
-1. `cs2export.dll --extract` reads the world, the 3D sky named by the map's own enabled `skybox_reference`, entities, materials, textures and lighting. The installer fetches a sky from the map's prefab folder or a top-level companion named after the map (`de_poseidon_3dskybox`). A sky or material that the game files lack is skipped and listed in `unsupported`.
+1. `cs2export.dll --extract` mounts the map VPK, the map's official community addon when present (`csgo_community_addons/<map>/<map>_dir.vpk`), then the `csgo` and `core` packages, and reads the world, the 3D sky named by the map's own enabled `skybox_reference`, entities, materials, textures and lighting. The installer fetches a sky from the map's prefab folder or a top-level companion named after the map (`de_poseidon_3dskybox`). A sky or material that the game files lack is skipped and listed in `unsupported`.
 2. `pack.mjs` writes geometry and the desktop BC tier, and plans the phone tier. When the game files lack the radar overview it renders one from the world (below).
 3. `cs2export.dll --astc-inputs` lays out the planned BC/BC6H blocks as stacked TGA groups and measures HDR ranges. The worker then removes extracted payloads the phone plan does not read.
 4. For each group, `cs2export.dll --astc-group` decodes it and `astcenc` encodes it (`-medium`), so scratch holds one uncompressed group at a time.

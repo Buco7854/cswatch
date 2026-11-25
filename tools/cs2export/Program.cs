@@ -70,7 +70,7 @@ try
                     !entity.GetBooleanProperty("startdisabled"))
                 {
                     var target = NativeScene.SkyPrefab(checkedMap, entity.GetStringProperty("targetmapname"));
-                    var package = Path.Combine(game, "csgo", target + ".vpk");
+                    var package = ResourceStore.PrefabPackage(game, checkedMap, target);
                     using var prefab = File.Exists(package) ? store.MountPrefab(package) : null;
                     CheckWorld(target);
                 }

@@ -105,12 +105,26 @@ export async function installLocalWorld(options) {
       throw Object.assign(Error('Map differs from verified source.'), {
         code: 'SOURCE_MAP_MISMATCH',
       });
+    // A map shipped as an official community addon also needs that exact addon directory.
+    const addon = options.expectedAddonFiles?.[map];
+    if (addon) {
+      const file = join(game, 'csgo_community_addons', map, map + '_dir.vpk');
+      const addonStat = await regular(file, 4 * 1024 ** 3);
+      if (
+        addonStat.size !== addon.bytes ||
+        (await fileHashes(file, ['sha1'], addon.bytes)).sha1 !== addon.sha1
+      )
+        throw Object.assign(Error('Addon differs from verified source.'), {
+          code: 'SOURCE_MAP_MISMATCH',
+        });
+    }
     await options.onSourceVerified?.({
       map,
       manifest,
       mapSha256: hashes.sha256,
       sha1: hashes.sha1,
       bytes: stat.size,
+      ...(addon ? { addon } : {}),
     });
     const version = options.assetVersion ?? 'steam-2347770-' + manifest;
     const scratch = await mkdtemp(join(options.cache, 'native-'));
@@ -213,7 +227,10 @@ export async function installLocalWorld(options) {
         overview: join(sourceDir, 'overview.txt'),
         map,
         version,
-        source: 'Valve CS2 Steam depot 2347770 manifest ' + manifest,
+        source:
+          'Valve CS2 Steam depot 2347770 manifest ' +
+          manifest +
+          (addon ? ` with addon depot 2347773 manifest ${addon.manifest}` : ''),
         output: prepared,
       });
       await validatePreparedMap(prepared, map, version, manifest);

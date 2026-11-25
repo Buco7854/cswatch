@@ -53,7 +53,7 @@ After a successful inventory refresh the idle worker prepares the fixed native C
 
 ## Latest official snapshots
 
-The worker lists direct map VPK entries from app `730`, depot `2347770`. A fresh inventory binds safe map names to one Steam manifest, SHA-1 and size (at most 128 KiB and 256 names). New selections need a check within 24 hours. An owner or guest request carries no source arguments; the server derives the selection from the inventory and the recording's map name. Explicit addon or conflicting evidence and unknown names stay blocked. Queued jobs keep their manifest pin. The viewer shows the manifest and check time and never presents a latest snapshot as the historical revision.
+The worker lists direct map VPK entries from app `730`, depot `2347770`. A fresh inventory binds safe map names to one Steam manifest, SHA-1 and size (at most 128 KiB and 256 names), plus the official community addon of a map that has one (depot `2347773`, its own manifest, SHA-1 and size). New selections need a check within 24 hours. An owner or guest request carries no source arguments; the server derives the selection from the inventory and the recording's map name. Explicit addon or conflicting evidence and unknown names stay blocked. Queued jobs keep their manifest pin. The viewer shows the manifest and check time and never presents a latest snapshot as the historical revision.
 
 ## Optional approved historical sources
 

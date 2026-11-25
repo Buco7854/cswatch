@@ -14,7 +14,21 @@ export const steamAssetLimits = Object.freeze({
   logBytes: 4 * 1024 ** 2,
 });
 export const STEAM_APP = '730',
-  STEAM_DEPOT = '2347770';
+  STEAM_DEPOT = '2347770',
+  // gameinfo's OfficialAddonRoot (csgo_community_addons) ships in the platform depots, not the
+  // content depot. The Linux depot carries the same files as the Windows one.
+  STEAM_ADDON_DEPOT = '2347773';
+/** A map's official community addon: one exact VPK named after the map. */
+export function addonPackage(map) {
+  selectedMaps([map]);
+  return `game/csgo_community_addons/${map}/${map}_dir.vpk`;
+}
+/** A 3D sky prefab that an addon embeds as a nested single-file VPK, extracted beside it. */
+export function addonPrefabPackage(map, reference) {
+  const { resource } = skyPrefabPackage(map, reference);
+  const entry = resource.slice(0, -'.vmap_c'.length) + '.vpk';
+  return { entry, file: `game/csgo_community_addons/${map}/${entry}` };
+}
 /** Manifest IDs are uint64 strings, never rounded JavaScript numbers. */
 export function selectedSteamManifest(value) {
   if (
@@ -49,7 +63,13 @@ export function initialSteamFiles(maps) {
 }
 export function overviewResources(map) {
   selectedMaps([map]);
-  return [`resource/overviews/${map}.txt`, `panorama/images/overheadmaps/${map}_radar_psd.vtex_c`];
+  // The compiled radar keeps its source image's extension in its name.
+  return [
+    `resource/overviews/${map}.txt`,
+    ...['psd', 'tga', 'png'].map(
+      (kind) => `panorama/images/overheadmaps/${map}_radar_${kind}.vtex_c`,
+    ),
+  ];
 }
 // A map's own prefab folder is its name, with or without the mode prefix, and an optional suffix
 // such as `cs_italy_s2`.
@@ -107,7 +127,7 @@ function validPrefabFile(file) {
     match && skyPrefabPackage(match[1], `maps/prefabs/${match[1]}/${match[2]}.vmap`).file === file,
   );
 }
-export function parseSteamListing(text, files) {
+export function parseSteamListing(text, files, depotId = STEAM_DEPOT) {
   if (typeof text !== 'string' || Buffer.byteLength(text) > steamAssetLimits.logBytes)
     throw new Error('Steam metadata exceeds the output limit.');
   const expected = new Set(files),
@@ -120,7 +140,7 @@ export function parseSteamListing(text, files) {
     if (fields.length !== 5) throw new Error('Unexpected Steam listing format.');
     const [depot, id, sha1, length, file] = fields;
     if (
-      depot !== STEAM_DEPOT ||
+      depot !== depotId ||
       !/^[1-9]\d{0,19}$/.test(id) ||
       BigInt(id) > 18446744073709551615n ||
       !/^[a-f0-9]{40}$/i.test(sha1) ||
@@ -149,15 +169,20 @@ export function parseSteamListing(text, files) {
 export function dependencyBatch(plans, map, { packageFile } = {}) {
   selectedMaps([map]);
   const topLevel = `game/csgo/maps/${map}.vpk`;
+  const addonPrefab = packageFile?.startsWith(`game/csgo_community_addons/${map}/maps/`);
   if (
     packageFile !== undefined &&
     packageFile !== topLevel &&
-    !selectedSkyPrefabFile(map, packageFile)
+    !selectedSkyPrefabFile(map, packageFile) &&
+    !(
+      addonPrefab &&
+      /^game\/csgo_community_addons\/[a-z0-9_]+\/maps\/[a-z0-9_]{1,100}\.vpk$/.test(packageFile)
+    )
   )
     throw new Error('Dependency package must belong to the selected map.');
   const records = [];
   for (const [group, entries] of Object.entries(plans.pending)) {
-    if (!['map', 'csgo', 'core'].includes(group) || !Array.isArray(entries))
+    if (!['map', 'addon', 'csgo', 'core'].includes(group) || !Array.isArray(entries))
       throw new Error('Invalid dependency group.');
     for (const entry of entries) {
       const resource = resourcePath(entry.resource);
@@ -169,12 +194,21 @@ export function dependencyBatch(plans, map, { packageFile } = {}) {
         entry.length + entry.preloadBytes > 128 * 1024 ** 2
       )
         throw new Error('Invalid dependency record size.');
-      const pak = group === 'map' ? (packageFile ?? topLevel) : `game/${group}/pak01_dir.vpk`;
-      records.push({ selector: `${pak}:${resource}`, bytes: entry.length + entry.preloadBytes });
+      const pak =
+        group === 'map'
+          ? (packageFile ?? topLevel)
+          : group === 'addon'
+            ? addonPackage(map)
+            : `game/${group}/pak01_dir.vpk`;
+      records.push({
+        selector: `${pak}:${resource}`,
+        bytes: entry.length + entry.preloadBytes,
+        ...(group === 'addon' ? { depot: STEAM_ADDON_DEPOT } : {}),
+      });
     }
   }
   return checkedBatch(records, {
-    prefabs: packageFile && packageFile !== topLevel ? [packageFile] : [],
+    prefabs: packageFile && packageFile !== topLevel && !addonPrefab ? [packageFile] : [],
   });
 }
 export function checkedBatch(records, { prefabs = [] } = {}) {
@@ -200,7 +234,15 @@ export function checkedBatch(records, { prefabs = [] } = {}) {
     )
       throw new Error('Invalid exact Steam selection.');
     const [file, entry, extra] = record.selector.split(':');
+    const addon =
+      /^game\/csgo_community_addons\/([a-z][a-z0-9_]{1,79})\/([a-z][a-z0-9_]{1,79})_dir\.vpk$/.exec(
+        file,
+      );
+    const depot = record.depot ?? STEAM_DEPOT;
+    if (depot !== (addon ? STEAM_ADDON_DEPOT : STEAM_DEPOT) || (addon && addon[1] !== addon[2]))
+      throw new Error('Steam selection is outside the fixed asset packages.');
     const knownFile =
+      Boolean(addon) ||
       /^game\/(?:csgo|core)\/(?:gameinfo\.gi|pak01_dir\.vpk|shaders_vulkan_dir\.vpk)$/.test(file) ||
       file === 'game/csgo/steam.inf' ||
       /^game\/csgo\/maps\/[a-z][a-z0-9_]{1,79}\.vpk$/.test(file) ||
@@ -211,9 +253,14 @@ export function checkedBatch(records, { prefabs = [] } = {}) {
       (entry !== undefined && (!/\.vpk$/.test(file) || resourcePath(entry) !== entry))
     )
       throw new Error('Steam selection is outside the fixed asset packages.');
-    unique.set(record.selector, Math.max(unique.get(record.selector) ?? 0, record.bytes));
+    unique.set(record.selector, {
+      depot,
+      bytes: Math.max(unique.get(record.selector)?.bytes ?? 0, record.bytes),
+    });
   }
-  const result = [...unique].map(([selector, bytes]) => ({ selector, bytes }));
+  const result = [...unique].map(([selector, { depot, bytes }]) =>
+    depot === STEAM_DEPOT ? { selector, bytes } : { selector, bytes, depot },
+  );
   if (result.reduce((sum, entry) => sum + entry.bytes, 0) > steamAssetLimits.selectedBytes)
     throw new Error('Selective download byte limit exceeded.');
   return result;

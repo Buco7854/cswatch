@@ -371,6 +371,7 @@ export function source2References(bytes, { limits: options } = {}) {
  * reveal texture dependencies that were intentionally absent in an earlier pass. */
 export async function scanSource2Dependencies({
   mapVpk,
+  addonVpk,
   csgoVpk,
   coreVpk,
   looseRoots = [],
@@ -386,8 +387,10 @@ export async function scanSource2Dependencies({
   )
     throw new Error('Dependency root or seed limit exceeded.');
   const sources = [];
+  // gameinfo mounts the official addon root ahead of the game's own packages.
   for (const [group, path] of [
     ['map', mapVpk],
+    ['addon', addonVpk],
     ['csgo', csgoVpk],
     ['core', coreVpk],
   ])
@@ -402,7 +405,7 @@ export async function scanSource2Dependencies({
   const queue = [...new Set(initial)],
     queued = new Set(queue),
     visited = new Set(),
-    pending = { map: [], csgo: [], core: [] },
+    pending = { map: [], addon: [], csgo: [], core: [] },
     unknown = [],
     loose = [],
     materials = [];

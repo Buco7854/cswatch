@@ -34,7 +34,45 @@ import {
   assertExportableUnknowns,
   selectedSkyPrefabFile,
   skyPrefabPackage,
+  addonPackage,
+  addonPrefabPackage,
 } from './steam-assets-plan.mjs';
+
+test('official addon entries come only from the platform depot and the map own addon', () => {
+  assert.equal(addonPackage('de_debris'), 'game/csgo_community_addons/de_debris/de_debris_dir.vpk');
+  assert.deepEqual(addonPrefabPackage('de_debris', 'maps/de_debris_skybox.vmap'), {
+    entry: 'maps/de_debris_skybox.vpk',
+    file: 'game/csgo_community_addons/de_debris/maps/de_debris_skybox.vpk',
+  });
+  assert.throws(() => addonPrefabPackage('de_debris', 'maps/de_mirage_skybox.vmap'));
+  const entry = { resource: 'materials/brick/wall.vmat_c', length: 10, preloadBytes: 0 };
+  assert.deepEqual(
+    dependencyBatch({ pending: { map: [], addon: [entry], csgo: [], core: [] } }, 'de_debris'),
+    [
+      {
+        selector:
+          'game/csgo_community_addons/de_debris/de_debris_dir.vpk:materials/brick/wall.vmat_c',
+        bytes: 10,
+        depot: '2347773',
+      },
+    ],
+  );
+  const addon = 'game/csgo_community_addons/de_debris/de_debris_dir.vpk';
+  assert.deepEqual(checkedBatch([{ selector: addon, bytes: 5, depot: '2347773' }]), [
+    { selector: addon, bytes: 5, depot: '2347773' },
+  ]);
+  for (const record of [
+    { selector: addon, bytes: 5 },
+    { selector: 'game/csgo/pak01_dir.vpk', bytes: 5, depot: '2347773' },
+    {
+      selector: 'game/csgo_community_addons/de_debris/de_mirage_dir.vpk',
+      bytes: 5,
+      depot: '2347773',
+    },
+    { selector: 'game/csgo_community_addons/de_debris/maps/x.vpk', bytes: 5, depot: '2347773' },
+  ])
+    assert.throws(() => checkedBatch([record]));
+});
 
 test('operator selection requires explicit safe maps and generates no full-game patterns', () => {
   for (const value of [
@@ -57,6 +95,8 @@ test('operator selection requires explicit safe maps and generates no full-game 
   assert.deepEqual(overviewResources('de_mirage'), [
     'resource/overviews/de_mirage.txt',
     'panorama/images/overheadmaps/de_mirage_radar_psd.vtex_c',
+    'panorama/images/overheadmaps/de_mirage_radar_tga.vtex_c',
+    'panorama/images/overheadmaps/de_mirage_radar_png.vtex_c',
   ]);
 });
 

@@ -12,6 +12,9 @@ sealed class ResourceStore : IDisposable
         try
         {
             Mount(Path.Combine(game, "csgo", "maps", map + ".vpk"));
+            // gameinfo's OfficialAddonRoot: a map shipped as an official community addon keeps its
+            // materials, sky and radar there, mounted ahead of the game's own packages.
+            if (File.Exists(AddonPackage(game, map))) Mount(AddonPackage(game, map));
             Mount(Path.Combine(game, "csgo", "pak01_dir.vpk"));
             Mount(Path.Combine(game, "core", "pak01_dir.vpk"));
         }
@@ -20,6 +23,16 @@ sealed class ResourceStore : IDisposable
             Dispose();
             throw;
         }
+    }
+
+    public static string AddonPackage(string game, string map) =>
+        Path.Combine(game, "csgo_community_addons", map, map + "_dir.vpk");
+
+    /// <summary>A sky prefab's package: under the game's maps, else extracted beside the map's addon.</summary>
+    public static string PrefabPackage(string game, string map, string prefab)
+    {
+        var package = Path.Combine(game, "csgo", prefab + ".vpk");
+        return File.Exists(package) ? package : Path.Combine(game, "csgo_community_addons", map, prefab + ".vpk");
     }
 
     public IDisposable MountPrefab(string path)
@@ -104,7 +117,10 @@ sealed class ResourceStore : IDisposable
             archive.ReadEntry(entry, out var bytes, false);
             if (Crc32.HashToUInt32(bytes) != entry.CRC32) throw new InvalidDataException("Overview metadata CRC mismatch");
             File.WriteAllBytes(Path.Combine(destination, "overview.txt"), bytes);
-            using var radar = ReadOptional($"panorama/images/overheadmaps/{map}_radar_psd.vtex");
+            // The compiled radar keeps its source image's extension in its name.
+            using var radar = ReadOptional($"panorama/images/overheadmaps/{map}_radar_psd.vtex") ??
+                ReadOptional($"panorama/images/overheadmaps/{map}_radar_tga.vtex") ??
+                ReadOptional($"panorama/images/overheadmaps/{map}_radar_png.vtex");
             if (radar == null) return;
             var texture = (ValveResourceFormat.ResourceTypes.Texture)radar.DataBlock!;
             if (texture.Width > 2048 || texture.Height > 2048) throw new InvalidDataException("Overview dimensions exceed limit");

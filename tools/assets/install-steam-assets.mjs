@@ -9,6 +9,9 @@ import { readVpkDirectory, scanSource2Dependencies } from './source2-dependencie
 import {
   STEAM_APP,
   STEAM_DEPOT,
+  STEAM_ADDON_DEPOT,
+  addonPackage,
+  addonPrefabPackage,
   steamAssetLimits,
   selectedMaps,
   selectedSteamManifest,
@@ -75,6 +78,22 @@ export async function installSteamAssets(options, adapters = {}) {
       ))
   )
     throw new Error('Expected official source files must cover exactly the selected maps.');
+  if (
+    options.expectedAddonFiles !== undefined &&
+    (!options.expectedAddonFiles ||
+      typeof options.expectedAddonFiles !== 'object' ||
+      Array.isArray(options.expectedAddonFiles) ||
+      Object.keys(options.expectedAddonFiles).some((map) => !maps.includes(map)) ||
+      Object.values(options.expectedAddonFiles).some(
+        (addon) =>
+          !/^[a-f0-9]{40}$/.test(addon?.sha1 || '') ||
+          !Number.isSafeInteger(addon?.bytes) ||
+          addon.bytes < 1 ||
+          addon.bytes > steamAssetLimits.selectedBytes ||
+          !/^[1-9]\d{0,19}$/.test(addon?.manifest || ''),
+      ))
+  )
+    throw new Error('Expected official addon files must belong to the selected maps.');
   if (options.onSourceVerified !== undefined && typeof options.onSourceVerified !== 'function')
     throw new Error('Invalid trusted source verification callback.');
   if (!options.output || !options.cache || Boolean(options.s2v) !== Boolean(options.downloader))
@@ -171,11 +190,12 @@ export async function installSteamAssets(options, adapters = {}) {
       output,
       records.reduce((sum, entry) => sum + entry.bytes, 0) + 64 * 1024 ** 2,
     );
-    await writeFile(
-      join(runRoot, 'files.json'),
-      JSON.stringify({ [STEAM_DEPOT]: records.map((record) => record.selector) }, null, 2),
-      { mode: 0o600 },
-    );
+    const byDepot = {};
+    for (const record of records)
+      (byDepot[record.depot ?? STEAM_DEPOT] ??= []).push(record.selector);
+    await writeFile(join(runRoot, 'files.json'), JSON.stringify(byDepot, null, 2), {
+      mode: 0o600,
+    });
     const result = await execute(
       tools.downloader,
       ['track', STEAM_APP, '--anonymous', '--output', game, '--manifests', pins, '--save-manifest'],
@@ -276,16 +296,73 @@ export async function installSteamAssets(options, adapters = {}) {
           mapSha256: actualHash,
           sha1: file.sha1,
           bytes: file.bytes,
+          ...(options.expectedAddonFiles?.[map] ? { addon: options.expectedAddonFiles[map] } : {}),
         });
         signal?.throwIfAborted();
       }
     }
     for (const map of maps) {
       const main = `game/csgo/maps/${map}.vpk`;
+      // A map whose content ships as an official community addon fetches that exact VPK from
+      // the platform depot at the manifest its inventory recorded.
+      const addon = options.expectedAddonFiles?.[map];
+      const addonFile = addon && addonPackage(map);
+      if (addon) {
+        const listing = await execute(
+          tools.downloader,
+          [
+            'ls',
+            STEAM_APP,
+            `${STEAM_ADDON_DEPOT}:${addon.manifest}`,
+            '--anonymous',
+            '--',
+            addonFile,
+          ],
+          'addon-preflight',
+          { timeoutMs: 120000 },
+        );
+        const pinned = parseSteamListing(listing.stdout, [addonFile], STEAM_ADDON_DEPOT);
+        const entry = pinned.files[0];
+        if (
+          pinned.manifest !== addon.manifest ||
+          entry.sha1 !== addon.sha1 ||
+          entry.bytes !== addon.bytes
+        )
+          throw Object.assign(
+            new Error('Official addon differs from the selected inventory snapshot.'),
+            {
+              code: 'SOURCE_MAP_MISMATCH',
+            },
+          );
+        const pin = join(pins, `manifest_${STEAM_ADDON_DEPOT}.txt`);
+        if (!(await exists(pin)))
+          await writeFile(
+            pin,
+            `Content Manifest for Depot ${STEAM_ADDON_DEPOT}\n\nManifest ID / date     : ${addon.manifest} / pinned by selective preflight\n`,
+            { flag: 'wx', mode: 0o600 },
+          );
+        const local = join(game, addonFile);
+        const current =
+          (await exists(local)) && (await fileHash(local, 'sha1', steamAssetLimits.selectedBytes));
+        if (current !== addon.sha1) {
+          await download(
+            [{ selector: addonFile, bytes: addon.bytes, depot: STEAM_ADDON_DEPOT }],
+            'addon',
+          );
+          if ((await fileHash(local, 'sha1', addon.bytes)) !== addon.sha1)
+            throw Object.assign(
+              new Error('A selected Steam file failed its manifest hash check.'),
+              {
+                code: 'SOURCE_MAP_MISMATCH',
+              },
+            );
+        } else remember([{ selector: addonFile, bytes: addon.bytes, depot: STEAM_ADDON_DEPOT }]);
+      }
       const scanPackage = async (packageFile, required) => {
         for (let wave = 0; wave <= steamAssetLimits.waves; wave++) {
           const closure = await scan({
             mapVpk: join(game, packageFile),
+            ...(addonFile ? { addonVpk: join(game, addonFile) } : {}),
             csgoVpk: join(game, 'game/csgo/pak01_dir.vpk'),
             coreVpk: join(game, 'game/core/pak01_dir.vpk'),
             looseRoots: [join(game, 'game/csgo'), join(game, 'game/core')],
@@ -311,6 +388,31 @@ export async function installSteamAssets(options, adapters = {}) {
           ({ file } = skyPrefabPackage(map, resource.slice(0, -2)));
         } catch {
           continue;
+        }
+        // An addon may embed the sky as a nested single-file VPK. Its CRC-checked bytes are
+        // written beside the addon, where the exporter mounts it.
+        if (addonFile) {
+          const nested = addonPrefabPackage(map, resource.slice(0, -2));
+          const index = await readVpkDirectory(join(game, addonFile));
+          const entry = index.entries.get(nested.entry);
+          if (entry) {
+            await download(
+              [
+                {
+                  selector: `${addonFile}:${nested.entry}`,
+                  bytes: entry.length + entry.preloadBytes,
+                  depot: STEAM_ADDON_DEPOT,
+                },
+              ],
+              'addon-sky',
+            );
+            const bytes = await index.readEntry(nested.entry);
+            if (!bytes) throw Error('Addon sky prefab digest differs.');
+            await mkdir(join(game, nested.file, '..'), { recursive: true, mode: 0o700 });
+            await writeFile(join(game, nested.file), bytes, { mode: 0o600 });
+            await scanPackage(nested.file, []);
+            continue;
+          }
         }
         const listing = await execute(
           tools.downloader,

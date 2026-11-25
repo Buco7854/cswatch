@@ -189,7 +189,7 @@ sealed class NativeScene(ResourceStore store, string game, string output, string
                 {
                     if (prefix != "maps/" + map) throw new InvalidDataException("Nested sky prefab");
                     var sky = SkyPrefab(map, entity.GetStringProperty("targetmapname"));
-                    var package = Path.Combine(game, "csgo", sky + ".vpk");
+                    var package = ResourceStore.PrefabPackage(game, map, sky);
                     using var prefab = File.Exists(package) ? store.MountPrefab(package) : null;
                     // A shipped map may name a 3D sky the game files lack; it is listed and skipped.
                     using (var probe = store.ReadOptional(sky + "/world.vwrld"))

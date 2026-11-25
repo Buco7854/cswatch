@@ -565,12 +565,17 @@ export async function processOneMapRequest(options, adapters = {}) {
                   expectedMapFiles: {
                     [map]: { sha1: request.selection.sha1, bytes: request.selection.bytes },
                   },
+                  ...(request.selection.addon
+                    ? { expectedAddonFiles: { [map]: request.selection.addon } }
+                    : {}),
                   onSourceVerified: async (source) => {
                     if (
                       source.map !== map ||
                       source.manifest !== manifest ||
                       source.sha1 !== request.selection.sha1 ||
                       source.bytes !== request.selection.bytes ||
+                      source.addon?.sha1 !== request.selection.addon?.sha1 ||
+                      source.addon?.manifest !== request.selection.addon?.manifest ||
                       !/^[a-f0-9]{64}$/.test(source.mapSha256 || '')
                     )
                       throw Object.assign(Error('Official source changed.'), {
@@ -581,6 +586,15 @@ export async function processOneMapRequest(options, adapters = {}) {
                       depotId: 2347770,
                       manifest,
                       mapSha256: source.mapSha256,
+                      ...(source.addon
+                        ? {
+                            addon: {
+                              depotId: 2347773,
+                              manifest: source.addon.manifest,
+                              sha1: source.addon.sha1,
+                            },
+                          }
+                        : {}),
                     };
                     assetPackId = latestMapPackId(map, verified);
                     target = join(packs, assetPackId);

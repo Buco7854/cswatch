@@ -205,6 +205,34 @@ test('official inventory is bounded fixed-depot membership with exact string ver
     assert.throws(() => parseOfficialMapInventory(text));
 });
 
+const addonRow = (map = 'de_mirage', manifest = '42', folder = map) =>
+  `2347773\t${manifest}\t${'b'.repeat(40)}\t200\tgame/csgo_community_addons/${folder}/${map}_dir.vpk`;
+
+test('official community addons are recorded on their own map from the platform depot', () => {
+  const inventory = parseOfficialMapInventory(
+    [row('de_mirage'), row('de_dust2'), addonRow('de_mirage'), addonRow('de_absent')].join('\n'),
+  );
+  assert.deepEqual(inventory.maps.find((m) => m.map === 'de_mirage').addon, {
+    manifest: '42',
+    sha1: 'b'.repeat(40),
+    bytes: 200,
+  });
+  assert.equal(inventory.maps.find((m) => m.map === 'de_dust2').addon, undefined);
+  // An addon file that is not named after its own folder is observed but never membership.
+  assert.equal(
+    parseOfficialMapInventory([row(), addonRow('de_mirage', '42', 'de_dust2')].join('\n')).maps[0]
+      .addon,
+    undefined,
+  );
+  for (const text of [
+    [row(), addonRow(), addonRow()].join('\n'),
+    [row(), addonRow('de_mirage', '42'), addonRow('de_dust2', '43')].join('\n'),
+    [row(), addonRow().replace('csgo_community_addons/de_mirage', 'csgo/../x')].join('\n'),
+    [row(), addonRow().replace('2347773', '2347771')].join('\n'),
+  ])
+    assert.throws(() => parseOfficialMapInventory(text));
+});
+
 test('refresh lists metadata only through the fixed anonymous selector and atomically retains previous success on failure', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'cswatch-inventory-'));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -220,7 +248,16 @@ test('refresh lists metadata only through the fixed anonymous selector and atomi
     prepareToolchain: async () => ({ downloader: '/trusted/downloader' }),
     run: async (command, args, received) => {
       assert.equal(command, '/trusted/downloader');
-      assert.deepEqual(args, ['ls', '730', '2347770', '--anonymous', '--', 'game/csgo/maps/*.vpk']);
+      assert.deepEqual(args, [
+        'ls',
+        '730',
+        '2347770',
+        '2347773',
+        '--anonymous',
+        '--',
+        'game/csgo/maps/*.vpk',
+        'game/csgo_community_addons/*/*_dir.vpk',
+      ]);
       context = received;
       assert.ok(received.signal);
       await received.storageGuard();

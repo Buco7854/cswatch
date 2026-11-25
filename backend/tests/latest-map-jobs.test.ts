@@ -243,3 +243,44 @@ test('explicit latest retry preserves verified content proof after publishing a 
     f.close();
   }
 });
+
+test('an official community addon is part of the latest request and content identities', () => {
+  const addon = { manifest: '42', sha1: 'c'.repeat(40), bytes: 34647 };
+  const inventory = officialMapInventorySchema.parse({
+    schemaVersion: 1,
+    appId: 730,
+    depotId: 2347770,
+    manifest: '7',
+    updatedAt: 1,
+    maps: [
+      { map: 'de_debris', sha1: 'a'.repeat(40), bytes: 100, addon },
+      { map: 'de_mirage', sha1: 'b'.repeat(40), bytes: 100 },
+    ],
+  });
+  const debris = latestOfficialSelection(inventory, 'de_debris')!;
+  assert.deepEqual(debris.addon, addon);
+  assert.equal(latestOfficialSelection(inventory, 'de_mirage')!.addon, undefined);
+  const { addon: _, ...plain } = debris;
+  assert.notEqual(latestMapRequestId(debris), latestMapRequestId(plain));
+  assert.notEqual(
+    latestMapRequestId(debris),
+    latestMapRequestId({ ...debris, addon: { ...addon, sha1: 'd'.repeat(40) } }),
+  );
+  const source = {
+    appId: 730 as const,
+    depotId: 2347770 as const,
+    manifest: '7',
+    mapSha256: 'e'.repeat(64),
+  };
+  const withAddon = {
+    ...source,
+    addon: { depotId: 2347773 as const, manifest: '42', sha1: addon.sha1 },
+  };
+  assert.notEqual(latestMapPackId('de_debris', withAddon), latestMapPackId('de_debris', source));
+  assert.throws(() =>
+    officialMapInventorySchema.parse({
+      ...inventory,
+      maps: [{ ...inventory.maps[0], addon: { ...addon, sha1: 'x' } }],
+    }),
+  );
+});

@@ -19,6 +19,7 @@ import {
   steamAssetLimits,
   STEAM_APP,
   STEAM_DEPOT,
+  STEAM_ADDON_DEPOT,
 } from './steam-assets-plan.mjs';
 
 /** Apply only to the trusted Steam downloader, never a converter's exit code. */
@@ -112,15 +113,44 @@ function inventoryError(error, phase, signal) {
 export function parseOfficialMapInventory(text, at = Math.floor(Date.now() / 1000)) {
   if (typeof text !== 'string' || Buffer.byteLength(text) > officialMapInventoryLimits.bytes)
     throw Error('Official map metadata exceeds its bound.');
-  let manifest;
+  let manifest, addonManifest;
   const maps = [],
-    seen = new Set();
+    seen = new Set(),
+    addons = new Map();
   const lines = text.trim().split(/\r?\n/);
   if (lines.length > 2048) throw Error('Official map listing entry bound exceeded.');
   for (const line of lines) {
     const fields = line.split('\t');
-    if (fields.length !== 5 || fields[0] !== STEAM_DEPOT || !/^[a-f0-9]{40}$/i.test(fields[2]))
+    if (
+      fields.length !== 5 ||
+      ![STEAM_DEPOT, STEAM_ADDON_DEPOT].includes(fields[0]) ||
+      !/^[a-f0-9]{40}$/i.test(fields[2])
+    )
       throw Error('Invalid official map listing.');
+    if (fields[0] === STEAM_ADDON_DEPOT) {
+      // gameinfo's OfficialAddonRoot: one directory VPK named after its map.
+      const addon =
+        /^game\/csgo_community_addons\/([a-z][a-z0-9_]{1,79})\/([a-z][a-z0-9_]{1,79})_dir\.vpk$/.exec(
+          fields[4],
+        );
+      const version = selectedSteamManifest(fields[1]);
+      // Like map descendants, other matches may be observed but are never membership.
+      if (!addon || addon[1] !== addon[2]) {
+        if (!/^game\/csgo_community_addons\/[a-z0-9_/]{1,300}\.vpk$/.test(fields[4]))
+          throw Error('Unexpected official addon resource.');
+        continue;
+      }
+      if (addons.has(addon[1]) || !/^[1-9]\d{0,15}$/.test(fields[3]))
+        throw Error('Unexpected official addon resource.');
+      if (addonManifest !== undefined && version !== addonManifest)
+        throw Error('Mixed official addon source versions.');
+      addonManifest = version;
+      const bytes = Number(fields[3]);
+      if (!Number.isSafeInteger(bytes) || bytes > steamAssetLimits.selectedBytes)
+        throw Error('Official addon source exceeds its bound.');
+      addons.set(addon[1], { manifest: version, sha1: fields[2].toLowerCase(), bytes });
+      continue;
+    }
     const version = selectedSteamManifest(fields[1]);
     if (manifest !== undefined && version !== manifest)
       throw Error('Mixed official map source versions.');
@@ -144,6 +174,7 @@ export function parseOfficialMapInventory(text, at = Math.floor(Date.now() / 100
   }
   if (!manifest || !maps.length)
     throw Error('Official map source contains no supported map names.');
+  for (const item of maps) if (addons.has(item.map)) item.addon = addons.get(item.map);
   maps.sort((a, b) => (a.map < b.map ? -1 : a.map > b.map ? 1 : 0));
   return officialMapInventorySchema.parse({
     schemaVersion: 1,
@@ -187,7 +218,16 @@ export async function refreshOfficialMapInventory(options, adapters = {}) {
     try {
       result = await (adapters.run || runAssetProcess)(
         tools.downloader,
-        ['ls', STEAM_APP, STEAM_DEPOT, '--anonymous', '--', 'game/csgo/maps/*.vpk'],
+        [
+          'ls',
+          STEAM_APP,
+          STEAM_DEPOT,
+          STEAM_ADDON_DEPOT,
+          '--anonymous',
+          '--',
+          'game/csgo/maps/*.vpk',
+          'game/csgo_community_addons/*/*_dir.vpk',
+        ],
         {
           cwd: root,
           home,
