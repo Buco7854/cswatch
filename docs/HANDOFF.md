@@ -1,6 +1,6 @@
 # Current handoff
 
-Use the standalone Mirage world lab for work on native map rendering. The exporter takes the pinned local Steam snapshot and writes a hash-addressed map. The lab loads that directory directly. Five Source-space camera poses, the capture command, shader limits and measured transfer sizes are recorded. [Exporter and lab](../tools/cs2export/README.md) · [Mirage verification](VERIFICATION.md#native-mirage-world-lab)
+Use `tools/cs2export` and the standalone world lab for native Mirage work. The format 3 desktop pack and captures live under `/workspace/cswatch/var/native-world/round2/` on the benchmark host. Start viewer integration from the shared HDR/depth pass order and deletion inventory. [Exporter](../tools/cs2export/README.md) · [Verification](VERIFICATION.md#native-mirage-world-lab) · [Integration plan](product/NATIVE-WORLD-INTEGRATION.md)
 
 For missing bullet hits or steps, check a freshly processed recording and the current sound bank. The asset worker logs `sound.ready` after checking the bank. Existing replay chunks contain the events recognized when they were parsed. For a missing wall sound, distinguish a recorded impact from a nearby 3D contact reconstructed from a firearm message. Check the loaded map tier and tick. [Three-map audio checks](VERIFICATION.md#nearby-wall-impacts)
 

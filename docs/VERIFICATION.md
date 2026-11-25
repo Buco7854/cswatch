@@ -2,6 +2,53 @@
 
 ## Native Mirage world lab
 
+### Desktop pack and progressive load, format 3
+
+Steam manifest `8225060435969537482`, VRF 21.1, SDK 11.0.100, Node 24.22.3. Two independent exports produced the same 70 files, including precompressed siblings. Manifest SHA-256 `cb1504c38b18a59d791f1e59a42d4b6b34f8a4e089516fddf4f3de550d75e4ad`. The first warm-source export took 10.282 s and peaked at 1,568,608 KiB aggregate RSS (10 ms process-tree sampling, 949,460 KiB largest process). The repeat took 10.390 s. Mirage has 952 chunks, 3,766 draw ranges, 1,758,441 vertices, 1,474,269 triangles, 373 materials and 733 texture resources.
+
+| Source                                 | Main world                              | Sky prefab                    | Retained                                     |
+| -------------------------------------- | --------------------------------------- | ----------------------------- | -------------------------------------------- |
+| Irradiance                             | BC6H 8192², two mips                    | BC6H 512²                     | 4096² main, original sky                     |
+| Sun occlusion                          | BC4 8192², two mips                     | BC4 512²                      | Original top level used by the shadow filter |
+| Directional irradiance and debug chart | BC1 4096² each                          | BC1 512² each                 | Original levels, chart optional              |
+| Reflection cubemaps                    | BC6H 256² × 58 cubes                    | BC6H 256² × one cube          | 128² with remaining authored mips            |
+| Probe irradiance / sun atlas           | BC6H 164×152×384 / BC7 164×152×64       | BC6H 44×40×120 / BC7 44×40×20 | Original extents                             |
+| Sky backdrop / BRDF lookup             | BC6H 512² × six faces / RGBA16F 64×64×3 |                               | 128² with mips / original lookup             |
+
+BC data stays lossless at every retained mip. The compressed geometry expands to the same interleaved GPU layout as before. The size columns below count payload bytes. Raw is the on-disk pack representation before HTTP encoding. Wire counts the transferred response bodies once per request. The optional files are the chart atlases, effects noise volume and decoded visibility. The full directory occupies **100,551,513 bytes** including both HTTP representations.
+
+| Category   |    Default raw |   Default wire | With optional, raw | With optional, wire |
+| ---------- | -------------: | -------------: | -----------------: | ------------------: |
+| textures   |     32,632,826 |     32,632,676 |         36,265,130 |          36,264,980 |
+| lightmaps  |     25,344,186 |     25,344,186 |         26,278,660 |          26,269,212 |
+| geometry   |     12,337,304 |     12,337,304 |         12,337,304 |          12,337,304 |
+| cubemaps   |      7,574,253 |      7,574,253 |          7,574,253 |           7,574,253 |
+| probes     |      6,227,045 |      6,224,825 |          6,227,045 |           6,224,825 |
+| sky        |         40,797 |         40,398 |             40,797 |              40,398 |
+| lighting   |         67,291 |         67,291 |             67,291 |              67,291 |
+| grading    |        131,072 |         38,769 |            131,072 |              38,769 |
+| visibility |              0 |              0 |          4,031,800 |           1,100,158 |
+| manifest   |      3,333,165 |        373,967 |          3,333,165 |             373,967 |
+| **Total**  | **87,687,939** | **84,633,669** |     **96,286,517** |      **90,291,157** |
+
+Cold Chromium 159.0.8154.6, ANGLE/SwiftShader, 720×480, DPR 1, A-site initial camera. The loopback server shared 50 Mbit/s across all 58 map responses. Navigation to the first GPU fence took **10.250 s**, and navigation to the full-quality fence took **18.708 s**. The largest refinement submission in one animation frame was **1,048,576 bytes**. Material pages, cube faces and sky refine from coarse mips after the first frame. GPU texture allocations were **126,075,832 bytes** at 720×480 and **130,683,832 bytes** at 1280×720, including the linear HDR target. Depth, geometry, staging and driver memory are separate.
+
+All poses below use vertical FOV 73.74°. Differences are RGB mean absolute display levels and percentage of pixels with any channel differing by more than eight levels. The reference uses the full previous export and the new exposure. The uniform 512-versus-1024 cap trial uses 1280×720. The shipped policy retains four 1024 materials (A brick, ammo pallet, Mid upper wall and tile ground), nineteen 512 materials, and a 256 default. Shared inputs receive the highest requested cap. Material choices are in `tools/cs2export/material-caps.mjs`.
+
+| Pose, position, pitch/yaw             | 720×480 draws / triangles | 1280×720 draws / triangles |     720×480 diff |    1280×720 diff | 512 vs 1024 diff |
+| ------------------------------------- | ------------------------: | -------------------------: | ---------------: | ---------------: | ---------------: |
+| a-ct, (-820, -2300, -113), -1/44      |             165 / 737,930 |              175 / 831,658 | 0.2827 / 0.0964% | 0.3055 / 0.1061% | 0.5428 / 0.8121% |
+| mid-t, (475, -900, -108), 3/178       |             171 / 924,955 |              175 / 961,391 | 0.1561 / 0.0391% | 0.1938 / 0.0788% | 0.9922 / 2.7835% |
+| window, (-1250, -1087, -108), -2/76   |             163 / 660,304 |              173 / 694,209 | 0.1460 / 0.0344% | 0.1754 / 0.0592% | 0.0087 / 0.0104% |
+| b-apartments, (-1410, 748, 15), 1/179 |              85 / 279,533 |               88 / 307,698 | 0.3385 / 0.2350% | 0.3336 / 0.2731% | 0.0004 / 0.0001% |
+| overhead, (-527, -905, 4400), 89.9/90 |           178 / 1,469,689 |            177 / 1,469,881 | 0.0912 / 0.1354% | 0.1043 / 0.1261% | 0.0278 / 0.0116% |
+
+At the fire camera (−807.97, −1055.97, −103.97; pitch 13.3°, yaw 70.69°; vertical FOV 90°, 960×540), the wall above the arch at (387,95), 64×48, went from mean RGB (208.0,142.6,77.3) to (137.1,91.0,49.9). The daylight patch at (510,237), 50×30, went from (189.3,162.5,134.1) to (123.5,104.9,86.3). Mirage uses fixed exposure 0.8 and zero bloom. The readability refactor produced byte-identical PNGs at all ten pose/size combinations. With fog and the 3D prefab disabled, overhead submitted 150 / 1,293,295 at 720×480 and 149 / 1,293,295 at 1280×720.
+
+The benchmark host keeps the export and evidence under `/workspace/cswatch/var/native-world/round2/`. `desktop/` is the pack, `verified/` contains the ten standard PNGs, per-pose counts and cold-load log, `tactical/` has both clear overhead captures, `before/` and `fire-final/` have the fire pair, and `ui/` has desktop, tablet and mobile captures in both themes. `reference/` preserves the full-resolution fixed-exposure comparison. `pixel-diffs.json` includes the end-to-end change against the prior display treatment. Remaining limits include static wind and effect time, glass transmission and cube-face seams, and depth ordering inside individual translucent ranges. Physical-device performance and mobile texture support remain unmeasured.
+
+### Original lab, format 1
+
 The offline exporter read local Steam manifest `8225060435969537482` with ValveResourceFormat 21.1 and .NET SDK 11.0.100 on Linux x64. Three exports produced the same manifest and all 98 binary SHA-256 hashes. Retrying an existing destination preserved its contents. The manifest SHA-256 was `4ad249742da665cd211913d59ca43859d3da6dcfebbfc988cb25c9fb415aadd0`. The measured warm-cache run took 6.061 seconds. Peak aggregate RSS sampled across .NET and Node at 10 ms intervals was 1,636,356 KiB. The largest individual process peaked at 949,024 KiB.
 
 | Package category                                |           Bytes |
