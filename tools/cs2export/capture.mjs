@@ -68,13 +68,11 @@ try {
         { timeout: 120000 },
       );
       const screenshot = join(output, `${p.name}-${width}x${height}.png`);
-      await page
-        .locator('canvas')
-        .screenshot({
-          path: screenshot,
-          timeout: 120000,
-          style: 'section, aside {visibility:hidden}',
-        });
+      await page.locator('canvas').screenshot({
+        path: screenshot,
+        timeout: 120000,
+        style: 'section, aside {visibility:hidden}',
+      });
       const data = await page.evaluate(() => {
         const { draws, triangles, textureBytes, multiDraw, submissionMs, completionMs } =
           window.worldLab;

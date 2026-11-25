@@ -1,5 +1,7 @@
 # Feature status
 
+A developer-only WebGL2 lab renders Mirage from compiled Source 2 geometry, baked lightmaps, probe atlases and material arrays. It includes the 3D sky prefab and separately identified entity ranges. The wider of the two measured viewports stayed within 217 submissions at the four player viewpoints using SwiftShader multi-draw. [Mirage verification](VERIFICATION.md#native-mirage-world-lab)
+
 Detailed and Compact map preparation now respects source-disabled brush and prop placements. Replay visibility, matched by class, model and transform, can enable them. New demos open on a living player's POV when one is available. A recorded death can produce the POV vignette even without a hurt event. The spectator view turns toward the attacker when the recording supplies both poses and permits replay. Throw releases, knife actions and surface sounds follow recorded events. [Verification and limits](VERIFICATION.md#mode-geometry-and-playback)
 
 The renderer prepares geometry bounds when first needed and during idle periods. Playback keeps its learned resolution through buffering, and applies an explicit resolution scale once on high-density displays. [Three-map checks](VERIFICATION.md#first-view-geometry-and-display-resolution)

@@ -1,5 +1,39 @@
 # Verification record
 
+## Native Mirage world lab
+
+The offline exporter read local Steam manifest `8225060435969537482` with ValveResourceFormat 21.1 and .NET SDK 11.0.100 on Linux x64. Three exports produced the same manifest and all 98 binary SHA-256 hashes. Retrying an existing destination preserved its contents. The manifest SHA-256 was `4ad249742da665cd211913d59ca43859d3da6dcfebbfc988cb25c9fb415aadd0`. The measured warm-cache run took 6.061 seconds. Peak aggregate RSS sampled across .NET and Node at 10 ms intervals was 1,636,356 KiB. The largest individual process peaked at 949,024 KiB.
+
+| Package category                                |           Bytes |
+| ----------------------------------------------- | --------------: |
+| Material texture arrays and effects volume      |     155,683,932 |
+| World and sky lightmaps                         |     143,261,696 |
+| Environment cubemaps                            |      30,931,104 |
+| Meshoptimizer geometry                          |      30,043,710 |
+| Light probe volumes                             |      11,414,144 |
+| Optional visibility                             |       4,031,800 |
+| Sky                                             |       2,097,120 |
+| Grading LUT                                     |         131,072 |
+| BRDF lookup                                     |          98,304 |
+| Manifest including materials and entity records |       2,286,613 |
+| **Complete export**                             | **379,979,495** |
+
+The lab requested **362,765,595 map payload bytes** on a cold browser load from loopback, including the manifest. It leaves the debug chart textures, volumetric noise and visibility file on disk. The package contains 1,758,441 vertices, 1,474,269 triangles, 3,766 source draw ranges, 963 chunks, 373 materials, 733 textures, 83 material arrays, and 176 entity-model records. It preserves 58 main-world cube probes and one sky-prefab probe. All Mirage material texture payloads retained their source encoding including the retained mip chain. The main world's 8192² irradiance and shadow textures account for much of its size.
+
+The isolated production lab entry ran in Playwright Chromium 159.0.8154.6 on CPU-only ANGLE/SwiftShader. The table gives WebGL submissions and submitted triangles. Both include the sky and HDR/post-process passes. Geometry outside the camera frustum was culled. PVS remained disabled. Each pose uses vertical FOV 73.74°. Texture allocations were 334,105,580 bytes at 720 × 480 and 339,632,000 bytes at 1280 × 720. They exclude depth renderbuffers and driver overhead.
+
+| Pose                | Position in inches | Pitch, yaw | 720 × 480 draws / triangles | 1280 × 720 draws / triangles |
+| ------------------- | ------------------ | ---------- | --------------------------: | ---------------------------: |
+| A site from CT ramp | −820, −2300, −113  | −1, 44     |               203 / 737,950 |                217 / 831,679 |
+| Mid from T side     | 475, −900, −108    | 3, 178     |               207 / 924,975 |                213 / 961,412 |
+| Window room         | −1250, −1087, −108 | −2, 76     |               198 / 660,324 |                211 / 694,230 |
+| B apartments        | −1410, 748, 15     | 1, 179     |               114 / 279,553 |                120 / 307,719 |
+| Overhead            | −527, −905, 4400   | 89.9, 90   |             216 / 1,469,709 |              216 / 1,469,902 |
+
+The ten inspected PNGs and per-frame timings are under `/workspace/cswatch/var/native-world/captures-v1/` on the benchmark host. At 720 × 480 the Window and B apartments captures had mean display luma of 92 and 95 on a 0–255 scale, against 159 at A and 182 at Mid. The 2D sky and 3D sky prefab were visible. All ten captures had zero pure-magenta pixels. Additional views inspected the ticket-booth breakable glass and palm cutouts. Mid, Window, B apartments and overhead matched a strict back-to-front translucent range sort pixel for pixel at both sizes after combining disjoint draws. With multi-draw disabled, Mid at 720 × 480 needed 618 submissions and matched the multi-draw image pixel for pixel. The lab showed a missing BPTC extension by name in the disabled-extension check. Desktop, tablet and phone layouts were inspected in both themes. The camera responded to keyboard movement and touch drag. All six debug choices rendered.
+
+The lab samples Mirage's version 8.2 directional lightmaps and sun-shadow mask, probe irradiance, projected environment reflections, cubemap fog and authored HDR grading/bloom. Mirage has layered lightmappedgeneric materials. The snapshot has no environment_blend, 4wayblend, simple_2way_blend, water or gradient-fog material/entity to validate. The visible material families use a shared implementation. Hard alpha testing, simplified material color response, glass transmission and six-face array cubemap filtering can differ from the client. Wind, animated materials, effects depth feather and noise animation, entity I/O, animated shadow casters, temporal exposure transitions and dithering are outside the measured implementation. The local lights on this snapshot use baked or disabled direct illumination. Transparent triangles retain their original order within each sorted draw range. The optional 4,096-cluster visibility export has no verified cluster-to-draw mapping. These are software rendering and capture measurements. Hardware performance and full CS2 pixel parity have not been established. [Reproduction and format](../tools/cs2export/README.md)
+
 ## Nearby wall impacts
 
 Nine confined recording probes checked the native bullet, effect-dispatch and decal messages. The Nuke and Cache broadcasts contained muzzle origins and shot directions. Their emitted decal groups resolved to wounds, blood and scorch marks. None supplied a named bullet sound against a wall. The operator’s official depot 2347770, manifest 5924479096069937098, supplied the decal group definitions and CS2’s default bullet-impact sound.
