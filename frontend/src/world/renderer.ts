@@ -1,6 +1,5 @@
 // Material and lighting bindings adapted from ValveResourceFormat 21.1 (MIT). See tools/cs2export/THIRD_PARTY_NOTICES.txt.
 import { program } from './program';
-import { createBloom } from './bloom';
 import { projectedBounds, transparentGroups, type ScreenRect } from './transparency';
 import { probeGrid } from './probe-grid';
 import { Frustum, Matrix4, PerspectiveCamera, Vector3, Box3 } from 'three';
@@ -21,7 +20,6 @@ export async function createRenderer(gl: WebGL2RenderingContext, dir: URL, m: Ma
   const world = program(gl, vertex, worldFrag),
     sky = program(gl, screenVertex, skyFrag),
     post = program(gl, screenVertex, postFrag);
-  const bloomPass = createBloom(gl);
   const ext = gl.getExtension('WEBGL_multi_draw');
   let textureBytes = 0;
   const fetchAsset = (file: string) => readAsset(dir, m, file);
@@ -53,17 +51,27 @@ export async function createRenderer(gl: WebGL2RenderingContext, dir: URL, m: Ma
     special.set(name.replaceAll('\\', '/'), tex);
     textureBytes += data.byteLength;
   }
-  const params = Object.values(m.post)[0],
-    lut = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_3D, lut);
-  const dim = params.dimension,
-    bytes = await fetchAsset(params.lut);
-  gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, dim, dim, dim, 0, gl.RGBA, gl.UNSIGNED_BYTE, bytes);
-  textureBytes += bytes.length;
-  for (const a of [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T, gl.TEXTURE_WRAP_R])
-    gl.texParameteri(gl.TEXTURE_3D, a, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  const controller = m.environments
+    .find((environment) => !environment.sky)
+    ?.entities.find(
+      (entity) =>
+        entity.classname === 'post_processing_volume' && entity.master && !entity.startdisabled,
+    );
+  const params = m.post[String(controller?.postprocessing)] ?? Object.values(m.post)[0];
+  const exposure = controller?.enableexposure ? Number(controller.minexposure ?? 1) : 1;
+  const lut = gl.createTexture();
+  const dimension = params.dimension;
+  const cube = await fetchAsset(params.lut);
+  const diagonal = new Uint8Array(4 * dimension);
+  for (let index = 0; index < dimension; index++) {
+    const offset = 4 * index * (dimension * dimension + dimension + 1);
+    diagonal.set(cube.subarray(offset, offset + 4), 4 * index);
+  }
+  gl.bindTexture(gl.TEXTURE_2D, lut);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, dimension, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, diagonal);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  textureBytes += diagonal.length;
   function table(w: number, h: number, values: Float32Array<ArrayBuffer>) {
     const tex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, tex);
@@ -606,34 +614,10 @@ export async function createRenderer(gl: WebGL2RenderingContext, dir: URL, m: Ma
     gl.disable(gl.CULL_FACE);
     gl.bindVertexArray(null);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    const controller = m.environments
-      .find((e) => !e.sky)
-      ?.entities.find((e) => e.master && e.enableexposure && !e.startdisabled);
-    const bounds = [
-      Number(controller?.minexposure ?? 1),
-      Number(controller?.maxexposure ?? 1),
-      width * height,
-    ];
-    const bloom = bloomPass(
-      hdr,
-      width,
-      height,
-      bounds,
-      params.bloom,
-      2 ** params.tonemap.m_flExposureBias,
-    );
-    draws += bloom.draws;
-    triangles += bloom.draws;
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, width, height);
     post.use();
-    bind(2, gl.TEXTURE_2D, bloom.bloom);
-    bind(3, gl.TEXTURE_2D, bloom.meter);
-    gl.uniform1i(post.u('glowMap'), 2);
-    gl.uniform1i(post.u('meter'), 3);
-    gl.uniform3fv(post.u('exposureBounds'), bounds);
     bind(0, gl.TEXTURE_2D, hdr);
-    bind(1, gl.TEXTURE_3D, lut);
+    bind(1, gl.TEXTURE_2D, lut);
     gl.uniform1i(post.u('hdr'), 0);
     gl.uniform1i(post.u('lut'), 1);
     const c = params.tonemap,
@@ -649,14 +633,14 @@ export async function createRenderer(gl: WebGL2RenderingContext, dir: URL, m: Ma
       post.u('toe'),
       c.m_flToeNum,
       c.m_flToeDenom,
-      2 ** c.m_flWhitePoint,
-      2 ** c.m_flExposureBias,
+      2.8 * c.m_flWhitePoint,
+      2.8 * exposure * 2 ** (c.m_flExposureBias - 0.4),
     );
     gl.uniform4f(
       post.u('bloom'),
       b.m_flBloomThreshold,
       b.m_flBloomThresholdWidth,
-      b.m_flScreenBloomStrength,
+      b.m_flBloomStrength,
       0,
     );
     gl.uniform1i(post.u('bypass'), mode === 0 ? 0 : 1);
@@ -666,7 +650,7 @@ export async function createRenderer(gl: WebGL2RenderingContext, dir: URL, m: Ma
     return {
       draws: draws + 1,
       triangles: triangles + 1,
-      textureBytes: textureBytes + bloom.bytes + 8 * width * height,
+      textureBytes: textureBytes + 8 * width * height,
       submissionMs: performance.now() - start,
       multiDraw: Boolean(ext),
     };
