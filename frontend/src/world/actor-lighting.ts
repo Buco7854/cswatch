@@ -35,7 +35,14 @@ export function actorLighting(renderer: WebGLRenderer, native: NativeRenderer) {
     if (!(material instanceof MeshStandardMaterial) || patched.has(material)) return;
     const before = material.onBeforeCompile,
       key = material.customProgramCacheKey;
+    // A disposed material leaves the registry; replays remount many instance materials.
+    const forget = () => {
+      patched.delete(material);
+      material.removeEventListener('dispose', forget);
+    };
+    material.addEventListener('dispose', forget);
     patched.set(material, () => {
+      forget();
       material.onBeforeCompile = before;
       material.customProgramCacheKey = key;
       material.needsUpdate = true;
