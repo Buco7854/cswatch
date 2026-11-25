@@ -1,5 +1,9 @@
 # Verification record
 
+## Player markers and x-ray outlines, 2026-11-25
+
+Player labels are head markers (outlined name, 2 px health bar, team chevron) and x-ray draws a 2 px team outline around only the hidden part of a body. A copied normal-install instance served the native Mirage pack to production Chromium with SwiftShader. The asset worker's agent preparation had failed in that run, and the only complete agent bank on the host lacks the directional clips, so T players used capsules and CT players used a staged CT model. Ticks 21241, 43193, 18142 and 12000 were captured before and after the change in POV, Follow, Free, Overhead and 2D at 1600×900, 1280×720, 1024×768, 390×844 and 844×390, in both themes and in English and French (30 frames each). All of them were inspected. The public Playwright suite passed 360 with three configuration skips. Formatting and English/French locale coverage passed. Physical devices and a GPU renderer were not measured.
+
 ## Native worlds
 
 Evidence from 2026-11-25 on the 3-CPU, 9 GB Linux host without a GPU. Chromium used ANGLE/SwiftShader, which exposes BPTC, RGTC, S3TC and ASTC. SwiftShader results are correctness and counts only, never frame rate.
