@@ -181,7 +181,7 @@ test('worker removes only the reviewed owned pack, preserves active file descrip
   );
 });
 
-test('a pack written in an earlier format version is still retired', async (t) => {
+test('a pack whose manifest does not validate is still retired', async (t) => {
   const f = await fixture(t),
     manifest = join(f.target, 'maps/de_ancient/map.json');
   const value = JSON.parse(await readFile(manifest, 'utf8'));

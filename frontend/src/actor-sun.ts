@@ -1,4 +1,4 @@
-import { Box3, Matrix4, Vector3, type DirectionalLight } from 'three';
+import { Box3, Matrix4, Vector3 } from 'three';
 /** Unit direction toward the sun and linear RGB color, in viewer coordinates. */
 export type SourceSun = Readonly<{ directionToSun: Triplet; color: Triplet }>;
 
@@ -77,17 +77,4 @@ export function mapSun(source: SourceSun | null, bounds?: Box3): MapSun | null {
       far: Math.max(near + 1, -lightBounds.min.z + margin),
     },
   };
-}
-
-/** Nested light camera props alone do not update Three's projection matrix. */
-export function applySunShadow(
-  light: DirectionalLight,
-  value: MapSun['shadow'],
-  up: Triplet,
-): void {
-  const camera = light.shadow.camera;
-  Object.assign(camera, value);
-  camera.up.set(...up);
-  camera.updateProjectionMatrix();
-  light.shadow.needsUpdate = true;
 }

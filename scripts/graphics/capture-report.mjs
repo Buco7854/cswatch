@@ -84,65 +84,6 @@ export async function rgbMetrics(a, b, width, height) {
   };
 }
 
-export async function compareView(report, view, image, reference, file) {
-  const empty = (status, reasons = []) => ({ status, reasons, metrics: null });
-  if (!reference) return empty('no-reference');
-  assert(
-    reference.schemaVersion === 1 &&
-      [captureKind, externalKind].includes(reference.kind) &&
-      Array.isArray(reference.views) &&
-      reference.views.length <= maxViews,
-    'Invalid reference manifest',
-  );
-  const candidates = reference.views.filter((v) => v.index === view.index);
-  if (!candidates.length) return empty('missing-view');
-  if (candidates.length !== 1) return empty('unverified', ['ambiguous-view']);
-  const ref = candidates[0],
-    external = reference.kind === externalKind;
-  const reasons = [];
-  for (const key of [
-    'map',
-    'assetVersion',
-    'sourceSha256',
-    'coordinateSystem',
-    'projection',
-    'colorSpace',
-    'hudFree',
-  ])
-    if (!equal(reference[key], report[key])) reasons.push(key);
-  for (const key of ['eye', 'target']) if (!equal(ref[key], view[key])) reasons.push(key);
-  if (external) {
-    const p = reference.provenance;
-    if (
-      p?.producer !== 'CS2' ||
-      !text(p?.version, 200) ||
-      !p.version.trim() ||
-      !text(p?.captureSource, 500) ||
-      !p.captureSource.trim() ||
-      !text(p?.renderSettings, 1000) ||
-      !p.renderSettings.trim()
-    )
-      reasons.push('external-provenance');
-  } else {
-    for (const key of ['tier', 'settings', 'scope'])
-      if (!equal(reference[key], report[key])) reasons.push(key);
-    for (const key of ['feature', 'shader', 'action', 'materialName'])
-      if (ref[key] !== view[key]) reasons.push(key);
-    if (!sha(reference.modelSha256)) reasons.push('baseline-model');
-    if (!sha(reference.auditSha256) || reference.auditBinding !== 'tier-manifest')
-      reasons.push('baseline-audit');
-  }
-  return compareReferenceImage({
-    image,
-    ref,
-    file,
-    width: report.projection.width,
-    height: report.projection.height,
-    external,
-    reasons,
-  });
-}
-
 export async function compareReferenceImage({
   image,
   ref,
@@ -181,39 +122,4 @@ export async function compareReferenceImage({
     referenceSha256: ref.sha256,
     metrics,
   };
-}
-
-export function evaluateLimits(report, view, reference, limits) {
-  const { comparison, performance } = view;
-  const checks = [];
-  if (limits.maxMae !== undefined) {
-    const value = comparison.metrics?.mae;
-    checks.push({
-      metric: 'mae',
-      maximum: limits.maxMae,
-      value: value ?? null,
-      status: value === undefined ? 'unverified' : value > limits.maxMae ? 'fail' : 'pass',
-    });
-  }
-  if (limits.maxP95Ratio !== undefined) {
-    const prior = reference?.views.find((v) => v.index === view.index)?.performance;
-    const comparable =
-      comparison.status === 'matched-baseline' &&
-      report.renderer.deviceId &&
-      report.renderer.deviceClass !== 'unknown' &&
-      equal(reference.renderer, report.renderer) &&
-      reference.timing === report.timing &&
-      prior?.samples === performance.samples &&
-      prior?.warmup === performance.warmup &&
-      prior.p95Ms > 0 &&
-      Number.isFinite(prior.p95Ms);
-    const value = comparable ? performance.p95Ms / prior.p95Ms : null;
-    checks.push({
-      metric: 'warm-p95-ratio',
-      maximum: limits.maxP95Ratio,
-      value,
-      status: value === null ? 'unverified' : value > limits.maxP95Ratio ? 'fail' : 'pass',
-    });
-  }
-  return checks;
 }

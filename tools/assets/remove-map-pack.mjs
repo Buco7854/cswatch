@@ -40,8 +40,8 @@ export function managedMapPaths(map, payloads = {}) {
     directories: new Set(['maps', world, 'maps/overviews', `maps/overviews/${map}`]),
   };
 }
-// Removal reads only a pack's identity and file table, so a pack written in an earlier format
-// version can still be retired and prepared again after an upgrade.
+// Removal reads only a pack's identity and file table, so a pack whose manifest this version
+// cannot validate is still retired and prepared again.
 function removableManifest(value) {
   const files = value?.files;
   if (
