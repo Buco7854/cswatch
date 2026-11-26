@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "items": {
+    "fire-ground": {
+      "source": "materials/particle/fire_explosion_1/fire_explosion_1.vtex_c",
+      "use": "molotov_groundfire_child_base: ground-aligned burning base"
+    },
+    "fire-flame": {
+      "source": "materials/particle/fire_small_sim/fire_small_sim_b.vtex_c",
+      "use": "molotov_child_flame01a: upright flames"
+    },
+    "fire-glow": {
+      "source": "materials/particle/particle_flares/particle_flare_004b_mod.vtex_c",
+      "use": "molotov_groundfire_child_glow: soft glow"
+    },
+    "fire-ember": {
+      "source": "materials/effects/yellowflare.vtex_c",
+      "use": "molotov_groundfire_child_embers: rising embers"
+    },
+    "fire-smoke": {
+      "source": "materials/particle/smoke1/smoke1.vtex_c",
+      "use": "rising smoke (molotov_smoking_ground_child01 references a sheet absent from the depot)"
+    },
+    "fire-scorch": {
+      "source": "materials/effects/fluidsplat_a_noisy_trans_tga_255c92aa.vtex_c",
+      "use": "molotov_groundfire_projected: ground scorch"
+    }
+  }
+}

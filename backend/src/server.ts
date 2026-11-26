@@ -83,6 +83,7 @@ import { providerRoutes } from './providers.js';
 import { captionArtifactName } from './captions.js';
 import { requeueTranscription } from './transcription-worker.js';
 import { gameplaySoundAssetRoutes } from './gameplay-sound-assets.js';
+import { effectAssetRoutes } from './effect-assets.js';
 import { equipmentAssetRoutes } from './equipment-assets.js';
 import { equipmentModelAssetRoutes } from './equipment-model-assets.js';
 import { viewmodelAssetRoutes } from './viewmodel-assets.js';
@@ -327,7 +328,7 @@ export async function createApp(
       reply.statusCode < 400 &&
       isRead(r) &&
       (route === '/map-assets/*' ||
-        /^\/api\/(?:assets|maps|map-preview|sound-assets)(?:\/|$)/.test(route))
+        /^\/api\/(?:assets|maps|map-preview|sound-assets|effect-assets)(?:\/|$)/.test(route))
     ) {
       try {
         revalidatePrincipal(r);
@@ -453,6 +454,7 @@ export async function createApp(
   });
   await equipmentAssetRoutes(app, db.root, c.mapAssetsDir, c.mapJobsDir);
   await gameplaySoundAssetRoutes(app, db.root, c.mapAssetsDir);
+  await effectAssetRoutes(app, c.mapAssetsDir);
   await equipmentModelAssetRoutes(app, db.root, c.mapAssetsDir, c.mapJobsDir);
   viewmodelAssetRoutes(app, c.mapAssetsDir, c.mapJobsDir);
   const manualMapLocation = {

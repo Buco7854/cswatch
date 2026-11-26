@@ -63,6 +63,7 @@ test('actors, HUD icons, artwork and sounds precede alternating static and first
       preparePreview: async () => {
         sequence.push('preview');
       },
+      prepareEffects: async () => ({ status: 'installed' }),
       prepareSounds: async () => {
         sequence.push('sounds');
       },
@@ -113,6 +114,7 @@ test('a transient native failure preserves its retry backoff while other present
         return { status: 'installed' };
       },
       preparePreview: async () => ({ status: 'installed' }),
+      prepareEffects: async () => ({ status: 'installed' }),
       prepareSounds: async () => ({ status: 'installed' }),
       delay: async (milliseconds) => {
         assert.ok(milliseconds > 0 && milliseconds <= 2000);
@@ -153,6 +155,7 @@ test('small native artwork yields to maps, runs before sounds and rechecks newly
         sequence.push('preview');
         return { status: 'prepared' };
       },
+      prepareEffects: async () => ({ status: 'installed' }),
       prepareSounds: async () => {
         sequence.push('sound');
         return { status: 'installed' };
@@ -189,6 +192,7 @@ test('preview Steam rate limit blocks both sound and map acquisition until the s
         previews++;
         throw Object.assign(Error('Steam rate limited'), { code: 'STEAM_RATE_LIMIT' });
       },
+      prepareEffects: async () => ({ status: 'installed' }),
       prepareSounds: async () => {
         sounds++;
         assert.equal(clock, 1900);
@@ -237,6 +241,7 @@ test('preview source-integrity failure remains terminal across inventory refresh
         previews++;
         throw Object.assign(Error('Untrusted native diagnostics'), { code: 'SOURCE_MAP_MISMATCH' });
       },
+      prepareEffects: async () => ({ status: 'installed' }),
       prepareSounds: async () => ({ status: 'installed' }),
       delay: async () => {
         clock += 3600;

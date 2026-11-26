@@ -13,11 +13,13 @@ for (const name of [
   'equipment-models',
   'map-previews',
   'gameplay-sounds',
+  'effect-textures',
 ])
   copyFileSync(resolve(root, `../shared/${name}.json`), resolve(root, `dist/${name}.json`));
 for (const name of [
   'gameplay-sound-files',
   'gameplay-sound-bank',
+  'effect-texture-bank',
   'auth-navigation',
   'passkey-name',
   'roles',

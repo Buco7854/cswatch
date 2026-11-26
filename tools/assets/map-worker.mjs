@@ -68,6 +68,7 @@ import {
 } from './official-map-inventory.mjs';
 import { installMapPreview, officialPreview } from './install-map-preview.mjs';
 import { installGameplaySounds } from './install-gameplay-sounds.mjs';
+import { installEffectTextures } from './install-effect-textures.mjs';
 import { installPresentationAssets } from './install-presentation-assets.mjs';
 import { presentationDirectory, mapPreparerRevision } from '../../backend/dist/asset-preparer.js';
 import {
@@ -782,6 +783,7 @@ export async function runMapWorker(options, adapters = {}) {
     refreshInventory = adapters.refreshInventory || refreshWorkerInventory,
     processRequest = adapters.processRequest || processOneMapRequest,
     prepareSounds = adapters.prepareSounds || prepareIdleGameplaySounds,
+    prepareEffects = adapters.prepareEffects || prepareIdleEffectTextures,
     preparePreview = adapters.preparePreview || prepareIdleMapPreview,
     preparePresentation = adapters.preparePresentation || prepareIdlePresentation,
     processRemoval = adapters.processRemoval || processOneMapRemoval;
@@ -869,6 +871,8 @@ export async function runMapWorker(options, adapters = {}) {
       refreshFailures = 0,
       audioManifest,
       audioAttempts = 0,
+      effectsManifest,
+      effectsAttempts = 0,
       previewManifest,
       previewAttempts = 0,
       presentationManifest,
@@ -900,6 +904,7 @@ export async function runMapWorker(options, adapters = {}) {
           refreshFailures = 0;
           refreshAt = clock() + 3600;
           if (audioAttempts < 3) audioManifest = inventory.manifest;
+          if (effectsAttempts < 3) effectsManifest = inventory.manifest;
           if (previewAttempts < 3) previewManifest = inventory.manifest;
           presentationManifest = inventory.manifest;
           presentationCheckedAt = clock();
@@ -961,7 +966,7 @@ export async function runMapWorker(options, adapters = {}) {
           if (eligible < 0) break;
           // Artwork and sounds follow players and icons. The weapon queue takes much longer than both.
           if (
-            (previewManifest || audioManifest) &&
+            (previewManifest || audioManifest || effectsManifest) &&
             !['agents', 'equipment'].includes(pendingPresentation[eligible])
           )
             break;
@@ -1031,6 +1036,30 @@ export async function runMapWorker(options, adapters = {}) {
           if (error?.code === 'STEAM_RATE_LIMIT') onSteamRateLimit();
           if (error?.code === 'SOURCE_MAP_MISMATCH') audioAttempts = 3;
           options.log?.({ event: 'sound.failed', code: mapFailureCode(error, options.signal) });
+        } finally {
+          busy = false;
+          await heartbeat();
+        }
+      }
+      if (
+        !worked &&
+        inventoryIsFresh &&
+        !audioManifest &&
+        effectsManifest &&
+        !options.signal?.aborted
+      ) {
+        const selected = effectsManifest;
+        effectsManifest = undefined;
+        effectsAttempts++;
+        busy = true;
+        try {
+          await prepareEffects(workOptions, selected);
+          options.log?.({ event: 'effects.ready', manifest: selected });
+          effectsAttempts = 3;
+        } catch (error) {
+          if (error?.code === 'STEAM_RATE_LIMIT') onSteamRateLimit();
+          if (error?.code === 'SOURCE_MAP_MISMATCH') effectsAttempts = 3;
+          options.log?.({ event: 'effects.failed', code: mapFailureCode(error, options.signal) });
         } finally {
           busy = false;
           await heartbeat();
@@ -1134,6 +1163,38 @@ export async function prepareIdleMapPreview(options, manifest, adapters = {}) {
 }
 
 /** Idle-only fixed audio preparation never changes map/replay results. */
+/** The fixed official particle textures for fire, smoke and blasts. */
+export async function prepareIdleEffectTextures(options, manifest, adapters = {}) {
+  selectedSteamManifest(manifest);
+  const signal = options.signal
+    ? AbortSignal.any([options.signal, AbortSignal.timeout(15 * 60 * 1000)])
+    : AbortSignal.timeout(15 * 60 * 1000);
+  await budgets(options);
+  const cache = await sourceCache(options, manifest);
+  return (adapters.install || installEffectTextures)(
+    {
+      cache,
+      output: options.assets,
+      toolchainCache: join(options.cache, 'tools'),
+      manifest,
+      networkDeny: options.networkDeny || defaultNetworkDeny,
+      signal,
+      beforePublish: () => budgets(options),
+    },
+    {
+      run: async (command, args, context) => {
+        await budgets(options);
+        return runAssetProcess(command, args, {
+          ...context,
+          storageGuard: async () => {
+            await context.storageGuard?.();
+            await checkFreeReserve(options.cache, options.assets);
+          },
+        });
+      },
+    },
+  );
+}
 export async function prepareIdleGameplaySounds(options, manifest, adapters = {}) {
   selectedSteamManifest(manifest);
   const signal = options.signal

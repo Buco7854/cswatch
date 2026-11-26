@@ -263,6 +263,11 @@ static void publish(const char *source,const char *target,int kind) {
             errno=EINVAL;fail("approved same-parent sound bank names required");
         }
         suffix_start=8;
+    } else if(kind==7) {
+        if(strcmp(from,to) || strcmp(to_name,"effects") || strlen(from_name)!=15 || strncmp(from_name,".effects-",9)) {
+            errno=EINVAL;fail("approved same-parent effect texture bank names required");
+        }
+        suffix_start=9;
     } else if(kind==2) {
         if(strcmp(from,to) || !preview_name(to_name) || strlen(from_name)!=15 || strncmp(from_name,".preview-",9)) {
             errno=EINVAL;fail("approved same-parent preview names required");
@@ -328,6 +333,7 @@ int main(int argc,char **argv) {
     if(argc == 4 && !strcmp(argv[1],"--publish")) { publish(argv[2],argv[3],0);return 0; }
     if(argc == 4 && !strcmp(argv[1],"--publish-sounds")) { publish(argv[2],argv[3],1);return 0; }
     if(argc == 4 && !strcmp(argv[1],"--publish-preview")) { publish(argv[2],argv[3],2);return 0; }
+    if(argc == 4 && !strcmp(argv[1],"--publish-effects")) { publish(argv[2],argv[3],7);return 0; }
     if(argc == 4 && !strcmp(argv[1],"--publish-presentation")) { publish(argv[2],argv[3],3);return 0; }
     if(argc == 4 && !strcmp(argv[1],"--publish-equipment")) { publish(argv[2],argv[3],4);return 0; }
     if(argc == 4 && !strcmp(argv[1],"--retire-presentation")) { publish(argv[2],argv[3],6);return 0; }

@@ -95,6 +95,10 @@ Retargeting uses exact joint names. It verifies each moving clip's direction fro
 
 Agent outputs are `agents/ct.glb` and `t.glb` with bounded manifests and provenance. Use a fresh output directory. For local full-pose exports, run `node tools/assets/prepare-agent-model.mjs --help` and supply all roles as flags, for example `--rifle-walk-w WALK_LEFT.gltf`. The shared contract defines the exact roles. The pack records the source files and versions in private provenance. [Shared agent contract](../../shared/agent-animation-contract.mjs)
 
+## Native effect textures
+
+The [effect texture registry](../../shared/effect-textures.json) names fixed official particle textures (molotov ground fire and flames, glow, embers, smoke and scorch). After the sound bank, the idle worker selects them from the pinned manifest with CRC-checked reads, decodes each with S2V and packs its sprite-sheet frames into one square-cell atlas in a confined, networkless Node child, then publishes `effects-<registry SHA-256>/effects/<id>/{atlas.png,manifest.json}` without replacement (`--publish-effects`). Atlases are at most 2048² pixels and 8 MiB each, 48 MiB per bank; each is re-hashed on every read. The web service serves them at `/api/effect-assets` under the instance access policy. Without them the viewer keeps its analytic fire. Keep the textures out of Git and images.
+
 ## Native gameplay sounds
 
 The version-controlled [sound registry](../../shared/gameplay-sounds.json) contains 128 fixed native samples and exact supported sound-event aliases. Source acquisition uses only official app `730`/depot `2347770`, a pinned manifest, a SHA-1-verified package index and CRC-checked selected VSND entries. No whole-game download, user account, uploaded sound or arbitrary URL is accepted. Keep all native files, decoded audio and preparation caches outside Git and application images.

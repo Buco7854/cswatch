@@ -356,6 +356,7 @@ test('explicit native retry retains source A through inventory B and restart bef
         optionalPreparations++;
         throw Error('Core retained retry precedes optional preview.');
       },
+      prepareEffects: async () => ({ status: 'installed' }),
       prepareSounds: async () => {
         optionalPreparations++;
         throw Error('Core retained retry precedes optional audio.');
@@ -477,6 +478,7 @@ test('retained native retries require fresh observed inventory and survive a sta
       preparePreview: async () => {
         optionalPreparations++;
       },
+      prepareEffects: async () => ({ status: 'installed' }),
       prepareSounds: async () => {
         optionalPreparations++;
       },

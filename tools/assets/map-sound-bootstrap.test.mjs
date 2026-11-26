@@ -39,6 +39,7 @@ test('fixed sound bootstrap yields to queued maps and its integrity failure neve
       },
       preparePresentation: async () => ({ status: 'installed' }),
       preparePreview: async () => ({ status: 'installed' }),
+      prepareEffects: async () => ({ status: 'installed' }),
       prepareSounds: async (_options, manifest) => {
         assert.equal(manifest, '42');
         sequence.push('sound');
@@ -79,6 +80,7 @@ test('audio Steam rate limits share the worker cooldown while heartbeats and que
       },
       preparePresentation: async () => ({ status: 'installed' }),
       preparePreview: async () => ({ status: 'installed' }),
+      prepareEffects: async () => ({ status: 'installed' }),
       prepareSounds: async () => {
         sounds++;
         throw Object.assign(Error('Steam rate limit'), { code: 'STEAM_RATE_LIMIT' });
