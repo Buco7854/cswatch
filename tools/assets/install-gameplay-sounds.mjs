@@ -41,8 +41,8 @@ export async function installGameplaySounds(options, adapters = {}) {
   )
     throw Error('Unknown fixed native sound selection.');
   const signal = options.signal
-    ? AbortSignal.any([options.signal, AbortSignal.timeout(15 * 60 * 1000)])
-    : AbortSignal.timeout(15 * 60 * 1000);
+    ? AbortSignal.any([options.signal, AbortSignal.timeout(30 * 60 * 1000)])
+    : AbortSignal.timeout(30 * 60 * 1000);
   const cache = resolve(options.cache),
     output = resolve(options.output);
   if (cache === output || cache.startsWith(output + '/') || output.startsWith(cache + '/'))

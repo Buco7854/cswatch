@@ -48,6 +48,20 @@ export const gameplaySoundRegistry = z
             hash: z.number().int().min(0).max(0xffffffff).optional(),
             volume: z.number().finite().min(0).max(1).optional(),
             pitch: z.number().finite().min(0.25).max(4).optional(),
+            /** Valve's authored variations, chosen by the recorded sound seed. */
+            variants: z
+              .array(z.string().regex(/^[a-z0-9-]{1,60}$/))
+              .min(2)
+              .max(64)
+              .optional(),
+            /** Valve's distance-to-gain curve: [Source inches, gain] in ascending distance. */
+            distance: z
+              .array(
+                z.tuple([z.number().finite().min(0).max(20000), z.number().finite().min(0).max(1)]),
+              )
+              .min(2)
+              .max(16)
+              .optional(),
           })
           .strict(),
       )

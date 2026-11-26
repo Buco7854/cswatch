@@ -1198,8 +1198,8 @@ export async function prepareIdleEffectTextures(options, manifest, adapters = {}
 export async function prepareIdleGameplaySounds(options, manifest, adapters = {}) {
   selectedSteamManifest(manifest);
   const signal = options.signal
-    ? AbortSignal.any([options.signal, AbortSignal.timeout(15 * 60 * 1000)])
-    : AbortSignal.timeout(15 * 60 * 1000);
+    ? AbortSignal.any([options.signal, AbortSignal.timeout(30 * 60 * 1000)])
+    : AbortSignal.timeout(30 * 60 * 1000);
   await budgets(options);
   const cache = await sourceCache(options, manifest);
   return (adapters.install || installGameplaySounds)(

@@ -1647,6 +1647,1478 @@
     "reload-ccd7ef3fabda": {
       "source": "sounds/weapons/usp/usp_silencer_off.vsnd_c",
       "category": "reload"
+    },
+    "footstep-concrete-ct-02": {
+      "source": "sounds/player/footsteps/concrete_ct_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-concrete-ct-03": {
+      "source": "sounds/player/footsteps/concrete_ct_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-concrete-ct-04": {
+      "source": "sounds/player/footsteps/concrete_ct_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-concrete-ct-05": {
+      "source": "sounds/player/footsteps/concrete_ct_05.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-concrete-ct-06": {
+      "source": "sounds/player/footsteps/concrete_ct_06.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-concrete-ct-07": {
+      "source": "sounds/player/footsteps/concrete_ct_07.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-concrete-ct-08": {
+      "source": "sounds/player/footsteps/concrete_ct_08.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-concrete-ct-09": {
+      "source": "sounds/player/footsteps/concrete_ct_09.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-concrete-ct-10": {
+      "source": "sounds/player/footsteps/concrete_ct_10.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-concrete-ct-11": {
+      "source": "sounds/player/footsteps/concrete_ct_11.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-concrete-ct-12": {
+      "source": "sounds/player/footsteps/concrete_ct_12.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-concrete-ct-13": {
+      "source": "sounds/player/footsteps/concrete_ct_13.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-concrete-ct-14": {
+      "source": "sounds/player/footsteps/concrete_ct_14.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-concrete-ct-15": {
+      "source": "sounds/player/footsteps/concrete_ct_15.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-concrete-ct-16": {
+      "source": "sounds/player/footsteps/concrete_ct_16.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-concrete-ct-17": {
+      "source": "sounds/player/footsteps/concrete_ct_17.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-tile-02": {
+      "source": "sounds/player/footsteps/tile_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-tile-03": {
+      "source": "sounds/player/footsteps/tile_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-tile-04": {
+      "source": "sounds/player/footsteps/tile_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-tile-05": {
+      "source": "sounds/player/footsteps/tile_05.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-tile-06": {
+      "source": "sounds/player/footsteps/tile_06.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-tile-07": {
+      "source": "sounds/player/footsteps/tile_07.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-tile-08": {
+      "source": "sounds/player/footsteps/tile_08.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-tile-09": {
+      "source": "sounds/player/footsteps/tile_09.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-tile-10": {
+      "source": "sounds/player/footsteps/tile_10.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-tile-11": {
+      "source": "sounds/player/footsteps/tile_11.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-tile-12": {
+      "source": "sounds/player/footsteps/tile_12.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-tile-13": {
+      "source": "sounds/player/footsteps/tile_13.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-tile-14": {
+      "source": "sounds/player/footsteps/tile_14.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-sand-02": {
+      "source": "sounds/player/footsteps/sand_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-sand-03": {
+      "source": "sounds/player/footsteps/sand_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-sand-04": {
+      "source": "sounds/player/footsteps/sand_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-sand-05": {
+      "source": "sounds/player/footsteps/sand_05.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-sand-06": {
+      "source": "sounds/player/footsteps/sand_06.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-sand-07": {
+      "source": "sounds/player/footsteps/sand_07.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-sand-08": {
+      "source": "sounds/player/footsteps/sand_08.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-sand-09": {
+      "source": "sounds/player/footsteps/sand_09.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-sand-10": {
+      "source": "sounds/player/footsteps/sand_10.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-sand-11": {
+      "source": "sounds/player/footsteps/sand_11.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-sand-12": {
+      "source": "sounds/player/footsteps/sand_12.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-suit-t-02": {
+      "source": "sounds/player/footsteps/suit_t_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-suit-t-03": {
+      "source": "sounds/player/footsteps/suit_t_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-suit-t-04": {
+      "source": "sounds/player/footsteps/suit_t_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-suit-t-05": {
+      "source": "sounds/player/footsteps/suit_t_05.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-suit-t-06": {
+      "source": "sounds/player/footsteps/suit_t_06.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-suit-t-07": {
+      "source": "sounds/player/footsteps/suit_t_07.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-suit-t-08": {
+      "source": "sounds/player/footsteps/suit_t_08.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-suit-t-09": {
+      "source": "sounds/player/footsteps/suit_t_09.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-suit-t-10": {
+      "source": "sounds/player/footsteps/suit_t_10.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-suit-t-11": {
+      "source": "sounds/player/footsteps/suit_t_11.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-suit-t-12": {
+      "source": "sounds/player/footsteps/suit_t_12.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-suit-ct-02": {
+      "source": "sounds/player/footsteps/suit_ct_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-suit-ct-03": {
+      "source": "sounds/player/footsteps/suit_ct_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-suit-ct-04": {
+      "source": "sounds/player/footsteps/suit_ct_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-suit-ct-05": {
+      "source": "sounds/player/footsteps/suit_ct_05.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-suit-ct-06": {
+      "source": "sounds/player/footsteps/suit_ct_06.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-suit-ct-07": {
+      "source": "sounds/player/footsteps/suit_ct_07.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-suit-ct-08": {
+      "source": "sounds/player/footsteps/suit_ct_08.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-suit-ct-09": {
+      "source": "sounds/player/footsteps/suit_ct_09.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-wood-03": {
+      "source": "sounds/player/footsteps/wood_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-wood-04": {
+      "source": "sounds/player/footsteps/wood_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-wood-05": {
+      "source": "sounds/player/footsteps/wood_05.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-wood-06": {
+      "source": "sounds/player/footsteps/wood_06.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-wood-07": {
+      "source": "sounds/player/footsteps/wood_07.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-wood-08": {
+      "source": "sounds/player/footsteps/wood_08.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-wood-09": {
+      "source": "sounds/player/footsteps/wood_09.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-wood-10": {
+      "source": "sounds/player/footsteps/wood_10.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-wood-11": {
+      "source": "sounds/player/footsteps/wood_11.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-wood-12": {
+      "source": "sounds/player/footsteps/wood_12.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-wood-13": {
+      "source": "sounds/player/footsteps/wood_13.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-wood-14": {
+      "source": "sounds/player/footsteps/wood_14.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-wood-15": {
+      "source": "sounds/player/footsteps/wood_15.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-dirt-02": {
+      "source": "sounds/player/footsteps/dirt_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-dirt-03": {
+      "source": "sounds/player/footsteps/dirt_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-dirt-04": {
+      "source": "sounds/player/footsteps/dirt_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-dirt-05": {
+      "source": "sounds/player/footsteps/dirt_05.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-dirt-06": {
+      "source": "sounds/player/footsteps/dirt_06.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-dirt-07": {
+      "source": "sounds/player/footsteps/dirt_07.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-dirt-08": {
+      "source": "sounds/player/footsteps/dirt_08.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-dirt-09": {
+      "source": "sounds/player/footsteps/dirt_09.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-dirt-10": {
+      "source": "sounds/player/footsteps/dirt_10.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-dirt-11": {
+      "source": "sounds/player/footsteps/dirt_11.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-dirt-12": {
+      "source": "sounds/player/footsteps/dirt_12.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-dirt-13": {
+      "source": "sounds/player/footsteps/dirt_13.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-dirt-14": {
+      "source": "sounds/player/footsteps/dirt_14.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-auto-02": {
+      "source": "sounds/player/footsteps/metal_auto_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-auto-03": {
+      "source": "sounds/player/footsteps/metal_auto_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-auto-04": {
+      "source": "sounds/player/footsteps/metal_auto_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-auto-05": {
+      "source": "sounds/player/footsteps/metal_auto_05.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-auto-06": {
+      "source": "sounds/player/footsteps/metal_auto_06.vsnd_c",
+      "category": "footstep"
+    },
+    "hit-cardboard-box-impact-soft2": {
+      "source": "sounds/physics/cardboard/cardboard_box_impact_soft2.vsnd_c",
+      "category": "footstep"
+    },
+    "hit-cardboard-box-impact-soft3": {
+      "source": "sounds/physics/cardboard/cardboard_box_impact_soft3.vsnd_c",
+      "category": "footstep"
+    },
+    "hit-cardboard-box-impact-soft4": {
+      "source": "sounds/physics/cardboard/cardboard_box_impact_soft4.vsnd_c",
+      "category": "footstep"
+    },
+    "hit-cardboard-box-impact-soft5": {
+      "source": "sounds/physics/cardboard/cardboard_box_impact_soft5.vsnd_c",
+      "category": "footstep"
+    },
+    "hit-cardboard-box-impact-soft6": {
+      "source": "sounds/physics/cardboard/cardboard_box_impact_soft6.vsnd_c",
+      "category": "footstep"
+    },
+    "hit-cardboard-box-impact-soft7": {
+      "source": "sounds/physics/cardboard/cardboard_box_impact_soft7.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-ladder-wood-02": {
+      "source": "sounds/player/footsteps/ladder_wood_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-ladder-wood-03": {
+      "source": "sounds/player/footsteps/ladder_wood_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-ladder-wood-04": {
+      "source": "sounds/player/footsteps/ladder_wood_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-ladder-wood-05": {
+      "source": "sounds/player/footsteps/ladder_wood_05.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-ladder-wood-06": {
+      "source": "sounds/player/footsteps/ladder_wood_06.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-ladder-wood-07": {
+      "source": "sounds/player/footsteps/ladder_wood_07.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-ladder-wood-08": {
+      "source": "sounds/player/footsteps/ladder_wood_08.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-ladder-wood-09": {
+      "source": "sounds/player/footsteps/ladder_wood_09.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-ladder-wood-10": {
+      "source": "sounds/player/footsteps/ladder_wood_10.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-ladder-wood-11": {
+      "source": "sounds/player/footsteps/ladder_wood_11.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-ladder-wood-12": {
+      "source": "sounds/player/footsteps/ladder_wood_12.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-ladder-wood-13": {
+      "source": "sounds/player/footsteps/ladder_wood_13.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-ladder-wood-14": {
+      "source": "sounds/player/footsteps/ladder_wood_14.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-vent-02": {
+      "source": "sounds/player/footsteps/metal_vent_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-vent-03": {
+      "source": "sounds/player/footsteps/metal_vent_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-vent-04": {
+      "source": "sounds/player/footsteps/metal_vent_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-vent-05": {
+      "source": "sounds/player/footsteps/metal_vent_05.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-vent-06": {
+      "source": "sounds/player/footsteps/metal_vent_06.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-ladder-02": {
+      "source": "sounds/player/footsteps/ladder_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-ladder-03": {
+      "source": "sounds/player/footsteps/ladder_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-ladder-04": {
+      "source": "sounds/player/footsteps/ladder_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-ladder-05": {
+      "source": "sounds/player/footsteps/ladder_05.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-ladder-06": {
+      "source": "sounds/player/footsteps/ladder_06.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-ladder-08": {
+      "source": "sounds/player/footsteps/ladder_08.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-ladder-09": {
+      "source": "sounds/player/footsteps/ladder_09.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-ladder-10": {
+      "source": "sounds/player/footsteps/ladder_10.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-ladder-11": {
+      "source": "sounds/player/footsteps/ladder_11.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-ladder-12": {
+      "source": "sounds/player/footsteps/ladder_12.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-solid-36": {
+      "source": "sounds/player/footsteps/metal_solid_36.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-solid-37": {
+      "source": "sounds/player/footsteps/metal_solid_37.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-solid-38": {
+      "source": "sounds/player/footsteps/metal_solid_38.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-solid-39": {
+      "source": "sounds/player/footsteps/metal_solid_39.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-solid-40": {
+      "source": "sounds/player/footsteps/metal_solid_40.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-solid-41": {
+      "source": "sounds/player/footsteps/metal_solid_41.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-solid-42": {
+      "source": "sounds/player/footsteps/metal_solid_42.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-solid-43": {
+      "source": "sounds/player/footsteps/metal_solid_43.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-solid-44": {
+      "source": "sounds/player/footsteps/metal_solid_44.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-solid-45": {
+      "source": "sounds/player/footsteps/metal_solid_45.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-solid-46": {
+      "source": "sounds/player/footsteps/metal_solid_46.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-solid-47": {
+      "source": "sounds/player/footsteps/metal_solid_47.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-solid-48": {
+      "source": "sounds/player/footsteps/metal_solid_48.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-solid-49": {
+      "source": "sounds/player/footsteps/metal_solid_49.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-solid-50": {
+      "source": "sounds/player/footsteps/metal_solid_50.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-chainlink-02": {
+      "source": "sounds/player/footsteps/metal_chainlink_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-chainlink-03": {
+      "source": "sounds/player/footsteps/metal_chainlink_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-chainlink-04": {
+      "source": "sounds/player/footsteps/metal_chainlink_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-chainlink-06": {
+      "source": "sounds/player/footsteps/metal_chainlink_06.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-chainlink-07": {
+      "source": "sounds/player/footsteps/metal_chainlink_07.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-chainlink-09": {
+      "source": "sounds/player/footsteps/metal_chainlink_09.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-grate-02": {
+      "source": "sounds/player/footsteps/metal_grate_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-grate-03": {
+      "source": "sounds/player/footsteps/metal_grate_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-grate-04": {
+      "source": "sounds/player/footsteps/metal_grate_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-grate-05": {
+      "source": "sounds/player/footsteps/metal_grate_05.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-grate-06": {
+      "source": "sounds/player/footsteps/metal_grate_06.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-grate-07": {
+      "source": "sounds/player/footsteps/metal_grate_07.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-grate-08": {
+      "source": "sounds/player/footsteps/metal_grate_08.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-glass-07": {
+      "source": "sounds/player/footsteps/glass_07.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-glass-08": {
+      "source": "sounds/player/footsteps/glass_08.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-glass-09": {
+      "source": "sounds/player/footsteps/glass_09.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-glass-10": {
+      "source": "sounds/player/footsteps/glass_10.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-glass-11": {
+      "source": "sounds/player/footsteps/glass_11.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-glass-12": {
+      "source": "sounds/player/footsteps/glass_12.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-glass-13": {
+      "source": "sounds/player/footsteps/glass_13.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-grate-09": {
+      "source": "sounds/player/footsteps/metal_grate_09.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-grate-10": {
+      "source": "sounds/player/footsteps/metal_grate_10.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-grate-11": {
+      "source": "sounds/player/footsteps/metal_grate_11.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-grate-12": {
+      "source": "sounds/player/footsteps/metal_grate_12.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-grate-13": {
+      "source": "sounds/player/footsteps/metal_grate_13.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-grate-14": {
+      "source": "sounds/player/footsteps/metal_grate_14.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-grate-15": {
+      "source": "sounds/player/footsteps/metal_grate_15.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-railing-a-03": {
+      "source": "sounds/player/footsteps/metal_railing_a_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-railing-a-05": {
+      "source": "sounds/player/footsteps/metal_railing_a_05.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-railing-a-06": {
+      "source": "sounds/player/footsteps/metal_railing_a_06.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-railing-a-07": {
+      "source": "sounds/player/footsteps/metal_railing_a_07.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-railing-a-08": {
+      "source": "sounds/player/footsteps/metal_railing_a_08.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-metal-railing-a-09": {
+      "source": "sounds/player/footsteps/metal_railing_a_09.vsnd_c",
+      "category": "footstep"
+    },
+    "hit-kevlar-02": {
+      "source": "sounds/player/kevlar_02.vsnd_c",
+      "category": "weapon"
+    },
+    "hit-kevlar-03": {
+      "source": "sounds/player/kevlar_03.vsnd_c",
+      "category": "weapon"
+    },
+    "hit-kevlar-04": {
+      "source": "sounds/player/kevlar_04.vsnd_c",
+      "category": "weapon"
+    },
+    "hit-kevlar-05": {
+      "source": "sounds/player/kevlar_05.vsnd_c",
+      "category": "weapon"
+    },
+    "hit-kevlar-06": {
+      "source": "sounds/player/kevlar_06.vsnd_c",
+      "category": "weapon"
+    },
+    "hit-kevlar-07": {
+      "source": "sounds/player/kevlar_07.vsnd_c",
+      "category": "weapon"
+    },
+    "hit-kevlar-08": {
+      "source": "sounds/player/kevlar_08.vsnd_c",
+      "category": "weapon"
+    },
+    "hit-headshot-noarmor-02": {
+      "source": "sounds/player/headshot_noarmor_02.vsnd_c",
+      "category": "weapon"
+    },
+    "hit-headshot-noarmor-03": {
+      "source": "sounds/player/headshot_noarmor_03.vsnd_c",
+      "category": "weapon"
+    },
+    "hit-headshot-noarmor-04": {
+      "source": "sounds/player/headshot_noarmor_04.vsnd_c",
+      "category": "weapon"
+    },
+    "hit-headshot-noarmor-05": {
+      "source": "sounds/player/headshot_noarmor_05.vsnd_c",
+      "category": "weapon"
+    },
+    "hit-player-damagebody-06": {
+      "source": "sounds/player/player_damagebody_06.vsnd_c",
+      "category": "weapon"
+    },
+    "hit-player-damagebody-07": {
+      "source": "sounds/player/player_damagebody_07.vsnd_c",
+      "category": "weapon"
+    },
+    "hit-player-damagebody-08": {
+      "source": "sounds/player/player_damagebody_08.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-flesh-impact-bullet2": {
+      "source": "sounds/physics/flesh/flesh_impact_bullet2.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-flesh-impact-bullet3": {
+      "source": "sounds/physics/flesh/flesh_impact_bullet3.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-flesh-impact-bullet4": {
+      "source": "sounds/physics/flesh/flesh_impact_bullet4.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-flesh-impact-bullet5": {
+      "source": "sounds/physics/flesh/flesh_impact_bullet5.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-flesh-squishy-impact-hard2": {
+      "source": "sounds/physics/flesh/flesh_squishy_impact_hard2.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-flesh-squishy-impact-hard3": {
+      "source": "sounds/physics/flesh/flesh_squishy_impact_hard3.vsnd_c",
+      "category": "weapon"
+    },
+    "impact-flesh-squishy-impact-hard4": {
+      "source": "sounds/physics/flesh/flesh_squishy_impact_hard4.vsnd_c",
+      "category": "weapon"
+    },
+    "hit-land3": {
+      "source": "sounds/player/land3.vsnd_c",
+      "category": "footstep"
+    },
+    "hit-land4": {
+      "source": "sounds/player/land4.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-tile-02": {
+      "source": "sounds/player/footsteps/land_tile_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-tile-03": {
+      "source": "sounds/player/footsteps/land_tile_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-tile-04": {
+      "source": "sounds/player/footsteps/land_tile_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-tile-05": {
+      "source": "sounds/player/footsteps/land_tile_05.vsnd_c",
+      "category": "footstep"
+    },
+    "hit-land": {
+      "source": "sounds/player/land.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-metal-solid-02": {
+      "source": "sounds/player/footsteps/land_metal_solid_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-metal-solid-03": {
+      "source": "sounds/player/footsteps/land_metal_solid_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-metal-solid-04": {
+      "source": "sounds/player/footsteps/land_metal_solid_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-metal-solid-05": {
+      "source": "sounds/player/footsteps/land_metal_solid_05.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-metal-solid-06": {
+      "source": "sounds/player/footsteps/land_metal_solid_06.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-metal-grate-02": {
+      "source": "sounds/player/footsteps/land_metal_grate_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-metal-grate-03": {
+      "source": "sounds/player/footsteps/land_metal_grate_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-metal-grate-04": {
+      "source": "sounds/player/footsteps/land_metal_grate_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-metal-grate-05": {
+      "source": "sounds/player/footsteps/land_metal_grate_05.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-metal-grate-06": {
+      "source": "sounds/player/footsteps/land_metal_grate_06.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-metal-vent-02": {
+      "source": "sounds/player/footsteps/land_metal_vent_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-metal-vent-03": {
+      "source": "sounds/player/footsteps/land_metal_vent_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-metal-vent-04": {
+      "source": "sounds/player/footsteps/land_metal_vent_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-metal-vent-05": {
+      "source": "sounds/player/footsteps/land_metal_vent_05.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-metal-vent-06": {
+      "source": "sounds/player/footsteps/land_metal_vent_06.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-auto-02": {
+      "source": "sounds/player/footsteps/land_auto_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-auto-03": {
+      "source": "sounds/player/footsteps/land_auto_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-auto-04": {
+      "source": "sounds/player/footsteps/land_auto_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-auto-05": {
+      "source": "sounds/player/footsteps/land_auto_05.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-metal-barrel-02": {
+      "source": "sounds/player/footsteps/land_metal_barrel_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-metal-barrel-03": {
+      "source": "sounds/player/footsteps/land_metal_barrel_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-metal-barrel-04": {
+      "source": "sounds/player/footsteps/land_metal_barrel_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-snow-02": {
+      "source": "sounds/player/footsteps/snow_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-snow-03": {
+      "source": "sounds/player/footsteps/snow_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-snow-04": {
+      "source": "sounds/player/footsteps/snow_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-snow-05": {
+      "source": "sounds/player/footsteps/snow_05.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-snow-06": {
+      "source": "sounds/player/footsteps/snow_06.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-snow-07": {
+      "source": "sounds/player/footsteps/snow_07.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-snow-08": {
+      "source": "sounds/player/footsteps/snow_08.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-snow-09": {
+      "source": "sounds/player/footsteps/snow_09.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-snow-10": {
+      "source": "sounds/player/footsteps/snow_10.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-snow-11": {
+      "source": "sounds/player/footsteps/snow_11.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-snow-02": {
+      "source": "sounds/player/footsteps/land_snow_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-snow-03": {
+      "source": "sounds/player/footsteps/land_snow_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-snow-04": {
+      "source": "sounds/player/footsteps/land_snow_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-snow-05": {
+      "source": "sounds/player/footsteps/land_snow_05.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-snow-06": {
+      "source": "sounds/player/footsteps/land_snow_06.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-dirt-02": {
+      "source": "sounds/player/footsteps/land_dirt_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-dirt-03": {
+      "source": "sounds/player/footsteps/land_dirt_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-dirt-04": {
+      "source": "sounds/player/footsteps/land_dirt_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-dirt-05": {
+      "source": "sounds/player/footsteps/land_dirt_05.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-mud-02": {
+      "source": "sounds/player/footsteps/mud_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-mud-03": {
+      "source": "sounds/player/footsteps/mud_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-mud-04": {
+      "source": "sounds/player/footsteps/mud_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-mud-05": {
+      "source": "sounds/player/footsteps/mud_05.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-mud-06": {
+      "source": "sounds/player/footsteps/mud_06.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-mud-07": {
+      "source": "sounds/player/footsteps/mud_07.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-mud-08": {
+      "source": "sounds/player/footsteps/mud_08.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-mud-09": {
+      "source": "sounds/player/footsteps/mud_09.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-mud-02": {
+      "source": "sounds/player/footsteps/land_mud_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-mud-03": {
+      "source": "sounds/player/footsteps/land_mud_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-mud-04": {
+      "source": "sounds/player/footsteps/land_mud_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-mud-05": {
+      "source": "sounds/player/footsteps/land_mud_05.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-grass-02": {
+      "source": "sounds/player/footsteps/grass_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-grass-03": {
+      "source": "sounds/player/footsteps/grass_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-grass-04": {
+      "source": "sounds/player/footsteps/grass_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-grass-05": {
+      "source": "sounds/player/footsteps/grass_05.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-grass-06": {
+      "source": "sounds/player/footsteps/grass_06.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-grass-07": {
+      "source": "sounds/player/footsteps/grass_07.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-grass-02": {
+      "source": "sounds/player/footsteps/land_grass_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-grass-03": {
+      "source": "sounds/player/footsteps/land_grass_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-grass-04": {
+      "source": "sounds/player/footsteps/land_grass_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-grass-05": {
+      "source": "sounds/player/footsteps/land_grass_05.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-puddle-02": {
+      "source": "sounds/player/footsteps/puddle_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-puddle-03": {
+      "source": "sounds/player/footsteps/puddle_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-puddle-04": {
+      "source": "sounds/player/footsteps/puddle_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-puddle-05": {
+      "source": "sounds/player/footsteps/puddle_05.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-puddle-06": {
+      "source": "sounds/player/footsteps/puddle_06.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-puddle-07": {
+      "source": "sounds/player/footsteps/puddle_07.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-puddle-08": {
+      "source": "sounds/player/footsteps/puddle_08.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-puddle-09": {
+      "source": "sounds/player/footsteps/puddle_09.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-basket-02": {
+      "source": "sounds/player/footsteps/land_basket_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-basket-03": {
+      "source": "sounds/player/footsteps/land_basket_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-glass-02": {
+      "source": "sounds/player/footsteps/land_glass_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-glass-03": {
+      "source": "sounds/player/footsteps/land_glass_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-glass-04": {
+      "source": "sounds/player/footsteps/land_glass_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-glass-05": {
+      "source": "sounds/player/footsteps/land_glass_05.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-gravel-02": {
+      "source": "sounds/player/footsteps/gravel_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-gravel-03": {
+      "source": "sounds/player/footsteps/gravel_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-gravel-04": {
+      "source": "sounds/player/footsteps/gravel_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-gravel-05": {
+      "source": "sounds/player/footsteps/gravel_05.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-gravel-06": {
+      "source": "sounds/player/footsteps/gravel_06.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-gravel-07": {
+      "source": "sounds/player/footsteps/gravel_07.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-gravel-08": {
+      "source": "sounds/player/footsteps/gravel_08.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-gravel-09": {
+      "source": "sounds/player/footsteps/gravel_09.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-gravel-10": {
+      "source": "sounds/player/footsteps/gravel_10.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-gravel-02": {
+      "source": "sounds/player/footsteps/land_gravel_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-gravel-03": {
+      "source": "sounds/player/footsteps/land_gravel_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-gravel-04": {
+      "source": "sounds/player/footsteps/land_gravel_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-gravel-05": {
+      "source": "sounds/player/footsteps/land_gravel_05.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-body-02": {
+      "source": "sounds/player/footsteps/land_body_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-body-03": {
+      "source": "sounds/player/footsteps/land_body_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-body-04": {
+      "source": "sounds/player/footsteps/land_body_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-body-05": {
+      "source": "sounds/player/footsteps/land_body_05.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-body-06": {
+      "source": "sounds/player/footsteps/land_body_06.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-sand-02": {
+      "source": "sounds/player/footsteps/land_sand_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-sand-03": {
+      "source": "sounds/player/footsteps/land_sand_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-sand-04": {
+      "source": "sounds/player/footsteps/land_sand_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-sand-05": {
+      "source": "sounds/player/footsteps/land_sand_05.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-sand-06": {
+      "source": "sounds/player/footsteps/land_sand_06.vsnd_c",
+      "category": "footstep"
+    },
+    "hit-glass-bottle-impact-hard2": {
+      "source": "sounds/physics/glass/glass_bottle_impact_hard2.vsnd_c",
+      "category": "footstep"
+    },
+    "hit-glass-bottle-impact-hard3": {
+      "source": "sounds/physics/glass/glass_bottle_impact_hard3.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-cardboard-02": {
+      "source": "sounds/player/footsteps/land_cardboard_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-cardboard-03": {
+      "source": "sounds/player/footsteps/land_cardboard_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-plastic-barrel-02": {
+      "source": "sounds/player/footsteps/plastic_barrel_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-plastic-barrel-03": {
+      "source": "sounds/player/footsteps/plastic_barrel_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-plastic-barrel-04": {
+      "source": "sounds/player/footsteps/plastic_barrel_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-plastic-barrel-05": {
+      "source": "sounds/player/footsteps/plastic_barrel_05.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-rubber-04": {
+      "source": "sounds/player/footsteps/rubber_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-rubber-05": {
+      "source": "sounds/player/footsteps/rubber_05.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-rubber-06": {
+      "source": "sounds/player/footsteps/rubber_06.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-rubber-02": {
+      "source": "sounds/player/footsteps/land_rubber_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-rubber-03": {
+      "source": "sounds/player/footsteps/land_rubber_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-rubber-04": {
+      "source": "sounds/player/footsteps/land_rubber_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-rubber-05": {
+      "source": "sounds/player/footsteps/land_rubber_05.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-rubber-06": {
+      "source": "sounds/player/footsteps/land_rubber_06.vsnd_c",
+      "category": "footstep"
+    },
+    "hit-metal-grenade-impact-hard2": {
+      "source": "sounds/physics/metal/metal_grenade_impact_hard2.vsnd_c",
+      "category": "footstep"
+    },
+    "hit-metal-grenade-impact-hard3": {
+      "source": "sounds/physics/metal/metal_grenade_impact_hard3.vsnd_c",
+      "category": "footstep"
+    },
+    "hit-weapon-smg-impact-16": {
+      "source": "sounds/physics/weapons/weapon_smg_impact_16.vsnd_c",
+      "category": "footstep"
+    },
+    "hit-weapon-smg-impact-18": {
+      "source": "sounds/physics/weapons/weapon_smg_impact_18.vsnd_c",
+      "category": "footstep"
+    },
+    "hit-weapon-smg-impact-08": {
+      "source": "sounds/physics/weapons/weapon_smg_impact_08.vsnd_c",
+      "category": "footstep"
+    },
+    "hit-weapon-smg-impact-12": {
+      "source": "sounds/physics/weapons/weapon_smg_impact_12.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-grass-08": {
+      "source": "sounds/player/footsteps/grass_08.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-grass-09": {
+      "source": "sounds/player/footsteps/grass_09.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-grass-10": {
+      "source": "sounds/player/footsteps/grass_10.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-grass-11": {
+      "source": "sounds/player/footsteps/grass_11.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-grass-12": {
+      "source": "sounds/player/footsteps/grass_12.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-grass-13": {
+      "source": "sounds/player/footsteps/grass_13.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-carpet-03": {
+      "source": "sounds/player/footsteps/carpet_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-carpet-04": {
+      "source": "sounds/player/footsteps/carpet_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-carpet-08": {
+      "source": "sounds/player/footsteps/carpet_08.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-carpet-09": {
+      "source": "sounds/player/footsteps/carpet_09.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-carpet-11": {
+      "source": "sounds/player/footsteps/carpet_11.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-carpet-14": {
+      "source": "sounds/player/footsteps/carpet_14.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-carpet-15": {
+      "source": "sounds/player/footsteps/carpet_15.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-carpet-17": {
+      "source": "sounds/player/footsteps/carpet_17.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-carpet-18": {
+      "source": "sounds/player/footsteps/carpet_18.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-carpet-19": {
+      "source": "sounds/player/footsteps/carpet_19.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-carpet-20": {
+      "source": "sounds/player/footsteps/carpet_20.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-carpet-02": {
+      "source": "sounds/player/footsteps/land_carpet_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-carpet-03": {
+      "source": "sounds/player/footsteps/land_carpet_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-carpet-04": {
+      "source": "sounds/player/footsteps/land_carpet_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-carpet-05": {
+      "source": "sounds/player/footsteps/land_carpet_05.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-rubber-07": {
+      "source": "sounds/player/footsteps/rubber_07.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-rubber-08": {
+      "source": "sounds/player/footsteps/rubber_08.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-rubber-11": {
+      "source": "sounds/player/footsteps/rubber_11.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-rubber-12": {
+      "source": "sounds/player/footsteps/rubber_12.vsnd_c",
+      "category": "footstep"
+    },
+    "hit-water-splash-02": {
+      "source": "sounds/physics/water/water_splash_02.vsnd_c",
+      "category": "footstep"
+    },
+    "hit-water-splash-03": {
+      "source": "sounds/physics/water/water_splash_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-puddle-small-02": {
+      "source": "sounds/player/footsteps/puddle_small_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-puddle-small-03": {
+      "source": "sounds/player/footsteps/puddle_small_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-puddle-small-04": {
+      "source": "sounds/player/footsteps/puddle_small_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-puddle-small-05": {
+      "source": "sounds/player/footsteps/puddle_small_05.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-puddle-small-06": {
+      "source": "sounds/player/footsteps/puddle_small_06.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-puddle-small-07": {
+      "source": "sounds/player/footsteps/puddle_small_07.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-plastic-milkcrates-02": {
+      "source": "sounds/player/footsteps/land_plastic_milkcrates_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-plastic-milkcrates-03": {
+      "source": "sounds/player/footsteps/land_plastic_milkcrates_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-plastic-milkcrates-04": {
+      "source": "sounds/player/footsteps/land_plastic_milkcrates_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-metal-railing-02": {
+      "source": "sounds/player/footsteps/land_metal_railing_02.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-metal-railing-03": {
+      "source": "sounds/player/footsteps/land_metal_railing_03.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-metal-railing-04": {
+      "source": "sounds/player/footsteps/land_metal_railing_04.vsnd_c",
+      "category": "footstep"
+    },
+    "footstep-land-metal-railing-05": {
+      "source": "sounds/player/footsteps/land_metal_railing_05.vsnd_c",
+      "category": "footstep"
+    },
+    "hit-death1": {
+      "source": "sounds/player/death1.vsnd_c",
+      "category": "weapon"
+    },
+    "hit-death2": {
+      "source": "sounds/player/death2.vsnd_c",
+      "category": "weapon"
+    },
+    "hit-death3": {
+      "source": "sounds/player/death3.vsnd_c",
+      "category": "weapon"
+    },
+    "hit-death4": {
+      "source": "sounds/player/death4.vsnd_c",
+      "category": "weapon"
+    },
+    "hit-death5": {
+      "source": "sounds/player/death5.vsnd_c",
+      "category": "weapon"
+    },
+    "hit-death6": {
+      "source": "sounds/player/death6.vsnd_c",
+      "category": "weapon"
     }
   },
   "events": {
@@ -1949,203 +3421,825 @@
       "channel": "sos",
       "hash": 4163677892,
       "volume": 0.9,
-      "pitch": 1.1
+      "pitch": 1.1,
+      "variants": [
+        "footstep",
+        "footstep-concrete-ct-02",
+        "footstep-concrete-ct-03",
+        "footstep-concrete-ct-04",
+        "footstep-concrete-ct-05",
+        "footstep-concrete-ct-06",
+        "footstep-concrete-ct-07",
+        "footstep-concrete-ct-08",
+        "footstep-concrete-ct-09",
+        "footstep-concrete-ct-10",
+        "footstep-concrete-ct-11",
+        "footstep-concrete-ct-12",
+        "footstep-concrete-ct-13",
+        "footstep-concrete-ct-14",
+        "footstep-concrete-ct-15",
+        "footstep-concrete-ct-16",
+        "footstep-concrete-ct-17"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "CT_Concrete.StepLeft": {
       "soundId": "footstep",
       "channel": "sos",
       "hash": 1194677450,
       "volume": 0.9,
-      "pitch": 1
+      "pitch": 1,
+      "variants": [
+        "footstep",
+        "footstep-concrete-ct-02",
+        "footstep-concrete-ct-03",
+        "footstep-concrete-ct-04",
+        "footstep-concrete-ct-05",
+        "footstep-concrete-ct-06",
+        "footstep-concrete-ct-07",
+        "footstep-concrete-ct-08",
+        "footstep-concrete-ct-09",
+        "footstep-concrete-ct-10",
+        "footstep-concrete-ct-11",
+        "footstep-concrete-ct-12",
+        "footstep-concrete-ct-13",
+        "footstep-concrete-ct-14",
+        "footstep-concrete-ct-15",
+        "footstep-concrete-ct-16",
+        "footstep-concrete-ct-17"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_Tile.StepLeft": {
       "soundId": "footstep-5f376e116aae",
       "channel": "sos",
       "hash": 1163426340,
       "volume": 1,
-      "pitch": 1
+      "pitch": 1,
+      "variants": [
+        "footstep-5f376e116aae",
+        "footstep-tile-02",
+        "footstep-tile-03",
+        "footstep-tile-04",
+        "footstep-tile-05",
+        "footstep-tile-06",
+        "footstep-tile-07",
+        "footstep-tile-08",
+        "footstep-tile-09",
+        "footstep-tile-10",
+        "footstep-tile-11",
+        "footstep-tile-12",
+        "footstep-tile-13",
+        "footstep-tile-14"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "CT_Tile.StepLeft": {
       "soundId": "footstep-5f376e116aae",
       "channel": "sos",
       "hash": 2061955732,
       "volume": 1,
-      "pitch": 0.98
+      "pitch": 0.98,
+      "variants": [
+        "footstep-5f376e116aae",
+        "footstep-tile-02",
+        "footstep-tile-03",
+        "footstep-tile-04",
+        "footstep-tile-05",
+        "footstep-tile-06",
+        "footstep-tile-07",
+        "footstep-tile-08",
+        "footstep-tile-09",
+        "footstep-tile-10",
+        "footstep-tile-11",
+        "footstep-tile-12",
+        "footstep-tile-13",
+        "footstep-tile-14"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_Sand.StepLeft": {
       "soundId": "footstep-e6054f20c7fc",
       "channel": "sos",
       "hash": 1404198078,
       "volume": 1,
-      "pitch": 1
+      "pitch": 1,
+      "variants": [
+        "footstep-e6054f20c7fc",
+        "footstep-sand-02",
+        "footstep-sand-03",
+        "footstep-sand-04",
+        "footstep-sand-05",
+        "footstep-sand-06",
+        "footstep-sand-07",
+        "footstep-sand-08",
+        "footstep-sand-09",
+        "footstep-sand-10",
+        "footstep-sand-11",
+        "footstep-sand-12"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "CT_Sand.StepLeft": {
       "soundId": "footstep-e6054f20c7fc",
       "channel": "sos",
       "hash": 1763490157,
       "volume": 1,
-      "pitch": 1
+      "pitch": 1,
+      "variants": [
+        "footstep-e6054f20c7fc",
+        "footstep-sand-02",
+        "footstep-sand-03",
+        "footstep-sand-04",
+        "footstep-sand-05",
+        "footstep-sand-06",
+        "footstep-sand-07",
+        "footstep-sand-08",
+        "footstep-sand-09",
+        "footstep-sand-10",
+        "footstep-sand-11",
+        "footstep-sand-12"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "Gear.JumpLand.T": {
       "soundId": "footstep-dab529ca5b2b",
       "channel": "sos",
       "hash": 740474905,
       "volume": 0,
-      "pitch": 1
+      "pitch": 1,
+      "variants": [
+        "footstep-dab529ca5b2b",
+        "footstep-suit-t-02",
+        "footstep-suit-t-03",
+        "footstep-suit-t-04",
+        "footstep-suit-t-05",
+        "footstep-suit-t-06",
+        "footstep-suit-t-07",
+        "footstep-suit-t-08",
+        "footstep-suit-t-09",
+        "footstep-suit-t-10",
+        "footstep-suit-t-11",
+        "footstep-suit-t-12"
+      ],
+      "distance": [
+        [61.26, 1],
+        [294.631, 0.305],
+        [1018.083, 0.04],
+        [1021, 0]
+      ]
     },
     "Gear.JumpLand.CT": {
       "soundId": "footstep-babe5bb86ba6",
       "channel": "sos",
       "hash": 4160462271,
       "volume": 0,
-      "pitch": 1.05
+      "pitch": 1.05,
+      "variants": [
+        "footstep-babe5bb86ba6",
+        "footstep-suit-ct-02",
+        "footstep-suit-ct-03",
+        "footstep-suit-ct-04",
+        "footstep-suit-ct-05",
+        "footstep-suit-ct-06",
+        "footstep-suit-ct-07",
+        "footstep-suit-ct-08",
+        "footstep-suit-ct-09"
+      ],
+      "distance": [
+        [61.26, 1],
+        [294.631, 0.305],
+        [1018.083, 0.04],
+        [1021, 0]
+      ]
     },
     "CT_Default.StepLeft": {
       "soundId": "footstep",
       "channel": "sos",
       "hash": 520432428,
       "volume": 0.9,
-      "pitch": 1
+      "pitch": 1,
+      "variants": [
+        "footstep",
+        "footstep-concrete-ct-02",
+        "footstep-concrete-ct-03",
+        "footstep-concrete-ct-04",
+        "footstep-concrete-ct-05",
+        "footstep-concrete-ct-06",
+        "footstep-concrete-ct-07",
+        "footstep-concrete-ct-08",
+        "footstep-concrete-ct-09",
+        "footstep-concrete-ct-10",
+        "footstep-concrete-ct-11",
+        "footstep-concrete-ct-12",
+        "footstep-concrete-ct-13",
+        "footstep-concrete-ct-14",
+        "footstep-concrete-ct-15",
+        "footstep-concrete-ct-16",
+        "footstep-concrete-ct-17"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_Default.StepLeft": {
       "soundId": "footstep",
       "channel": "sos",
       "hash": 4082928848,
       "volume": 0.9,
-      "pitch": 1.02
+      "pitch": 1.02,
+      "variants": [
+        "footstep",
+        "footstep-concrete-ct-02",
+        "footstep-concrete-ct-03",
+        "footstep-concrete-ct-04",
+        "footstep-concrete-ct-05",
+        "footstep-concrete-ct-06",
+        "footstep-concrete-ct-07",
+        "footstep-concrete-ct-08",
+        "footstep-concrete-ct-09",
+        "footstep-concrete-ct-10",
+        "footstep-concrete-ct-11",
+        "footstep-concrete-ct-12",
+        "footstep-concrete-ct-13",
+        "footstep-concrete-ct-14",
+        "footstep-concrete-ct-15",
+        "footstep-concrete-ct-16",
+        "footstep-concrete-ct-17"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_Wood.StepLeft": {
       "soundId": "footstep-1b1212d92523",
       "channel": "sos",
       "hash": 1161855519,
       "volume": 1,
-      "pitch": 1
+      "pitch": 1,
+      "variants": [
+        "footstep-1b1212d92523",
+        "footstep-wood-02",
+        "footstep-wood-03",
+        "footstep-wood-04",
+        "footstep-wood-05",
+        "footstep-wood-06",
+        "footstep-wood-07",
+        "footstep-wood-08",
+        "footstep-wood-09",
+        "footstep-wood-10",
+        "footstep-wood-11",
+        "footstep-wood-12",
+        "footstep-wood-13",
+        "footstep-wood-14",
+        "footstep-wood-15"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "CT_WoodBox.StepLeft": {
       "soundId": "footstep-1b1212d92523",
       "channel": "sos",
       "hash": 3342414459,
       "volume": 1,
-      "pitch": 0.98
+      "pitch": 0.98,
+      "variants": [
+        "footstep-1b1212d92523",
+        "footstep-wood-02",
+        "footstep-wood-03",
+        "footstep-wood-04",
+        "footstep-wood-05",
+        "footstep-wood-06",
+        "footstep-wood-07",
+        "footstep-wood-08",
+        "footstep-wood-09",
+        "footstep-wood-10",
+        "footstep-wood-11",
+        "footstep-wood-12",
+        "footstep-wood-13",
+        "footstep-wood-14",
+        "footstep-wood-15"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "CT_Wood.StepLeft": {
       "soundId": "footstep-1b1212d92523",
       "channel": "sos",
       "hash": 2207486967,
       "volume": 1,
-      "pitch": 0.98
+      "pitch": 0.98,
+      "variants": [
+        "footstep-1b1212d92523",
+        "footstep-wood-02",
+        "footstep-wood-03",
+        "footstep-wood-04",
+        "footstep-wood-05",
+        "footstep-wood-06",
+        "footstep-wood-07",
+        "footstep-wood-08",
+        "footstep-wood-10",
+        "footstep-wood-11",
+        "footstep-wood-12",
+        "footstep-wood-13",
+        "footstep-wood-14",
+        "footstep-wood-15"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_WoodBox.StepLeft": {
       "soundId": "footstep-1b1212d92523",
       "channel": "sos",
       "hash": 1253503839,
       "volume": 1,
-      "pitch": 1
+      "pitch": 1,
+      "variants": [
+        "footstep-1b1212d92523",
+        "footstep-wood-02",
+        "footstep-wood-03",
+        "footstep-wood-04",
+        "footstep-wood-05",
+        "footstep-wood-06",
+        "footstep-wood-07",
+        "footstep-wood-08",
+        "footstep-wood-09",
+        "footstep-wood-10",
+        "footstep-wood-11",
+        "footstep-wood-12",
+        "footstep-wood-13",
+        "footstep-wood-14",
+        "footstep-wood-15"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_Dirt.StepLeft": {
       "soundId": "footstep-c525c64ed93c",
       "channel": "sos",
       "hash": 2708661994,
       "volume": 0.6,
-      "pitch": 1
+      "pitch": 1,
+      "variants": [
+        "footstep-c525c64ed93c",
+        "footstep-dirt-02",
+        "footstep-dirt-03",
+        "footstep-dirt-04",
+        "footstep-dirt-05",
+        "footstep-dirt-06",
+        "footstep-dirt-07",
+        "footstep-dirt-08",
+        "footstep-dirt-09",
+        "footstep-dirt-10",
+        "footstep-dirt-11",
+        "footstep-dirt-12",
+        "footstep-dirt-13",
+        "footstep-dirt-14"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "CT_Dirt.StepLeft": {
       "soundId": "footstep-c525c64ed93c",
       "channel": "sos",
       "hash": 988265811,
       "volume": 0.6,
-      "pitch": 1
+      "pitch": 1,
+      "variants": [
+        "footstep-c525c64ed93c",
+        "footstep-dirt-02",
+        "footstep-dirt-03",
+        "footstep-dirt-04",
+        "footstep-dirt-05",
+        "footstep-dirt-06",
+        "footstep-dirt-07",
+        "footstep-dirt-08",
+        "footstep-dirt-09",
+        "footstep-dirt-10",
+        "footstep-dirt-11",
+        "footstep-dirt-12",
+        "footstep-dirt-13",
+        "footstep-dirt-14"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "CT_MetalVehicle.StepLeft": {
       "soundId": "footstep-2530c17a7f0b",
       "channel": "sos",
       "hash": 29217150,
       "volume": 1,
-      "pitch": 0.98
+      "pitch": 0.98,
+      "variants": [
+        "footstep-2530c17a7f0b",
+        "footstep-metal-auto-02",
+        "footstep-metal-auto-03",
+        "footstep-metal-auto-04",
+        "footstep-metal-auto-05",
+        "footstep-metal-auto-06"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_Cardboard.StepLeft": {
       "soundId": "footstep-4d5d4792439e",
       "channel": "sos",
       "hash": 3172583021,
       "volume": 1,
-      "pitch": 1
+      "pitch": 1,
+      "variants": [
+        "footstep-4d5d4792439e",
+        "hit-cardboard-box-impact-soft2",
+        "hit-cardboard-box-impact-soft3",
+        "hit-cardboard-box-impact-soft4",
+        "hit-cardboard-box-impact-soft5",
+        "hit-cardboard-box-impact-soft6",
+        "hit-cardboard-box-impact-soft7"
+      ],
+      "distance": [
+        [49.591, 0.5],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_MetalVent.StepLeft": {
       "soundId": "footstep-2530c17a7f0b",
       "channel": "sos",
       "hash": 1403457606,
       "volume": 1,
-      "pitch": 1
+      "pitch": 1,
+      "variants": [
+        "footstep-2530c17a7f0b",
+        "footstep-metal-auto-02",
+        "footstep-metal-auto-03",
+        "footstep-metal-auto-04",
+        "footstep-metal-auto-05",
+        "footstep-metal-auto-06"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "CT_Wood_Ladder.StepLeft": {
       "soundId": "footstep-eb0d28d23d98",
       "channel": "sos",
       "hash": 1440734007,
       "volume": 1,
-      "pitch": 0.98
+      "pitch": 0.98,
+      "variants": [
+        "footstep-eb0d28d23d98",
+        "footstep-ladder-wood-02",
+        "footstep-ladder-wood-03",
+        "footstep-ladder-wood-04",
+        "footstep-ladder-wood-05",
+        "footstep-ladder-wood-06",
+        "footstep-ladder-wood-07",
+        "footstep-ladder-wood-08",
+        "footstep-ladder-wood-09",
+        "footstep-ladder-wood-10",
+        "footstep-ladder-wood-11",
+        "footstep-ladder-wood-12",
+        "footstep-ladder-wood-13",
+        "footstep-ladder-wood-14"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "CT_MetalBarrel.StepLeft": {
       "soundId": "footstep-f6959db476c2",
       "channel": "sos",
       "hash": 2684452812,
       "volume": 1,
-      "pitch": 0.98
+      "pitch": 0.98,
+      "variants": [
+        "footstep-f6959db476c2",
+        "footstep-metal-vent-02",
+        "footstep-metal-vent-03",
+        "footstep-metal-vent-04",
+        "footstep-metal-vent-05",
+        "footstep-metal-vent-06"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "CT_Wood_Panel.StepLeft": {
       "soundId": "footstep-1b1212d92523",
       "channel": "sos",
       "hash": 3161194970,
       "volume": 1,
-      "pitch": 0.98
+      "pitch": 0.98,
+      "variants": [
+        "footstep-1b1212d92523",
+        "footstep-wood-02",
+        "footstep-wood-03",
+        "footstep-wood-04",
+        "footstep-wood-05",
+        "footstep-wood-06",
+        "footstep-wood-07",
+        "footstep-wood-08",
+        "footstep-wood-09",
+        "footstep-wood-10",
+        "footstep-wood-11",
+        "footstep-wood-12",
+        "footstep-wood-13",
+        "footstep-wood-14",
+        "footstep-wood-15"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "CT_Ladder.StepLeft": {
       "soundId": "footstep-a3a62ecc6884",
       "channel": "sos",
       "hash": 3257325156,
       "volume": 0.7,
-      "pitch": 0.98
+      "pitch": 0.98,
+      "variants": [
+        "footstep-a3a62ecc6884",
+        "footstep-ladder-02",
+        "footstep-ladder-03",
+        "footstep-ladder-04",
+        "footstep-ladder-05",
+        "footstep-ladder-06",
+        "footstep-ladder-08",
+        "footstep-ladder-09",
+        "footstep-ladder-10",
+        "footstep-ladder-11",
+        "footstep-ladder-12"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_Flesh.StepLeft": {
       "soundId": "footstep",
       "channel": "sos",
       "hash": 1506215040,
       "volume": 1,
-      "pitch": 1
+      "pitch": 1,
+      "variants": [
+        "footstep",
+        "footstep-concrete-ct-02",
+        "footstep-concrete-ct-03",
+        "footstep-concrete-ct-04",
+        "footstep-concrete-ct-05",
+        "footstep-concrete-ct-06",
+        "footstep-concrete-ct-07",
+        "footstep-concrete-ct-08",
+        "footstep-concrete-ct-09",
+        "footstep-concrete-ct-10",
+        "footstep-concrete-ct-11",
+        "footstep-concrete-ct-12",
+        "footstep-concrete-ct-13",
+        "footstep-concrete-ct-14",
+        "footstep-concrete-ct-15",
+        "footstep-concrete-ct-16",
+        "footstep-concrete-ct-17"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_MetalBarrel.StepLeft": {
       "soundId": "footstep-f6959db476c2",
       "channel": "sos",
       "hash": 931543849,
       "volume": 1,
-      "pitch": 1
+      "pitch": 1,
+      "variants": [
+        "footstep-f6959db476c2",
+        "footstep-metal-vent-02",
+        "footstep-metal-vent-03",
+        "footstep-metal-vent-04",
+        "footstep-metal-vent-05",
+        "footstep-metal-vent-06"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_Wood_Basket.StepLeft": {
       "soundId": "footstep-1b1212d92523",
       "channel": "sos",
       "hash": 1635413700,
       "volume": 1,
-      "pitch": 1
+      "pitch": 1,
+      "variants": [
+        "footstep-1b1212d92523",
+        "footstep-wood-02",
+        "footstep-wood-03",
+        "footstep-wood-04",
+        "footstep-wood-05",
+        "footstep-wood-06",
+        "footstep-wood-07",
+        "footstep-wood-08",
+        "footstep-wood-09",
+        "footstep-wood-10",
+        "footstep-wood-11",
+        "footstep-wood-12",
+        "footstep-wood-13",
+        "footstep-wood-14",
+        "footstep-wood-15"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "CT_MetalVent.StepLeft": {
       "soundId": "footstep-2530c17a7f0b",
       "channel": "sos",
       "hash": 2745524735,
       "volume": 1,
-      "pitch": 0.98
+      "pitch": 0.98,
+      "variants": [
+        "footstep-2530c17a7f0b",
+        "footstep-metal-auto-02",
+        "footstep-metal-auto-03",
+        "footstep-metal-auto-04",
+        "footstep-metal-auto-05",
+        "footstep-metal-auto-06"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_Ladder.StepLeft": {
       "soundId": "footstep-a3a62ecc6884",
       "channel": "sos",
       "hash": 3299941720,
       "volume": 0.7,
-      "pitch": 1
+      "pitch": 1,
+      "variants": [
+        "footstep-a3a62ecc6884",
+        "footstep-ladder-02",
+        "footstep-ladder-03",
+        "footstep-ladder-04",
+        "footstep-ladder-05",
+        "footstep-ladder-06",
+        "footstep-ladder-08",
+        "footstep-ladder-09",
+        "footstep-ladder-10",
+        "footstep-ladder-11",
+        "footstep-ladder-12"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_Wood_Panel.StepLeft": {
       "soundId": "footstep-1b1212d92523",
       "channel": "sos",
       "hash": 96240187,
       "volume": 1,
-      "pitch": 1
+      "pitch": 1,
+      "variants": [
+        "footstep-1b1212d92523",
+        "footstep-wood-02",
+        "footstep-wood-03",
+        "footstep-wood-04",
+        "footstep-wood-05",
+        "footstep-wood-06",
+        "footstep-wood-07",
+        "footstep-wood-08",
+        "footstep-wood-09",
+        "footstep-wood-10",
+        "footstep-wood-11",
+        "footstep-wood-12",
+        "footstep-wood-13",
+        "footstep-wood-14",
+        "footstep-wood-15"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "c4.initiate": {
       "soundId": "objective-fd580ee330b8",
@@ -2256,86 +4350,348 @@
       "channel": "sos",
       "hash": 2240518199,
       "volume": 1,
-      "pitch": 0.98
+      "pitch": 0.98,
+      "variants": [
+        "footstep-5f376e116aae",
+        "footstep-tile-02",
+        "footstep-tile-03",
+        "footstep-tile-04",
+        "footstep-tile-05",
+        "footstep-tile-06",
+        "footstep-tile-07",
+        "footstep-tile-08",
+        "footstep-tile-09",
+        "footstep-tile-10",
+        "footstep-tile-11",
+        "footstep-tile-12",
+        "footstep-tile-13",
+        "footstep-tile-14"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "CT_SolidMetal.StepLeft": {
       "soundId": "footstep-metal-solid",
       "channel": "sos",
       "hash": 1803111098,
       "volume": 1,
-      "pitch": 0.98
+      "pitch": 0.98,
+      "variants": [
+        "footstep-metal-solid",
+        "footstep-metal-solid-36",
+        "footstep-metal-solid-37",
+        "footstep-metal-solid-38",
+        "footstep-metal-solid-39",
+        "footstep-metal-solid-40",
+        "footstep-metal-solid-41",
+        "footstep-metal-solid-42",
+        "footstep-metal-solid-43",
+        "footstep-metal-solid-44",
+        "footstep-metal-solid-45",
+        "footstep-metal-solid-46",
+        "footstep-metal-solid-47",
+        "footstep-metal-solid-48",
+        "footstep-metal-solid-49",
+        "footstep-metal-solid-50"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "CT_ChainLink.StepLeft": {
       "soundId": "footstep-chainlink",
       "channel": "sos",
       "hash": 3997353267,
       "volume": 1,
-      "pitch": 0.98
+      "pitch": 0.98,
+      "variants": [
+        "footstep-chainlink",
+        "footstep-metal-chainlink-02",
+        "footstep-metal-chainlink-03",
+        "footstep-metal-chainlink-04",
+        "impact-metal-chainlink-05",
+        "footstep-metal-chainlink-06",
+        "footstep-metal-chainlink-07",
+        "footstep-metal-chainlink-09"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "CT_MetalGrate.StepLeft": {
       "soundId": "footstep-metal-grate",
       "channel": "sos",
       "hash": 123085364,
       "volume": 0.9,
-      "pitch": 0.98
+      "pitch": 0.98,
+      "variants": [
+        "footstep-metal-grate",
+        "footstep-metal-grate-02",
+        "footstep-metal-grate-03",
+        "footstep-metal-grate-04",
+        "footstep-metal-grate-05",
+        "footstep-metal-grate-06",
+        "footstep-metal-grate-07",
+        "footstep-metal-grate-08"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "CT_Glass.StepLeft": {
       "soundId": "footstep-glass",
       "channel": "sos",
       "hash": 3753692454,
       "volume": 1,
-      "pitch": 0.98
+      "pitch": 0.98,
+      "variants": [
+        "footstep-glass",
+        "footstep-glass-07",
+        "footstep-glass-08",
+        "footstep-glass-09",
+        "footstep-glass-10",
+        "footstep-glass-11",
+        "footstep-glass-12",
+        "footstep-glass-13"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "CT_Flesh.StepLeft": {
       "soundId": "footstep",
       "channel": "sos",
       "hash": 1690105992,
       "volume": 1,
-      "pitch": 0.98
+      "pitch": 0.98,
+      "variants": [
+        "footstep",
+        "footstep-concrete-ct-02",
+        "footstep-concrete-ct-03",
+        "footstep-concrete-ct-04",
+        "footstep-concrete-ct-05",
+        "footstep-concrete-ct-06",
+        "footstep-concrete-ct-07",
+        "footstep-concrete-ct-08",
+        "footstep-concrete-ct-09",
+        "footstep-concrete-ct-10",
+        "footstep-concrete-ct-11",
+        "footstep-concrete-ct-12",
+        "footstep-concrete-ct-13",
+        "footstep-concrete-ct-14",
+        "footstep-concrete-ct-15",
+        "footstep-concrete-ct-16",
+        "footstep-concrete-ct-17"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_Ceiling_Tile.StepLeft": {
       "soundId": "footstep-5f376e116aae",
       "channel": "sos",
       "hash": 1485322532,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-5f376e116aae",
+        "footstep-tile-02",
+        "footstep-tile-03",
+        "footstep-tile-04",
+        "footstep-tile-05",
+        "footstep-tile-06",
+        "footstep-tile-07",
+        "footstep-tile-08",
+        "footstep-tile-09",
+        "footstep-tile-10",
+        "footstep-tile-11",
+        "footstep-tile-12",
+        "footstep-tile-13",
+        "footstep-tile-14"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_ChainLink.StepLeft": {
       "soundId": "footstep-chainlink",
       "channel": "sos",
       "hash": 1598540856,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-chainlink",
+        "footstep-metal-chainlink-02",
+        "footstep-metal-chainlink-03",
+        "footstep-metal-chainlink-04",
+        "impact-metal-chainlink-05",
+        "footstep-metal-chainlink-06",
+        "footstep-metal-chainlink-07",
+        "footstep-metal-chainlink-09"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_Glass.StepLeft": {
       "soundId": "footstep-glass",
       "channel": "sos",
       "hash": 1116700262,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-glass",
+        "footstep-glass-07",
+        "footstep-glass-08",
+        "footstep-glass-09",
+        "footstep-glass-10",
+        "footstep-glass-11",
+        "footstep-glass-12",
+        "footstep-glass-13"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_MetalGrate.StepLeft": {
       "soundId": "footstep-metal-grate",
       "channel": "sos",
       "hash": 2026488395,
-      "volume": 0.9
+      "volume": 0.9,
+      "variants": [
+        "footstep-metal-grate",
+        "footstep-metal-grate-02",
+        "footstep-metal-grate-03",
+        "footstep-metal-grate-04",
+        "footstep-metal-grate-05",
+        "footstep-metal-grate-06",
+        "footstep-metal-grate-07",
+        "footstep-metal-grate-08",
+        "footstep-metal-grate-09",
+        "footstep-metal-grate-10",
+        "footstep-metal-grate-11",
+        "footstep-metal-grate-12",
+        "footstep-metal-grate-13",
+        "footstep-metal-grate-14",
+        "footstep-metal-grate-15"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_SolidMetal.StepLeft": {
       "soundId": "footstep-metal-solid",
       "channel": "sos",
       "hash": 3952104171,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-metal-solid",
+        "footstep-metal-solid-36",
+        "footstep-metal-solid-37",
+        "footstep-metal-solid-38",
+        "footstep-metal-solid-39",
+        "footstep-metal-solid-40",
+        "footstep-metal-solid-41",
+        "footstep-metal-solid-42",
+        "footstep-metal-solid-43",
+        "footstep-metal-solid-44",
+        "footstep-metal-solid-45",
+        "footstep-metal-solid-46",
+        "footstep-metal-solid-47",
+        "footstep-metal-solid-48",
+        "footstep-metal-solid-49",
+        "footstep-metal-solid-50"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "CT_MetalRailing.StepLeft": {
       "soundId": "footstep-metal-railing",
       "channel": "sos",
       "hash": 3123711576,
       "volume": 0.7,
-      "pitch": 1
+      "pitch": 1,
+      "variants": [
+        "footstep-metal-railing",
+        "footstep-metal-railing-a-03",
+        "footstep-metal-railing-a-05",
+        "footstep-metal-railing-a-06",
+        "footstep-metal-railing-a-07",
+        "footstep-metal-railing-a-08",
+        "footstep-metal-railing-a-09"
+      ],
+      "distance": [
+        [49.591, 0.3],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_MetalRailing.StepLeft": {
       "soundId": "footstep-metal-railing",
       "channel": "sos",
       "hash": 1770765328,
       "volume": 0.7,
-      "pitch": 1
+      "pitch": 1,
+      "variants": [
+        "footstep-metal-railing",
+        "footstep-metal-railing-a-03",
+        "footstep-metal-railing-a-05",
+        "footstep-metal-railing-a-06",
+        "footstep-metal-railing-a-08",
+        "footstep-metal-railing-a-09"
+      ],
+      "distance": [
+        [49.591, 0.3],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "Weapon_Knife.Hit.Gear": {
       "soundId": "knife-hit-gear",
@@ -2389,7 +4745,22 @@
       "channel": "sos",
       "hash": 524041390,
       "volume": 0.7,
-      "pitch": 1.3
+      "pitch": 1.3,
+      "variants": [
+        "hit-kevlar-01",
+        "hit-kevlar-02",
+        "hit-kevlar-03",
+        "hit-kevlar-04",
+        "hit-kevlar-05",
+        "hit-kevlar-06",
+        "hit-kevlar-07",
+        "hit-kevlar-08"
+      ],
+      "distance": [
+        [0, 1],
+        [35.314, 1],
+        [1100, 0]
+      ]
     },
     "Player.DamageBody.Onlooker": {
       "soundId": "hit-mud-impact-bullet1",
@@ -2403,42 +4774,105 @@
       "channel": "sos",
       "hash": 2284698275,
       "volume": 0.5,
-      "pitch": 1
+      "pitch": 1,
+      "variants": [
+        "hit-headshot-noarmor-01",
+        "hit-headshot-noarmor-02",
+        "hit-headshot-noarmor-03",
+        "hit-headshot-noarmor-04",
+        "hit-headshot-noarmor-05"
+      ],
+      "distance": [
+        [22, 1],
+        [298.286, 0.429],
+        [1070, 0]
+      ]
     },
     "Player.DamageHeadShotArmor.Onlooker": {
       "soundId": "hit-headshot-armor-e1",
       "channel": "sos",
       "hash": 3663896169,
       "volume": 0.5,
-      "pitch": 1
+      "pitch": 1,
+      "distance": [
+        [22, 1],
+        [298.286, 0.429],
+        [1070, 0]
+      ]
     },
     "Player.DeathBody.Onlooker": {
       "soundId": "hit-player-damagebody-04",
       "channel": "sos",
       "hash": 2192712263,
       "volume": 1,
-      "pitch": 0.8
+      "pitch": 0.8,
+      "variants": [
+        "hit-player-damagebody-04",
+        "hit-player-damagebody-05",
+        "hit-player-damagebody-06",
+        "hit-player-damagebody-07",
+        "hit-player-damagebody-08"
+      ],
+      "distance": [
+        [51.971, 1],
+        [400.486, 0.449],
+        [1070, 0]
+      ]
     },
     "Player.DeathBodyArmor.Onlooker": {
       "soundId": "hit-player-damagebody-04",
       "channel": "sos",
       "hash": 3396420465,
       "volume": 1,
-      "pitch": 0.8
+      "pitch": 0.8,
+      "variants": [
+        "hit-player-damagebody-04",
+        "hit-player-damagebody-05",
+        "hit-player-damagebody-06",
+        "hit-player-damagebody-07",
+        "hit-player-damagebody-08"
+      ],
+      "distance": [
+        [51.971, 1],
+        [400.486, 0.449],
+        [1070, 0]
+      ]
     },
     "Player.DeathHeadShot.Onlooker": {
       "soundId": "hit-headshot-noarmor-01",
       "channel": "sos",
       "hash": 2719685137,
       "volume": 0.5,
-      "pitch": 1
+      "pitch": 1,
+      "variants": [
+        "hit-headshot-noarmor-01",
+        "hit-headshot-noarmor-02",
+        "hit-headshot-noarmor-03",
+        "hit-headshot-noarmor-04",
+        "hit-headshot-noarmor-05"
+      ],
+      "distance": [
+        [22, 1],
+        [298.286, 0.429],
+        [1070, 0]
+      ]
     },
     "Player.DeathHeadShotArmor.Onlooker": {
       "soundId": "hit-player-damagebody-05",
       "channel": "sos",
       "hash": 2310318859,
       "volume": 0.5,
-      "pitch": 1
+      "pitch": 1,
+      "variants": [
+        "hit-player-damagebody-05",
+        "hit-player-damagebody-06",
+        "hit-player-damagebody-07"
+      ],
+      "distance": [
+        [22, 1],
+        [298.286, 0.429],
+        [1070, 0]
+      ]
     },
     "Default.BulletImpact": {
       "soundId": "impact-default-impact-bullet1",
@@ -2452,7 +4886,19 @@
       "channel": "sos",
       "hash": 3101375008,
       "volume": 0.7,
-      "pitch": 1
+      "pitch": 1,
+      "variants": [
+        "impact-flesh-impact-bullet1",
+        "impact-flesh-impact-bullet2",
+        "impact-flesh-impact-bullet3",
+        "impact-flesh-impact-bullet4",
+        "impact-flesh-impact-bullet5"
+      ],
+      "distance": [
+        [40, 1],
+        [248.571, 0.462],
+        [600, 0]
+      ]
     },
     "SolidMetal.BulletImpact": {
       "soundId": "impact-bullet-metal-solid-01",
@@ -2557,7 +5003,17 @@
       "channel": "sos",
       "hash": 965044335,
       "volume": 1,
-      "pitch": 1
+      "pitch": 1,
+      "variants": [
+        "impact-metal-chainlink-05",
+        "footstep-metal-chainlink-07",
+        "footstep-metal-chainlink-09"
+      ],
+      "distance": [
+        [40, 1],
+        [219.429, 0.332],
+        [600, 0]
+      ]
     },
     "Chain.BulletImpact": {
       "soundId": "impact-chain-impact-hard1",
@@ -2585,7 +5041,18 @@
       "channel": "sos",
       "hash": 767324530,
       "volume": 1,
-      "pitch": 1
+      "pitch": 1,
+      "variants": [
+        "impact-flesh-squishy-impact-hard1",
+        "impact-flesh-squishy-impact-hard2",
+        "impact-flesh-squishy-impact-hard3",
+        "impact-flesh-squishy-impact-hard4"
+      ],
+      "distance": [
+        [40, 1],
+        [219.429, 0.332],
+        [600, 0]
+      ]
     },
     "ArmorFlesh.BulletImpact": {
       "soundId": "impact-metal-sheet-impact-bullet1",
@@ -2779,634 +5246,2303 @@
       "channel": "sos",
       "hash": 1543118744,
       "volume": 0.1,
-      "pitch": 1.1
+      "pitch": 1.1,
+      "distance": [
+        [40, 1],
+        [155.714, 0.264],
+        [493.714, 0]
+      ]
     },
     "Land_Concrete.StepLeft": {
       "soundId": "footstep-land2",
       "channel": "sos",
       "hash": 1016523349,
       "volume": 1,
-      "pitch": 1.06
+      "pitch": 1.06,
+      "variants": ["footstep-land2", "hit-land3", "hit-land4"],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "Land_Ceiling_Tile.StepLeft": {
       "soundId": "footstep-land-tile-01",
       "channel": "sos",
       "hash": 3218103073,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-land-tile-01",
+        "footstep-land-tile-02",
+        "footstep-land-tile-03",
+        "footstep-land-tile-04",
+        "footstep-land-tile-05"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "Land_Default.StepLeft": {
       "soundId": "footstep-land2",
       "channel": "sos",
       "hash": 1818046345,
-      "volume": 1
+      "volume": 1,
+      "variants": ["hit-land", "footstep-land2", "hit-land3", "hit-land4"],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "Land_Wood.StepLeft": {
       "soundId": "footstep-1b1212d92523",
       "channel": "sos",
       "hash": 2302139631,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-1b1212d92523",
+        "footstep-wood-02",
+        "footstep-wood-03",
+        "footstep-wood-04",
+        "footstep-wood-05",
+        "footstep-wood-06",
+        "footstep-wood-07",
+        "footstep-wood-08",
+        "footstep-wood-09",
+        "footstep-wood-10",
+        "footstep-wood-11",
+        "footstep-wood-12",
+        "footstep-wood-13",
+        "footstep-wood-14",
+        "footstep-wood-15"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "CT_Wood_Solid.StepLeft": {
       "soundId": "footstep-1b1212d92523",
       "channel": "sos",
       "hash": 1939055066,
       "volume": 1,
-      "pitch": 0.98
+      "pitch": 0.98,
+      "variants": [
+        "footstep-1b1212d92523",
+        "footstep-wood-02",
+        "footstep-wood-03",
+        "footstep-wood-04",
+        "footstep-wood-05",
+        "footstep-wood-06",
+        "footstep-wood-07",
+        "footstep-wood-08",
+        "footstep-wood-09",
+        "footstep-wood-10",
+        "footstep-wood-11",
+        "footstep-wood-12",
+        "footstep-wood-13",
+        "footstep-wood-14",
+        "footstep-wood-15"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "Land_Wood_Solid.StepLeft": {
       "soundId": "footstep-wood-02",
       "channel": "sos",
       "hash": 1409986305,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-wood-02",
+        "footstep-wood-03",
+        "footstep-wood-04",
+        "footstep-wood-05",
+        "footstep-wood-06",
+        "footstep-wood-07",
+        "footstep-wood-08",
+        "footstep-wood-09",
+        "footstep-wood-10",
+        "footstep-wood-11",
+        "footstep-wood-12",
+        "footstep-wood-13",
+        "footstep-wood-14",
+        "footstep-wood-15"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "Land_SolidMetal.StepLeft": {
       "soundId": "footstep-land-metal-solid-01",
       "channel": "sos",
       "hash": 4113422219,
-      "volume": 0.9
+      "volume": 0.9,
+      "variants": [
+        "footstep-land-metal-solid-01",
+        "footstep-land-metal-solid-02",
+        "footstep-land-metal-solid-03",
+        "footstep-land-metal-solid-04",
+        "footstep-land-metal-solid-05",
+        "footstep-land-metal-solid-06"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "Land_ChainLink.StepLeft": {
       "soundId": "footstep-chainlink",
       "channel": "sos",
       "hash": 3009312615,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-chainlink",
+        "footstep-metal-chainlink-02",
+        "footstep-metal-chainlink-03",
+        "footstep-metal-chainlink-04",
+        "impact-metal-chainlink-05",
+        "footstep-metal-chainlink-06",
+        "footstep-metal-chainlink-07",
+        "footstep-metal-chainlink-09"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "Land_MetalGrate.StepLeft": {
       "soundId": "footstep-land-metal-grate-01",
       "channel": "sos",
       "hash": 782454593,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-land-metal-grate-01",
+        "footstep-land-metal-grate-02",
+        "footstep-land-metal-grate-03",
+        "footstep-land-metal-grate-04",
+        "footstep-land-metal-grate-05",
+        "footstep-land-metal-grate-06"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "Land_Ladder.StepLeft": {
       "soundId": "footstep-a3a62ecc6884",
       "channel": "sos",
       "hash": 3434104102,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-a3a62ecc6884",
+        "footstep-ladder-02",
+        "footstep-ladder-03",
+        "footstep-ladder-04",
+        "footstep-ladder-05",
+        "footstep-ladder-06",
+        "footstep-ladder-08",
+        "footstep-ladder-09",
+        "footstep-ladder-10",
+        "footstep-ladder-11",
+        "footstep-ladder-12"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "Land_MetalVent.StepLeft": {
       "soundId": "footstep-land-metal-vent-01",
       "channel": "sos",
       "hash": 117596568,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-land-metal-vent-01",
+        "footstep-land-metal-vent-02",
+        "footstep-land-metal-vent-03",
+        "footstep-land-metal-vent-04",
+        "footstep-land-metal-vent-05",
+        "footstep-land-metal-vent-06"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "Land_MetalVehicle.StepLeft": {
       "soundId": "footstep-land-auto-01",
       "channel": "sos",
       "hash": 3460445620,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-land-auto-01",
+        "footstep-land-auto-02",
+        "footstep-land-auto-03",
+        "footstep-land-auto-04",
+        "footstep-land-auto-05"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "Land_MetalBarrel.StepLeft": {
       "soundId": "footstep-land-metal-barrel-01",
       "channel": "sos",
       "hash": 2067683805,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-land-metal-barrel-01",
+        "footstep-land-metal-barrel-02",
+        "footstep-land-metal-barrel-03",
+        "footstep-land-metal-barrel-04"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "CT_Snow.StepLeft": {
       "soundId": "footstep-snow-01",
       "channel": "sos",
       "hash": 1388885460,
       "volume": 1,
-      "pitch": 0.98
+      "pitch": 0.98,
+      "variants": [
+        "footstep-snow-01",
+        "footstep-snow-02",
+        "footstep-snow-03",
+        "footstep-snow-04",
+        "footstep-snow-05",
+        "footstep-snow-06",
+        "footstep-snow-07",
+        "footstep-snow-08",
+        "footstep-snow-09",
+        "footstep-snow-10",
+        "footstep-snow-11"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "Land_Snow.StepLeft": {
       "soundId": "footstep-land-snow-01",
       "channel": "sos",
       "hash": 413358161,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-land-snow-01",
+        "footstep-land-snow-02",
+        "footstep-land-snow-03",
+        "footstep-land-snow-04",
+        "footstep-land-snow-05",
+        "footstep-land-snow-06"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "Land_Dirt.StepLeft": {
       "soundId": "footstep-land-dirt-01",
       "channel": "sos",
       "hash": 3802757032,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-land-dirt-01",
+        "footstep-land-dirt-02",
+        "footstep-land-dirt-03",
+        "footstep-land-dirt-04",
+        "footstep-land-dirt-05"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "CT_Mud.StepLeft": {
       "soundId": "footstep-mud-01",
       "channel": "sos",
       "hash": 2633527058,
       "volume": 0.7,
-      "pitch": 0.98
+      "pitch": 0.98,
+      "variants": [
+        "footstep-mud-01",
+        "footstep-mud-02",
+        "footstep-mud-03",
+        "footstep-mud-04",
+        "footstep-mud-05",
+        "footstep-mud-06",
+        "footstep-mud-07",
+        "footstep-mud-08",
+        "footstep-mud-09"
+      ],
+      "distance": [
+        [49.591, 0.5],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "Land_Mud.StepLeft": {
       "soundId": "footstep-land-mud-01",
       "channel": "sos",
       "hash": 1627020521,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-land-mud-01",
+        "footstep-land-mud-02",
+        "footstep-land-mud-03",
+        "footstep-land-mud-04",
+        "footstep-land-mud-05"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "CT_Slime.StepLeft": {
       "soundId": "footstep-mud-01",
       "channel": "sos",
       "hash": 602548457,
       "volume": 1,
-      "pitch": 0.98
+      "pitch": 0.98,
+      "variants": [
+        "footstep-mud-01",
+        "footstep-mud-02",
+        "footstep-mud-03",
+        "footstep-mud-04",
+        "footstep-mud-05",
+        "footstep-mud-06",
+        "footstep-mud-07",
+        "footstep-mud-08",
+        "footstep-mud-09"
+      ],
+      "distance": [
+        [49.591, 0.5],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "Land_Slime.StepLeft": {
       "soundId": "footstep-land-mud-01",
       "channel": "sos",
       "hash": 859178236,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-land-mud-01",
+        "footstep-land-mud-02",
+        "footstep-land-mud-03",
+        "footstep-land-mud-04",
+        "footstep-land-mud-05"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "CT_Grass.StepLeft": {
       "soundId": "footstep-grass-01",
       "channel": "sos",
       "hash": 3749333696,
       "volume": 1,
-      "pitch": 1
+      "pitch": 1,
+      "variants": [
+        "footstep-grass-01",
+        "footstep-grass-02",
+        "footstep-grass-03",
+        "footstep-grass-04",
+        "footstep-grass-05",
+        "footstep-grass-06",
+        "footstep-grass-07"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "Land_Grass.StepLeft": {
       "soundId": "footstep-land-grass-01",
       "channel": "sos",
       "hash": 2899365092,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-land-grass-01",
+        "footstep-land-grass-02",
+        "footstep-land-grass-03",
+        "footstep-land-grass-04",
+        "footstep-land-grass-05"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "Land_Tile.StepLeft": {
       "soundId": "footstep-land-tile-01",
       "channel": "sos",
       "hash": 1535891875,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-land-tile-01",
+        "footstep-land-tile-02",
+        "footstep-land-tile-03",
+        "footstep-land-tile-04",
+        "footstep-land-tile-05"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "CT_Water.StepLeft": {
       "soundId": "footstep-puddle-01",
       "channel": "sos",
       "hash": 3368720745,
       "volume": 1,
-      "pitch": 0.98
+      "pitch": 0.98,
+      "variants": [
+        "footstep-puddle-01",
+        "footstep-puddle-02",
+        "footstep-puddle-03",
+        "footstep-puddle-04",
+        "footstep-puddle-05",
+        "footstep-puddle-06",
+        "footstep-puddle-07",
+        "footstep-puddle-08",
+        "footstep-puddle-09"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "CT_Wood_Basket.StepLeft": {
       "soundId": "footstep-1b1212d92523",
       "channel": "sos",
       "hash": 2790760284,
       "volume": 1,
-      "pitch": 0.98
+      "pitch": 0.98,
+      "variants": [
+        "footstep-1b1212d92523",
+        "footstep-wood-02",
+        "footstep-wood-03",
+        "footstep-wood-04",
+        "footstep-wood-05",
+        "footstep-wood-06",
+        "footstep-wood-07",
+        "footstep-wood-08",
+        "footstep-wood-09",
+        "footstep-wood-10",
+        "footstep-wood-11",
+        "footstep-wood-12",
+        "footstep-wood-13",
+        "footstep-wood-14",
+        "footstep-wood-15"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "Land_Wood_Basket.StepLeft": {
       "soundId": "footstep-land-basket-01",
       "channel": "sos",
       "hash": 2448803175,
       "volume": 1,
-      "pitch": 1.06
+      "pitch": 1.06,
+      "variants": ["footstep-land-basket-01", "footstep-land-basket-02", "footstep-land-basket-03"],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "Land_Glass.StepLeft": {
       "soundId": "footstep-land-glass-01",
       "channel": "sos",
       "hash": 3666896632,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-land-glass-01",
+        "footstep-land-glass-02",
+        "footstep-land-glass-03",
+        "footstep-land-glass-04",
+        "footstep-land-glass-05"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "CT_Gravel.StepLeft": {
       "soundId": "footstep-gravel-01",
       "channel": "sos",
       "hash": 3166948458,
       "volume": 0.8,
-      "pitch": 0.98
+      "pitch": 0.98,
+      "variants": [
+        "footstep-gravel-01",
+        "footstep-gravel-02",
+        "footstep-gravel-03",
+        "footstep-gravel-04",
+        "footstep-gravel-05",
+        "footstep-gravel-06",
+        "footstep-gravel-07",
+        "footstep-gravel-08",
+        "footstep-gravel-09",
+        "footstep-gravel-10"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "Land_Gravel.StepLeft": {
       "soundId": "footstep-land-gravel-01",
       "channel": "sos",
       "hash": 3099536373,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-land-gravel-01",
+        "footstep-land-gravel-02",
+        "footstep-land-gravel-03",
+        "footstep-land-gravel-04",
+        "footstep-land-gravel-05"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "Land_Flesh.StepLeft": {
       "soundId": "footstep-land-body-01",
       "channel": "sos",
       "hash": 115843229,
-      "volume": 0.4
+      "volume": 0.4,
+      "variants": [
+        "footstep-land-body-01",
+        "footstep-land-body-02",
+        "footstep-land-body-03",
+        "footstep-land-body-04",
+        "footstep-land-body-05",
+        "footstep-land-body-06"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "Land_Sand.StepLeft": {
       "soundId": "footstep-land-sand-01",
       "channel": "sos",
       "hash": 2546391140,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-land-sand-01",
+        "footstep-land-sand-02",
+        "footstep-land-sand-03",
+        "footstep-land-sand-04",
+        "footstep-land-sand-05",
+        "footstep-land-sand-06"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "CT_GlassBottle.StepLeft": {
       "soundId": "footstep-glass-bottle-impact-hard1",
       "channel": "sos",
       "hash": 515548944,
       "volume": 1,
-      "pitch": 0.98
+      "pitch": 0.98,
+      "variants": [
+        "footstep-glass-bottle-impact-hard1",
+        "hit-glass-bottle-impact-hard2",
+        "hit-glass-bottle-impact-hard3"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "Land_GlassBottle.StepLeft": {
       "soundId": "footstep-glass-bottle-impact-hard1",
       "channel": "sos",
       "hash": 1517575510,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-glass-bottle-impact-hard1",
+        "hit-glass-bottle-impact-hard2",
+        "hit-glass-bottle-impact-hard3"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "CT_Drywall.StepLeft": {
       "soundId": "footstep",
       "channel": "sos",
       "hash": 1248619277,
       "volume": 0.9,
-      "pitch": 1
+      "pitch": 1,
+      "variants": [
+        "footstep",
+        "footstep-concrete-ct-02",
+        "footstep-concrete-ct-03",
+        "footstep-concrete-ct-04",
+        "footstep-concrete-ct-05",
+        "footstep-concrete-ct-06",
+        "footstep-concrete-ct-07",
+        "footstep-concrete-ct-08",
+        "footstep-concrete-ct-09",
+        "footstep-concrete-ct-10",
+        "footstep-concrete-ct-11",
+        "footstep-concrete-ct-12",
+        "footstep-concrete-ct-13",
+        "footstep-concrete-ct-14",
+        "footstep-concrete-ct-15",
+        "footstep-concrete-ct-16",
+        "footstep-concrete-ct-17"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "Land_Drywall.StepLeft": {
       "soundId": "footstep-land2",
       "channel": "sos",
       "hash": 1395892944,
-      "volume": 1
+      "volume": 1,
+      "variants": ["footstep-land2", "hit-land3", "hit-land4"],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "CT_Cardboard.StepLeft": {
       "soundId": "footstep-4d5d4792439e",
       "channel": "sos",
       "hash": 2300993891,
       "volume": 1,
-      "pitch": 0.98
+      "pitch": 0.98,
+      "variants": [
+        "footstep-4d5d4792439e",
+        "hit-cardboard-box-impact-soft2",
+        "hit-cardboard-box-impact-soft3",
+        "hit-cardboard-box-impact-soft4",
+        "hit-cardboard-box-impact-soft5",
+        "hit-cardboard-box-impact-soft6",
+        "hit-cardboard-box-impact-soft7"
+      ],
+      "distance": [
+        [49.591, 0.5],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "Land_Cardboard.StepLeft": {
       "soundId": "footstep-land-cardboard-01",
       "channel": "sos",
       "hash": 1183624286,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-land-cardboard-01",
+        "footstep-land-cardboard-02",
+        "footstep-land-cardboard-03"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "CT_Plastic_Barrel.StepLeft": {
       "soundId": "footstep-plastic-barrel-01",
       "channel": "sos",
       "hash": 540697918,
       "volume": 1,
-      "pitch": 0.98
+      "pitch": 0.98,
+      "variants": [
+        "footstep-plastic-barrel-01",
+        "footstep-plastic-barrel-02",
+        "footstep-plastic-barrel-03",
+        "footstep-plastic-barrel-04",
+        "footstep-plastic-barrel-05"
+      ],
+      "distance": [
+        [49.591, 0.4],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "CT_Plastic_Box.StepLeft": {
       "soundId": "footstep-plastic-barrel-01",
       "channel": "sos",
       "hash": 2829617974,
       "volume": 0.7,
-      "pitch": 0.98
+      "pitch": 0.98,
+      "variants": [
+        "footstep-plastic-barrel-01",
+        "footstep-plastic-barrel-02",
+        "footstep-plastic-barrel-03",
+        "footstep-plastic-barrel-04",
+        "footstep-plastic-barrel-05"
+      ],
+      "distance": [
+        [49.591, 0.4],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "Land_Plastic_Box.StepLeft": {
       "soundId": "footstep-land-auto-01",
       "channel": "sos",
       "hash": 1826799645,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-land-auto-01",
+        "footstep-land-auto-02",
+        "footstep-land-auto-03",
+        "footstep-land-auto-04",
+        "footstep-land-auto-05"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "CT_Rubber.StepLeft": {
       "soundId": "footstep-rubber-03",
       "channel": "sos",
       "hash": 3193435079,
       "volume": 1,
-      "pitch": 0.98
+      "pitch": 0.98,
+      "variants": [
+        "footstep-rubber-03",
+        "footstep-rubber-04",
+        "footstep-rubber-05",
+        "footstep-rubber-06"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "Land_Rubber.StepLeft": {
       "soundId": "footstep-land-rubber-01",
       "channel": "sos",
       "hash": 2860219006,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-land-rubber-01",
+        "footstep-land-rubber-02",
+        "footstep-land-rubber-03",
+        "footstep-land-rubber-04",
+        "footstep-land-rubber-05",
+        "footstep-land-rubber-06"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "CT_Grenade.StepLeft": {
       "soundId": "footstep",
       "channel": "sos",
       "hash": 1855038793,
       "volume": 1,
-      "pitch": 0.98
+      "pitch": 0.98,
+      "variants": [
+        "footstep",
+        "footstep-concrete-ct-02",
+        "footstep-concrete-ct-03",
+        "footstep-concrete-ct-04",
+        "footstep-concrete-ct-05",
+        "footstep-concrete-ct-06",
+        "footstep-concrete-ct-07",
+        "footstep-concrete-ct-08",
+        "footstep-concrete-ct-09",
+        "footstep-concrete-ct-10",
+        "footstep-concrete-ct-11",
+        "footstep-concrete-ct-12",
+        "footstep-concrete-ct-13",
+        "footstep-concrete-ct-14",
+        "footstep-concrete-ct-15",
+        "footstep-concrete-ct-16",
+        "footstep-concrete-ct-17"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "Land_Grenade.StepLeft": {
       "soundId": "footstep-metal-grenade-impact-hard1",
       "channel": "sos",
       "hash": 2892812682,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-metal-grenade-impact-hard1",
+        "hit-metal-grenade-impact-hard2",
+        "hit-metal-grenade-impact-hard3"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "Land_WoodBox.StepLeft": {
       "soundId": "footstep-1b1212d92523",
       "channel": "sos",
       "hash": 144629619,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-1b1212d92523",
+        "footstep-wood-02",
+        "footstep-wood-03",
+        "footstep-wood-04",
+        "footstep-wood-05",
+        "footstep-wood-06",
+        "footstep-wood-07",
+        "footstep-wood-08",
+        "footstep-wood-09",
+        "footstep-wood-10",
+        "footstep-wood-11",
+        "footstep-wood-12",
+        "footstep-wood-13",
+        "footstep-wood-14",
+        "footstep-wood-15"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "CT_Wood_Crate.StepLeft": {
       "soundId": "footstep-1b1212d92523",
       "channel": "sos",
       "hash": 721782259,
       "volume": 1,
-      "pitch": 0.98
+      "pitch": 0.98,
+      "variants": [
+        "footstep-1b1212d92523",
+        "footstep-wood-02",
+        "footstep-wood-03",
+        "footstep-wood-04",
+        "footstep-wood-05",
+        "footstep-wood-06",
+        "footstep-wood-07",
+        "footstep-wood-08",
+        "footstep-wood-09",
+        "footstep-wood-10",
+        "footstep-wood-11",
+        "footstep-wood-12",
+        "footstep-wood-13",
+        "footstep-wood-14",
+        "footstep-wood-15"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "Land_Wood_Crate.StepLeft": {
       "soundId": "footstep-1b1212d92523",
       "channel": "sos",
       "hash": 2133235849,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-1b1212d92523",
+        "footstep-wood-02",
+        "footstep-wood-03",
+        "footstep-wood-04",
+        "footstep-wood-05",
+        "footstep-wood-06",
+        "footstep-wood-07",
+        "footstep-wood-08",
+        "footstep-wood-09",
+        "footstep-wood-10",
+        "footstep-wood-11",
+        "footstep-wood-12"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "Land_Wood_Panel.StepLeft": {
       "soundId": "footstep-1b1212d92523",
       "channel": "sos",
       "hash": 819435812,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-1b1212d92523",
+        "footstep-wood-02",
+        "footstep-wood-03",
+        "footstep-wood-04",
+        "footstep-wood-05",
+        "footstep-wood-06",
+        "footstep-wood-07",
+        "footstep-wood-08",
+        "footstep-wood-09",
+        "footstep-wood-10",
+        "footstep-wood-11",
+        "footstep-wood-12"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "CT_Weapon.StepLeft": {
       "soundId": "footstep-weapon-smg-impact-13",
       "channel": "sos",
       "hash": 2804393637,
       "volume": 0.5,
-      "pitch": 0.98
+      "pitch": 0.98,
+      "variants": [
+        "footstep-weapon-smg-impact-13",
+        "hit-weapon-smg-impact-16",
+        "hit-weapon-smg-impact-18"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "Land_Weapon.StepLeft": {
       "soundId": "footstep-weapon-smg-impact-13",
       "channel": "sos",
       "hash": 4222899547,
-      "volume": 0.5
+      "volume": 0.5,
+      "variants": [
+        "footstep-weapon-smg-impact-07",
+        "hit-weapon-smg-impact-08",
+        "hit-weapon-smg-impact-12",
+        "footstep-weapon-smg-impact-13",
+        "hit-weapon-smg-impact-16",
+        "hit-weapon-smg-impact-18"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "CT_Foliage.StepLeft": {
       "soundId": "footstep-grass-01",
       "channel": "sos",
       "hash": 1664187801,
       "volume": 1,
-      "pitch": 1
+      "pitch": 1,
+      "variants": [
+        "footstep-grass-01",
+        "footstep-grass-02",
+        "footstep-grass-03",
+        "footstep-grass-04",
+        "footstep-grass-05",
+        "footstep-grass-06",
+        "footstep-grass-07",
+        "footstep-grass-08",
+        "footstep-grass-09",
+        "footstep-grass-10",
+        "footstep-grass-11",
+        "footstep-grass-12",
+        "footstep-grass-13"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "Land_Foliage.StepLeft": {
       "soundId": "footstep-land-grass-01",
       "channel": "sos",
       "hash": 2714245023,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-land-grass-01",
+        "footstep-land-grass-02",
+        "footstep-land-grass-03",
+        "footstep-land-grass-04",
+        "footstep-land-grass-05"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "CT_Carpet.StepLeft": {
       "soundId": "footstep-carpet-01",
       "channel": "sos",
       "hash": 1692050905,
       "volume": 1,
-      "pitch": 0.98
+      "pitch": 0.98,
+      "variants": [
+        "footstep-carpet-01",
+        "footstep-carpet-03",
+        "footstep-carpet-04",
+        "footstep-carpet-08",
+        "footstep-carpet-09",
+        "footstep-carpet-11",
+        "footstep-carpet-14",
+        "footstep-carpet-15",
+        "footstep-carpet-17",
+        "footstep-carpet-18",
+        "footstep-carpet-19",
+        "footstep-carpet-20"
+      ],
+      "distance": [
+        [49.591, 0.5],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "Land_Carpet.StepLeft": {
       "soundId": "footstep-land-carpet-01",
       "channel": "sos",
       "hash": 961838155,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-land-carpet-01",
+        "footstep-land-carpet-02",
+        "footstep-land-carpet-03",
+        "footstep-land-carpet-04",
+        "footstep-land-carpet-05"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "CT_SlipperySlime.StepLeft": {
       "soundId": "footstep-mud-01",
       "channel": "sos",
       "hash": 3008782656,
       "volume": 1,
-      "pitch": 0.98
+      "pitch": 0.98,
+      "variants": [
+        "footstep-mud-01",
+        "footstep-mud-02",
+        "footstep-mud-03",
+        "footstep-mud-04",
+        "footstep-mud-05",
+        "footstep-mud-06",
+        "footstep-mud-07",
+        "footstep-mud-08",
+        "footstep-mud-09"
+      ],
+      "distance": [
+        [49.591, 0.5],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "Land_SlipperySlime.StepLeft": {
       "soundId": "footstep-land-mud-01",
       "channel": "sos",
       "hash": 2070478448,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-land-mud-01",
+        "footstep-land-mud-02",
+        "footstep-land-mud-03",
+        "footstep-land-mud-04",
+        "footstep-land-mud-05"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "T_Carpet.StepLeft": {
       "soundId": "footstep-carpet-01",
       "channel": "sos",
       "hash": 1557420499,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-carpet-01",
+        "footstep-carpet-03",
+        "footstep-carpet-04",
+        "footstep-carpet-08",
+        "footstep-carpet-09",
+        "footstep-carpet-11",
+        "footstep-carpet-14",
+        "footstep-carpet-15",
+        "footstep-carpet-17",
+        "footstep-carpet-18",
+        "footstep-carpet-19",
+        "footstep-carpet-20"
+      ],
+      "distance": [
+        [49.591, 0.5],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_Drywall.StepLeft": {
       "soundId": "footstep",
       "channel": "sos",
       "hash": 893108375,
       "volume": 0.9,
-      "pitch": 1.06
+      "pitch": 1.06,
+      "variants": [
+        "footstep",
+        "footstep-concrete-ct-02",
+        "footstep-concrete-ct-03",
+        "footstep-concrete-ct-04",
+        "footstep-concrete-ct-05",
+        "footstep-concrete-ct-06",
+        "footstep-concrete-ct-07",
+        "footstep-concrete-ct-08",
+        "footstep-concrete-ct-09",
+        "footstep-concrete-ct-10",
+        "footstep-concrete-ct-11",
+        "footstep-concrete-ct-12",
+        "footstep-concrete-ct-13",
+        "footstep-concrete-ct-14",
+        "footstep-concrete-ct-15",
+        "footstep-concrete-ct-16",
+        "footstep-concrete-ct-17"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_Foliage.StepLeft": {
       "soundId": "footstep-grass-01",
       "channel": "sos",
       "hash": 2231399653,
       "volume": 1,
-      "pitch": 1
+      "pitch": 1,
+      "variants": [
+        "footstep-grass-01",
+        "footstep-grass-02",
+        "footstep-grass-03",
+        "footstep-grass-04",
+        "footstep-grass-05",
+        "footstep-grass-06",
+        "footstep-grass-07",
+        "footstep-grass-08",
+        "footstep-grass-09",
+        "footstep-grass-10",
+        "footstep-grass-11",
+        "footstep-grass-12",
+        "footstep-grass-13"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_GlassBottle.StepLeft": {
       "soundId": "footstep-glass-bottle-impact-hard1",
       "channel": "sos",
       "hash": 2594927130,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-glass-bottle-impact-hard1",
+        "hit-glass-bottle-impact-hard2",
+        "hit-glass-bottle-impact-hard3"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_Grass.StepLeft": {
       "soundId": "footstep-grass-01",
       "channel": "sos",
       "hash": 1019414932,
       "volume": 1,
-      "pitch": 1
+      "pitch": 1,
+      "variants": [
+        "footstep-grass-01",
+        "footstep-grass-02",
+        "footstep-grass-03",
+        "footstep-grass-04",
+        "footstep-grass-05",
+        "footstep-grass-06",
+        "footstep-grass-07",
+        "footstep-grass-08",
+        "footstep-grass-09",
+        "footstep-grass-10",
+        "footstep-grass-11",
+        "footstep-grass-12",
+        "footstep-grass-13"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_Gravel.StepLeft": {
       "soundId": "footstep-gravel-01",
       "channel": "sos",
       "hash": 1218015996,
-      "volume": 0.8
+      "volume": 0.8,
+      "variants": [
+        "footstep-gravel-01",
+        "footstep-gravel-02",
+        "footstep-gravel-03",
+        "footstep-gravel-04",
+        "footstep-gravel-05",
+        "footstep-gravel-06",
+        "footstep-gravel-07",
+        "footstep-gravel-08",
+        "footstep-gravel-09",
+        "footstep-gravel-10"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_Grenade.StepLeft": {
       "soundId": "footstep",
       "channel": "sos",
       "hash": 417910549,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep",
+        "footstep-concrete-ct-02",
+        "footstep-concrete-ct-03",
+        "footstep-concrete-ct-04",
+        "footstep-concrete-ct-05",
+        "footstep-concrete-ct-06",
+        "footstep-concrete-ct-07",
+        "footstep-concrete-ct-08",
+        "footstep-concrete-ct-09",
+        "footstep-concrete-ct-10",
+        "footstep-concrete-ct-11",
+        "footstep-concrete-ct-12",
+        "footstep-concrete-ct-13",
+        "footstep-concrete-ct-14",
+        "footstep-concrete-ct-15",
+        "footstep-concrete-ct-16",
+        "footstep-concrete-ct-17"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_MetalVehicle.StepLeft": {
       "soundId": "footstep-2530c17a7f0b",
       "channel": "sos",
       "hash": 84876002,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-2530c17a7f0b",
+        "footstep-metal-auto-02",
+        "footstep-metal-auto-03",
+        "footstep-metal-auto-04",
+        "footstep-metal-auto-05",
+        "footstep-metal-auto-06"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_Mud.StepLeft": {
       "soundId": "footstep-mud-01",
       "channel": "sos",
       "hash": 2189706910,
-      "volume": 0.7
+      "volume": 0.7,
+      "variants": [
+        "footstep-mud-01",
+        "footstep-mud-02",
+        "footstep-mud-03",
+        "footstep-mud-04",
+        "footstep-mud-05",
+        "footstep-mud-06",
+        "footstep-mud-07",
+        "footstep-mud-08",
+        "footstep-mud-09"
+      ],
+      "distance": [
+        [49.591, 0.5],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_Plastic_Barrel.StepLeft": {
       "soundId": "footstep-plastic-barrel-01",
       "channel": "sos",
       "hash": 1543034,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-plastic-barrel-01",
+        "footstep-plastic-barrel-02",
+        "footstep-plastic-barrel-03",
+        "footstep-plastic-barrel-04",
+        "footstep-plastic-barrel-05"
+      ],
+      "distance": [
+        [49.591, 0.4],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_Plastic_Box.StepLeft": {
       "soundId": "footstep-plastic-barrel-01",
       "channel": "sos",
       "hash": 892882552,
-      "volume": 0.7
+      "volume": 0.7,
+      "variants": [
+        "footstep-plastic-barrel-01",
+        "footstep-plastic-barrel-02",
+        "footstep-plastic-barrel-03",
+        "footstep-plastic-barrel-04",
+        "footstep-plastic-barrel-05"
+      ],
+      "distance": [
+        [49.591, 0.4],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_Rubber.StepLeft": {
       "soundId": "footstep-rubber-03",
       "channel": "sos",
       "hash": 70939233,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-rubber-03",
+        "footstep-rubber-04",
+        "footstep-rubber-05",
+        "footstep-rubber-06",
+        "footstep-rubber-07",
+        "footstep-rubber-08",
+        "footstep-rubber-11",
+        "footstep-rubber-12"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_Slime.StepLeft": {
       "soundId": "footstep-mud-01",
       "channel": "sos",
       "hash": 822973253,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-mud-01",
+        "footstep-mud-02",
+        "footstep-mud-03",
+        "footstep-mud-04",
+        "footstep-mud-05",
+        "footstep-mud-06",
+        "footstep-mud-07",
+        "footstep-mud-08",
+        "footstep-mud-09"
+      ],
+      "distance": [
+        [49.591, 0.5],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_SlipperySlime.StepLeft": {
       "soundId": "footstep-mud-01",
       "channel": "sos",
       "hash": 3797950766,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-mud-01",
+        "footstep-mud-02",
+        "footstep-mud-03",
+        "footstep-mud-04",
+        "footstep-mud-05",
+        "footstep-mud-06",
+        "footstep-mud-07",
+        "footstep-mud-08",
+        "footstep-mud-09"
+      ],
+      "distance": [
+        [49.591, 0.5],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_Snow.StepLeft": {
       "soundId": "footstep-snow-01",
       "channel": "sos",
       "hash": 4203793682,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-snow-01",
+        "footstep-snow-02",
+        "footstep-snow-03",
+        "footstep-snow-04",
+        "footstep-snow-05",
+        "footstep-snow-06",
+        "footstep-snow-07",
+        "footstep-snow-08",
+        "footstep-snow-09",
+        "footstep-snow-10",
+        "footstep-snow-11"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_Water.StepLeft": {
       "soundId": "footstep-puddle-01",
       "channel": "sos",
       "hash": 870100484,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-puddle-01",
+        "footstep-puddle-02",
+        "footstep-puddle-03",
+        "footstep-puddle-04",
+        "footstep-puddle-05",
+        "footstep-puddle-06",
+        "footstep-puddle-07",
+        "footstep-puddle-08",
+        "footstep-puddle-09"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_Weapon.StepLeft": {
       "soundId": "footstep-weapon-smg-impact-07",
       "channel": "sos",
       "hash": 935062317,
-      "volume": 0.5
+      "volume": 0.5,
+      "variants": [
+        "footstep-weapon-smg-impact-07",
+        "hit-weapon-smg-impact-08",
+        "hit-weapon-smg-impact-12"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_Wood_Crate.StepLeft": {
       "soundId": "footstep-1b1212d92523",
       "channel": "sos",
       "hash": 2333790984,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-1b1212d92523",
+        "footstep-wood-02",
+        "footstep-wood-03",
+        "footstep-wood-04",
+        "footstep-wood-05",
+        "footstep-wood-06",
+        "footstep-wood-07",
+        "footstep-wood-08",
+        "footstep-wood-09",
+        "footstep-wood-10",
+        "footstep-wood-11",
+        "footstep-wood-12",
+        "footstep-wood-13",
+        "footstep-wood-14",
+        "footstep-wood-15"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_Wood_Solid.StepLeft": {
       "soundId": "footstep-1b1212d92523",
       "channel": "sos",
       "hash": 1165397261,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-1b1212d92523",
+        "footstep-wood-02",
+        "footstep-wood-03",
+        "footstep-wood-04",
+        "footstep-wood-05",
+        "footstep-wood-06",
+        "footstep-wood-07",
+        "footstep-wood-08",
+        "footstep-wood-09",
+        "footstep-wood-10",
+        "footstep-wood-11",
+        "footstep-wood-12",
+        "footstep-wood-13",
+        "footstep-wood-14",
+        "footstep-wood-15"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "CT_WetTile.StepLeft": {
       "soundId": "footstep-5f376e116aae",
       "channel": "sos",
       "hash": 4084367249,
       "volume": 1,
-      "pitch": 1.1
+      "pitch": 1.1,
+      "variants": [
+        "footstep-5f376e116aae",
+        "footstep-tile-02",
+        "footstep-tile-03",
+        "footstep-tile-04",
+        "footstep-tile-05",
+        "footstep-tile-06",
+        "footstep-tile-07",
+        "footstep-tile-08",
+        "footstep-tile-09",
+        "footstep-tile-10",
+        "footstep-tile-11",
+        "footstep-tile-12",
+        "footstep-tile-13",
+        "footstep-tile-14"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_WetTile.StepLeft": {
       "soundId": "footstep-5f376e116aae",
       "channel": "sos",
       "hash": 3109879199,
       "volume": 1,
-      "pitch": 1.1
+      "pitch": 1.1,
+      "variants": [
+        "footstep-5f376e116aae",
+        "footstep-tile-02",
+        "footstep-tile-03",
+        "footstep-tile-04",
+        "footstep-tile-05",
+        "footstep-tile-06",
+        "footstep-tile-07",
+        "footstep-tile-08",
+        "footstep-tile-09",
+        "footstep-tile-10",
+        "footstep-tile-11",
+        "footstep-tile-12",
+        "footstep-tile-13",
+        "footstep-tile-14"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "Land_WetTile.StepLeft": {
       "soundId": "footstep-land-tile-01",
       "channel": "sos",
       "hash": 2551626319,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-land-tile-01",
+        "footstep-land-tile-02",
+        "footstep-land-tile-03",
+        "footstep-land-tile-04",
+        "footstep-land-tile-05"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "Land_PlayerFlesh.StepLeft": {
       "soundId": "footstep-land-body-01",
       "channel": "sos",
       "hash": 4085076160,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-land-body-01",
+        "footstep-land-body-02",
+        "footstep-land-body-03",
+        "footstep-land-body-04",
+        "footstep-land-body-05",
+        "footstep-land-body-06"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "T_Wood_Ladder.StepLeft": {
       "soundId": "footstep-eb0d28d23d98",
       "channel": "sos",
       "hash": 1661204257,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-eb0d28d23d98",
+        "footstep-ladder-wood-02",
+        "footstep-ladder-wood-03",
+        "footstep-ladder-wood-04",
+        "footstep-ladder-wood-05",
+        "footstep-ladder-wood-06",
+        "footstep-ladder-wood-07",
+        "footstep-ladder-wood-08",
+        "footstep-ladder-wood-09",
+        "footstep-ladder-wood-10",
+        "footstep-ladder-wood-11",
+        "footstep-ladder-wood-12",
+        "footstep-ladder-wood-13",
+        "footstep-ladder-wood-14"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "Land_Wood_Ladder.StepLeft": {
       "soundId": "footstep-eb0d28d23d98",
       "channel": "sos",
       "hash": 2236021746,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-eb0d28d23d98",
+        "footstep-ladder-wood-02",
+        "footstep-ladder-wood-03",
+        "footstep-ladder-wood-04",
+        "footstep-ladder-wood-05",
+        "footstep-ladder-wood-06",
+        "footstep-ladder-wood-07",
+        "footstep-ladder-wood-08",
+        "footstep-ladder-wood-09",
+        "footstep-ladder-wood-10",
+        "footstep-ladder-wood-11",
+        "footstep-ladder-wood-12",
+        "footstep-ladder-wood-13",
+        "footstep-ladder-wood-14"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "Land_WaterVol.StepLeft": {
       "soundId": "footstep-water-splash-01",
       "channel": "sos",
       "hash": 585390608,
-      "volume": 0.4
+      "volume": 0.4,
+      "variants": ["footstep-water-splash-01", "hit-water-splash-02", "hit-water-splash-03"],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "T_Wet_Sand.StepLeft": {
       "soundId": "footstep-puddle-small-01",
       "channel": "sos",
       "hash": 1194093029,
       "volume": 0.9,
-      "pitch": 1
+      "pitch": 1,
+      "variants": [
+        "footstep-puddle-small-01",
+        "footstep-puddle-small-02",
+        "footstep-puddle-small-03",
+        "footstep-puddle-small-04",
+        "footstep-puddle-small-05",
+        "footstep-puddle-small-06",
+        "footstep-puddle-small-07"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "CT_Wet_Sand.StepLeft": {
       "soundId": "footstep-puddle-small-01",
       "channel": "sos",
       "hash": 3755338324,
       "volume": 0.9,
-      "pitch": 1
+      "pitch": 1,
+      "variants": [
+        "footstep-puddle-small-01",
+        "footstep-puddle-small-02",
+        "footstep-puddle-small-03",
+        "footstep-puddle-small-04",
+        "footstep-puddle-small-05",
+        "footstep-puddle-small-06",
+        "footstep-puddle-small-07"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "Land_Plastic_Barrel.StepLeft": {
       "soundId": "footstep-land-auto-01",
       "channel": "sos",
       "hash": 4152012084,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-land-auto-01",
+        "footstep-land-auto-02",
+        "footstep-land-auto-03",
+        "footstep-land-auto-04",
+        "footstep-land-auto-05"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "CT_Plastic_milkCrate.StepLeft": {
       "soundId": "footstep-rubber-03",
       "channel": "sos",
       "hash": 757978684,
       "volume": 0.7,
-      "pitch": 0.98
+      "pitch": 0.98,
+      "variants": [
+        "footstep-rubber-03",
+        "footstep-rubber-04",
+        "footstep-rubber-05",
+        "footstep-rubber-06",
+        "footstep-rubber-07",
+        "footstep-rubber-08",
+        "footstep-rubber-11",
+        "footstep-rubber-12"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_Plastic_milkCrate.StepLeft": {
       "soundId": "footstep-rubber-03",
       "channel": "sos",
       "hash": 1448154350,
       "volume": 0.7,
-      "pitch": 0.98
+      "pitch": 0.98,
+      "variants": [
+        "footstep-rubber-03",
+        "footstep-rubber-04",
+        "footstep-rubber-05",
+        "footstep-rubber-06",
+        "footstep-rubber-07",
+        "footstep-rubber-08",
+        "footstep-rubber-11",
+        "footstep-rubber-12"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "Land_Plastic_milkCrate.StepLeft": {
       "soundId": "footstep-land-plastic-milkcrates-01",
       "channel": "sos",
       "hash": 2053595705,
       "volume": 0.7,
-      "pitch": 1
+      "pitch": 1,
+      "variants": [
+        "footstep-land-plastic-milkcrates-01",
+        "footstep-land-plastic-milkcrates-02",
+        "footstep-land-plastic-milkcrates-03",
+        "footstep-land-plastic-milkcrates-04"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "CT_Plastic_autoCover.StepLeft": {
       "soundId": "footstep-2530c17a7f0b",
       "channel": "sos",
       "hash": 1909915699,
       "volume": 0.7,
-      "pitch": 0.98
+      "pitch": 0.98,
+      "variants": [
+        "footstep-2530c17a7f0b",
+        "footstep-metal-auto-02",
+        "footstep-metal-auto-03",
+        "footstep-metal-auto-04",
+        "footstep-metal-auto-05",
+        "footstep-metal-auto-06"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "Land_Plastic_autoCover.StepLeft": {
       "soundId": "footstep-land-auto-01",
       "channel": "sos",
       "hash": 765706800,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-land-auto-01",
+        "footstep-land-auto-02",
+        "footstep-land-auto-03",
+        "footstep-land-auto-04",
+        "footstep-land-auto-05"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "T_Plastic_autoCover.StepLeft": {
       "soundId": "footstep-2530c17a7f0b",
       "channel": "sos",
       "hash": 2722081556,
       "volume": 0.7,
-      "pitch": 0.98
+      "pitch": 0.98,
+      "variants": [
+        "footstep-2530c17a7f0b",
+        "footstep-metal-auto-02",
+        "footstep-metal-auto-03",
+        "footstep-metal-auto-04",
+        "footstep-metal-auto-05",
+        "footstep-metal-auto-06"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "Land_MetalRailing.StepLeft": {
       "soundId": "footstep-land-metal-railing-01",
       "channel": "sos",
       "hash": 1540837791,
       "volume": 0.7,
-      "pitch": 1
+      "pitch": 1,
+      "variants": [
+        "footstep-land-metal-railing-01",
+        "footstep-land-metal-railing-02",
+        "footstep-land-metal-railing-03",
+        "footstep-land-metal-railing-04",
+        "footstep-land-metal-railing-05"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "CT_WetConcrete.StepLeft": {
       "soundId": "footstep",
       "channel": "sos",
       "hash": 3184465677,
       "volume": 1,
-      "pitch": 1.1
+      "pitch": 1.1,
+      "variants": [
+        "footstep",
+        "footstep-concrete-ct-02",
+        "footstep-concrete-ct-03",
+        "footstep-concrete-ct-04",
+        "footstep-concrete-ct-05",
+        "footstep-concrete-ct-06",
+        "footstep-concrete-ct-07",
+        "footstep-concrete-ct-08",
+        "footstep-concrete-ct-09",
+        "footstep-concrete-ct-10",
+        "footstep-concrete-ct-11",
+        "footstep-concrete-ct-12",
+        "footstep-concrete-ct-13",
+        "footstep-concrete-ct-14",
+        "footstep-concrete-ct-15",
+        "footstep-concrete-ct-16",
+        "footstep-concrete-ct-17"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_WetConcrete.StepLeft": {
       "soundId": "footstep",
       "channel": "sos",
       "hash": 3023174225,
       "volume": 1,
-      "pitch": 1.1
+      "pitch": 1.1,
+      "variants": [
+        "footstep",
+        "footstep-concrete-ct-02",
+        "footstep-concrete-ct-03",
+        "footstep-concrete-ct-04",
+        "footstep-concrete-ct-05",
+        "footstep-concrete-ct-06",
+        "footstep-concrete-ct-07",
+        "footstep-concrete-ct-08",
+        "footstep-concrete-ct-09",
+        "footstep-concrete-ct-10",
+        "footstep-concrete-ct-11",
+        "footstep-concrete-ct-12",
+        "footstep-concrete-ct-13",
+        "footstep-concrete-ct-14",
+        "footstep-concrete-ct-15",
+        "footstep-concrete-ct-16",
+        "footstep-concrete-ct-17"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "CT_WetMud.StepLeft": {
       "soundId": "footstep-mud-01",
       "channel": "sos",
       "hash": 3847761506,
       "volume": 1,
-      "pitch": 1.1
+      "pitch": 1.1,
+      "variants": [
+        "footstep-mud-01",
+        "footstep-mud-02",
+        "footstep-mud-03",
+        "footstep-mud-04",
+        "footstep-mud-05",
+        "footstep-mud-06",
+        "footstep-mud-07",
+        "footstep-mud-08",
+        "footstep-mud-09"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "T_WetMud.StepLeft": {
       "soundId": "footstep-mud-01",
       "channel": "sos",
       "hash": 1342713723,
       "volume": 1,
-      "pitch": 1.1
+      "pitch": 1.1,
+      "variants": [
+        "footstep-mud-01",
+        "footstep-mud-02",
+        "footstep-mud-03",
+        "footstep-mud-04",
+        "footstep-mud-05",
+        "footstep-mud-06",
+        "footstep-mud-07",
+        "footstep-mud-08",
+        "footstep-mud-09"
+      ],
+      "distance": [
+        [49.591, 0.45],
+        [116.563, 1],
+        [402.286, 0.489],
+        [1095, 0.03],
+        [1100, 0]
+      ]
     },
     "Land_WetConcrete.StepLeft": {
       "soundId": "footstep-land-tile-01",
       "channel": "sos",
       "hash": 4074593561,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-land-tile-01",
+        "footstep-land-tile-02",
+        "footstep-land-tile-03",
+        "footstep-land-tile-04",
+        "footstep-land-tile-05"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "Land_WetMud.StepLeft": {
       "soundId": "footstep-land-mud-01",
       "channel": "sos",
       "hash": 2162652424,
-      "volume": 1
+      "volume": 1,
+      "variants": [
+        "footstep-land-mud-01",
+        "footstep-land-mud-02",
+        "footstep-land-mud-03",
+        "footstep-land-mud-04",
+        "footstep-land-mud-05"
+      ],
+      "distance": [
+        [0, 1],
+        [37.429, 1],
+        [429.109, 0.445],
+        [1090, 0.05],
+        [1100, 0]
+      ]
     },
     "SmokeGrenade.Bounce": {
       "soundId": "utility-024f27865b76",
@@ -3634,6 +7770,25 @@
       "channel": "weapon-sound",
       "volume": 0.3,
       "pitch": 1
+    },
+    "Player.Death": {
+      "channel": "sos",
+      "soundId": "hit-death1",
+      "hash": 46413566,
+      "volume": 0.5,
+      "variants": [
+        "hit-death1",
+        "hit-death2",
+        "hit-death3",
+        "hit-death4",
+        "hit-death5",
+        "hit-death6"
+      ],
+      "distance": [
+        [0, 1],
+        [113.911, 0.593],
+        [1400, 0]
+      ]
     }
   }
 }

@@ -110,3 +110,14 @@ test('the action bank requires its complete declared role set', () => {
   // Clip and declaration counts must agree before any curve is bound.
   expect(readActionBank([], declarations)).toBeUndefined();
 });
+
+test('recorded footsteps follow the authored distance curve and stop where the game does', async () => {
+  const { authoredDistanceGain } = await import('../src/sound-distance');
+  expect(authoredDistanceGain('CT_Concrete.StepLeft', 116.563)).toBeCloseTo(1, 3);
+  expect(authoredDistanceGain('ct_concrete.stepleft', 402.286)).toBeCloseTo(0.489, 3);
+  expect(authoredDistanceGain('CT_Concrete.StepLeft', 1100)).toBe(0);
+  expect(authoredDistanceGain('CT_Concrete.StepLeft', 5000)).toBe(0);
+  expect(authoredDistanceGain('Player.Death', 1400)).toBe(0);
+  expect(authoredDistanceGain('Weapon_AK47.Single', 300)).toBeUndefined();
+  expect(authoredDistanceGain(undefined, 300)).toBeUndefined();
+});

@@ -1,14 +1,15 @@
 /** Bounded container validation before native/browser decoding. No compressed duration guesses. */
 export const gameplayAudioLimits = Object.freeze({
-  // The near and distant layers of every firearm and explosion fit within this bound.
-  bankItems: 320,
+  // Valve's full footstep, landing, body-hit and death variation lists, and the near and
+  // distant layers of every firearm and explosion, fit within this bound.
+  bankItems: 768,
   // The longest registered sample is BaseSmokeEffect.Sound (smoke_emit): 14.18 s of 16-bit
   // stereo 44.1 kHz PCM, 2,500,820 bytes. These bounds admit it with little headroom.
   bytes: 3 * 1024 ** 2,
   durationMs: 15000,
   sampleRate: 48000,
   channels: 2,
-  bankBytes: 64 * 1024 ** 2,
+  bankBytes: 96 * 1024 ** 2,
 });
 const typedArrayPrototype = Object.getPrototypeOf(Uint8Array.prototype);
 const typedLength = Object.getOwnPropertyDescriptor(typedArrayPrototype, 'byteLength').get;

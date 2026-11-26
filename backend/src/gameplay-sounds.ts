@@ -69,6 +69,18 @@ export function indexNativeSoundEvidence(sounds: GameplaySoundCue[]) {
       : matchesActor(bucket.actors, cue.actor);
   };
 }
+/** Valve picks one authored variation per occurrence; the recording carries its seed.
+ * The same seed always selects the same file, so a replay sounds the same on every seek. */
+export function recordedVariant(
+  definition: { soundId: string; variants?: string[] },
+  seed: unknown,
+) {
+  const variants = definition.variants;
+  if (!variants?.length || typeof seed !== 'number' || !Number.isSafeInteger(seed) || seed < 0)
+    return definition.soundId;
+  const id = variants[seed % variants.length];
+  return Object.hasOwn(known, id) ? id : definition.soundId;
+}
 export function eventGameplaySounds(events: GameEvent[], actors: ReadonlySet<string>) {
   const cues: GameplaySoundCue[] = [];
   const mapping: Record<string, string> = {
@@ -197,10 +209,11 @@ export function observeGameplaySounds(
     if (!position.valid) return;
     const before = sounds.length,
       { name, definition } = record;
+    const soundId = recordedVariant(definition, message.seed);
     append({
       tick: reader.currentTick,
-      soundId: definition.soundId,
-      category: known[definition.soundId].category,
+      soundId,
+      category: known[soundId].category,
       evidence: 'network-sound',
       selection: 'representative',
       eventName: name,

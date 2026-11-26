@@ -64,7 +64,7 @@ COPY tools/assets/*.mjs ./tools/assets/
 COPY tools/assets/native/asset-network-deny.c ./tools/assets/native/
 COPY shared/map-previews.json shared/equipment-models.json shared/map-breakables.mjs ./shared/
 RUN node tools/assets/build-network-deny.mjs --output tools/assets/bin/asset-network-deny \
-    && node -e "const fs=require('node:fs'); for (const name of fs.readdirSync('tools/assets')) if (name.endsWith('.test.mjs')) fs.unlinkSync('tools/assets/'+name)"
+    && node -e "const fs=require('node:fs'); for (const name of fs.readdirSync('tools/assets')) if (name.endsWith('.test.mjs') || name === 'update-body-sounds.mjs') fs.unlinkSync('tools/assets/'+name)"
 
 FROM node:24-bookworm-slim AS assets
 ENV NODE_ENV=production MAP_ASSETS_DIR=/map-assets MAP_JOBS_DIR=/map-jobs MAP_CACHE_DIR=/map-cache MAP_CATALOG_FILE=/map-catalog/catalog.json

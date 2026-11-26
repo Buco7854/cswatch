@@ -1,3 +1,4 @@
+import { authoredDistanceGain } from './sound-distance';
 import type {
   GameplaySoundCategory,
   GameplaySoundCue,
@@ -212,16 +213,27 @@ export class GameplayPlayback {
             panner.positionX.value = position.x * 0.0254;
             panner.positionY.value = position.z * 0.0254;
             panner.positionZ.value = -position.y * 0.0254;
+            // Footsteps, landings and body sounds fall off along their event's authored curve,
+            // firearms and explosions along their sample's; the panner then only places them.
+            const listener = context.listener as Partial<AudioListener> | undefined;
+            const inches =
+              Math.hypot(
+                panner.positionX.value - (listener?.positionX?.value ?? 0),
+                panner.positionY.value - (listener?.positionY?.value ?? 0),
+                panner.positionZ.value - (listener?.positionZ?.value ?? 0),
+              ) / 0.0254;
+            const eventGain = authoredDistanceGain(cue.eventName, inches);
             const curve = authored[cue.soundId]?.distance;
-            if (curve) {
-              // The authored curve replaces the generic roll-off.
-              const listener = context.listener as Partial<AudioListener> | undefined;
-              const inches =
-                Math.hypot(
-                  panner.positionX.value - (listener?.positionX?.value ?? 0),
-                  panner.positionY.value - (listener?.positionY?.value ?? 0),
-                  panner.positionZ.value - (listener?.positionZ?.value ?? 0),
-                ) / 0.0254;
+            if (eventGain !== undefined) {
+              // Beyond the curve the game plays nothing; keep the voice budget for audible cues.
+              if (!(eventGain > 0)) {
+                source.disconnect();
+                cueGain.disconnect();
+                return;
+              }
+              panner.rolloffFactor = 0;
+              cueGain.gain.value = (cue.volume ?? 1) * eventGain;
+            } else if (curve) {
               panner.rolloffFactor = 0;
               cueGain.gain.value *= distanceGain(curve, inches);
             }

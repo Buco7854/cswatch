@@ -124,7 +124,7 @@ export async function prepareGameplaySoundBank(
       if (decoded.extension !== found.extension)
         throw Error('Native sound format extension mismatch.');
       total += data.length;
-      if (total > gameplayAudioLimits.bankBytes) throw Error('Native sound bank exceeds64MiB.');
+      if (total > gameplayAudioLimits.bankBytes) throw Error('Native sound bank exceeds 96 MiB.');
       await reserve(output, output, data.length + 16384);
       const folder = join(stage, id);
       await mkdir(folder, { mode: 0o755 });
