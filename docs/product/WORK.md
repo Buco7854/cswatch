@@ -1,6 +1,6 @@
 # Active work
 
-Native worlds replace the glTF map path. 21 of 22 official maps pass the worker with both tiers, including the community-addon maps. Next: reach the download budgets without reducing baked lighting (lighting and probe compression, phone geometry), rush_001 on a larger host, de_eldorado's radar calibration, and hardware GPU and phone measurements. [Evidence](../VERIFICATION.md#native-worlds)
+Native worlds replace the glTF map path. 21 of 22 official maps pass the worker with both tiers, including the community-addon maps. Next: reach the download budgets without reducing baked lighting (lighting and probe compression, phone geometry), GPU instancing for rush_001, de_cbble's hall floors, and hardware GPU and phone measurements. [Evidence](../VERIFICATION.md#native-worlds)
 
 The Nuke ramp shutter, Secret exit and duct now have source-identified checks on revision 9. A recording of a mode that enables the blockers would extend the existing synthetic activation and 5v5 checks. Frame pacing still needs a repeat on a hardware GPU and a physical phone. [Verification](../VERIFICATION.md#native-worlds)
 
