@@ -143,6 +143,7 @@ test('streamed item carry preserves full state after chunk eviction and a tombst
       inputButtons: 'unavailable',
       mouseInput: false,
       utilityThrows: false,
+      pawnMovement: false,
     },
     gameplaySounds: {
       coverage: Object.fromEntries(

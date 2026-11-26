@@ -23,7 +23,15 @@ import { expandBzip2 } from './bzip2.js';
 import { validateMagic } from './demo-format.js';
 import { collectColumnFrameState } from './frame-state.js';
 import { writeReplay } from './replay.js';
-import { playerColumns, readPlayerColumns, recordedCameraFov } from './parser-fields.js';
+import {
+  playerColumns,
+  readPlayerColumns,
+  recordedAgentModel,
+  recordedCameraFov,
+  recordedMoveType,
+  recordedPawnFlags,
+  recordedWalking,
+} from './parser-fields.js';
 import { replayCapabilities } from './player-input.js';
 import { readCommunications } from './communications.js';
 import { collectThrowInputs, removeEventInputExtras } from './throw-input.js';
@@ -129,6 +137,7 @@ function readFrames(source: string, sampled: number[]) {
       ['kills_total', 'deaths_total', 'assists_total', 'headshot_kills_total', 'damage_total'],
       ['active_weapon', 'is_in_reload'],
       [recordedCameraFov],
+      [recordedPawnFlags, recordedMoveType, recordedWalking, recordedAgentModel],
     ],
     sampled.length * 64,
   );

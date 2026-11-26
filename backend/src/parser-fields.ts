@@ -3,6 +3,13 @@ type ReadColumns = (fields: string[]) => unknown;
 const playerRowLimit = 180000 * 64;
 export const recordedCameraFov = 'CCSPlayerPawn.CCSPlayer_CameraServices.m_iFOV';
 export const recordedReloadTickLimit = 256;
+/** Pawn movement evidence: FL_ONGROUND, MOVETYPE_LADDER (10 in CS2), shift-walk and
+ * the model resource handle (MurmurHash64B of the model path, seed 0xEDABCDEF). */
+export const recordedPawnFlags = 'CCSPlayerPawn.m_fFlags';
+export const recordedMoveType = 'move_type';
+export const recordedWalking = 'CCSPlayerPawn.m_bIsWalking';
+export const recordedAgentModel = 'CCSPlayerPawn.CBodyComponentBaseAnimGraph.m_hModel';
+export const recordedLadderMoveType = '10';
 
 /** The native SoA bridge includes aligned identity columns even for optional-only queries. */
 export function playerColumns(value: unknown, maxRows = playerRowLimit): PlayerColumns {

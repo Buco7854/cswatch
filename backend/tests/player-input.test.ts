@@ -94,6 +94,7 @@ test('missing or unsupported delta inputs remain unavailable rather than inferre
     inputButtons: 'unavailable',
     mouseInput: false,
     utilityThrows: false,
+    pawnMovement: false,
   });
   assert.equal(recordedInput({ buttons: '0' })?.forward, false); // Recorded idle state is distinct from missing data.
   assert.deepEqual(recordedInput({ usercmd_mouse_dx: 7, usercmd_mouse_dy: -2 }), {
@@ -192,6 +193,7 @@ test('capabilities describe actual available source fields and recorded grenade 
     inputButtons: 'usercmd',
     mouseInput: true,
     utilityThrows: true,
+    pawnMovement: false,
   });
   assert.equal(
     replayCapabilities(frames, [{ type: 'weapon_fire', tick: 4, weapon: 'weapon_ak47' }])
@@ -218,4 +220,47 @@ test('capabilities describe actual available source fields and recorded grenade 
   malicious.frames[0].players[0].input!.buttons = '8';
   malicious.frames[0].players[0].input!.mouseDx = Infinity;
   assert.equal(chunkSchema.safeParse(malicious).success, false);
+});
+
+test('pawn flags record airborne, ladder, shift-walk and the model handle only from evidence', () => {
+  const sample = (extra: Record<string, unknown>) =>
+    collectFrameState([row({ is_alive: true, ...extra })]).frames[0].players[0];
+  const grounded = sample({
+    'CCSPlayerPawn.m_fFlags': 65665,
+    move_type: '2',
+    'CCSPlayerPawn.m_bIsWalking': false,
+    'CCSPlayerPawn.CBodyComponentBaseAnimGraph.m_hModel': '10254416614829638596',
+  });
+  assert.equal(grounded.airborne, undefined);
+  assert.equal(grounded.ladder, undefined);
+  assert.equal(grounded.walking, undefined);
+  assert.equal(grounded.agentModel, '10254416614829638596');
+  const climbing = sample({
+    'CCSPlayerPawn.m_fFlags': 65664,
+    move_type: '10',
+    'CCSPlayerPawn.m_bIsWalking': true,
+  });
+  assert.equal(climbing.airborne, true);
+  assert.equal(climbing.ladder, true);
+  assert.equal(climbing.walking, true);
+  assert.equal(climbing.agentModel, undefined);
+  // Missing or malformed evidence stays unknown.
+  const unknown = sample({ 'CCSPlayerPawn.m_fFlags': null, move_type: null });
+  assert.equal(unknown.airborne, undefined);
+  assert.equal(unknown.ladder, undefined);
+  const dead = sample({ is_alive: false, 'CCSPlayerPawn.m_fFlags': 0, move_type: '10' });
+  assert.equal(dead.airborne, undefined);
+  assert.equal(dead.ladder, undefined);
+  assert.equal(
+    sample({ 'CCSPlayerPawn.CBodyComponentBaseAnimGraph.m_hModel': '0' }).agentModel,
+    undefined,
+  );
+  const frames = collectFrameState([
+    row({ is_alive: true, 'CCSPlayerPawn.CBodyComponentBaseAnimGraph.m_hModel': '42' }),
+  ]).frames;
+  assert.equal(replayCapabilities(frames, []).pawnMovement, true);
+  assert.equal(
+    chunkSchema.shape.frames.element.shape.players.element.safeParse(frames[0].players[0]).success,
+    true,
+  );
 });

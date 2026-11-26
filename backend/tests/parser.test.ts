@@ -189,6 +189,19 @@ for (const compressed of [false, true])
         assert.equal(data.capabilities?.inputButtons, 'network');
         assert.equal(data.capabilities?.mouseInput, false);
         assert.equal(data.capabilities?.utilityThrows, true);
+        assert.equal(data.capabilities?.pawnMovement, true);
+        const living = data.frames.flatMap((frame: any) =>
+          frame.players.filter((player: any) => player.alive),
+        );
+        // Mirage fixture: map-based ctm_sas (CT) and tm_phoenix (T) handles, jumps and ladders.
+        assert.deepEqual(
+          [...new Set(living.map((player: any) => player.team + ':' + player.agentModel))].sort(),
+          ['2:13181005211767972979', '3:10254416614829638596'],
+        );
+        assert.ok(living.some((player: any) => player.airborne === true));
+        assert.ok(living.some((player: any) => player.ladder === true));
+        assert.ok(living.some((player: any) => player.walking === true));
+        assert.ok(living.filter((player: any) => player.airborne).length < living.length / 10);
         assert.ok(
           data.frames[0].players.some((player: any) => player.stats?.kills > 0),
           'pre-recording native totals survive instead of invented event-derived zeroes',

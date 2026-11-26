@@ -93,6 +93,7 @@ const replay = {
     inputButtons: 'usercmd',
     mouseInput: true,
     utilityThrows: false,
+    pawnMovement: false,
   },
 };
 

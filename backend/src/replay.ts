@@ -199,6 +199,13 @@ const position = z
       ])
       .optional(),
     defusing: z.boolean().optional(),
+    airborne: z.literal(true).optional(),
+    ladder: z.literal(true).optional(),
+    walking: z.literal(true).optional(),
+    agentModel: z
+      .string()
+      .regex(/^[1-9]\d{0,19}$/)
+      .optional(),
     equipmentValue: z.number().int().min(0).max(1000000000).optional(),
     startMoney: z.number().int().min(0).max(1000000000).optional(),
     spentThisRound: z.number().int().min(0).max(1000000000).optional(),
@@ -466,6 +473,7 @@ export const manifestSchema = z
         inputButtons: z.enum(['usercmd', 'network', 'unavailable']),
         mouseInput: z.boolean(),
         utilityThrows: z.boolean(),
+        pawnMovement: z.boolean(),
       })
       .strict(),
     worldBounds: z
@@ -709,6 +717,7 @@ async function writeReplayCore(
       inputButtons: 'unavailable',
       mouseInput: false,
       utilityThrows: false,
+      pawnMovement: false,
     },
     firstTick: frames[0].tick,
     lastTick: frames.at(-1)!.tick,

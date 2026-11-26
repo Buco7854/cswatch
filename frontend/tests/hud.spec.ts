@@ -89,6 +89,7 @@ const replay = {
     inputButtons: 'network',
     mouseInput: true,
     utilityThrows: false,
+    pawnMovement: false,
   },
 };
 

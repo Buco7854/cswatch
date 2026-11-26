@@ -137,6 +137,7 @@ const replay: Playback = {
     inputButtons: 'usercmd',
     mouseInput: true,
     utilityThrows: true,
+    pawnMovement: false,
   },
   communications: {
     voice: 'absent',

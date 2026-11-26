@@ -124,6 +124,7 @@ export function replayCapabilities(frames: Frame[], events: GameEvent[]): Replay
     inputButtons: 'unavailable',
     mouseInput: false,
     utilityThrows: events.some(isRecordedUtilityThrow),
+    pawnMovement: false,
   };
   for (const frame of frames)
     for (const player of frame.players) {
@@ -136,6 +137,8 @@ export function replayCapabilities(frames: Frame[], events: GameEvent[]): Replay
       )
         result.equipment = true;
       if (player.inventory !== undefined) result.inventory = true;
+      // The model handle is read in the same optional group as the ground and ladder state.
+      if (player.agentModel !== undefined) result.pawnMovement = true;
       if (!player.input) continue;
       if (
         player.input.buttons !== undefined ||

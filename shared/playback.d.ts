@@ -43,6 +43,8 @@ export type ReplayCapabilities = {
   inputButtons: 'usercmd' | 'network' | 'unavailable';
   mouseInput: boolean;
   utilityThrows: boolean;
+  /** Frames carry recorded airborne, ladder, shift-walk and model state. */
+  pawnMovement: boolean;
 };
 /** Actual cumulative controller counters at this frame, including earlier
  * match history when the recording begins late. Missing fields stay unknown. */
@@ -83,6 +85,14 @@ export type Position = {
   /** Recorded eye offset in Source inches. The short form has zero XY. */
   eyeOffset?: [height: number] | [x: number, y: number, height: number];
   defusing?: boolean;
+  /** Recorded pawn flags lacked FL_ONGROUND. Absent on older replays: unknown. */
+  airborne?: true;
+  /** Recorded ladder move type. */
+  ladder?: true;
+  /** Recorded shift-walk state. */
+  walking?: true;
+  /** Recorded model resource handle (decimal MurmurHash64B of the model path). */
+  agentModel?: string;
   equipmentValue?: number;
   startMoney?: number;
   spentThisRound?: number;

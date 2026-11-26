@@ -2,8 +2,13 @@ import type { DeadTime, Frame, Player, Position } from '../../shared/playback.js
 import { hasNetworkAliasEvidence, recordedInput } from './player-input.js';
 import {
   playerColumns,
+  recordedAgentModel,
   recordedCameraFov,
+  recordedLadderMoveType,
+  recordedMoveType,
+  recordedPawnFlags,
   recordedReloadTickLimit,
+  recordedWalking,
   type PlayerColumns,
 } from './parser-fields.js';
 
@@ -191,6 +196,17 @@ function collectOrderedFrameState(
       row.inventory.every((item) => typeof item === 'string' && item.length <= 80)
     )
       player.inventory = row.inventory;
+    const flags = row[recordedPawnFlags];
+    if (player.alive && typeof flags === 'number' && Number.isSafeInteger(flags) && flags >= 0) {
+      // FL_ONGROUND is bit 0. Ground contact is the common case, so only the exception is stored.
+      if ((flags & 1) === 0) player.airborne = true;
+    }
+    if (player.alive && String(row[recordedMoveType]) === recordedLadderMoveType)
+      player.ladder = true;
+    if (player.alive && row[recordedWalking] === true) player.walking = true;
+    const model = row[recordedAgentModel];
+    if (player.alive && typeof model === 'string' && /^[1-9]\d{0,19}$/.test(model))
+      player.agentModel = model;
     const input = recordedInput(row, aliasesAvailable);
     if (input) player.input = input;
     const stats: NonNullable<Position['stats']> = {};
