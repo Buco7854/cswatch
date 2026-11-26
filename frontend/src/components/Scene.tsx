@@ -153,6 +153,7 @@ import PovViewmodel from './PovViewmodel';
 import ShotImpacts from './ShotImpacts';
 import { indexPovEvidence, povEvidenceAt } from '../pov-actions';
 import { type MapSun } from '../actor-sun';
+import { ActorSun, type ActorSunProbe } from '../actor-sunlight';
 import { indexBombShockwaves, type BombShockwaveSample } from '../bomb-shockwave';
 import GrenadeBurst from './GrenadeBurst';
 import SpentBrass from './SpentBrass';
@@ -568,6 +569,19 @@ function World({
   }, [gl, invalidate]);
   const actors = useRef<THREE.Group>(null);
   const playerLighting = useMemo(playerShadows, [contextRevision]);
+  // Characters trace the direct sun against the same world that bakes its shadows.
+  const actorSun = useMemo<ActorSunProbe | null>(
+    () =>
+      nativeWorld && sun && !preview
+        ? {
+            hit: nativeWorld.queries.hit,
+            toSun: new THREE.Vector3(...sun.position)
+              .sub(new THREE.Vector3(...sun.target))
+              .normalize(),
+          }
+        : null,
+    [nativeWorld, sun, preview],
+  );
   useLayoutEffect(() => () => playerLighting.dispose(), [playerLighting]);
   const traceWallAudio =
     Boolean(data.gameplaySounds && data.gameplaySounds.coverage.weapon !== 'unavailable') &&
@@ -1059,174 +1073,178 @@ function World({
           pipeline={playerLighting}
           sun={shadows && !preview ? sun : null}
         />
-        <group visible={Boolean(data.sample) || modelReady}>
-          <group ref={actors} visible={Boolean(data.sample) || modelReady}>
-            {frame.players
-              .filter(
-                (p) =>
-                  p.alive &&
-                  !(mode === 'pov' && p.id === viewedPlayer?.id) &&
-                  !bodies.some((body) => body.position.id === p.id),
-              )
-              .map((p) => (
-                <Agent
-                  data={data}
-                  key={p.id}
-                  position={p}
-                  next={nextPlayers.get(p.id)}
-                  alpha={alpha}
-                  xray={settings.xray && !preview}
-                  labels={settings.playerLabels && !preview && (Boolean(data.sample) || modelReady)}
-                  overlays={overlays}
-                  hideNearCamera={
-                    !preview &&
-                    !data.sample &&
-                    (mode === 'orbit' || (mode === 'follow' && p.id === selected))
-                  }
-                  contactTrace={floorTraces.get(p.id) ?? null}
-                  contactShadow={!shadows}
-                  footPoseAt={preview || data.sample ? undefined : footPoseAt}
-                  airborne={airAt(p.id)}
-                  shadowPose={shadows && Boolean(sun)}
-                  sample={Boolean(data.sample)}
-                  model={agentModelFor(p)?.url ?? null}
-                  clips={agentModelFor(p)?.clips}
+        <ActorSun.Provider value={actorSun}>
+          <group visible={Boolean(data.sample) || modelReady}>
+            <group ref={actors} visible={Boolean(data.sample) || modelReady}>
+              {frame.players
+                .filter(
+                  (p) =>
+                    p.alive &&
+                    !(mode === 'pov' && p.id === viewedPlayer?.id) &&
+                    !bodies.some((body) => body.position.id === p.id),
+                )
+                .map((p) => (
+                  <Agent
+                    data={data}
+                    key={p.id}
+                    position={p}
+                    next={nextPlayers.get(p.id)}
+                    alpha={alpha}
+                    xray={settings.xray && !preview}
+                    labels={
+                      settings.playerLabels && !preview && (Boolean(data.sample) || modelReady)
+                    }
+                    overlays={overlays}
+                    hideNearCamera={
+                      !preview &&
+                      !data.sample &&
+                      (mode === 'orbit' || (mode === 'follow' && p.id === selected))
+                    }
+                    contactTrace={floorTraces.get(p.id) ?? null}
+                    contactShadow={!shadows}
+                    footPoseAt={preview || data.sample ? undefined : footPoseAt}
+                    airborne={airAt(p.id)}
+                    shadowPose={shadows && Boolean(sun)}
+                    sample={Boolean(data.sample)}
+                    model={agentModelFor(p)?.url ?? null}
+                    clips={agentModelFor(p)?.clips}
+                    tick={tick}
+                    timing={poseTiming}
+                    previous={previousPlayers?.get(p.id)}
+                    gaitHistory={gaitHistory}
+                    travelMeters={recordedTravel?.(frame, next, p.id, alpha)}
+                    action={agentActionAt(
+                      agentEvents,
+                      draws,
+                      p,
+                      tick,
+                      data.tickRate,
+                      round?.tick ?? 0,
+                      !preview && !reduceAgentMotion,
+                      settings.shotEffects,
+                    )}
+                  />
+                ))}
+              {bodies.map((body) => (
+                <RecordedAgentBody
+                  key={body.position.id + ':' + body.variant}
+                  body={body}
+                  death={recordedDeath(data, body.position.id, tick, body.position.yaw)}
+                  ragdoll={ragdollFor(body.position.id)}
+                  url={agentModelFor(body.position)?.url ?? null}
+                  clips={agentModelFor(body.position)?.clips}
                   tick={tick}
-                  timing={poseTiming}
-                  previous={previousPlayers?.get(p.id)}
+                  rate={data.tickRate}
+                  reducedMotion={reduceAgentMotion}
+                  shadowPose={shadows && Boolean(sun)}
+                  floor={floorTraces.get(body.position.id)}
+                />
+              ))}
+            </group>
+            {showPovEquipment && (
+              <PovEquipmentPass sample={Boolean(data.sample)} sun={sun} trace={followTrace}>
+                <PovViewmodel
+                  agentModel={viewedPlayer.team === 3 ? agents.ct : agents.t}
                   gaitHistory={gaitHistory}
-                  travelMeters={recordedTravel?.(frame, next, p.id, alpha)}
-                  action={agentActionAt(
+                  action={povActionAt(
                     agentEvents,
-                    draws,
-                    p,
+                    viewedPlayer,
                     tick,
                     data.tickRate,
                     round?.tick ?? 0,
-                    !preview && !reduceAgentMotion,
-                    settings.shotEffects,
                   )}
+                  evidence={povEvidenceAt(povEvidence, data, viewedPlayer, tick)}
+                  native={!data.sample}
+                  airborne={airAt(viewedPlayer.id)}
+                  history={data}
+                  tick={tick}
+                  position={viewedPlayer}
+                  next={nextPlayers.get(viewedPlayer.id)}
+                  previous={previousPlayers?.get(viewedPlayer.id)}
+                  travelMeters={recordedTravel?.(frame, next, viewedPlayer.id, alpha)}
+                  alpha={alpha}
+                  timing={poseTiming}
                 />
-              ))}
-            {bodies.map((body) => (
-              <RecordedAgentBody
-                key={body.position.id + ':' + body.variant}
-                body={body}
-                death={recordedDeath(data, body.position.id, tick, body.position.yaw)}
-                ragdoll={ragdollFor(body.position.id)}
-                url={agentModelFor(body.position)?.url ?? null}
-                clips={agentModelFor(body.position)?.clips}
-                tick={tick}
-                rate={data.tickRate}
-                reducedMotion={reduceAgentMotion}
-                shadowPose={shadows && Boolean(sun)}
-                floor={floorTraces.get(body.position.id)}
-              />
-            ))}
-          </group>
-          {showPovEquipment && (
-            <PovEquipmentPass sample={Boolean(data.sample)} sun={sun} trace={followTrace}>
-              <PovViewmodel
-                agentModel={viewedPlayer.team === 3 ? agents.ct : agents.t}
-                gaitHistory={gaitHistory}
-                action={povActionAt(
-                  agentEvents,
-                  viewedPlayer,
-                  tick,
-                  data.tickRate,
-                  round?.tick ?? 0,
-                )}
-                evidence={povEvidenceAt(povEvidence, data, viewedPlayer, tick)}
-                native={!data.sample}
-                airborne={airAt(viewedPlayer.id)}
-                history={data}
-                tick={tick}
-                position={viewedPlayer}
-                next={nextPlayers.get(viewedPlayer.id)}
-                previous={previousPlayers?.get(viewedPlayer.id)}
-                travelMeters={recordedTravel?.(frame, next, viewedPlayer.id, alpha)}
-                alpha={alpha}
-                timing={poseTiming}
-              />
-            </PovEquipmentPass>
-          )}
-          {!preview && settings.shotEffects && <SpentBrass data={data} tick={tick} />}
-          {!preview && tracers && tracerTrace && (
-            <ShotTracers
-              data={data}
-              tick={tick}
-              pov={mode === 'pov' ? selected : undefined}
-              trace={tracerTrace}
-            />
-          )}
-          {!preview && nativeWorld && settings.shotEffects && (
-            <BulletDecals
-              data={data}
-              tick={tick}
-              queries={nativeWorld.queries}
-              materials={nativeWorld.manifest.materials}
-              displayScale={nativeWorld.native.displayScale}
-            />
-          )}
-          {!preview && nativeWorld && (
-            <ShotImpacts
-              data={data}
-              tick={tick}
-              queries={nativeWorld.queries}
-              materials={nativeWorld.manifest.materials}
-              displayScale={nativeWorld.native.displayScale}
-            />
-          )}
-          {!preview && <RecordedEquipment items={items} floor={followTrace} />}
-          {!preview && !data.sample && settings.shotEffects && !reduceAgentMotion && (
-            <BodyHits data={data} tick={tick} />
-          )}
-          {!preview && settings.utilities && (
-            <Smoke
-              data={data}
-              zones={utilityState.zones}
-              tick={tick}
-              modelReady={modelReady}
-              onUnavailable={onSmokeUnavailable}
-              low={low}
-              xray={settings.xray}
-              sun={sun}
-              labelSmoke={labelSmoke}
-              queries={nativeWorld?.queries ?? null}
-            />
-          )}
-          {!preview && (
-            <UtilityLayer
-              data={data}
-              tick={tick}
-              nativeVolume={modelReady}
-              staticMap={nativeWorld?.queries ?? null}
-              displayScale={nativeWorld?.native.displayScale}
-              lightBursts={!low}
-              selected={selected}
-              settings={settings}
-              utilityState={utilityState}
-            />
-          )}
-          {mode === 'orbit' &&
-            focus &&
-            tick >= (focus.fromTick ?? -Infinity) &&
-            tick <= (focus.untilTick ?? Infinity) && (
-              <mesh
-                name="review-impact-target"
-                position={[
-                  focus.target.x * UNIT,
-                  focus.target.z * UNIT + 0.05,
-                  -focus.target.y * UNIT,
-                ]}
-                rotation={[-Math.PI / 2, 0, 0]}
-                renderOrder={11}
-              >
-                <ringGeometry args={[0.4, 0.47, 32]} />
-                <meshBasicMaterial color="#e4b575" depthTest={false} transparent opacity={0.8} />
-              </mesh>
+              </PovEquipmentPass>
             )}
-        </group>
+            {!preview && settings.shotEffects && <SpentBrass data={data} tick={tick} />}
+            {!preview && tracers && tracerTrace && (
+              <ShotTracers
+                data={data}
+                tick={tick}
+                pov={mode === 'pov' ? selected : undefined}
+                trace={tracerTrace}
+              />
+            )}
+            {!preview && nativeWorld && settings.shotEffects && (
+              <BulletDecals
+                data={data}
+                tick={tick}
+                queries={nativeWorld.queries}
+                materials={nativeWorld.manifest.materials}
+                displayScale={nativeWorld.native.displayScale}
+              />
+            )}
+            {!preview && nativeWorld && (
+              <ShotImpacts
+                data={data}
+                tick={tick}
+                queries={nativeWorld.queries}
+                materials={nativeWorld.manifest.materials}
+                displayScale={nativeWorld.native.displayScale}
+              />
+            )}
+            {!preview && <RecordedEquipment items={items} floor={followTrace} />}
+            {!preview && !data.sample && settings.shotEffects && !reduceAgentMotion && (
+              <BodyHits data={data} tick={tick} />
+            )}
+            {!preview && settings.utilities && (
+              <Smoke
+                data={data}
+                zones={utilityState.zones}
+                tick={tick}
+                modelReady={modelReady}
+                onUnavailable={onSmokeUnavailable}
+                low={low}
+                xray={settings.xray}
+                sun={sun}
+                labelSmoke={labelSmoke}
+                queries={nativeWorld?.queries ?? null}
+              />
+            )}
+            {!preview && (
+              <UtilityLayer
+                data={data}
+                tick={tick}
+                nativeVolume={modelReady}
+                staticMap={nativeWorld?.queries ?? null}
+                displayScale={nativeWorld?.native.displayScale}
+                lightBursts={!low}
+                selected={selected}
+                settings={settings}
+                utilityState={utilityState}
+              />
+            )}
+            {mode === 'orbit' &&
+              focus &&
+              tick >= (focus.fromTick ?? -Infinity) &&
+              tick <= (focus.untilTick ?? Infinity) && (
+                <mesh
+                  name="review-impact-target"
+                  position={[
+                    focus.target.x * UNIT,
+                    focus.target.z * UNIT + 0.05,
+                    -focus.target.y * UNIT,
+                  ]}
+                  rotation={[-Math.PI / 2, 0, 0]}
+                  renderOrder={11}
+                >
+                  <ringGeometry args={[0.4, 0.47, 32]} />
+                  <meshBasicMaterial color="#e4b575" depthTest={false} transparent opacity={0.8} />
+                </mesh>
+              )}
+          </group>
+        </ActorSun.Provider>
         {data.sample && (
           <OrbitControls
             ref={orbit}

@@ -12,7 +12,19 @@ import {
   type ReactNode,
 } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import { Bone, MathUtils, Matrix4, AlwaysStencilFunc, ReplaceStencilOp } from 'three';
+import {
+  Bone,
+  MathUtils,
+  Matrix4,
+  AlwaysStencilFunc,
+  ReplaceStencilOp,
+  Vector3,
+  Vector4,
+  type Material,
+  type Mesh,
+} from 'three';
+import { ActorSun, actorSunHeights, claimActorSunUpdate, sampleActorSun } from '../actor-sunlight';
+import { actorSunUniforms } from '../world/actor-lighting';
 import { useEquipmentGLTF, useEquipmentScope } from '../equipment-loader';
 import type { ModelScope } from '../model-cache';
 import { prepareAgentModel } from '../agent-model';
@@ -272,6 +284,52 @@ function LoadedAgent({
   }, [scope, ready, invalidate]);
   useLayoutEffect(() => captureAgent(id, prepared.root), [id, prepared]);
   useLayoutEffect(() => registerAgentRoot(id, prepared.instance), [id, prepared]);
+  // Direct sun traced from the world at this body (actor-sunlight); the probe light otherwise.
+  const sunProbe = useContext(ActorSun);
+  const sunlight = useMemo(
+    () => ({
+      feet: new Vector3(),
+      sampled: new Vector3(Infinity, Infinity, Infinity),
+      samples: new Vector4(),
+      slot: [...id].reduce((sum, c) => sum + c.charCodeAt(0), 0) % 3,
+      tries: 0,
+    }),
+    [prepared, id],
+  );
+  /** The materials drawn now: x-ray and corpse states swap in their own clones. */
+  const sunMaterials = (visit: (uniforms: ReturnType<typeof actorSunUniforms>) => void) =>
+    prepared.instance.traverse((object) => {
+      const material = (object as Mesh).material;
+      if (material)
+        for (const entry of Array.isArray(material) ? material : [material])
+          visit(actorSunUniforms(entry as Material));
+    });
+  useLayoutEffect(() => {
+    sunMaterials((uniforms) => (uniforms.actorSunTraced.value = 0));
+    sunlight.sampled.set(Infinity, Infinity, Infinity);
+    invalidate();
+  }, [sunlight, sunProbe, invalidate]);
+  useFrame(({ gl }) => {
+    if (!sunProbe) return;
+    const feet = prepared.root.getWorldPosition(sunlight.feet);
+    if (!feet.equals(sunlight.sampled)) {
+      const frame = gl.info.render.frame;
+      // Each body re-traces every third of its frames; a pause keeps rendering until exact.
+      if (++sunlight.tries % 3 === sunlight.slot && claimActorSunUpdate(frame)) {
+        sampleActorSun(sunProbe, feet, sunlight.samples);
+        sunlight.sampled.copy(feet);
+      }
+      invalidate();
+    }
+    if (!Number.isFinite(sunlight.sampled.x)) return;
+    const base = (sunlight.sampled.y + actorSunHeights[0]) / 0.0254,
+      span = (actorSunHeights[3] - actorSunHeights[0]) / 0.0254;
+    sunMaterials((uniforms) => {
+      uniforms.actorSunSamples.value.copy(sunlight.samples);
+      uniforms.actorSunSpan.value.set(base, span);
+      uniforms.actorSunTraced.value = 1;
+    });
+  }, -1);
   useLayoutEffect(() => {
     const anchor = weaponAnchor(prepared.instance);
     if (anchor) return registerWeaponAnchor?.(anchor);

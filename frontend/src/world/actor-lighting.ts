@@ -3,6 +3,7 @@ import {
   MeshStandardMaterial,
   ShaderChunk,
   Texture,
+  Vector2,
   Vector3,
   Vector4,
   type Material,
@@ -16,6 +17,43 @@ const lightingBase = new WeakMap<
   ShaderPatch['onBeforeCompile'],
   { before: ShaderPatch['onBeforeCompile']; key: ShaderPatch['customProgramCacheKey'] }
 >();
+
+/** Per-material direct sun traced along a character (see actor-sunlight). A material without a
+ * trace keeps the probe volume's sun occlusion. */
+type ActorSunUniforms = {
+  actorSunSamples: { value: Vector4 };
+  /** Lowest sample height and the span to the highest, in Source inches. */
+  actorSunSpan: { value: Vector2 };
+  actorSunTraced: { value: number };
+};
+const sunUniforms = new WeakMap<Material, ActorSunUniforms>();
+export function actorSunUniforms(material: Material) {
+  let uniforms = sunUniforms.get(material);
+  if (!uniforms) {
+    sunUniforms.set(
+      material,
+      (uniforms = {
+        actorSunSamples: { value: new Vector4(1, 1, 1, 1) },
+        actorSunSpan: { value: new Vector2(0, 1) },
+        actorSunTraced: { value: 0 },
+      }),
+    );
+    // Readable by diagnostics; a clone never copies it and gets its own.
+    Object.defineProperty(material, 'cswatchActorSun', { value: uniforms });
+  }
+  return uniforms;
+}
+const sunShader = `
+uniform vec4 actorSunSamples;
+uniform vec2 actorSunSpan;
+uniform float actorSunTraced;
+float actorSunVisibility(float probeShadow) {
+  if (actorSunTraced < 0.5) return 1.0 - probeShadow;
+  float t = clamp((actorSourcePosition.z - actorSunSpan.x) / actorSunSpan.y, 0.0, 1.0) * 3.0;
+  vec4 s = actorSunSamples;
+  return t < 1.0 ? mix(s.x, s.y, t) : t < 2.0 ? mix(s.y, s.z, t - 1.0) : mix(s.z, s.w, t - 2.0);
+}
+`;
 
 export function actorLighting(renderer: WebGLRenderer, native: NativeRenderer) {
   const env = native.environments.find((environment) => !environment.sky)!;
@@ -58,7 +96,7 @@ export function actorLighting(renderer: WebGLRenderer, native: NativeRenderer) {
     });
     material.onBeforeCompile = function (shader, gl) {
       before.call(this, shader, gl);
-      Object.assign(shader.uniforms, uniforms);
+      Object.assign(shader.uniforms, uniforms, actorSunUniforms(this));
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', '#include <common>\nvarying vec3 actorSourcePosition;')
         .replace(
@@ -72,7 +110,7 @@ export function actorLighting(renderer: WebGLRenderer, native: NativeRenderer) {
           actorSourcePosition=vec3(actorPoint.x,-actorPoint.z,actorPoint.y)/0.0254;`,
         );
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\n' + probeShader)
+        .replace('#include <common>', '#include <common>\n' + probeShader + sunShader)
         .replace(
           '#include <lights_fragment_begin>',
           `vec3 actorNormal = inverseTransformDirection(normal,viewMatrix);
@@ -80,7 +118,7 @@ export function actorLighting(renderer: WebGLRenderer, native: NativeRenderer) {
           ` +
             ShaderChunk.lights_fragment_begin.replace(
               'getDirectionalLightInfo( directionalLight, directLight );',
-              'getDirectionalLightInfo( directionalLight, directLight ); directLight.color *= 1.0 - bakedActorLight.a;',
+              'getDirectionalLightInfo( directionalLight, directLight ); directLight.color *= actorSunVisibility(bakedActorLight.a);',
             ),
         )
         .replace(
@@ -92,7 +130,7 @@ export function actorLighting(renderer: WebGLRenderer, native: NativeRenderer) {
           '#include <lights_fragment_maps>\n iblIrradiance += PI*bakedActorLight.rgb; radiance += bakedActorLight.rgb;',
         );
     };
-    material.customProgramCacheKey = () => key.call(material) + ':native-probes-v3';
+    material.customProgramCacheKey = () => key.call(material) + ':native-probes-v4';
     lightingBase.set(material.onBeforeCompile, { before, key });
     material.needsUpdate = true;
   }
