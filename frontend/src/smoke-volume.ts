@@ -109,15 +109,6 @@ class Surface {
   readonly uniforms: ReturnType<typeof compositeUniforms>;
   readonly surfaceMaterial: ShaderMaterial;
   readonly mesh: Mesh;
-  /** The baked light volume and the lighting bundle it was baked from. */
-  readonly light = new WebGL3DRenderTarget(LIGHT_CELLS, LIGHT_CELLS, LIGHT_CELLS, {
-    type: HalfFloatType,
-    format: RGBAFormat,
-    minFilter: LinearFilter,
-    magFilter: LinearFilter,
-    depthBuffer: false,
-  });
-  bakedFrom?: SmokeLighting;
 
   constructor(
     smoke: SmokeDraw,
@@ -156,9 +147,18 @@ class Surface {
     this.surfaceMaterial.dispose();
     this.from.dispose();
     this.to.dispose();
-    this.light.dispose();
   }
 }
+
+/** A cloud's baked light volume and what it was baked from. It outlives the
+ * cloud's surface, so a cloud that drops out for a frame is not baked again. */
+type LightVolume = {
+  target: WebGL3DRenderTarget;
+  lighting?: SmokeLighting;
+  origin: string;
+  used: number;
+};
+const MAX_LIGHT_VOLUMES = 8;
 
 /** Conservative pixel bounds, including the box edges sliced by the near plane.
  * This stays finite when a corner is behind the eye. */
@@ -256,6 +256,8 @@ export class SmokeVolumePass {
     { format: RGBAFormat, needsUpdate: true },
   );
   private lightMaterial?: { probes: SmokeLighting['probes']; material: ShaderMaterial };
+  private readonly lights = new Map<string, LightVolume>();
+  private frameCount = 0;
   private readonly quadScene = new Scene();
   private readonly quadCamera = new Camera();
   private readonly size = new Vector2();
@@ -537,14 +539,31 @@ export class SmokeVolumePass {
   }
 
   /** Bake the cloud's light volume once per cloud and lighting bundle. */
-  private bakeLight(
-    gl: WebGLRenderer,
-    surface: Surface,
-    cloud: SmokeDraw,
-    lighting: SmokeLighting,
-  ) {
+  private bakeLight(gl: WebGLRenderer, cloud: SmokeDraw, lighting: SmokeLighting) {
     if (!lighting.probes) return this.constantLight;
-    if (surface.bakedFrom === lighting) return surface.light.texture;
+    const origin = cloud.origin.join(',') + ':' + cloud.scale;
+    let volume = this.lights.get(cloud.key);
+    if (!volume) {
+      if (this.lights.size >= MAX_LIGHT_VOLUMES) {
+        const [oldest] = [...this.lights.entries()].sort((a, b) => a[1].used - b[1].used)[0];
+        this.lights.get(oldest)!.target.dispose();
+        this.lights.delete(oldest);
+      }
+      volume = {
+        target: new WebGL3DRenderTarget(LIGHT_CELLS, LIGHT_CELLS, LIGHT_CELLS, {
+          type: HalfFloatType,
+          format: RGBAFormat,
+          minFilter: LinearFilter,
+          magFilter: LinearFilter,
+          depthBuffer: false,
+        }),
+        origin: '',
+        used: 0,
+      };
+      this.lights.set(cloud.key, volume);
+    }
+    volume.used = ++this.frameCount;
+    if (volume.lighting === lighting && volume.origin === origin) return volume.target.texture;
     const material = this.lightBake(gl, lighting.probes);
     material.uniforms.origin.value.fromArray(cloud.origin);
     material.uniforms.fieldScale.value = cloud.scale;
@@ -555,16 +574,19 @@ export class SmokeVolumePass {
       for (let layer = 0; layer < LIGHT_CELLS; layer++) {
         material.uniforms.layer.value = layer;
         if (layer === 0) {
-          if (!this.bindTarget(gl, surface.light)) return this.constantLight;
-        } else gl.setRenderTarget(surface.light, layer);
+          if (!this.bindTarget(gl, volume.target)) return this.constantLight;
+        } else gl.setRenderTarget(volume.target, layer);
         gl.render(this.quadScene, this.quadCamera);
       }
     } finally {
       quad.material = march;
     }
     // A growing analytic cloud changes scale; bake again only when it settles.
-    if (cloud.recorded || cloud.scale >= 1) surface.bakedFrom = lighting;
-    return surface.light.texture;
+    if (cloud.recorded || cloud.scale >= 1) {
+      volume.lighting = lighting;
+      volume.origin = origin;
+    }
+    return volume.target.texture;
   }
 
   private renderCloud(
@@ -650,7 +672,7 @@ export class SmokeVolumePass {
       u.tunnelTo.value[i].set(...to, 1);
     });
     u.tunnelCount.value = tunnels.length;
-    u.lightVolume.value = this.bakeLight(gl, surface, cloud, lighting);
+    u.lightVolume.value = this.bakeLight(gl, cloud, lighting);
     if (!this.bindTarget(gl, target)) return;
     gl.render(this.quadScene, this.quadCamera);
 
@@ -678,6 +700,8 @@ export class SmokeVolumePass {
     this.warmed = false;
     this.lightMaterial?.material.dispose();
     this.lightMaterial = undefined;
+    for (const volume of this.lights.values()) volume.target.dispose();
+    this.lights.clear();
     this.constantLight.dispose();
     this.depth.dispose();
     this.revalidateTargets();
