@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /** Bump to invalidate incompatible worker output without touching operator assets. */
-export const preparerRevision = 2 as const;
+export const preparerRevision = 3 as const;
 export const mapPreparerRevision = 11 as const;
 export const presentationDirectory = `presentation-v${preparerRevision}`;
 
@@ -14,6 +14,12 @@ export const viewmodelActionSeconds = {
   throw: 2,
   underhand: 2,
   slash: 2,
+  // Recorded-evidence actions: the inspect key, a knife's secondary attack,
+  // a grenade's pin and the C4 plant.
+  inspect: 10,
+  heavy: 3,
+  pullpin: 3,
+  plant: 6,
 } as const;
 const action = (maximum: number) =>
   z
@@ -55,6 +61,10 @@ export const viewmodelManifest = z
         throw: action(viewmodelActionSeconds.throw).optional(),
         underhand: action(viewmodelActionSeconds.underhand).optional(),
         slash: action(viewmodelActionSeconds.slash).optional(),
+        inspect: action(viewmodelActionSeconds.inspect).optional(),
+        heavy: action(viewmodelActionSeconds.heavy).optional(),
+        pullpin: action(viewmodelActionSeconds.pullpin).optional(),
+        plant: action(viewmodelActionSeconds.plant).optional(),
       })
       .strict(),
   })

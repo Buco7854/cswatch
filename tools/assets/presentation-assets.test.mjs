@@ -1,4 +1,4 @@
-import { presentationDirectory } from '../../backend/dist/asset-preparer.js';
+import { preparerRevision, presentationDirectory } from '../../backend/dist/asset-preparer.js';
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -292,7 +292,7 @@ test('explicit native retry retains source A through inventory B and restart bef
       code: 'preparation_failed',
     };
   await writePresentationStatus(options.jobs, {
-    schemaVersion: 2,
+    schemaVersion: preparerRevision,
     categories: { agents: initial },
   });
   assert.equal(await enqueuePresentationRetry(options.jobs, 'agents'), 'queued');
@@ -385,7 +385,7 @@ test('conflicting retained native source and owned bank persist a terminal diagn
     installed = await readFile(join(bank, 'ak47/model.glb')),
     marker = await readFile(join(bank, '.cswatch-presentation.json'));
   await writePresentationStatus(options.jobs, {
-    schemaVersion: 2,
+    schemaVersion: preparerRevision,
     categories: {
       'equipment-models': {
         manifest: '2',
@@ -428,7 +428,7 @@ test('conflicting retained native source and owned bank persist a terminal diagn
 test('retained native retries require fresh observed inventory and survive a stale refresh failure', async (t) => {
   const { options, output } = await fixture(t);
   await writePresentationStatus(options.jobs, {
-    schemaVersion: 2,
+    schemaVersion: preparerRevision,
     categories: {
       agents: {
         manifest: '1',
@@ -509,7 +509,7 @@ test('a newly observed inventory cannot reset exhausted or integrity-failed nati
       code,
     };
     await writePresentationStatus(options.jobs, {
-      schemaVersion: 2,
+      schemaVersion: preparerRevision,
       categories: { agents: failed },
     });
     let acquisitions = 0;
@@ -549,13 +549,13 @@ test('retry consumption rejects a renewed failure, terminal evidence or cooldown
       item: 'ak47',
     };
     await writePresentationStatus(options.jobs, {
-      schemaVersion: 2,
+      schemaVersion: preparerRevision,
       categories: { 'equipment-models': failed },
     });
     assert.equal(await enqueuePresentationRetry(options.jobs, 'equipment-models'), 'queued');
     const renewed = { ...failed, ...change };
     await writePresentationStatus(options.jobs, {
-      schemaVersion: 2,
+      schemaVersion: preparerRevision,
       categories: { 'equipment-models': renewed },
     });
     assert.deepEqual(await consumePresentationRetries(options.jobs), []);
@@ -586,7 +586,7 @@ test('enqueue revalidates the complete failure snapshot and current cooldown aft
       code: 'preparation_failed',
     };
     await writePresentationStatus(options.jobs, {
-      schemaVersion: 2,
+      schemaVersion: preparerRevision,
       categories: { agents: failed },
     });
     let enter,
@@ -620,7 +620,7 @@ test('enqueue revalidates the complete failure snapshot and current cooldown aft
         }),
       ]);
       await writePresentationStatus(options.jobs, {
-        schemaVersion: 2,
+        schemaVersion: preparerRevision,
         categories: { agents: { ...failed, ...change } },
       });
     } finally {
@@ -701,7 +701,7 @@ test('presentation failures retain a durable three-attempt budget and require ex
 test('stale retry intents cannot reset a newer presentation generation and strict status rejects contradictory counts', async (t) => {
   const { options, output } = await fixture(t);
   const status = {
-    schemaVersion: 2,
+    schemaVersion: preparerRevision,
     categories: {
       agents: {
         manifest: '1',
@@ -766,7 +766,7 @@ test('native source-integrity failures remain terminal for the selected source a
 });
 test('unknown native status is replaced and the agent bank automatically rebuilds its missing native action', async (t) => {
   const { options, output } = await fixture(t);
-  const status = join(options.jobs, 'presentation-status-v2.json');
+  const status = join(options.jobs, `presentation-status-v${preparerRevision}.json`);
   await writeFile(status, '{"schemaVersion":2,"categories":{},"unknown":true}', { mode: 0o600 });
   let acquisitions = 0;
   const installer = {
@@ -894,7 +894,7 @@ test('coarse catalog completion exposes no diagnostics and startup cleanup remov
   const { options, output } = await fixture(t);
   assert.equal(await presentationCatalogComplete(options.jobs, 'equipment', 0), undefined);
   const status = {
-    schemaVersion: 2,
+    schemaVersion: preparerRevision,
     categories: {
       equipment: {
         manifest: '1',

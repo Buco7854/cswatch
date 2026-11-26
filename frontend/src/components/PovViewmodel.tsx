@@ -37,6 +37,7 @@ import { assertBaseColorTextures } from '../model-textures';
 import { disposeEquipmentInstance, prepareEquipmentModel } from '../equipment-model';
 import type { Playback, Position } from '../types';
 import type { PovAction } from '../agent-replay';
+import type { PovEvidenceAction } from '../pov-actions';
 import { povDraw, povLanding, povMovement } from '../pov-movement';
 import { povOffset } from '../pov-camera';
 import { useReducedMotion } from '../reduced-motion';
@@ -161,6 +162,7 @@ function AuthoredViewmodel({
   id,
   asset,
   action: recordedAction,
+  evidence,
   history,
   frameTick,
   tick,
@@ -171,6 +173,7 @@ function AuthoredViewmodel({
   id: string;
   asset: ViewmodelAsset;
   action?: PovAction;
+  evidence?: PovEvidenceAction;
   history: ReplayHistory;
   frameTick: number;
   tick: number;
@@ -209,6 +212,14 @@ function AuthoredViewmodel({
           action(gltf.animations.find((clip) => clip.name === id + '-' + kind)),
         ]),
       ),
+      // Optional clips driven by recorded evidence (inspect key, knife secondary
+      // attack, grenade pin, C4 arming).
+      recorded: Object.fromEntries(
+        (['inspect', 'heavy', 'pullpin', 'plant'] as const).map((kind) => [
+          kind,
+          action(gltf.animations.find((clip) => clip.name === id + '-' + kind)),
+        ]),
+      ),
       disposeMaterials,
       mixer,
       fire: action(clip),
@@ -222,7 +233,11 @@ function AuthoredViewmodel({
   }, [gltf, id]);
   const pose = useNativeWeaponPose(position, rig.fireDuration, rig.reloadDuration);
   const { fire, priorFire, reload } = pose;
-  const action = !reducedMotion && recordedAction ? rig.utility[recordedAction.kind] : undefined;
+  // A recorded secondary knife attack plays the heavy clip in place of the slash.
+  const heavy =
+    recordedAction?.kind === 'slash' && evidence?.kind === 'heavy' ? rig.recorded.heavy : undefined;
+  const action =
+    !reducedMotion && recordedAction ? (heavy ?? rig.utility[recordedAction.kind]) : undefined;
   const age = recordedAction?.age ?? 0;
   const duration = action?.getClip().duration ?? 0;
   const actionWeight = age < duration ? Math.min(1, age / 0.05, (duration - age) / 0.08) : 0;
@@ -231,13 +246,46 @@ function AuthoredViewmodel({
     !reducedMotion && rig.drawDuration && !fire && !priorFire && !reload && !actionWeight
       ? povDraw(history, position, frameTick, tick, rig.drawDuration)
       : undefined;
+  // Inspect, pin and plant yield to shots, reloads, draws and throws.
+  const extra =
+    !reducedMotion &&
+    evidence &&
+    evidence.kind !== 'heavy' &&
+    !fire &&
+    !priorFire &&
+    !reload &&
+    !actionWeight &&
+    !(draw && draw.weight > 0)
+      ? rig.recorded[evidence.kind]
+      : undefined;
+  const extraDuration = extra?.getClip().duration ?? 0;
+  // A pulled pin holds its last pose until the recorded throw.
+  const extraAge =
+    evidence?.kind === 'pullpin'
+      ? Math.min(evidence.age, extraDuration - 1e-3)
+      : (evidence?.age ?? 0);
+  const extraWeight =
+    extra && extraAge < extraDuration
+      ? Math.min(
+          1,
+          extraAge / 0.08,
+          evidence?.kind === 'pullpin' ? 1 : (extraDuration - extraAge) / 0.15,
+        )
+      : 0;
   useLayoutEffect(() => {
     sampleAction(rig.fire, fire);
     sampleAction(rig.priorFire, priorFire);
     sampleAction(rig.reload, reload);
     if (rig.draw) sampleAction(rig.draw, draw);
-    for (const clip of Object.values(rig.utility))
+    for (const clip of [...Object.values(rig.utility), rig.recorded.heavy])
       sampleAction(clip, clip && clip === action ? { age, weight: actionWeight } : undefined);
+    for (const clip of [rig.recorded.inspect, rig.recorded.pullpin, rig.recorded.plant])
+      sampleAction(
+        clip,
+        clip && clip === extra && extraWeight > 0
+          ? { age: extraAge, weight: extraWeight }
+          : undefined,
+      );
     if (rig.mount) rig.mount.visible = !released;
     rig.mixer.update(0);
     invalidate();
@@ -254,6 +302,9 @@ function AuthoredViewmodel({
     action,
     age,
     actionWeight,
+    extra,
+    extraAge,
+    extraWeight,
     released,
     invalidate,
   ]);
@@ -290,6 +341,7 @@ function AvailableViewmodel({
   fallback: ReactNode;
   identity: object;
   action?: PovAction;
+  evidence?: PovEvidenceAction;
   history: ReplayHistory;
   frameTick: number;
   tick: number;
@@ -333,6 +385,7 @@ export default function PovViewmodel({
   agentModel,
   gaitHistory,
   action,
+  evidence,
   airborne,
   history,
   tick,
@@ -342,6 +395,7 @@ export default function PovViewmodel({
   agentModel?: string | null;
   gaitHistory?: GaitHistory;
   action?: PovAction;
+  evidence?: PovEvidenceAction;
   airborne: number;
   history: ReplayHistory;
   tick: number;
@@ -411,6 +465,7 @@ export default function PovViewmodel({
           id={id}
           asset={asset}
           action={action}
+          evidence={evidence}
           position={props.position}
           fallback={fallback}
           identity={identity}

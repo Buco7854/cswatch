@@ -19,6 +19,7 @@ import { loadConfig } from '../src/config.js';
 import { Store, now } from '../src/db.js';
 import { equipmentModelManifestSchema, validEquipmentGlb } from '../src/equipment-model-assets.js';
 import { initializeFixture } from './fixtures/initialized.js';
+import { preparerRevision, presentationDirectory } from '../src/asset-preparer.js';
 
 process.env.LOG_LEVEL = 'silent';
 const glb = (extra = {}) => {
@@ -95,7 +96,7 @@ test('first-person discovery admits only bounded current assets and shares the i
       401,
     );
     assert.deepEqual((await s.app.inject({ url: catalog, headers: s.headers })).json().items, {});
-    const directory = join(s.root, 'maps', 'presentation-v2', 'viewmodels', 'ak47');
+    const directory = join(s.root, 'maps', presentationDirectory, 'viewmodels', 'ak47');
     mkdirSync(directory, { recursive: true });
     const data = glb(),
       sha256 = createHash('sha256').update(data).digest('hex');
@@ -104,7 +105,7 @@ test('first-person discovery admits only bounded current assets and shares the i
     writeFileSync(
       join(directory, 'manifest.json'),
       JSON.stringify({
-        schemaVersion: 2,
+        schemaVersion: preparerRevision,
         id: 'ak47',
         manifest: '1',
         sha256,

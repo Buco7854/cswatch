@@ -127,6 +127,7 @@ import EquipmentFire from './EquipmentFire';
 import PovEquipmentPass from './PovEquipmentPass';
 import SampleLighting from './SampleLighting';
 import PovViewmodel from './PovViewmodel';
+import { indexPovEvidence, povEvidenceAt } from '../pov-actions';
 import { type MapSun } from '../actor-sun';
 import { indexBombShockwaves, type BombShockwaveSample } from '../bomb-shockwave';
 import GrenadeBurst from './GrenadeBurst';
@@ -690,6 +691,10 @@ function World({
     () => data.gaitHistory ?? (streamedReplayViews.has(data) ? undefined : encodeGaitHistory(data)),
     [data],
   );
+  const povEvidence = useMemo(
+    () => indexPovEvidence({ events: data.events, objectives: data.objectives }),
+    [data.events, data.objectives],
+  );
   const agentEvents = useMemo(
     () => indexAgentEvents(data),
     [data.events, data.players, data.sample, data.agentDeaths, data.throwInputs, data.tickRate],
@@ -1012,6 +1017,7 @@ function World({
                   data.tickRate,
                   round?.tick ?? 0,
                 )}
+                evidence={povEvidenceAt(povEvidence, data, viewedPlayer, tick)}
                 native={!data.sample}
                 airborne={airAt(viewedPlayer.id)}
                 history={data}

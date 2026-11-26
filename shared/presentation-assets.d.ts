@@ -8,7 +8,7 @@ type PreparationFailureCode =
 export type PresentationKind = 'agents' | 'equipment' | 'equipment-models' | 'viewmodels';
 export type PresentationRetry = { kind: PresentationKind; manifest: string; generation: string };
 export type PresentationStatus = {
-  schemaVersion: 2;
+  schemaVersion: 3;
   categories: Partial<
     Record<
       PresentationKind,

@@ -194,12 +194,23 @@ const clips = {
   c4: ['equipment/c4', { idle: 'idle_c4', draw: 'draw_c4' }],
 };
 // These fixed first-person families use the same suffix as their draw clip.
+// Every family ships an inspect clip (lookat01); grenades a pin pull, knives a
+// secondary (heavy) attack and the C4 its plant.
 function actionFiles(directory, roles) {
   const suffix = roles.draw.slice('draw_'.length);
+  const inspect = 'lookat01_' + suffix;
   if (directory.startsWith('grenade/'))
-    return { ...roles, throw: 'throw_overhand_' + suffix, underhand: 'throw_underhand_' + suffix };
-  if (directory.startsWith('knife/')) return { ...roles, slash: 'light_miss1_' + suffix };
-  return roles;
+    return {
+      ...roles,
+      throw: 'throw_overhand_' + suffix,
+      underhand: 'throw_underhand_' + suffix,
+      pullpin: 'pullpin_' + suffix,
+      inspect,
+    };
+  if (directory.startsWith('knife/'))
+    return { ...roles, slash: 'light_miss1_' + suffix, heavy: 'heavy_miss1_' + suffix, inspect };
+  if (directory === 'equipment/c4') return { ...roles, plant: 'plant_' + suffix, inspect };
+  return { ...roles, inspect };
 }
 
 export const viewmodelSources = Object.freeze(
