@@ -92,7 +92,7 @@ export function indexFireEffects(bank: InfernoBank | undefined, events: GameEven
   const lastEnd: number[] = [];
   for (const span of spans) lastEnd.push(Math.max(lastEnd.at(-1) ?? 0, span.until));
 
-  return (tick: number, reducedMotion: boolean): EffectSprite[] => {
+  const sample = (tick: number, reducedMotion: boolean): EffectSprite[] => {
     const end = after(spans, tick, (span) => span.from);
     const sprites: EffectSprite[] = [];
     const cutoff = tick - rate * scorchTail;
@@ -134,4 +134,13 @@ export function indexFireEffects(bank: InfernoBank | undefined, events: GameEven
     }
     return sprites;
   };
+  /** Recorded (or event-placed) fire points that have ignited and end after `cutoff`. */
+  const points = (tick: number, cutoff: number) => {
+    const end = after(spans, tick, (span) => span.from);
+    const found: FireSpan[] = [];
+    for (let index = end - 1; index >= 0 && lastEnd[index] > cutoff; index--)
+      if (spans[index].until > cutoff) found.push(spans[index]);
+    return found;
+  };
+  return Object.assign(sample, { points });
 }

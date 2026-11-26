@@ -1,3 +1,6 @@
+import InfernoParticles from './InfernoParticles';
+import { useEffectTextures } from '../effect-textures';
+import type { FirePoint } from '../inferno-particles';
 import { useMemo } from 'react';
 import type { InfernoBank } from '../../../shared/inferno-state.mjs';
 import type { GameEvent } from '../types';
@@ -89,6 +92,17 @@ const scorchFragment = `
   }
 `;
 
+const officialLayers = [
+  'fire-ground',
+  'fire-flame',
+  'fire-glow',
+  'fire-ember',
+  'fire-smoke',
+  'fire-scorch',
+];
+// The scorch outlives the flames by the official end-cap's few seconds.
+const scorchSeconds = 6;
+
 export default function InfernoEffects({
   infernos,
   warm,
@@ -97,6 +111,7 @@ export default function InfernoEffects({
   tick,
   rate,
   reducedMotion,
+  displayScale,
 }: {
   infernos?: InfernoBank;
   warm: boolean;
@@ -105,9 +120,38 @@ export default function InfernoEffects({
   tick: number;
   rate: number;
   reducedMotion: boolean;
+  /** The native grade's display scale; official particles need the native world. */
+  displayScale?: number;
 }) {
   const at = useMemo(() => indexFireEffects(infernos, events, rate), [infernos, events, rate]);
-  const sprites = useMemo(() => at(tick, reducedMotion), [at, tick, reducedMotion]);
+  const textures = useEffectTextures(displayScale !== undefined, officialLayers);
+  const official = officialLayers.every((id) => textures[id]);
+  const points = useMemo<FirePoint[]>(
+    () =>
+      official
+        ? at.points(tick, tick - scorchSeconds * rate).map(({ position, seed, from, until }) => ({
+            position,
+            seed,
+            from: from / rate,
+            until: until / rate,
+          }))
+        : [],
+    [official, at, tick, rate],
+  );
+  const sprites = useMemo(
+    () => (official ? [] : at(tick, reducedMotion)),
+    [official, at, tick, reducedMotion],
+  );
+  if (official)
+    return (
+      <InfernoParticles
+        points={points}
+        // Reduced motion holds the flames on one sampled moment.
+        time={reducedMotion ? Math.floor(tick / rate) : tick / rate}
+        textures={textures}
+        displayScale={displayScale ?? 1}
+      />
+    );
   return (
     <>
       <UtilitySprites

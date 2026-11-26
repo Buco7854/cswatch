@@ -1070,6 +1070,7 @@ function World({
               tick={tick}
               nativeVolume={modelReady}
               staticMap={nativeWorld?.queries ?? null}
+              displayScale={nativeWorld?.native.displayScale}
               lightBursts={!low}
               selected={selected}
               settings={settings}
@@ -1115,6 +1116,7 @@ function UtilityLayer({
   tick,
   nativeVolume,
   staticMap,
+  displayScale,
   lightBursts,
   selected,
   settings,
@@ -1124,6 +1126,7 @@ function UtilityLayer({
   tick: number;
   nativeVolume: boolean;
   staticMap: THREE.Group | import('../world/queries').WorldQueries | null;
+  displayScale?: number;
   lightBursts: boolean;
   selected: string;
   settings: ViewerSettings;
@@ -1155,6 +1158,7 @@ function UtilityLayer({
           />
           <InfernoEffects
             infernos={data.infernos}
+            displayScale={displayScale}
             warm={nativeVolume || data.sample}
             lighting={lightBursts}
             events={data.events}
