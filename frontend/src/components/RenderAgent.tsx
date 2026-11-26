@@ -1,5 +1,6 @@
 import { ReplayFrameContext } from '../replay-frames';
 import { captureAgent } from '../capture-hook';
+import { registerAgentRoot } from '../agent-roots';
 import {
   Component,
   Suspense,
@@ -248,6 +249,7 @@ function LoadedAgent({
     }
   }, [scope, ready, invalidate]);
   useLayoutEffect(() => captureAgent(id, prepared.root), [id, prepared]);
+  useLayoutEffect(() => registerAgentRoot(id, prepared.instance), [id, prepared]);
   useLayoutEffect(() => {
     const anchor = weaponAnchor(prepared.instance);
     if (anchor) return registerWeaponAnchor?.(anchor);

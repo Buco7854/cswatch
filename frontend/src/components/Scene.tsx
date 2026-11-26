@@ -110,6 +110,7 @@ import { indexRecordedTravel, recordedMotion, type PreviousPose } from '../recor
 import './spectator-hud.css';
 import { captureRegister } from '../capture-hook';
 import { recordedAir, recordedDeath, recordedFlinch, recordedLadder } from '../agent-evidence';
+import BodyHits from './BodyHits';
 import RenderAgent, {
   GenericAgentBody,
   RecordedAgentBody,
@@ -1100,6 +1101,9 @@ function World({
             />
           )}
           {!preview && <RecordedEquipment items={items} floor={followTrace} />}
+          {!preview && !data.sample && settings.shotEffects && !reduceAgentMotion && (
+            <BodyHits data={data} tick={tick} />
+          )}
           {!preview && settings.utilities && (
             <Smoke
               data={data}
