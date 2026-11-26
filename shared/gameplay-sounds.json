@@ -4,57 +4,154 @@
     "ak47-fire": {
       "source": "sounds/weapons/ak47/ak47_01.vsnd_c",
       "category": "weapon",
-      "weapon": "ak47"
+      "weapon": "ak47",
+      "distance": [
+        [25, 0.8],
+        [30, 1],
+        [175.71, 1],
+        [440, 0.7353],
+        [1288, 0.3309],
+        [2500, 0.0147]
+      ],
+      "distant": "weapon-80d074f32a02"
     },
     "aug-fire": {
       "source": "sounds/weapons/aug/aug_01.vsnd_c",
       "category": "weapon",
-      "weapon": "aug"
+      "weapon": "aug",
+      "distance": [
+        [25, 0.8],
+        [30, 1],
+        [175.71, 1],
+        [440, 0.7353],
+        [1288, 0.3309],
+        [2500, 0.0147]
+      ],
+      "distant": "weapon-0e8428bec4da"
     },
     "awp-fire": {
       "source": "sounds/weapons/awp/awp_01.vsnd_c",
       "category": "weapon",
-      "weapon": "awp"
+      "weapon": "awp",
+      "distance": [
+        [175.71, 1],
+        [440, 0.7353],
+        [1288, 0.3309],
+        [2800, 0.0478]
+      ],
+      "distant": "weapon-cdc5cb731dc0"
     },
     "bizon-fire": {
       "source": "sounds/weapons/bizon/bizon_01.vsnd_c",
       "category": "weapon",
-      "weapon": "bizon"
+      "weapon": "bizon",
+      "distance": [
+        [25, 0.8],
+        [30, 1],
+        [175.71, 1],
+        [440, 0.7353],
+        [1288, 0.3309],
+        [2500, 0]
+      ],
+      "distant": "weapon-ebbcda38edd6"
     },
     "cz75a-fire": {
       "source": "sounds/weapons/cz75a/cz75_01.vsnd_c",
       "category": "weapon",
-      "weapon": "cz75a"
+      "weapon": "cz75a",
+      "distance": [
+        [25, 0.8],
+        [30, 1],
+        [175.71, 1],
+        [440, 0.7353],
+        [1288, 0.3309],
+        [2500, 0.011]
+      ],
+      "distant": "weapon-3bf754154d30"
     },
     "deagle-fire": {
       "source": "sounds/weapons/deagle/deagle_01.vsnd_c",
       "category": "weapon",
-      "weapon": "deagle"
+      "weapon": "deagle",
+      "distance": [
+        [25, 0.8],
+        [30, 1],
+        [175.71, 1],
+        [440, 0.7353],
+        [1288, 0.3309],
+        [2500, 0.0147]
+      ],
+      "distant": "weapon-1363ca41e089"
     },
     "elite-fire": {
       "source": "sounds/weapons/elite/elites_01.vsnd_c",
       "category": "weapon",
-      "weapon": "elite"
+      "weapon": "elite",
+      "distance": [
+        [25, 0.8],
+        [30, 1],
+        [175.71, 1],
+        [440, 0.7353],
+        [1288, 0.3309],
+        [2500, 0.0221]
+      ],
+      "distant": "weapon-540b8782017b"
     },
     "famas-fire": {
       "source": "sounds/weapons/famas/famas_01.vsnd_c",
       "category": "weapon",
-      "weapon": "famas"
+      "weapon": "famas",
+      "distance": [
+        [25, 0.8],
+        [30, 1],
+        [175.71, 1],
+        [440, 0.7353],
+        [1288, 0.3309],
+        [2500, 0.0331]
+      ],
+      "distant": "weapon-317df38ec40b"
     },
     "fiveseven-fire": {
       "source": "sounds/weapons/fiveseven/fiveseven_01.vsnd_c",
       "category": "weapon",
-      "weapon": "fiveseven"
+      "weapon": "fiveseven",
+      "distance": [
+        [25, 0.8],
+        [30, 1],
+        [175.71, 1],
+        [440, 0.7353],
+        [1288, 0.3309],
+        [2500, 0.011]
+      ],
+      "distant": "weapon-2ab477cab6af"
     },
     "g3sg1-fire": {
       "source": "sounds/weapons/g3sg1/g3sg1_01.vsnd_c",
       "category": "weapon",
-      "weapon": "g3sg1"
+      "weapon": "g3sg1",
+      "distance": [
+        [25, 0.8],
+        [30, 1],
+        [175.71, 1],
+        [440, 0.7353],
+        [1288, 0.3309],
+        [2500, 0.011]
+      ],
+      "distant": "weapon-e43693d80e17"
     },
     "galilar-fire": {
       "source": "sounds/weapons/galilar/galil_01.vsnd_c",
       "category": "weapon",
-      "weapon": "galilar"
+      "weapon": "galilar",
+      "distance": [
+        [25, 0.8],
+        [30, 1],
+        [175.71, 1],
+        [440, 0.7353],
+        [1288, 0.3309],
+        [2500, 0.0221]
+      ],
+      "distant": "weapon-82e07a926969"
     },
     "glock-fire": {
       "source": "sounds/weapons/glock18/glock_01.vsnd_c",
@@ -64,102 +161,281 @@
     "hkp2000-fire": {
       "source": "sounds/weapons/hkp2000/hkp2000_01.vsnd_c",
       "category": "weapon",
-      "weapon": "hkp2000"
+      "weapon": "hkp2000",
+      "distance": [
+        [25, 0.8],
+        [30, 1],
+        [175.71, 1],
+        [440, 0.7353],
+        [1288, 0.3309],
+        [2500, 0.0221]
+      ],
+      "distant": "weapon-4fec1729f2fa"
     },
     "m249-fire": {
       "source": "sounds/weapons/m249/m249_01.vsnd_c",
       "category": "weapon",
-      "weapon": "m249"
+      "weapon": "m249",
+      "distance": [
+        [25, 0.8],
+        [30, 0.8],
+        [175.71, 0.8],
+        [1157.14, 0.2904],
+        [2500, 0.011]
+      ],
+      "distant": "weapon-cd7c64766940"
     },
     "m4a1-fire": {
       "source": "sounds/weapons/m4a1/m4a1_01.vsnd_c",
       "category": "weapon",
-      "weapon": "m4a1"
+      "weapon": "m4a1",
+      "distance": [
+        [25, 0.8],
+        [30, 1],
+        [175.71, 1],
+        [440, 0.7353],
+        [1288, 0.3309],
+        [2500, 0.0184]
+      ],
+      "distant": "weapon-2c020c9b5e95"
     },
     "mac10-fire": {
       "source": "sounds/weapons/mac10/mac10_01.vsnd_c",
       "category": "weapon",
-      "weapon": "mac10"
+      "weapon": "mac10",
+      "distance": [
+        [25, 0.8],
+        [30, 1],
+        [175.71, 1],
+        [440, 0.7353],
+        [1288, 0.3309],
+        [2500, 0]
+      ],
+      "distant": "weapon-f6b9cb663ee1"
     },
     "mp5sd-fire": {
       "source": "sounds/weapons/mp5/mp5_01.vsnd_c",
       "category": "weapon",
-      "weapon": "mp5sd"
+      "weapon": "mp5sd",
+      "distance": [
+        [25, 0.8],
+        [30, 1],
+        [164, 1],
+        [428, 0.6186],
+        [804, 0.2268],
+        [1300, 0.05],
+        [1400, 0]
+      ]
     },
     "mp7-fire": {
       "source": "sounds/weapons/mp7/mp7_01.vsnd_c",
       "category": "weapon",
-      "weapon": "mp7"
+      "weapon": "mp7",
+      "distance": [
+        [25, 0.8],
+        [30, 1],
+        [175.71, 1],
+        [440, 0.7353],
+        [1288, 0.3309],
+        [2500, 0.0221]
+      ],
+      "distant": "weapon-333b8e0bd9ec"
     },
     "mp9-fire": {
       "source": "sounds/weapons/mp9/mp9_01.vsnd_c",
       "category": "weapon",
-      "weapon": "mp9"
+      "weapon": "mp9",
+      "distance": [
+        [25, 0.8],
+        [30, 1],
+        [175.71, 1],
+        [440, 0.7353],
+        [1288, 0.3309],
+        [2500, 0.0184]
+      ],
+      "distant": "weapon-245fa3aee63c"
     },
     "negev-fire": {
       "source": "sounds/weapons/negev/negev_01.vsnd_c",
       "category": "weapon",
-      "weapon": "negev"
+      "weapon": "negev",
+      "distance": [
+        [25, 0.8],
+        [30, 1],
+        [175.71, 1],
+        [440, 0.7353],
+        [1288, 0.3309],
+        [2500, 0]
+      ],
+      "distant": "weapon-a5bcdd6425e2"
     },
     "nova-fire": {
       "source": "sounds/weapons/nova/nova-1.vsnd_c",
       "category": "weapon",
-      "weapon": "nova"
+      "weapon": "nova",
+      "distance": [
+        [25, 0.8],
+        [30, 1],
+        [175.71, 1],
+        [440, 0.7353],
+        [1178.57, 0.3125],
+        [2150, 0.011]
+      ],
+      "distant": "weapon-4c9f42ac4487"
     },
     "p250-fire": {
       "source": "sounds/weapons/p250/p250_01.vsnd_c",
       "category": "weapon",
-      "weapon": "p250"
+      "weapon": "p250",
+      "distance": [
+        [25, 0.8],
+        [30, 1],
+        [175.71, 1],
+        [440, 0.7353],
+        [1288, 0.3309],
+        [2500, 0]
+      ],
+      "distant": "weapon-9f239c43fbad"
     },
     "p90-fire": {
       "source": "sounds/weapons/p90/p90_01.vsnd_c",
       "category": "weapon",
-      "weapon": "p90"
+      "weapon": "p90",
+      "distance": [
+        [25, 0.8],
+        [30, 1],
+        [175.71, 1],
+        [440, 0.7353],
+        [1288, 0.3309],
+        [2500, 0]
+      ],
+      "distant": "weapon-970998e9a040"
     },
     "revolver-fire": {
       "source": "sounds/weapons/revolver/revolver-1_01.vsnd_c",
       "category": "weapon",
-      "weapon": "revolver"
+      "weapon": "revolver",
+      "distance": [
+        [25, 0.8],
+        [30, 1],
+        [175.71, 1],
+        [440, 0.7353],
+        [1288, 0.3309],
+        [2500, 0.0184]
+      ],
+      "distant": "weapon-900a26e59479"
     },
     "sawedoff-fire": {
       "source": "sounds/weapons/sawedoff/sawedoff-1.vsnd_c",
       "category": "weapon",
-      "weapon": "sawedoff"
+      "weapon": "sawedoff",
+      "distance": [
+        [25, 0.8],
+        [30, 1],
+        [175.71, 1],
+        [440, 0.7353],
+        [1288, 0.3309],
+        [2500, 0]
+      ],
+      "distant": "weapon-a09291fde3db"
     },
     "scar20-fire": {
       "source": "sounds/weapons/scar20/scar20_01.vsnd_c",
       "category": "weapon",
-      "weapon": "scar20"
+      "weapon": "scar20",
+      "distance": [
+        [25, 0.8],
+        [30, 1],
+        [175.71, 1],
+        [440, 0.7353],
+        [1288, 0.3309],
+        [2500, 0.0147]
+      ],
+      "distant": "weapon-50ddaead6a74"
     },
     "sg556-fire": {
       "source": "sounds/weapons/sg556/sg556_01.vsnd_c",
       "category": "weapon",
-      "weapon": "sg556"
+      "weapon": "sg556",
+      "distance": [
+        [25, 0.8],
+        [30, 1],
+        [175.71, 1],
+        [440, 0.7353],
+        [1288, 0.3309],
+        [2500, 0.0257]
+      ],
+      "distant": "weapon-56d82b2c0bad"
     },
     "ssg08-fire": {
       "source": "sounds/weapons/ssg08/ssg08_01.vsnd_c",
       "category": "weapon",
-      "weapon": "ssg08"
+      "weapon": "ssg08",
+      "distance": [
+        [25, 0.8],
+        [30, 1],
+        [175.71, 1],
+        [578.57, 0.7647],
+        [1342.86, 0.3897],
+        [2500, 0.0331]
+      ],
+      "distant": "weapon-1d4f82e83d1e"
     },
     "tec9-fire": {
       "source": "sounds/weapons/tec9/tec9_02.vsnd_c",
       "category": "weapon",
-      "weapon": "tec9"
+      "weapon": "tec9",
+      "distance": [
+        [25, 0.8],
+        [30, 1],
+        [175.71, 1],
+        [440, 0.7353],
+        [1288, 0.3309],
+        [2500, 0.0221]
+      ],
+      "distant": "weapon-9d4c3f2f2684"
     },
     "ump45-fire": {
       "source": "sounds/weapons/ump45/ump45_02.vsnd_c",
       "category": "weapon",
-      "weapon": "ump45"
+      "weapon": "ump45",
+      "distance": [
+        [25, 0.8],
+        [30, 1],
+        [175.71, 1],
+        [440, 0.7353],
+        [1288, 0.3309],
+        [2500, 0]
+      ],
+      "distant": "weapon-da73b979267f"
     },
     "uspsilencer-fire": {
       "source": "sounds/weapons/usp/usp_01.vsnd_c",
       "category": "weapon",
-      "weapon": "uspsilencer"
+      "weapon": "uspsilencer",
+      "distance": [
+        [25, 0.8],
+        [30, 1],
+        [164, 1],
+        [428, 0.6186],
+        [804, 0.2268],
+        [1300, 0.05],
+        [1400, 0]
+      ]
     },
     "xm1014-fire": {
       "source": "sounds/weapons/xm1014/xm1014-1.vsnd_c",
       "category": "weapon",
-      "weapon": "xm1014"
+      "weapon": "xm1014",
+      "distance": [
+        [25, 0.8],
+        [30, 1],
+        [175.71, 1],
+        [440, 0.7353],
+        [1288, 0.3309],
+        [2500, 0]
+      ],
+      "distant": "weapon-ee3b007c9290"
     },
     "footstep": {
       "source": "sounds/player/footsteps/concrete_ct_01.vsnd_c",
@@ -167,11 +443,24 @@
     },
     "he-explode": {
       "source": "sounds/weapons/hegrenade/hegrenade_detonate_02.vsnd_c",
-      "category": "utility"
+      "category": "utility",
+      "distance": [
+        [0, 1],
+        [231.43, 1],
+        [779.14, 0.5692],
+        [2700, 0]
+      ],
+      "distant": "utility-2c1480ee757a"
     },
     "flash-explode": {
       "source": "sounds/weapons/flashbang/flashbang_explode1.vsnd_c",
-      "category": "utility"
+      "category": "utility",
+      "distance": [
+        [0, 1],
+        [84, 1],
+        [2740, 0]
+      ],
+      "distant": "utility-fccf03e61973"
     },
     "fire-ignite": {
       "source": "sounds/weapons/molotov/fire_ignite_1.vsnd_c",
@@ -191,17 +480,39 @@
     },
     "bomb-explode": {
       "source": "sounds/weapons/c4/c4_explode1.vsnd_c",
-      "category": "objective"
+      "category": "objective",
+      "distance": [
+        [0, 1],
+        [1100, 1]
+      ]
     },
     "m4a1silencer-fire": {
       "source": "sounds/weapons/m4a1/m4a1_silencer_01.vsnd_c",
       "category": "weapon",
-      "weapon": "m4a1silencer"
+      "weapon": "m4a1silencer",
+      "distance": [
+        [25, 0.7],
+        [30, 1],
+        [164, 1],
+        [428, 0.6186],
+        [804, 0.2268],
+        [1300, 0.05],
+        [1400, 0]
+      ]
     },
     "mag7-fire": {
       "source": "sounds/weapons/mag7/mag7_01.vsnd_c",
       "category": "weapon",
-      "weapon": "mag7"
+      "weapon": "mag7",
+      "distance": [
+        [25, 0.8],
+        [30, 1],
+        [175.71, 1],
+        [440, 0.7353],
+        [1288, 0.3309],
+        [2500, 0]
+      ],
+      "distant": "weapon-bf82c9597bb3"
     },
     "reload-a99402fc6679": {
       "source": "sounds/weapons/ak47/ak47_clipout_01.vsnd_c",
@@ -494,12 +805,25 @@
     "taser-fire": {
       "source": "sounds/weapons/taser/taser_shoot.vsnd_c",
       "category": "weapon",
-      "weapon": "taser"
+      "weapon": "taser",
+      "distance": [
+        [175.71, 1],
+        [847.71, 0.261],
+        [2420.29, 0]
+      ]
     },
     "uspsilencer-unsilenced-fire": {
       "source": "sounds/weapons/usp/usp_unsilenced_01.vsnd_c",
       "category": "weapon",
-      "weapon": "uspsilencer"
+      "weapon": "uspsilencer",
+      "distance": [
+        [25, 0.8],
+        [30, 1],
+        [175.71, 1],
+        [440, 0.7353],
+        [1288, 0.3309],
+        [2500, 0]
+      ]
     },
     "footstep-metal-solid": {
       "source": "sounds/player/footsteps/metal_solid_35.vsnd_c",
@@ -964,6 +1288,295 @@
     "objective-9ec82865cd0f": {
       "source": "sounds/weapons/c4/c4_beep2.vsnd_c",
       "category": "objective"
+    },
+    "weapon-80d074f32a02": {
+      "source": "sounds/weapons/ak47/ak47_distant.vsnd_c",
+      "category": "weapon",
+      "distance": [
+        [800, 0],
+        [2335.84, 0.5404],
+        [2868.57, 0.0956]
+      ]
+    },
+    "weapon-0e8428bec4da": {
+      "source": "sounds/weapons/aug/aug_distant.vsnd_c",
+      "category": "weapon",
+      "distance": [
+        [800, 0],
+        [2327.64, 0.4081],
+        [2868.57, 0.0956]
+      ]
+    },
+    "weapon-cdc5cb731dc0": {
+      "source": "sounds/weapons/awp/awp_distant.vsnd_c",
+      "category": "weapon",
+      "distance": [
+        [800, 0],
+        [2354.29, 0.3368],
+        [2868.57, 0.0956]
+      ]
+    },
+    "weapon-ebbcda38edd6": {
+      "source": "sounds/weapons/bizon/bizon-1-distant.vsnd_c",
+      "category": "weapon",
+      "distance": [
+        [800, 0],
+        [2354.29, 0.3368],
+        [2868.57, 0.0956]
+      ]
+    },
+    "weapon-3bf754154d30": {
+      "source": "sounds/weapons/cz75a/cz75a-1-distant.vsnd_c",
+      "category": "weapon",
+      "distance": [
+        [800, 0],
+        [2352.23, 0.2537],
+        [2868.57, 0.0956]
+      ]
+    },
+    "weapon-1363ca41e089": {
+      "source": "sounds/weapons/deagle/deagle-1-distant.vsnd_c",
+      "category": "weapon",
+      "distance": [
+        [800, 0],
+        [2354.29, 0.3368],
+        [2868.57, 0.0956]
+      ]
+    },
+    "weapon-540b8782017b": {
+      "source": "sounds/weapons/elite/elite-1-distant.vsnd_c",
+      "category": "weapon",
+      "distance": [
+        [800, 0],
+        [2368.62, 0.2279],
+        [2868.57, 0.0956]
+      ]
+    },
+    "weapon-317df38ec40b": {
+      "source": "sounds/weapons/famas/famas_distant_01.vsnd_c",
+      "category": "weapon",
+      "distance": [
+        [800, 0],
+        [2354.29, 0.3368],
+        [2868.57, 0.0956]
+      ]
+    },
+    "weapon-2ab477cab6af": {
+      "source": "sounds/weapons/fiveseven/fiveseven-1-distant.vsnd_c",
+      "category": "weapon",
+      "distance": [
+        [800, 0],
+        [2354.29, 0.3368],
+        [2868.57, 0.0956]
+      ]
+    },
+    "weapon-e43693d80e17": {
+      "source": "sounds/weapons/g3sg1/g3sg1_distant_01.vsnd_c",
+      "category": "weapon",
+      "distance": [
+        [800, 0],
+        [2335.84, 0.4963],
+        [2868.57, 0.1801]
+      ]
+    },
+    "weapon-82e07a926969": {
+      "source": "sounds/weapons/galilar/galil_distant.vsnd_c",
+      "category": "weapon",
+      "distance": [
+        [800, 0],
+        [2352.23, 0.5037],
+        [2868.57, 0.1728]
+      ]
+    },
+    "weapon-4fec1729f2fa": {
+      "source": "sounds/weapons/hkp2000/hkp2000-1-distant.vsnd_c",
+      "category": "weapon",
+      "distance": [
+        [458.97, 0],
+        [2335.84, 0.5846],
+        [2868.57, 0.0956]
+      ]
+    },
+    "weapon-cd7c64766940": {
+      "source": "sounds/weapons/m249/m249-1-distant.vsnd_c",
+      "category": "weapon",
+      "distance": [
+        [352.42, 0],
+        [2081.76, 0.489],
+        [2868.57, 0.0956]
+      ]
+    },
+    "weapon-2c020c9b5e95": {
+      "source": "sounds/weapons/m4a1/m4a1_distant_01.vsnd_c",
+      "category": "weapon",
+      "distance": [
+        [800, 0],
+        [2354.29, 0.3368],
+        [2868.57, 0.0956]
+      ]
+    },
+    "weapon-f6b9cb663ee1": {
+      "source": "sounds/weapons/mac10/mac10-1-distant.vsnd_c",
+      "category": "weapon",
+      "distance": [
+        [800, 0],
+        [2354.29, 0.3368],
+        [2868.57, 0.0956]
+      ]
+    },
+    "weapon-333b8e0bd9ec": {
+      "source": "sounds/weapons/mp7/mp7-1-distant.vsnd_c",
+      "category": "weapon",
+      "distance": [
+        [483.56, 0],
+        [2354.29, 0.3368],
+        [2868.57, 0.0956]
+      ]
+    },
+    "weapon-245fa3aee63c": {
+      "source": "sounds/weapons/mp9/mp9-1-distant.vsnd_c",
+      "category": "weapon",
+      "distance": [
+        [800, 0],
+        [2354.29, 0.3368],
+        [2868.57, 0.0956]
+      ]
+    },
+    "weapon-a5bcdd6425e2": {
+      "source": "sounds/weapons/negev/negev-1-distant.vsnd_c",
+      "category": "weapon",
+      "distance": [
+        [401.6, 0],
+        [2354.29, 0.3368],
+        [2868.57, 0.0956]
+      ]
+    },
+    "weapon-4c9f42ac4487": {
+      "source": "sounds/weapons/nova/nova-1-distant.vsnd_c",
+      "category": "weapon",
+      "distance": [
+        [458.97, 0],
+        [1942.43, 0.375],
+        [2868.57, 0.0956]
+      ]
+    },
+    "weapon-9f239c43fbad": {
+      "source": "sounds/weapons/p250/p250_distant_01.vsnd_c",
+      "category": "weapon",
+      "distance": [
+        [499.95, 0],
+        [1917.84, 0.3419],
+        [2868.57, 0.0956]
+      ]
+    },
+    "weapon-970998e9a040": {
+      "source": "sounds/weapons/p90/p90-1-distant.vsnd_c",
+      "category": "weapon",
+      "distance": [
+        [90.16, 0],
+        [245.88, 0.1066],
+        [2008, 0.3419],
+        [2868.57, 0.0956]
+      ]
+    },
+    "weapon-900a26e59479": {
+      "source": "sounds/weapons/revolver/revolver-1_distant.vsnd_c",
+      "category": "weapon",
+      "distance": [
+        [800, 0],
+        [2354.29, 0.3368],
+        [2868.57, 0.0956]
+      ]
+    },
+    "weapon-a09291fde3db": {
+      "source": "sounds/weapons/sawedoff/sawedoff-1-distant.vsnd_c",
+      "category": "weapon",
+      "distance": [
+        [800, 0],
+        [1827.69, 0.4154],
+        [2868.57, 0.1875]
+      ]
+    },
+    "weapon-50ddaead6a74": {
+      "source": "sounds/weapons/scar20/scar20_distant_01.vsnd_c",
+      "category": "weapon",
+      "distance": [
+        [800, 0],
+        [2354.29, 0.3368],
+        [2868.57, 0.0956]
+      ]
+    },
+    "weapon-56d82b2c0bad": {
+      "source": "sounds/weapons/sg556/sg556_distant.vsnd_c",
+      "category": "weapon",
+      "distance": [
+        [800, 0],
+        [2354.29, 0.3368],
+        [2868.57, 0.0956]
+      ]
+    },
+    "weapon-1d4f82e83d1e": {
+      "source": "sounds/weapons/ssg08/ssg08_distant.vsnd_c",
+      "category": "weapon",
+      "distance": [
+        [524.54, 0],
+        [2016.2, 0.3419],
+        [2868.57, 0.0956]
+      ]
+    },
+    "weapon-9d4c3f2f2684": {
+      "source": "sounds/weapons/tec9/tec9_distant_01.vsnd_c",
+      "category": "weapon",
+      "distance": [
+        [800, 0],
+        [2354.29, 0.3368],
+        [2868.57, 0.0956]
+      ]
+    },
+    "weapon-da73b979267f": {
+      "source": "sounds/weapons/ump45/ump45-1-distant.vsnd_c",
+      "category": "weapon",
+      "distance": [
+        [336.03, 0],
+        [1942.43, 0.3382],
+        [2868.57, 0.0956]
+      ]
+    },
+    "weapon-ee3b007c9290": {
+      "source": "sounds/weapons/xm1014/xm1014-1-distant.vsnd_c",
+      "category": "weapon",
+      "distance": [
+        [434.38, 0],
+        [1942.43, 0.3272],
+        [2868.57, 0.0956]
+      ]
+    },
+    "utility-2c1480ee757a": {
+      "source": "sounds/weapons/hegrenade/hegrenade_distant_detonate_01.vsnd_c",
+      "category": "utility",
+      "distance": [
+        [504, 0],
+        [944, 1],
+        [2800, 0.3433]
+      ]
+    },
+    "utility-fccf03e61973": {
+      "source": "sounds/weapons/flashbang/flashbang_explode1_distant.vsnd_c",
+      "category": "utility",
+      "distance": [
+        [504, 0.7096],
+        [944, 1],
+        [2800, 0]
+      ]
+    },
+    "weapon-bf82c9597bb3": {
+      "source": "sounds/weapons/mag7/mag7_distant_01.vsnd_c",
+      "category": "weapon",
+      "distance": [
+        [800, 0],
+        [2354.29, 0.3368],
+        [2868.57, 0.0956]
+      ]
     }
   },
   "events": {

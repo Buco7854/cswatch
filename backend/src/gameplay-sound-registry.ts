@@ -22,6 +22,19 @@ export const gameplaySoundRegistry = z
             .regex(/^[a-z0-9]{1,40}$/)
             .optional(),
           tokens: z.array(z.string().min(1).max(128)).max(16).optional(),
+          /** The official event's distance (inches) to volume curve. */
+          distance: z
+            .array(
+              z.tuple([z.number().finite().min(0).max(20000), z.number().finite().min(0).max(1)]),
+            )
+            .min(1)
+            .max(16)
+            .optional(),
+          /** The item holding the official distant layer of this sound. */
+          distant: z
+            .string()
+            .regex(/^[a-z0-9-]{1,60}$/)
+            .optional(),
         })
         .strict(),
     ),
@@ -56,3 +69,10 @@ export const gameplaySoundRegistry = z
   );
 if (Object.keys(gameplaySoundRegistry.items).length > gameplayAudioLimits.bankItems)
   throw Error('Sound registry exceeds its fixed bound.');
+for (const item of Object.values(gameplaySoundRegistry.items))
+  if (
+    item.distant !== undefined &&
+    (!gameplaySoundRegistry.items[item.distant] ||
+      gameplaySoundRegistry.items[item.distant].distant !== undefined)
+  )
+    throw Error('A distant sound layer must name a fixed single-layer item.');

@@ -4,6 +4,25 @@ import type {
   SharedGameplaySoundCatalog,
 } from '../../shared/gameplay-sounds';
 import { GameplayAudioTimeline, sustainedCue } from './gameplay-audio-timeline';
+import registry from '../../shared/gameplay-sounds.json';
+
+type DistanceItem = { distance?: readonly (readonly number[])[]; distant?: string };
+const authored = registry.items as Record<string, DistanceItem | undefined>;
+
+/** The official event's distance-to-volume curve, in inches, linear between its
+ * points and held beyond them. */
+export function distanceGain(curve: readonly (readonly number[])[], inches: number) {
+  if (!curve.length) return 1;
+  if (inches <= curve[0][0]) return curve[0][1];
+  for (let i = 1; i < curve.length; i++) {
+    const [x1, y1] = curve[i];
+    if (inches <= x1) {
+      const [x0, y0] = curve[i - 1];
+      return x1 > x0 ? y0 + ((y1 - y0) * (inches - x0)) / (x1 - x0) : y1;
+    }
+  }
+  return curve[curve.length - 1][1];
+}
 import { GameplaySoundBuffers } from './gameplay-sound-assets';
 import { ViewerAudio } from './viewer-audio';
 import { nearWallContact, wallImpactSample, type WallTrace } from './shot-wall-audio';
@@ -96,7 +115,11 @@ export class GameplayPlayback {
     const generation = this.generation;
     // Warm only nearby known samples. The cache serializes at two decodes and
     // keeps at most sixteen pending requests, including this prefetch window.
-    for (const id of plan.prefetch) void this.buffers.get(id).catch(() => {});
+    for (const id of plan.prefetch) {
+      void this.buffers.get(id).catch(() => {});
+      const far = spatial ? authored[id]?.distant : undefined;
+      if (far && this.catalog.items[far]) void this.buffers.get(far).catch(() => {});
+    }
     if (wallTrace && wallSample) {
       // A stalled render frame can schedule a burst. Keep optional geometry
       // queries bounded and leave the original sounds on their normal clock.
@@ -123,6 +146,14 @@ export class GameplayPlayback {
       }
       plan.sounds.push(...contacts);
     }
+    // The official distant layer of a firearm or explosion plays beside its near sample.
+    if (spatial)
+      for (const { cue, delay } of [...plan.sounds]) {
+        const far = authored[cue.soundId]?.distant;
+        if (!far || !this.catalog.items[far] || cue.category === 'round') continue;
+        if (ownActor !== undefined && cue.actor === ownActor) continue;
+        plan.sounds.push({ cue: { ...cue, id: cue.id + '-distant', soundId: far }, delay });
+      }
     for (const { cue, delay } of plan.sounds) {
       const start = context.currentTime + delay;
       const nextRound =
@@ -173,6 +204,19 @@ export class GameplayPlayback {
             panner.positionX.value = position.x * 0.0254;
             panner.positionY.value = position.z * 0.0254;
             panner.positionZ.value = -position.y * 0.0254;
+            const curve = authored[cue.soundId]?.distance;
+            if (curve) {
+              // The authored curve replaces the generic roll-off.
+              const listener = context.listener as Partial<AudioListener> | undefined;
+              const inches =
+                Math.hypot(
+                  panner.positionX.value - (listener?.positionX?.value ?? 0),
+                  panner.positionY.value - (listener?.positionY?.value ?? 0),
+                  panner.positionZ.value - (listener?.positionZ?.value ?? 0),
+                ) / 0.0254;
+              panner.rolloffFactor = 0;
+              cueGain.gain.value *= distanceGain(curve, inches);
+            }
             cueGain.connect(panner);
             panner.connect(this.gain!);
           } else cueGain.connect(this.gain!);

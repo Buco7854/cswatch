@@ -1,6 +1,7 @@
 /** Bounded container validation before native/browser decoding. No compressed duration guesses. */
 export const gameplayAudioLimits = Object.freeze({
-  bankItems: 256,
+  // The near and distant layers of every firearm and explosion fit within this bound.
+  bankItems: 320,
   bytes: 2 * 1024 ** 2,
   durationMs: 10000,
   sampleRate: 48000,
