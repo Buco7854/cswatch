@@ -28,6 +28,36 @@ Fixture `var/fixture/input.dem` (Mirage), pinned manifest 5924479096069937098. P
 - **Frame cost, first person and impacts.** Interleaved A/B over 15 s of play from the M4A4 spray at tick 21100 (POV), two rounds: fps base 1.47/1.00, branch 1.47/1.00; task ms per frame base 735/1,074, branch 685/1,005; script ms per frame base 123/573, branch 211/558; draws per frame base 99/110, branch 108/115.
 - **Captures.** POV of every held class in the fixture one second after its first draw, plus inspect (Bowie, Deagle, USP-S, AK-47, M4A4), grenade pin pull and C4 plant moments, all on the official arms-and-weapon rigs. Players who scroll through weapons show the official draw clip, which starts below the screen; a steady Glock-18 (tick 2272) and flashbang (16196) render on their rigs.
 
+## Player models, round 2, 2026-11-26
+
+Same fixture, pack, browser and capture conditions as the first round below. The baseline for each item is this branch before the item (`3a3fe45` for character sun and turns); the setSize baseline is `main` at `e3673d5`. [Audit](product/PLAYER-AUDIT.md)
+
+**Canvas resizes.** CPU profiles over 12 s of 1× playback at tick 18142 after warm-up, with adaptive quality on:
+
+| Warm 12 s window | `setSize` calls, base / new | `setSize` ms, base / new | Bundle JS ms, base / new |
+| ---------------- | --------------------------: | -----------------------: | -----------------------: |
+| POV              |                       6 / 0 |                  813 / 0 |               1241 / 460 |
+| Follow           |                       6 / 0 |                 2398 / 0 |               2771 / 370 |
+| Overhead         |                       6 / 0 |                  659 / 0 |               1151 / 488 |
+
+Every call came from adaptive resolution changing the canvas's pixel ratio. It now holds each change for 8 s, raises resolution only after 15 s of fast frames, sizes a drop from the measured frame time, and keeps its level through buffering and seeks; an explicit pause still shows full detail for review and resuming returns to the learned level.
+
+**Performance overlay.** Off by default; captured at 1280 × 720 (dark EN, light FR), 768 × 1024 (light EN), 1366 × 600 (light EN) and 390 × 844 (dark FR), clear of the scores, rosters, radar, feed and dock. It writes its text four times a second and adds no per-frame React state.
+
+**Follow camera.** A 0.55 m sphere swept from the head, with shoulder, behind and overhead candidates. At the reported smoke pose the camera ends 0.41 m from the nearest wall: no point keeps the full radius clear there, so the sweep falls back to a third of it. At tick 18500 the followed player hugs a doorframe, and both builds fall back to first person.
+
+**Ragdolls.** The bank embeds the CT model's own ragdoll (15 bodies and 14 joints from its PHYS block; bind fit 0.00001 m, joint anchors matching to 0.0000 m). Headshot deaths at 12330 and 12520 and the AWP death at 34600–34800 fall along the shot and settle on the floor; the victims at 12330 and 12520 were running at 5.9 m/s and slide about 2.5 m. Tick 12400 reached forward and backward rendered pixel-identical frames (0 of 518,400 pixels differ).
+
+**Recorded agents.** The pinned depot holds 80 playable agents with an `agents/models` source (60.2 MB of model files); 78 besides the team defaults form the catalogue. The fixture records only the two defaults. One real agent, `tm_leet_varianta`, went through the worker's confined path in 25 s: a 1.1 MB skin with 15 MiB of decoded textures. Its own downloads were 0.55 MB of model and 24.5 MB of materials and textures, beside 332 MB of shared shader data that a normal install already holds. With the T default handle rewritten in the served replay, tick 18142 rendered that agent in the same pose as the default, animated by the T clips and the shared action bank. Unit, worker and browser tests cover the request, preparation, serving and swap.
+
+**Character sun.** Bodies trace the sun at four heights. At tick 6380 the T at the foot of a sunlit outdoor staircase is in shade (0/0/0/0) and renders darker than the probe light (body crop mean 70 → 63). At 6460 he is shaded to the waist and sunlit at the head (0/0/0.5/1), and the crop brightens from 99 to 103. At 43193 NIGHTSOUL traces fully in shade, as the probe had him.
+
+**Turn steps.** The bank gains Valve's 45° turn steps for rifle, pistol and knife, standing and crouched (222 roles, 7.57 MB, up from 7.25 MB). The recorded stance reports a turn whenever standing feet catch up with the aim; at 320° per second a step rotates within about 0.15 s, then settles. Side-on captures of the FAMAS player's right turn at tick 17892 differ from the build without steps by 1,534 pixels at 17890 (mid-rotation), 242 at 17896 and 35 by 17916: the legs step, subtly at this distance. With an earlier speed gate in the viewer, since removed, the two standing-turn foot-slip windows from the first round measured the same p90 in both builds (363.8 cm/s): one window never stands still long enough, and the other turns for only 18 of its 64 ticks before running. They were not re-measured after the gate was removed. Scanning for a turn found the stance reading a sample before the first frame, which could throw on the first frame of a replay; it now counts as moving.
+
+**Blood on surfaces.** Probed in the live scene, 5 splats were active at tick 21170 and 11 at 21250, all on floors: none of those shots had a wall within 2.4 m behind the victim. The capture at 21170 shows a splat with droplets on the floor beside a ragdolled corpse. Placement on a wall facing the shot, the floor fallback, the 6 s life with a 2 s fade and seek determinism are covered by unit tests. No recorded penetration exists in the fixture (`player_hurt` and `fire_bullets` only), so exit wounds stay unmodelled.
+
+**Tests.** After rebasing onto `weapons-fx-2` at `b47308c`: backend 616 passed with 4 environment skips (no Docker Compose, no offline speech model), assets 264 passed with 1 skip, exporter 43, graphics 19. The public browser suite passed 386 with 3 configuration skips, the private suites 156 (registrations off) and 160 (on), and setup 4 with 1 skip. The runtime smoke parsed the fixture's 31 chunks under the required sandbox; the asset smoke passed with kernel confinement and no container boundary. The assets image's `backend/dist` was reproduced from the Dockerfile's exact copy list and every module in it imports. Formatting and English/French locales passed. No physical device or hardware GPU was measured.
+
 ## Player models, 2026-11-26
 
 Production Chromium with ANGLE SwiftShader (960 × 540, DPR 1) rendered the pinned Mirage recording against the same native Mirage pack and a normal install's agent bank (depot 2347770, manifest `5924479096069937098`). The baseline is `main` at `e3673d5`; both builds were verification builds with the capture hook (`VITE_CSWATCH_CAPTURE=1`), which the release build compiles out. The action bank (210 roles, 7.2 MB) and the sound bank (578 samples, 56 MB) were prepared from the pinned depot with the worker's own tools and confinement (Landlock ABI 6). [Audit](product/PLAYER-AUDIT.md)

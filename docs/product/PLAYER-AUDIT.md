@@ -35,12 +35,18 @@ Fixture: the pinned Mirage recording (`var/fixture/input.dem`), parsed with the 
 | Footsteps      | One sample per surface, generic rolloff audible across the map                     | Every authored variation picked by the recorded seed, Valve's distance curve (silent past 1,100 units) |
 | Actor lighting | Probe light in the diffuse term only                                               | Probe light also feeds specular and cloth sheen                                                        |
 | Standing turns | The whole body, feet included, spun with every recorded aim change                 | Feet hold their yaw inside a 50° cone while the spine follows the aim                                  |
+| Deaths (2)     | Seven authored death clips                                                         | The agent's own ragdoll (its PHYS bodies and joints), seeded by the recorded shot, settling on the map |
+| Agents         | Team default for every player                                                      | A recorded official agent is prepared on demand and swapped in, animated by its team's clips           |
+| Actor sun      | Baked probe sun occlusion (24 units)                                               | Sun traced from the world at four heights along each body, interpolated by fragment height             |
+| Turn steps     | Feet rotate in place without stepping                                              | Valve's 45° turn step for the class, legs only, driven by the angle the recorded feet turn             |
+| Blood (2)      | Spray and mist at the hit point only                                               | A short-lived splat on the wall behind the hit, or on the floor below when no wall is near             |
+| Follow camera  | Ray to the shoulder point; could press into walls                                  | Sphere sweep with side choice, eased pull-out and an exact clearance check                             |
 
 ## Gaps
 
-- The recording names only the map-based default agents, which the bank already prepares. On-demand preparation of other agents from their recorded model handle is not built; such players would use the team default.
-- Deaths play Valve's authored clips with floor support, not a simulated ragdoll.
-- Characters take sun visibility from the baked probe shadow. The world has no live sun shadow map for actors, so a player at the 24-unit probe resolution can read as shaded where CS2's cascaded shadows would light them (for example the T on the window-room stairs at tick 43193).
-- Standing feet hold their yaw within a 50° aim cone; beyond it they rotate to the aim without Valve's turn-in-place step clips.
-- Blood leaves no surface decal, and exit wounds are not modelled separately.
+- Deaths simulate the agent's ragdoll from the death tick in fixed steps; bodies settle against the world's triangles. Joint friction and per-shape materials are approximated, and a body never reacts to a later shot.
+- The recording names only the map-based default agents. Recorded official agents are prepared on demand, which the fixture cannot show: it is covered by unit and browser tests and one real agent (`tm_leet_varianta`) prepared through the confined worker path. Gloves are not recorded.
+- Characters trace the direct sun against the world's opaque geometry. Alpha-tested foliage, 3D-skybox geometry and moving doors do not shade them, and the trace has no soft cascades.
+- Exit wounds need recorded penetration. The fixture records `player_hurt` and `fire_bullets` but no `bullet_damage` event, so penetration is unknown and no exit spray is drawn.
+- Turn steps use the 45° clips only; long turns repeat the step. Valve's 90° and 180° loops and the fast turns are not used.
 - Weapon pickups, drops and world impacts (124 sound hashes, 2,615 cues) belong to the weapon sound bank.
