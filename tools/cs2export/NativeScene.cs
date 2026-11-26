@@ -230,12 +230,15 @@ sealed class NativeScene(ResourceStore store, string game, string output, string
             }
             return meshes;
         }
-        // The next coarser LOD lets the packer fit a map's download budget.
-        var coarser = model.LodInfo.AvailableLevels.Where(level => level > 0).Order().FirstOrDefault();
+        // The finest level is the model's lowest set LOD level, as VRF draws it (ModelLodInfo.LowestLevel);
+        // compiled world models can tag every mesh with a coarser level than 0. The next coarser level
+        // lets the packer fit a map's download budget.
+        var finest = model.LodInfo.LowestLevel;
+        var coarser = model.LodInfo.AvailableLevels.Where(level => level > finest).Order().Cast<int?>().FirstOrDefault();
         models.Add(name, new
         {
-            meshes = Level(0),
-            coarse = coarser > 0 ? Level(coarser) : null,
+            meshes = Level(finest),
+            coarse = coarser is { } level ? Level(level) : null,
             skins = model.GetMaterialGroups().ToDictionary(p => p.Name, p => p.Materials),
         });
     }

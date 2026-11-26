@@ -29,6 +29,8 @@ ASTCENC=/path/to/astcenc node export.mjs --game "$GAME_ROOT" --map de_mirage --m
 node lab-server.mjs "$NEW_MAP_DIR" 4198
 ```
 
+Models start from their lowest set LOD level, as VRF draws them. Every entity with a model is drawn, as in VRF's entity system (an unimplemented class draws its model): brush entities such as `func_conveyor` carry world geometry (rush_001's train floors), and trigger and clip volumes use tool materials, which are not drawn.
+
 The stages are the ones the assets worker runs as separate confined, networkless children (the lightmap encoder runs inside the extract child):
 
 1. `cs2export.dll --extract` mounts the map VPK, the map's official community addon when present (`csgo_community_addons/<map>/<map>_dir.vpk`), then the `csgo` and `core` packages, and reads the world, the 3D sky named by the map's own enabled `skybox_reference`, entities, materials, textures and lighting. The installer fetches a sky from the map's prefab folder or a top-level companion named after the map (`de_poseidon_3dskybox`). A sky or material that the game files lack is skipped and listed in `unsupported`.
@@ -56,7 +58,7 @@ node capture.mjs "$NEW_MAP_DIR" "$CAPTURE_DIR" poses.json
 
 `node expand.mjs "$PACK" "$OUT"` rewrites an instanced pack with every instance expanded into its own placed range (the pre-instancing layout, same vertex streams) so captures of both paths can be compared. On Mirage the two instanced APCs differed from the expanded pack on at most 1,684 of 518,400 pixels (MAE 0.0012, none above 8 levels) on both tiers.
 
-`node coverage.mjs "$NEW_MAP_DIR" "$OVERVIEW_DIR" "$OUT"` checks geometry against the official radar: it renders the pack top-down with an orthographic camera framing the overview calibration (3D sky and fog off, material-ID view) and reports the share of the radar's opaque (playable) pixels that carry a rendered material, with a `coverage.png` marking uncovered ones in magenta. On manifest 5924479096069937098 de_inferno measured 99.95% and de_debris 100%. Areas outside the playable radar, such as building blocks that are open from above, are not counted; de_inferno's are open in Valve's compiled world as well.
+`node coverage.mjs "$NEW_MAP_DIR" "$OVERVIEW_DIR" "$OUT"` checks geometry against the official radar: it renders the pack top-down with an orthographic camera framing the overview calibration (3D sky and fog off, material-ID view) and reports the share of the radar's opaque (playable) pixels that carry a rendered material, with a `coverage.png` marking uncovered ones in magenta. Near-black radar pixels mark solid walls and closed blocks and are counted apart as `solid`: de_cbble's closed blocks have walls and furniture but neither render nor collision floors in Valve's compiled world (checked against `world_physics` with VRF), so counting them as playable had reported 89.27% instead of 99.70%. On manifest 5924479096069937098 de_inferno measured 99.96% and de_debris 99.99%. Areas outside the playable radar, such as building blocks that are open from above, are not counted; de_inferno's are open in Valve's compiled world as well.
 
 Fog and the 3D prefab have independent per-frame switches. The lab accepts `&sky3d=0&fog=0` and the capture script reads boolean `skybox3D` and `fog` pose fields, an optional display-referred `background` colour drawn instead of the sky (tactical views use a neutral `[0.003, 0.003, 0.003]`, about #1e1e1e), an orthographic half-height `ortho` in inches and a `view` render mode (7 is material ID). `CS2_LAB_TIER=phone` captures the ASTC tier.
 

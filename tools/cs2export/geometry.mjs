@@ -423,35 +423,35 @@ export function geometry(
         }
       }
     }
+    // Every entity with a model draws it, as in VRF's entity system (an unimplemented class is a
+    // GenericModelEntity that draws its model): brush entities such as func_conveyor and
+    // func_movelinear carry world geometry. Trigger and clip volumes use tool materials, which are
+    // not drawn.
     for (const e of world.entities.filter((e) => e.model)) {
-      const visible =
-        /^(prop_|func_(brush|breakable|door))/.test(e.classname) &&
-        !e.startdisabled &&
-        Number(e.rendermode ?? 0) !== 10;
+      const visible = !e.startdisabled && Number(e.rendermode ?? 0) !== 10;
       const id = entities.push({ ...e, world: worldName, initialVisibility: visible }) - 1;
-      if (/^(prop_|func_(brush|breakable|door))/.test(e.classname))
-        for (const [stage, model] of [e.model, ...(e.damageStages ?? [])].entries())
-          submit(
-            model,
-            root.clone().multiply(placement(e)),
-            [
-              ...vec(e.rendercolor ?? [255, 255, 255])
-                .slice(0, 3)
-                .map((x) => x / 255),
-              (e.renderamt ?? 255) / 255,
-            ],
-            {},
-            null,
-            stage === 0
-              ? id
-              : entities.push({
-                  ...e,
-                  model,
-                  world: worldName,
-                  initialVisibility: false,
-                  parentEntity: id,
-                }) - 1,
-          );
+      for (const [stage, model] of [e.model, ...(e.damageStages ?? [])].entries())
+        submit(
+          model,
+          root.clone().multiply(placement(e)),
+          [
+            ...vec(e.rendercolor ?? [255, 255, 255])
+              .slice(0, 3)
+              .map((x) => x / 255),
+            (e.renderamt ?? 255) / 255,
+          ],
+          {},
+          null,
+          stage === 0
+            ? id
+            : entities.push({
+                ...e,
+                model,
+                world: worldName,
+                initialVisibility: false,
+                parentEntity: id,
+              }) - 1,
+        );
     }
   }
   return { ranges, entities, environments };

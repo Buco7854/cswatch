@@ -45,21 +45,30 @@ function backdrop(radar) {
   return top && top[1] > radar.width ? top[0].split(',').map((v) => Number(v) * 8 + 4) : undefined;
 }
 
-/** Playable radar pixels are opaque and not the backdrop; covered render pixels carry a material ID. */
+/**
+ * Playable radar pixels are opaque and not the backdrop; covered render pixels carry a material ID.
+ * Near-black radar pixels mark solid walls and closed blocks, which Valve's compiled worlds can
+ * leave hollow and unfloored (de_cbble's interiors have neither render nor collision surfaces), so
+ * they are counted apart as `solid`.
+ */
 export function radarCoverage(radar, render) {
   const background = backdrop(radar);
   const output = new PNG({ width: radar.width, height: radar.height });
   let playable = 0,
-    covered = 0;
+    covered = 0,
+    solid = 0;
   for (let y = 0; y < radar.height; y++)
     for (let x = 0; x < radar.width; x++) {
       const i = (y * radar.width + x) * 4;
       const rx = Math.min(render.width - 1, Math.floor(((x + 0.5) * render.width) / radar.width)),
         ry = Math.min(render.height - 1, Math.floor(((y + 0.5) * render.height) / radar.height));
       const hit = render.data[(ry * render.width + rx) * 4 + 2] > 200;
-      const play =
+      const opaque =
         radar.data[i + 3] > 128 &&
         !(background && [0, 1, 2].every((c) => Math.abs(radar.data[i + c] - background[c]) <= 12));
+      const black = opaque && Math.max(radar.data[i], radar.data[i + 1], radar.data[i + 2]) < 24;
+      const play = opaque && !black;
+      if (black) solid++;
       if (play) playable++;
       if (play && hit) covered++;
       const grey = (radar.data[i] + radar.data[i + 1] + radar.data[i + 2]) / 3;
@@ -77,6 +86,7 @@ export function radarCoverage(radar, render) {
   return {
     playable,
     covered,
+    solid,
     percent: playable ? +((100 * covered) / playable).toFixed(2) : null,
     png: PNG.sync.write(output),
   };
@@ -112,6 +122,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     map: manifest.map,
     playable: result.playable,
     covered: result.covered,
+    solid: result.solid,
     percent: result.percent,
   };
   writeFileSync(join(out, 'coverage.json'), JSON.stringify(summary, null, 2));

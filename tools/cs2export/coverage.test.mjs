@@ -39,3 +39,19 @@ test('an opaque radar backdrop taken from its border is not playable', () => {
   const result = radarCoverage(radar, render);
   assert.deepEqual([result.playable, result.covered], [16, 8]);
 });
+
+test('near-black radar pixels are solid, not playable', () => {
+  // A transparent border around two lit floor pixels and two near-black solid pixels.
+  const radar = new PNG({ width: 6, height: 3 }),
+    render = new PNG({ width: 6, height: 3 });
+  [
+    [120, 110, 100],
+    [10, 12, 8],
+    [10, 12, 8],
+    [40, 30, 20],
+  ].forEach((rgb, x) => radar.data.set([...rgb, 255], (6 + x + 1) * 4));
+  // Only the first solid pixel carries a material ID.
+  for (let i = 0; i < 18; i++) render.data.set([1, 0, i === 8 ? 255 : 0, 255], i * 4);
+  const result = radarCoverage(radar, render);
+  assert.deepEqual([result.playable, result.covered, result.solid], [2, 0, 2]);
+});
