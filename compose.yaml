@@ -130,6 +130,8 @@ services:
     mem_limit: 4g
     cpus: 2
     stop_grace_period: 20s
+  # Prepares official maps (download, export, texture encoding) in confined, networkless
+  # children with a pinned toolchain cached in /map-cache. One map at a time.
   assets:
     <<: *isolated
     init: true
