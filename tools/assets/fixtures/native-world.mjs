@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 import { brotliCompressSync } from 'node:zlib';
 import { MeshoptEncoder } from '../../../frontend/node_modules/meshoptimizer/meshopt_encoder.js';
 import { vertexArchive } from '../../cs2export/quantize.mjs';
+import { writeInstance } from '../../cs2export/instances.mjs';
 await MeshoptEncoder.ready;
 export const sha = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const roles = [
@@ -53,7 +54,10 @@ function astcConstant(rgba) {
   rgba.forEach((value, c) => block.writeUInt16LE(Math.round(value * 65535), 8 + c * 2));
   return block;
 }
-/** Floor quads are [minX, minY, maxX, maxY] on Z=0; faces are four [x, y, z] corners. Source inches. */
+/**
+ * Floor quads are [minX, minY, maxX, maxY] on Z=0, drawn as instances of one unit quad scaled into
+ * place; faces are four [x, y, z] corners in an ordinary range. Source inches.
+ */
 export function nativeWorldPack({
   map,
   sourceManifest = '42',
@@ -70,50 +74,82 @@ export function nativeWorldPack({
     records[name] = { size: bytes.length, sha256: hash, category };
     return name;
   };
-  const all = [
-    ...quads.map(([x0, y0, x1, y1]) => [
-      [x0, y0, 0],
-      [x1, y0, 0],
-      [x1, y1, 0],
-      [x0, y1, 0],
-    ]),
-    ...faces,
-  ];
-  const v = Buffer.alloc(all.length * 4 * 60),
-    indices = Buffer.alloc(all.length * 6 * 4);
-  const min = [Infinity, Infinity, Infinity],
-    max = [-Infinity, -Infinity, -Infinity];
   const unit = (a) => a.map((x) => x / Math.hypot(...a));
-  all.forEach((corners, q) => {
-    const edge = (i) => corners[i].map((x, c) => x - corners[0][c]);
-    const [e, f] = [edge(1), edge(3)];
-    const normal = unit([
-        e[1] * f[2] - e[2] * f[1],
-        e[2] * f[0] - e[0] * f[2],
-        e[0] * f[1] - e[1] * f[0],
-      ]),
-      tangent = unit(e);
-    corners.forEach((point, corner) => {
-      const o = (q * 4 + corner) * 60;
-      point.forEach((x, c) => {
-        v.writeFloatLE(x, o + c * 4);
-        v.writeInt8(Math.round(normal[c] * 127), o + 12 + c);
-        v.writeInt8(Math.round(tangent[c] * 127), o + 16 + c);
-        min[c] = Math.min(min[c], x);
-        max[c] = Math.max(max[c], x);
+  function mesh(all) {
+    const v = Buffer.alloc(all.length * 4 * 60),
+      indices = Buffer.alloc(all.length * 6 * 4);
+    const min = [Infinity, Infinity, Infinity],
+      max = [-Infinity, -Infinity, -Infinity];
+    all.forEach((corners, q) => {
+      const edge = (i) => corners[i].map((x, c) => x - corners[0][c]);
+      const [e, f] = [edge(1), edge(3)];
+      const normal = unit([
+          e[1] * f[2] - e[2] * f[1],
+          e[2] * f[0] - e[0] * f[2],
+          e[0] * f[1] - e[1] * f[0],
+        ]),
+        tangent = unit(e);
+      corners.forEach((point, corner) => {
+        const o = (q * 4 + corner) * 60;
+        point.forEach((x, c) => {
+          v.writeFloatLE(x, o + c * 4);
+          v.writeInt8(Math.round(normal[c] * 127), o + 12 + c);
+          v.writeInt8(Math.round(tangent[c] * 127), o + 16 + c);
+          min[c] = Math.min(min[c], x);
+          max[c] = Math.max(max[c], x);
+        });
+        v[o + 19] = 127;
+        v.writeFloatLE(corner === 1 || corner === 2 ? 1 : 0, o + 20);
+        v.writeFloatLE(corner >= 2 ? 1 : 0, o + 24);
+        v.writeUInt16LE(32768, o + 28);
+        v.writeUInt16LE(32768, o + 30);
+        v.fill(255, o + 32, o + 36);
+        v[o + 52] = 1;
+        v.fill(255, o + 56, o + 60);
       });
-      v[o + 19] = 127;
-      v.writeFloatLE(corner === 1 || corner === 2 ? 1 : 0, o + 20);
-      v.writeFloatLE(corner >= 2 ? 1 : 0, o + 24);
-      v.writeUInt16LE(32768, o + 28);
-      v.writeUInt16LE(32768, o + 30);
-      v.fill(255, o + 32, o + 36);
-      v[o + 52] = 1;
-      v.fill(255, o + 56, o + 60);
+      [0, 1, 2, 0, 2, 3].forEach((index, i) =>
+        indices.writeUInt32LE(q * 4 + index, (q * 6 + i) * 4),
+      );
     });
-    [0, 1, 2, 0, 2, 3].forEach((index, i) => indices.writeUInt32LE(q * 4 + index, (q * 6 + i) * 4));
-  });
-  const bounds = [...min, ...max];
+    return { v, indices, localBounds: [...min, ...max], quads: all.length };
+  }
+  const floorMesh = mesh([
+      [
+        [0, 0, 0],
+        [1, 0, 0],
+        [1, 1, 0],
+        [0, 1, 0],
+      ],
+    ]),
+    faceMesh = faces.length ? mesh(faces) : null;
+  if (!quads.length) throw Error('The fixture needs at least one floor quad');
+  const placements = quads.map(([x0, y0, x1, y1]) => [
+    x1 - x0,
+    0,
+    0,
+    0,
+    0,
+    y1 - y0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    x0,
+    y0,
+    0,
+    1,
+  ]);
+  const quadBounds = quads.map(([x0, y0, x1, y1]) => [x0, y0, 0, x1, y1, 0]);
+  const union = (boxes) =>
+    boxes.reduce(
+      (a, b) =>
+        [0, 1, 2, 3, 4, 5].map((i) => (i < 3 ? Math.min(a[i], b[i]) : Math.max(a[i], b[i]))),
+      [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity],
+    );
+  const floorBounds = union(quadBounds),
+    bounds = union([floorBounds, ...(faceMesh ? [faceMesh.localBounds] : [])]);
   const material = {
     name: 'materials/fixture/floor.vmat',
     shader: 'csgo_complex.vfx',
@@ -126,9 +162,54 @@ export function nativeWorldPack({
     bindings: { color: [0, 0] },
   };
   const archive = vertexArchive(),
-    range = archive.encode({ v, indices, localBounds: bounds }, material);
+    floorRange = archive.encode(floorMesh, material),
+    faceRange = faceMesh && archive.encode(faceMesh, material);
+  const table = Buffer.alloc(placements.length * 64);
+  placements.forEach((placement, i) => writeInstance(table, i, placement, floorRange.attributes));
+  const indices = Buffer.concat([
+    floorMesh.indices,
+    ...(faceMesh
+      ? [
+          Buffer.from(
+            new Uint32Array(
+              new Uint32Array(
+                faceMesh.indices.buffer,
+                faceMesh.indices.byteOffset,
+                faceMesh.quads * 6,
+              ).map((index) => index + 4),
+            ).buffer,
+          ),
+        ]
+      : []),
+  ]);
+  const vertexCount = 4 + (faceMesh?.quads ?? 0) * 4,
+    indexCount = 6 + (faceMesh?.quads ?? 0) * 6;
   const vb = add(archive.finish(), 'geometry'),
-    ib = add(Buffer.from(MeshoptEncoder.encodeIndexBuffer(indices, all.length * 6, 4)), 'geometry');
+    ib = add(Buffer.from(MeshoptEncoder.encodeIndexBuffer(indices, indexCount, 4)), 'geometry'),
+    instances = { file: add(table, 'geometry'), count: placements.length };
+  const ranges = [
+    {
+      ...floorRange,
+      first: 0,
+      count: 6,
+      bounds: floorBounds,
+      material: 0,
+      entity: -1,
+      instances: [0, placements.length],
+    },
+    ...(faceMesh
+      ? [
+          {
+            ...faceRange,
+            first: 6,
+            count: faceMesh.quads * 6,
+            bounds: faceMesh.localBounds,
+            material: 0,
+            entity: -1,
+          },
+        ]
+      : []),
+  ];
   const special = (format, w, h, d, bytes, category) => ({
     file: add(bytes, category),
     format,
@@ -226,14 +307,21 @@ export function nativeWorldPack({
   const vpost = 'lighting/postprocessing/fixture.vpost';
   const value = {
     format: 'cswatch-native-world',
-    version: 3,
+    version: 4,
     map,
     sourceManifest,
     units: 'inches',
     up: 'Z',
     bounds,
     roles,
-    geometry: { stride: 60, vertices: all.length * 4, indices: all.length * 6, vb, ib },
+    geometry: {
+      stride: 60,
+      vertices: vertexCount,
+      indices: indexCount,
+      vb,
+      ib,
+      instances,
+    },
     files: records,
     chunks: [
       {
@@ -243,7 +331,7 @@ export function nativeWorldPack({
         sky: false,
         banks: roles.map((role) => (role === 'color' ? 0 : -1)),
         bounds,
-        ranges: [{ ...range, first: 0, count: all.length * 6, bounds, material: 0, entity: -1 }],
+        ranges,
       },
     ],
     materials: [

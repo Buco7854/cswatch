@@ -181,6 +181,17 @@ test('worker removes only the reviewed owned pack, preserves active file descrip
   );
 });
 
+test('a pack written in an earlier format version is still retired', async (t) => {
+  const f = await fixture(t),
+    manifest = join(f.target, 'maps/de_ancient/map.json');
+  const value = JSON.parse(await readFile(manifest, 'utf8'));
+  await writeFile(manifest, JSON.stringify({ ...value, version: value.version - 1 }));
+  assert.equal(await processOneMapRemoval(f.options), true);
+  assert.equal(await absent(join(f.target, 'pack.json')), true);
+  assert.equal(await absent(join(f.quarantine, 'maps/de_ancient/map.json')), true);
+  assert.equal((await readMapRemovalResult(f.options.jobs, f.packId)).status, 'removed');
+});
+
 test('latest deletion uses the content pack rather than queue ID and preserves exact proof for an explicit future retry', async (t) => {
   const f = await fixture(t, true);
   assert.notEqual(f.packId, f.requestId);

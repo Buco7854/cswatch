@@ -130,10 +130,11 @@ export async function createRenderer(
     const exposure = controller?.enableexposure ? Number(controller.minexposure ?? 1) : 1;
     const lut = resources.texture();
     const dimension = params.dimension;
-    const [lutPayload, indexPayload, vertexPayload] = await Promise.all([
+    const [lutPayload, indexPayload, vertexPayload, instancePayload] = await Promise.all([
       fetchAsset(params.lut),
       fetchAsset(manifest.geometry.ib),
       fetchAsset(manifest.geometry.vb),
+      manifest.geometry.instances ? fetchAsset(manifest.geometry.instances.file) : null,
       streaming.bootstrap(),
     ]);
     signal?.throwIfAborted();
@@ -232,6 +233,38 @@ export async function createRenderer(
       else gl.vertexAttribPointer(index, count, type, !!norm, geometrySpec.stride, offset);
     }
     gl.bindVertexArray(null);
+    // Instance records (four RGBA32UI texels each) are read by the vertex stage from the last
+    // combined texture unit, outside the fragment units the materials use.
+    const instanceUnit = (gl.getParameter(gl.MAX_COMBINED_TEXTURE_IMAGE_UNITS) as number) - 1;
+    const instanceColumns = Math.min(limit, 4096) & ~3;
+    const instanceWords = instancePayload
+      ? new Uint32Array(
+          instancePayload.buffer,
+          instancePayload.byteOffset,
+          instancePayload.byteLength / 4,
+        )
+      : new Uint32Array(4);
+    const instanceRows = Math.ceil(instanceWords.length / 4 / instanceColumns);
+    if (instanceRows > limit)
+      throw Error(`This device's ${limit}-pixel texture limit is below this map's instance table`);
+    const instanceTexture = resources.texture();
+    gl.bindTexture(gl.TEXTURE_2D, instanceTexture);
+    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA32UI, instanceColumns, instanceRows);
+    const instanceTexels = new Uint32Array(instanceColumns * instanceRows * 4);
+    instanceTexels.set(instanceWords);
+    gl.texSubImage2D(
+      gl.TEXTURE_2D,
+      0,
+      0,
+      0,
+      instanceColumns,
+      instanceRows,
+      gl.RGBA_INTEGER,
+      gl.UNSIGNED_INT,
+      instanceTexels,
+    );
+    for (const parameter of [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER])
+      gl.texParameteri(gl.TEXTURE_2D, parameter, gl.NEAREST);
     const hdr = resources.texture(),
       frame = gl.createFramebuffer(),
       depth = gl.createRenderbuffer();
@@ -448,6 +481,9 @@ export async function createRenderer(
           gl.uniform1i(compiled.u('slot' + slot), fixedSamplers.length + slot),
         );
         if (water) gl.uniform1i(compiled.u('sceneDepth'), fixedSamplers.length + slots.length);
+        gl.uniform1i(compiled.u('instanceData'), instanceUnit);
+        gl.uniform1i(compiled.u('instanceColumns'), instanceColumns);
+        gl.uniform1i(compiled.u('instanceBase'), -1);
         found = Object.assign(compiled, { version: -1, slots });
         variants.set(key, found);
         current = null;
@@ -662,6 +698,7 @@ export async function createRenderer(
           bind(unit.lpv, arrayTarget, env.lpv);
           if (tier === 'desktop') bind(unit.lpvShadow, arrayTarget, env.shadow);
           bind(unit.sceneData, gl.TEXTURE_2D, env.data);
+          bind(instanceUnit, gl.TEXTURE_2D, instanceTexture);
           uniform('uniform1i', 'probeBase', env.probeBase);
           uniform('uniform1f', 'nearFade', options.nearFade ?? 0);
           uniform('uniformMatrix4fv', 'inverseViewProjection', false, inverseViewProjection);
@@ -681,6 +718,7 @@ export async function createRenderer(
             family: string;
             entity?: number;
             list: { first: number; count: number }[];
+            instanced: { first: number; count: number; instances: [number, number] }[];
           };
           const groups: Group[] = [],
             opaqueGroups = new Map<string, Group>();
@@ -731,11 +769,12 @@ export async function createRenderer(
               }
               let group = opaqueGroups.get(key);
               if (!group) {
-                group = { ...chunk, entity: placed, list: [] };
+                group = { ...chunk, entity: placed, list: [], instanced: [] };
                 opaqueGroups.set(key, group);
                 groups.push(group);
               }
-              append(group, range.first, range.count);
+              if (range.instances) group.instanced.push(range as Group['instanced'][number]);
+              else append(group, range.first, range.count);
             }
           }
           byDepth.sort((a, b) => a.depth - b.depth || a.first - b.first);
@@ -744,12 +783,13 @@ export async function createRenderer(
               ...batch[0].chunk,
               entity: batch[0].chunk.ranges[0].entity,
               list: [],
+              instanced: [],
             };
             groups.push(group);
             for (const range of batch) append(group, range.first, range.count);
           }
-          for (const { side, family, banks, list, entity } of groups) {
-            if (!list.length) continue;
+          for (const { side, family, banks, list, instanced, entity } of groups) {
+            if (!list.length && !instanced.length) continue;
             uniform(
               'uniformMatrix4fv',
               'entityTransform',
@@ -775,7 +815,7 @@ export async function createRenderer(
               multiCounts[i] = count;
               triangles += count / 3;
             }
-            if (ext) {
+            if (ext && list.length) {
               ext.multiDrawElementsWEBGL(
                 gl.TRIANGLES,
                 multiCounts,
@@ -791,6 +831,22 @@ export async function createRenderer(
                 gl.drawElements(gl.TRIANGLES, range.count, gl.UNSIGNED_INT, range.first * 4);
                 draws++;
               }
+            if (instanced.length) {
+              const base = current!.u('instanceBase');
+              for (const { first, count, instances } of instanced) {
+                gl.uniform1i(base, instances[0]);
+                gl.drawElementsInstanced(
+                  gl.TRIANGLES,
+                  count,
+                  gl.UNSIGNED_INT,
+                  first * 4,
+                  instances[1],
+                );
+                triangles += (count / 3) * instances[1];
+                draws++;
+              }
+              gl.uniform1i(base, -1);
+            }
           }
         }
       }
@@ -852,7 +908,7 @@ export async function createRenderer(
       updateEntity,
       displayScale,
       environments,
-      geometry: { vertices, indices },
+      geometry: { vertices, indices, instances: instancePayload },
       dispose() {
         signal?.removeEventListener('abort', abort);
         resources.dispose();

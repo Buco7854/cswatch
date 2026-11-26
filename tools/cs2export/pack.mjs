@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
 import { MeshoptEncoder } from '../../frontend/node_modules/meshoptimizer/meshopt_encoder.js';
 import { geometry, modelTriangles, stride } from './geometry.mjs';
+import { instanceBytes, instanceKey, placementAttributes, writeInstance } from './instances.mjs';
 import { vertexArchive } from './quantize.mjs';
 import { simplifierReady, simplifyRange } from './simplify.mjs';
 import { packFiles, packPayload } from './pack-files.mjs';
@@ -68,7 +69,8 @@ const MiB = 1024 ** 2;
 // measures every payload with the writer's packing, so it keeps 5% below 95.4 MiB for paging.
 const desktopBudget = 91 * MiB,
   geometryAllowance = 0.45 * 64.5 * MiB,
-  bytesPerTriangle = 8.5;
+  bytesPerTriangle = 8.5,
+  bytesPerInstance = 24;
 const roles = {
   color: ['g_tColor', 'g_tColor1', 'g_tGlassTintColor'],
   normal: ['g_tLayer1NormalRoughness', 'g_tNormal', 'g_tNormal1'],
@@ -97,30 +99,50 @@ const simplifiable = (range) =>
   range.indices.length / 12 >= 256 &&
   !materialList[range.mat]?.shader.includes('foliage');
 // Pass one decodes every range once to measure texel density and triangle counts; nothing is
-// retained, so any world fits in bounded memory.
+// retained, so any world fits in bounded memory. Repeated local geometry is resident once and
+// drawn instanced, so the geometry estimate counts resident triangles and one instance record per
+// further copy (64 bytes, about 24 after deflate).
 const density = new Map(),
   instances = new Map(),
-  coarse = new Set();
+  coarse = new Set(),
+  seen = new Set(),
+  modelResident = new Map();
 let fineTriangles = 0,
-  fineSimplifiable = 0;
+  fineSimplifiable = 0,
+  copies = 0;
 geometry(scene, read, materialId, density, new Set(), instances, (range) => {
   const count = range.indices.length / 12;
+  const key = instanceKey(range);
+  if (key && seen.has(key)) {
+    copies++;
+    return;
+  }
+  if (key) seen.add(key);
   fineTriangles += count;
   if (simplifiable(range)) fineSimplifiable += count;
+  if (range.whole) modelResident.set(range.model, (modelResident.get(range.model) ?? 0) + count);
 });
+seen.clear();
 clearCache();
+const geometryBytes = (triangles) => triangles * bytesPerTriangle + copies * bytesPerInstance;
 let estimate = fineTriangles;
-if (estimate * bytesPerTriangle > geometryAllowance) {
-  // The placements whose coarser LOD saves the most triangles switch first.
-  const savings = [...instances]
-    .map(([name, count]) => {
+if (geometryBytes(estimate) > geometryAllowance) {
+  // The models whose coarser LOD saves the most resident triangles switch first.
+  const savings = [...instances.keys()]
+    .map((name) => {
       const t = modelTriangles(scene.models[name]);
-      return { name, saving: t.coarse === undefined ? 0 : count * (t.fine - t.coarse) };
+      return {
+        name,
+        saving:
+          t.coarse === undefined || !t.fine
+            ? 0
+            : ((modelResident.get(name) ?? 0) * (t.fine - t.coarse)) / t.fine,
+      };
     })
     .filter((s) => s.saving > 0)
     .sort((a, b) => b.saving - a.saving);
   for (const { name, saving } of savings) {
-    if (estimate * bytesPerTriangle <= geometryAllowance) break;
+    if (geometryBytes(estimate) <= geometryAllowance) break;
     coarse.add(name);
     estimate -= saving;
   }
@@ -130,11 +152,12 @@ if (estimate * bytesPerTriangle > geometryAllowance) {
 // (MAE 0.34) while 8 inches bent window frames, so geometry that still exceeds the allowance stays
 // over budget. Borders stay locked so neighbouring ranges and lightmap seams keep meeting.
 const fixedTriangles = estimate - fineSimplifiable * (estimate / fineTriangles);
-const simplifyError = estimate * bytesPerTriangle > geometryAllowance ? 2 : 0;
+const simplifyError = geometryBytes(estimate) > geometryAllowance ? 2 : 0;
 const ratio = simplifyError
   ? Math.max(
       0.05,
-      (geometryAllowance / bytesPerTriangle - fixedTriangles) / (estimate - fixedTriangles),
+      ((geometryAllowance - copies * bytesPerInstance) / bytesPerTriangle - fixedTriangles) /
+        (estimate - fixedTriangles),
     )
   : 1;
 if (simplifyError) await simplifierReady;
@@ -168,8 +191,10 @@ const encodeMaterials = materialList.map((material) => ({
 }));
 await MeshoptEncoder.ready;
 const archive = vertexArchive();
-const records = [];
+const records = [],
+  meshes = new Map();
 let triangles = 0,
+  placedTriangles = 0,
   retainedIndexBytes = 0;
 const { entities, environments } = geometry(
   scene,
@@ -179,6 +204,21 @@ const { entities, environments } = geometry(
   coarse,
   new Map(),
   (range) => {
+    overview?.add(range);
+    // Simplification is deterministic, so a copy of a resident mesh only adds an instance.
+    const key = instanceKey(range);
+    const instance = {
+      placement: range.placement,
+      attributes: placementAttributes(range.v),
+      bounds: range.bounds,
+      cell: range.cell,
+    };
+    const resident = key && meshes.get(key);
+    if (resident) {
+      resident.instances.push(instance);
+      placedTriangles += resident.indices.length / 12;
+      return;
+    }
     if (simplifyError && simplifiable(range)) {
       const count = range.indices.length / 4;
       const indices = new Uint32Array(count);
@@ -196,12 +236,12 @@ const { entities, environments } = geometry(
         range.indices = out;
       }
     }
-    overview?.add(range);
     const count = range.indices.length / 4;
     triangles += count / 3;
+    placedTriangles += count / 3;
     retainedIndexBytes += range.indices.length;
     if (retainedIndexBytes > 512 * 1024 ** 2) throw Error('Geometry exceeds retained index budget');
-    records.push({
+    const record = {
       sky: range.sky,
       family: range.family,
       side: range.side,
@@ -214,9 +254,13 @@ const { entities, environments } = geometry(
       vertices: range.v.length / stride,
       indices: range.indices,
       vertexData: archive.encode(range, encodeMaterials[range.mat]),
-    });
+      instances: key ? [instance] : null,
+    };
+    if (key) meshes.set(key, record);
+    records.push(record);
   },
 );
+meshes.clear();
 clearCache();
 const simplified = estimate - triangles > 0 && simplifyError ? estimate - triangles : 0;
 if (overview) {
@@ -443,16 +487,42 @@ for (const r of records) {
     batch = { sky: r.sky, family: r.family, side: r.side, banks: bankIds, cells: new Map() };
     batches.set(key, batch);
   }
-  const keyCell = r.entityIndex < 0 ? r.cell : 'entity/' + r.entityIndex;
-  if (!batch.cells.has(keyCell)) batch.cells.set(keyCell, []);
-  batch.cells.get(keyCell).push(r);
+  const add = (keyCell, entry) => {
+    if (!batch.cells.has(keyCell)) batch.cells.set(keyCell, []);
+    batch.cells.get(keyCell).push(entry);
+  };
+  if ((r.instances?.length ?? 0) < 2)
+    add(r.entityIndex < 0 ? r.cell : 'entity/' + r.entityIndex, r);
+  else {
+    // An instanced mesh is drawn per spatial cell, so frustum culling keeps working per cell.
+    const cells = new Map();
+    for (const instance of r.instances) {
+      if (!cells.has(instance.cell)) cells.set(instance.cell, []);
+      cells.get(instance.cell).push(instance);
+    }
+    for (const [cell, list] of cells) {
+      const bounds = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
+      for (const { bounds: b } of list)
+        for (let j = 0; j < 3; j++) {
+          bounds[j] = Math.min(bounds[j], b[j]);
+          bounds[j + 3] = Math.max(bounds[j + 3], b[j + 3]);
+        }
+      add(cell, { mesh: r, instanced: list, bounds });
+    }
+  }
 }
 const indices = [],
   chunks = [];
+const instanceCount = records.reduce(
+  (n, r) => n + ((r.instances?.length ?? 0) > 1 ? r.instances.length : 0),
+  0,
+);
+const instanceTable = Buffer.alloc(instanceCount * instanceBytes);
 let first = 0,
-  base = 0;
+  base = 0,
+  nextInstance = 0;
 for (const batch of batches.values()) {
-  for (const [cell, rs] of batch.cells) {
+  for (const [cell, entries] of batch.cells) {
     const chunk = {
       cell,
       sky: batch.sky,
@@ -463,46 +533,69 @@ for (const batch of batches.values()) {
       bounds: [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity],
     };
     chunks.push(chunk);
-    for (const r of rs) {
-      const count = r.indices.length / 4;
-      for (let i = 0; i < count; i++)
-        r.indices.writeUInt32LE(r.indices.readUInt32LE(i * 4) + base, i * 4);
-
-      indices.push(r.indices);
-      chunk.ranges.push({
+    for (const entry of entries) {
+      const r = entry.mesh ?? entry,
+        count = r.indices.length / 4;
+      // A mesh's vertices and indices are stored at its first range; its other cells reuse them.
+      if (r.first === undefined) {
+        for (let i = 0; i < count; i++)
+          r.indices.writeUInt32LE(r.indices.readUInt32LE(i * 4) + base, i * 4);
+        indices.push(r.indices);
+        r.first = first;
+        first += count;
+        base += r.vertices;
+      }
+      const range = {
         ...r.vertexData,
-        first,
+        first: r.first,
         count,
-        bounds: r.bounds,
+        bounds: entry.bounds,
         material: r.mat,
         entity: r.entityIndex,
         cubeHandshake: r.cubeHandshake,
         probeHandshake: r.probeHandshake,
-      });
-      for (let j = 0; j < 3; j++) {
-        chunk.bounds[j] = Math.min(chunk.bounds[j], r.bounds[j]);
-        chunk.bounds[j + 3] = Math.max(chunk.bounds[j + 3], r.bounds[j + 3]);
+      };
+      if (entry.instanced) {
+        // Each instance supplies its own placement, cubemap, probe volume and tint.
+        delete range.placement;
+        range.instances = [nextInstance, entry.instanced.length];
+        for (const instance of entry.instanced)
+          writeInstance(instanceTable, nextInstance++, instance.placement, instance.attributes);
       }
-      first += count;
-      base += r.vertices;
+      chunk.ranges.push(range);
+      for (let j = 0; j < 3; j++) {
+        chunk.bounds[j] = Math.min(chunk.bounds[j], entry.bounds[j]);
+        chunk.bounds[j + 3] = Math.max(chunk.bounds[j + 3], entry.bounds[j + 3]);
+      }
     }
   }
 }
 const vb = store(archive.finish(), 'geometry');
+const instanceFile = instanceCount ? store(instanceTable, 'geometry') : null;
 const ib = store(MeshoptEncoder.encodeIndexBuffer(Buffer.concat(indices), first, 4), 'geometry');
 const bounds = scene.worlds[`maps/${scene.map}`].bounds[0];
 const manifest = {
   format: 'cswatch-native-world',
-  version: 3,
+  version: 4,
   map: scene.map,
   sourceManifest: scene.manifest,
   units: 'inches',
   up: 'Z',
   bounds: [...bounds.m_vMinBounds, ...bounds.m_vMaxBounds],
   roles: Object.keys(roles),
-  geometry: { vb, ib, stride, vertices: base, indices: first },
+  geometry: {
+    vb,
+    ib,
+    stride,
+    vertices: base,
+    indices: first,
+    instances: instanceFile ? { file: instanceFile, count: instanceCount } : null,
+  },
   counts: {
-    drawRanges: records.length,
+    drawRanges: chunks.reduce((n, chunk) => n + chunk.ranges.length, 0),
+    meshes: records.length,
+    instances: instanceCount,
+    placedTriangles: Math.round(placedTriangles),
     chunks: chunks.length,
     triangles: first / 3,
     materials: mats.length,
@@ -524,6 +617,8 @@ const manifest = {
     triangles: Math.round(triangles),
     simplifiedTriangles: Math.round(simplified),
     fineTriangles: Math.round(fineTriangles),
+    placedTriangles: Math.round(placedTriangles),
+    instancedCopies: copies,
   },
   unsupported: [
     'Frustum culling only. Decoded PVS is exported separately.',

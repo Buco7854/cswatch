@@ -16,6 +16,11 @@ layout(location = 10) in vec4 tint;
 uniform mat4 viewProjection;
 uniform mat4 entityTransform;
 uniform vec2 lightScale;
+// Instanced meshes (SceneAggregate in VRF) read their placement, cubemap, probe volume and tint
+// from four texels per instance; other draws use -1 and their vertex attributes.
+uniform int instanceBase;
+uniform int instanceColumns;
+uniform highp usampler2D instanceData;
 out vec3 worldPosition;
 out vec3 vertexNormal;
 out vec4 vertexTangent;
@@ -26,20 +31,38 @@ out vec4 drawTint;
 out vec2 lightmapUv;
 out vec2 chartNoise;
 flat out ivec4 binding;
+uvec4 instanceTexel(int texel) {
+  return texelFetch(instanceData, ivec2(texel % instanceColumns, texel / instanceColumns), 0);
+}
 void main() {
-  worldPosition = (entityTransform * vec4(pos,1.)).xyz;
-  vertexNormal = mat3(entityTransform) * normal;
-  vertexTangent = vec4(mat3(entityTransform) * tangent.xyz,tangent.w);
+  uvec2 objectIds = ids;
+  uint objectLpv = lpvId;
+  drawTint = tint;
+  if (instanceBase >= 0) {
+    int texel = (instanceBase + gl_InstanceID) * 4;
+    uvec4 r0 = instanceTexel(texel), r1 = instanceTexel(texel + 1), r2 = instanceTexel(texel + 2);
+    uvec4 lighting = instanceTexel(texel + 3);
+    mat4 placement = transpose(mat4(uintBitsToFloat(r0), uintBitsToFloat(r1), uintBitsToFloat(r2), vec4(0., 0., 0., 1.)));
+    worldPosition = (placement * vec4(pos, 1.)).xyz;
+    vertexNormal = normalize(transpose(inverse(mat3(placement))) * normal);
+    vertexTangent = vec4(normalize(mat3(placement) * tangent.xyz), tangent.w);
+    objectIds.y = lighting.x & 0xffffu;
+    objectLpv = lighting.x >> 16u;
+    drawTint = vec4((uvec4(lighting.y) >> uvec4(0u, 8u, 16u, 24u)) & 0xffu) / 255.;
+  } else {
+    worldPosition = (entityTransform * vec4(pos,1.)).xyz;
+    vertexNormal = mat3(entityTransform) * normal;
+    vertexTangent = vec4(mat3(entityTransform) * tangent.xyz,tangent.w);
+  }
   textureCoords = vec4(uv, uv2);
   vertexColor = paint;
   blendColor = blend;
-  drawTint = tint;
   uvec2 bits = floatBitsToUint(lightUv);
   bits ^= bits << 13u;
   bits ^= bits >> 17u;
   bits ^= bits << 5u;
   chartNoise = (uintBitsToFloat(0x3F800000u | (bits >> 9u)) - 1.) * 65535.;
   lightmapUv = lightUv * lightScale;
-  binding = ivec4(ids, baked, lpvId);
+  binding = ivec4(objectIds, baked, objectLpv);
   gl_Position = viewProjection * vec4(worldPosition, 1.);
 }

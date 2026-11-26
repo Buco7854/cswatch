@@ -13,12 +13,12 @@ function manifest() {
   const bounds = [0, 0, 0, 1, 1, 1];
   return {
     format: 'cswatch-native-world',
-    version: 3,
+    version: 4,
     units: 'inches',
     up: 'Z',
     bounds,
     roles: ['color'],
-    geometry: { stride: 60, vertices: 3, indices: 3, vb: file, ib: file },
+    geometry: { stride: 60, vertices: 3, indices: 3, vb: file, ib: file, instances: null },
     files: {
       [file]: { size: 8, sha256: hash, category: 'textures' },
       [phoneFile]: { size: 16, sha256: phoneHash, category: 'textures' },
@@ -79,7 +79,7 @@ for (const [name, mutate, error] of [
   ['version', (m) => m.version++, /format/],
   ['path traversal', (m) => (m.files['../texture.bin'] = m.files[file]), /file/],
   ['decoded budget', (m) => (m.geometry.vertices = 2 ** 30), /budget/],
-  ['overlapping ranges', (m) => m.chunks[0].ranges.push(m.chunks[0].ranges[0]), /draw range/],
+  ['overlapping ranges', (m) => m.chunks[0].ranges.push(m.chunks[0].ranges[0]), /shared mesh/],
   ['index gap', (m) => (m.chunks[0].ranges = []), /coverage/],
   ['bounds order', (m) => (m.bounds[0] = 2), /bounds/],
   ['missing entity', (m) => (m.chunks[0].ranges[0].entity = 0), /range/],
@@ -98,7 +98,7 @@ test('response integrity and bounded streaming', async (t) => {
   const dir = new URL('https://example.invalid/'),
     m = manifest();
   const fake = t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify(m)));
-  assert.equal((await loadManifest(dir)).version, 3);
+  assert.equal((await loadManifest(dir)).version, 4);
   fake.mock.mockImplementation(async () => new Response(payload));
   assert.deepEqual(await readAsset(dir, m, file), payload);
   fake.mock.mockImplementation(async () => new Response(new Uint8Array(8).fill(255)));
@@ -141,6 +141,37 @@ test('topology prediction survives triangle rotation and unsigned arithmetic wra
     assert.deepEqual(words, values);
   }
 });
+// One mesh drawn in two cells: its second range reuses the stored indices and vertices.
+function instanced() {
+  const m = manifest();
+  const instancePayload = new Uint8Array(3 * 64),
+    instanceHash = createHash('sha256').update(instancePayload).digest('hex');
+  m.files[instanceHash + '.bin'] = { size: 3 * 64, sha256: instanceHash, category: 'geometry' };
+  m.geometry.instances = { file: instanceHash + '.bin', count: 3 };
+  const range = m.chunks[0].ranges[0];
+  range.instances = [0, 2];
+  m.chunks.push({ ...m.chunks[0], ranges: [{ ...range, instances: [2, 1] }] });
+  return m;
+}
+test('instanced meshes share stored geometry across cells', () => assert.ok(validate(instanced())));
+for (const [name, mutate, error] of [
+  ['reused range without instances', (m) => delete m.chunks[1].ranges[0].instances, /shared mesh/],
+  ['instance window gap', (m) => (m.chunks[1].ranges[0].instances = [1, 2]), /instance window/],
+  ['uncovered instances', (m) => (m.chunks[1].ranges[0].instances = [2, 0]), /instance window/],
+  [
+    'placed instanced range',
+    (m) => (m.chunks[0].ranges[0].placement = new Array(16).fill(0)),
+    /instance window/,
+  ],
+  ['entity instance', (m) => (m.chunks[0].ranges[0].entity = 0), /instance window/],
+  ['instance table size', (m) => (m.geometry.instances.count = 4), /budget/],
+  ['shared mesh extent', (m) => (m.chunks[1].ranges[0].count = 6), /shared mesh/],
+])
+  test('rejects ' + name, () => {
+    const m = instanced();
+    mutate(m);
+    assert.throws(() => validate(m), error);
+  });
 test('mip pages require complete block rows inside verified payloads', () => {
   const m = manifest(),
     mip = m.arrays[0].mips[0];

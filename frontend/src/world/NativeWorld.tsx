@@ -90,7 +90,12 @@ export function NativeWorld({
       register({
         manifest,
         native,
-        queries: worldQueries(manifest, native.geometry.vertices, native.geometry.indices),
+        queries: worldQueries(
+          manifest,
+          native.geometry.vertices,
+          native.geometry.indices,
+          native.geometry.instances,
+        ),
       });
       loaded(url, 'ready', sun);
       invalidate();

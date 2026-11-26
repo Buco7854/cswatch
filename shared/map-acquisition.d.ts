@@ -46,7 +46,7 @@ export type ApprovedMapEntry = {
 };
 export type MapCatalog = { schemaVersion: 1; entries: ApprovedMapEntry[] };
 type MapJobIdentity = {
-  schemaVersion: 10;
+  schemaVersion: 11;
   /** Queue identity. Latest jobs acquire a separate content pack ID after download. */
   packId: string;
   /** Server-issued retry generation, deliberately independent of pack identity. */

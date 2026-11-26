@@ -6,7 +6,6 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
-import { validate } from '../../shared/native-world-format.mjs';
 import { regular } from './asset-storage.mjs';
 import {
   mapQueueIds,
@@ -41,6 +40,24 @@ export function managedMapPaths(map, payloads = {}) {
     directories: new Set(['maps', world, 'maps/overviews', `maps/overviews/${map}`]),
   };
 }
+// Removal reads only a pack's identity and file table, so a pack written in an earlier format
+// version can still be retired and prepared again after an upgrade.
+function removableManifest(value) {
+  const files = value?.files;
+  if (
+    value?.format !== 'cswatch-native-world' ||
+    typeof value.map !== 'string' ||
+    !files ||
+    typeof files !== 'object' ||
+    Object.keys(files).length > 8192 ||
+    Object.entries(files).some(
+      ([name, record]) =>
+        !/^[0-9a-f]{64}\.bin$/.test(name) || !record || typeof record !== 'object',
+    )
+  )
+    throw Error('Unknown native world pack.');
+  return value;
+}
 /** Every recursion is descriptor-relative; neither preflight nor deletion follows
  * a child link. Foreign entries, hardlinks and special files fail closed. */
 async function walk(
@@ -67,7 +84,7 @@ async function walk(
     const manifest = await regularFile(directory, 'map.json', 2, 16 * 1024 ** 2);
     if (!manifest) throw Error('Unsafe map manifest.');
     try {
-      const value = validate(
+      const value = removableManifest(
         JSON.parse(await bytesFrom(manifest, (await manifest.stat()).size, 16 * 1024 ** 2)),
       );
       if (value.map !== allowed.map) throw Error('Map removal identity differs.');

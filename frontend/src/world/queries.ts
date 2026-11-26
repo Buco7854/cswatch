@@ -9,7 +9,8 @@ import {
   Vector3,
 } from 'three';
 import { MeshBVH, CENTER } from 'three-mesh-bvh';
-import type { Manifest } from './format';
+import type { Manifest, Range } from './format';
+import { meshBases } from './geometry';
 import type { FollowCamera } from '../follow-camera';
 import { sourceToViewer } from './space';
 
@@ -32,51 +33,100 @@ interface Node {
   right?: Node;
   parent?: Node;
 }
-export function worldQueries(manifest: Manifest, vertices: Uint8Array, indices: Uint32Array) {
+export function worldQueries(
+  manifest: Manifest,
+  vertices: Uint8Array,
+  indices: Uint32Array,
+  instanceTable?: Uint8Array | null,
+) {
   const floats = new Float32Array(vertices.buffer, vertices.byteOffset, vertices.byteLength / 4);
-  let vertex = 0;
+  const bases = meshBases(manifest);
   const leaves: Leaf[] = [],
     placements = new Map<number, Node[]>();
-  for (const chunk of manifest.chunks) {
-    const base = vertex;
-    for (const range of chunk.ranges) vertex += range.vertices;
-    // Follow, ground and impact queries use solid opaque triangles.
-    if (chunk.sky || chunk.family !== 'opaque' || !chunk.ranges.length) continue;
-    const first = chunk.ranges[0].first,
-      last = chunk.ranges.at(-1)!;
-    const position = new Float32Array((vertex - base) * 3),
+  const options = { strategy: CENTER, indirect: true } as const;
+  // Source-space positions of the given ranges in viewer space, with indices local to them.
+  function tree(ranges: Range[]) {
+    let total = 0,
+      triangles = 0;
+    for (const range of ranges) {
+      total += range.vertices;
+      triangles += range.count;
+    }
+    const position = new Float32Array(total * 3),
+      local = new Uint32Array(triangles),
+      materials = new Uint16Array(triangles / 3),
       point = new Vector3();
-    for (let i = base; i < vertex; i++)
-      point
-        .fromArray(floats, i * 15)
-        .applyMatrix4(sourceToViewer)
-        .toArray(position, (i - base) * 3);
-    const local = indices.slice(first, last.first + last.count);
-    for (let i = 0; i < local.length; i++) local[i] -= base;
+    let vertex = 0,
+      index = 0;
+    for (const range of ranges) {
+      const base = bases.get(range.first)!;
+      for (let i = 0; i < range.vertices; i++)
+        point
+          .fromArray(floats, (base + i) * 15)
+          .applyMatrix4(sourceToViewer)
+          .toArray(position, (vertex + i) * 3);
+      for (let i = 0; i < range.count; i++)
+        local[index + i] = indices[range.first + i] - base + vertex;
+      materials.fill(range.material, index / 3, (index + range.count) / 3);
+      vertex += range.vertices;
+      index += range.count;
+    }
     const geometry = new BufferGeometry();
     geometry.setAttribute('position', new BufferAttribute(position, 3));
     geometry.setIndex(new BufferAttribute(local, 1));
-    const materials = new Uint16Array(local.length / 3);
-    for (const range of chunk.ranges)
-      materials.fill(
-        range.material,
-        (range.first - first) / 3,
-        (range.first - first + range.count) / 3,
-      );
-    const options = { strategy: CENTER, indirect: true } as const;
-    const tree = new MeshBVH(geometry, options);
-    const authored = tree.getBoundingBox(new Box3()),
-      entity = chunk.ranges[0].entity;
+    const bvh = new MeshBVH(geometry, options);
+    return { tree: bvh, materials, authored: bvh.getBoundingBox(new Box3()) };
+  }
+  function leaf(shape: ReturnType<typeof tree>, entity: number, transform = new Matrix4()) {
     leaves.push({
+      ...shape,
       entity,
-      authored,
-      bounds: authored.clone(),
-      tree,
-      materials,
+      bounds: shape.authored.clone().applyMatrix4(transform),
       visible: entity < 0 || manifest.entities[entity].initialVisibility,
-      transform: new Matrix4(),
-      inverse: new Matrix4(),
+      transform,
+      inverse: transform.clone().invert(),
     });
+  }
+  // Follow, ground and impact queries use solid opaque triangles. An instanced mesh has one tree
+  // shared by a leaf per instance, placed in viewer space.
+  const shared = new Map<number, ReturnType<typeof tree>>();
+  const instances = instanceTable
+    ? new Float32Array(instanceTable.buffer, instanceTable.byteOffset, instanceTable.byteLength / 4)
+    : null;
+  const viewerToSource = sourceToViewer.clone().invert(),
+    placement = new Matrix4();
+  for (const chunk of manifest.chunks) {
+    if (chunk.sky || chunk.family !== 'opaque' || !chunk.ranges.length) continue;
+    const plain = chunk.ranges.filter((range) => !range.instances);
+    if (plain.length) leaf(tree(plain), chunk.ranges[0].entity);
+    for (const range of chunk.ranges) {
+      if (!range.instances || !instances) continue;
+      let shape = shared.get(range.first);
+      if (!shape) shared.set(range.first, (shape = tree([range])));
+      for (let i = range.instances[0]; i < range.instances[0] + range.instances[1]; i++) {
+        // Rows of the 3x4 source-space transform.
+        const r = instances.subarray(i * 16, i * 16 + 12);
+        placement.set(
+          r[0],
+          r[1],
+          r[2],
+          r[3],
+          r[4],
+          r[5],
+          r[6],
+          r[7],
+          r[8],
+          r[9],
+          r[10],
+          r[11],
+          0,
+          0,
+          0,
+          1,
+        );
+        leaf(shape, -1, sourceToViewer.clone().multiply(placement).multiply(viewerToSource));
+      }
+    }
   }
   function build(items: Leaf[], parent?: Node): Node {
     const node: Node = { bounds: new Box3(), parent };
@@ -191,14 +241,18 @@ export function worldQueries(manifest: Manifest, vertices: Uint8Array, indices: 
     };
   }
   function nearby(origin: Vector3, radius: number, accept: (triangle: Triangle) => void) {
-    const triangle = new Triangle();
-    for (const leaf of leaves) {
-      if (
-        !leaf.visible ||
-        leaf.authored.clone().applyMatrix4(leaf.transform).distanceToPoint(origin) > radius
-      )
-        continue;
-      const center = origin.clone().applyMatrix4(leaf.inverse);
+    const triangle = new Triangle(),
+      center = new Vector3();
+    function visit(node: Node) {
+      if (node.bounds.distanceToPoint(origin) > radius) return;
+      const leaf = node.leaf;
+      if (!leaf) {
+        if (node.left) visit(node.left);
+        if (node.right) visit(node.right);
+        return;
+      }
+      if (!leaf.visible) return;
+      center.copy(origin).applyMatrix4(leaf.inverse);
       leaf.tree.shapecast({
         intersectsBounds: (bounds) => bounds.distanceToPoint(center) <= radius,
         intersectsTriangle: (face) => {
@@ -209,6 +263,7 @@ export function worldQueries(manifest: Manifest, vertices: Uint8Array, indices: 
         },
       });
     }
+    visit(root);
   }
   return {
     hit,

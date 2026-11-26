@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 /** Bump to invalidate incompatible worker output without touching operator assets. */
 export const preparerRevision = 2 as const;
-export const mapPreparerRevision = 10 as const;
+export const mapPreparerRevision = 11 as const;
 export const presentationDirectory = `presentation-v${preparerRevision}`;
 
 const MiB = 1024 ** 2;

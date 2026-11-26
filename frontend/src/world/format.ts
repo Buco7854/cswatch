@@ -43,6 +43,8 @@ export interface Range {
   uvBounds: number[];
   positionGrid: number[];
   placement?: number[];
+  /** First instance and count in `geometry.instances`; the range's mesh is shared and unplaced. */
+  instances?: [number, number];
   streams: ([number, number, number] | null)[];
   attributes: number[];
 }
@@ -76,7 +78,15 @@ export interface Manifest {
   roles: string[];
   bounds: number[];
   visibility: { file: string; clusters: number } | null;
-  geometry: { vb: string; ib: string; stride: number; indices: number; vertices: number };
+  geometry: {
+    vb: string;
+    ib: string;
+    stride: number;
+    indices: number;
+    vertices: number;
+    /** 64-byte records: a 3x4 row-major transform, cubemap | probe volume << 16, tint, zeros. */
+    instances: { file: string; count: number } | null;
+  };
   files: Record<
     string,
     { sha256: string; size: number; category: string; decodedSize?: number; packing?: number }

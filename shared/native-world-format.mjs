@@ -71,7 +71,7 @@ export function validate(value) {
   if (
     !m ||
     m.format !== 'cswatch-native-world' ||
-    m.version !== 3 ||
+    m.version !== 4 ||
     m.units !== 'inches' ||
     m.up !== 'Z' ||
     !box(m.bounds)
@@ -104,7 +104,12 @@ export function validate(value) {
     !bounded(g.indices, 40000000) ||
     g.indices % 3 ||
     !m.files[g.vb] ||
-    !m.files[g.ib]
+    !m.files[g.ib] ||
+    (g.instances !== null &&
+      (!bounded(g.instances?.count, 4000000) ||
+        !g.instances.count ||
+        (m.files[g.instances.file]?.decodedSize ?? m.files[g.instances.file]?.size) !==
+          g.instances.count * 64))
   )
     throw Error('Invalid geometry budget');
   if (
@@ -121,8 +126,12 @@ export function validate(value) {
     m.roles.length > 32
   )
     throw Error('Invalid scene table');
+  // Each mesh's indices and vertices are stored once, in order; an instanced mesh's further
+  // ranges (one per spatial cell) reuse them with consecutive windows of the instance table.
   let next = 0,
-    vertices = 0;
+    vertices = 0,
+    instances = 0;
+  const meshes = new Map();
   for (const c of m.chunks) {
     if (
       !box(c.bounds) ||
@@ -133,6 +142,31 @@ export function validate(value) {
     )
       throw Error('Invalid chunk');
     for (const r of c.ranges) {
+      const instanced = r.instances !== undefined;
+      if (
+        instanced &&
+        (!vec(r.instances, 2) ||
+          r.instances[0] !== instances ||
+          !bounded(r.instances[1], (g.instances?.count ?? 0) - instances) ||
+          !r.instances[1] ||
+          r.entity !== -1 ||
+          r.placement !== undefined)
+      )
+        throw Error('Invalid instance window');
+      const mesh = meshes.get(r.first);
+      if (mesh) {
+        if (
+          !instanced ||
+          !mesh.instanced ||
+          mesh.count !== r.count ||
+          mesh.vertices !== r.vertices ||
+          mesh.material !== r.material ||
+          !box(r.bounds)
+        )
+          throw Error('Invalid shared mesh');
+        instances += r.instances[1];
+        continue;
+      }
       if (
         r.first !== next ||
         !bounded(r.count, g.indices - next) ||
@@ -163,11 +197,19 @@ export function validate(value) {
         )
       )
         throw Error('Invalid vertex streams');
+      meshes.set(r.first, {
+        count: r.count,
+        vertices: r.vertices,
+        material: r.material,
+        instanced,
+      });
+      if (instanced) instances += r.instances[1];
       vertices += r.vertices;
       next += r.count;
     }
   }
-  if (next !== g.indices || vertices !== g.vertices) throw Error('Incomplete index coverage');
+  if (next !== g.indices || vertices !== g.vertices || instances !== (g.instances?.count ?? 0))
+    throw Error('Incomplete index coverage');
   let gpuBytes = 0;
   for (const texture of [...m.arrays, ...Object.values(m.specials)]) {
     validateTexture(texture, m);

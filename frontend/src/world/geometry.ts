@@ -12,6 +12,8 @@ export function decodeVertices(manifest: Manifest, compressed: Uint8Array, indic
     shorts = new Uint16Array(output.buffer),
     words = new Uint32Array(output.buffer);
   let vertex = 0;
+  // An instanced mesh is decoded once, at its first range; its other ranges reuse it.
+  const decoded = new Set<number>();
   function decode(
     stream: Range['streams'][number],
     count: number,
@@ -55,6 +57,8 @@ export function decodeVertices(manifest: Manifest, compressed: Uint8Array, indic
   }
   for (const chunk of manifest.chunks)
     for (const range of chunk.ranges) {
+      if (decoded.has(range.first)) continue;
+      decoded.add(range.first);
       const { vertices: count, streams, attributes, positionGrid, uvBounds } = range;
       const placement = range.placement;
       const matrix = placement ? new Matrix4().fromArray(placement) : null;
@@ -100,4 +104,17 @@ export function decodeVertices(manifest: Manifest, compressed: Uint8Array, indic
       }
     }
   return output;
+}
+
+/** Each stored mesh's first decoded vertex, keyed by its first index. */
+export function meshBases(manifest: Manifest) {
+  const bases = new Map<number, number>();
+  let vertex = 0;
+  for (const chunk of manifest.chunks)
+    for (const range of chunk.ranges)
+      if (!bases.has(range.first)) {
+        bases.set(range.first, vertex);
+        vertex += range.vertices;
+      }
+  return bases;
 }

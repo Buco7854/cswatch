@@ -384,6 +384,8 @@ export function geometry(
             side: !!mat.ints.F_RENDER_BACKFACES,
             sky,
             entityIndex,
+            model: name,
+            whole: fragment === null,
             localBounds: [...localMin.toArray(), ...localMax.toArray()],
             placement,
             cubeHandshake: binding.m_nCubeMapPrecomputedHandshake ?? 0,
