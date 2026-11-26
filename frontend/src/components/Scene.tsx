@@ -127,6 +127,7 @@ import EquipmentFire from './EquipmentFire';
 import PovEquipmentPass from './PovEquipmentPass';
 import SampleLighting from './SampleLighting';
 import PovViewmodel from './PovViewmodel';
+import ShotImpacts from './ShotImpacts';
 import { indexPovEvidence, povEvidenceAt } from '../pov-actions';
 import { type MapSun } from '../actor-sun';
 import { indexBombShockwaves, type BombShockwaveSample } from '../bomb-shockwave';
@@ -1037,6 +1038,15 @@ function World({
               tick={tick}
               pov={mode === 'pov' ? selected : undefined}
               trace={tracerTrace}
+            />
+          )}
+          {!preview && nativeWorld && (
+            <ShotImpacts
+              data={data}
+              tick={tick}
+              queries={nativeWorld.queries}
+              materials={nativeWorld.manifest.materials}
+              displayScale={nativeWorld.native.displayScale}
             />
           )}
           {!preview && <RecordedEquipment items={items} floor={followTrace} />}
