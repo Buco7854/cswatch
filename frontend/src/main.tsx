@@ -292,11 +292,32 @@ function App() {
     }
   }, [auth, location.key, location.pathname]);
 
+  // Concealing hides the workspace, which drops keyboard focus to the page.
+  // The element is remembered so the same view gets its focus back.
+  const concealedFocus = useRef<HTMLElement | null>(null);
   const conceal = useCallback(() => {
+    const active = document.activeElement;
+    if (!concealedFocus.current && active instanceof HTMLElement && active !== document.body)
+      concealedFocus.current = active;
     mustVerify.current = true;
     setVerifying(true);
     if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
   }, []);
+  const concealedView = verifying || Boolean(error);
+  useLayoutEffect(() => {
+    if (concealedView) return;
+    const previous = concealedFocus.current;
+    concealedFocus.current = null;
+    // A different identity remounts the workspace, so only an element of the
+    // same, still mounted view is restored, and never over a newer choice.
+    const active = document.activeElement;
+    if (
+      previous?.isConnected &&
+      !previous.closest('[inert]') &&
+      (!active || active === document.body)
+    )
+      previous.focus({ preventScroll: true });
+  }, [concealedView]);
   const retire = useCallback(
     (csrf: string, revoked = false) => {
       conceal();
@@ -1042,7 +1063,7 @@ function App() {
       </ConfirmationProvider>
     </AppContext.Provider>
   );
-  const concealed = verifying || Boolean(error);
+  const concealed = concealedView;
   return (
     <>
       {concealed && unavailable}

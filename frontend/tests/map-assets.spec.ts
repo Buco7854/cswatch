@@ -579,6 +579,10 @@ test('the same library link keeps its position and keyboard focus through demo p
     const back = loading.getByRole('link', { name: 'Retour à la bibliothèque' });
     await expect(back).toBeInViewport();
     await back.focus();
+    // Window focus revalidates the session and conceals the private view
+    // meanwhile. The browser can deliver it at any point of a busy run; the
+    // link must get its focus back with the same view.
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     const position = await back.boundingBox();
     const panel = loading.locator('.viewer-loading-panel');
     const panelTop = (await panel.boundingBox())?.y;
