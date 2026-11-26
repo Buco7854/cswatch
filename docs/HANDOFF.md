@@ -14,6 +14,8 @@ Fire, HE and flashbang particles are closed-form ports of the official systems (
 
 For doors, breakables and recorded visibility, check `world/entity-playback.ts` against the recorded track at the tick, on play, seek and rewind; ranges and BVH queries share one entity state.
 
+For a player holding a weapon wrongly, check that `agents/actions.glb` is published beside `ct.glb` and `t.glb` and that the weapon has `weapon:KEY:idle` in the bank; without the bank, agents fall back to their class poses. Airborne, ladder and the standing spine twist need a replay with the `pawnMovement` capability (re-process older recordings). Body-hit blood follows the recorded hit and the attacker's recorded aim; reduced motion and disabled shot effects hide it. [Player audit](product/PLAYER-AUDIT.md)
+
 For missing bullet hits or steps, check a freshly processed recording and the current sound bank. The asset worker logs `sound.ready` after checking the bank. Existing replay chunks contain the events recognized when they were parsed. For a missing wall sound, distinguish a recorded impact from a nearby 3D contact reconstructed from a firearm message. Check the loaded map tier and tick. [Three-map audio checks](VERIFICATION.md#nearby-wall-impacts)
 
 For a network-denied administrator, inspect the connection and verified client addresses on the Administration page. The displayed cause distinguishes the immediate peer, missing or repeated headers, invalid addresses and conflicting client identities. [Operator checks](ACCESS-SETUP.md)

@@ -18,7 +18,7 @@ The asset worker prepares source-authored hands, gloves and held models. Each ri
 
 ## Third-person rendering
 
-Static equipment is packed in the weapon skeleton frame and mounted on the sampled weapon and finger joints. Grenades, Dual Berettas and defusing use dedicated upper-body overlays. Rapid shots blend from the outgoing fire pose at the new shot tick. Boot planting resolves against the native BVH with a bounded two-bone correction and fades during ballistic movement. Labels use the posed `head_0` bone when present.
+Static equipment is packed in the weapon skeleton frame and mounted on the sampled weapon and finger joints. The shared action bank (`agents/actions.glb`) gives every firearm its own carry pose, fire, reload and draw; two-bone IK then returns both hands to that weapon's authored grip on the `wpn` bone, released during reload and draw. Airborne legs, jump start and land, ladder climbing, hit flinches and deaths come from the same bank and the recorded pawn state. Grenades, Dual Berettas and defusing use dedicated upper-body overlays. Rapid shots blend from the outgoing fire pose at the new shot tick. Boot planting resolves against the native BVH with a bounded two-bone correction and fades during ballistic movement. Labels use the posed `head_0` bone when present.
 
 ## Recorded smoke
 

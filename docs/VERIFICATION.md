@@ -28,6 +28,33 @@ Fixture `var/fixture/input.dem` (Mirage), pinned manifest 5924479096069937098. P
 - **Frame cost, first person and impacts.** Interleaved A/B over 15 s of play from the M4A4 spray at tick 21100 (POV), two rounds: fps base 1.47/1.00, branch 1.47/1.00; task ms per frame base 735/1,074, branch 685/1,005; script ms per frame base 123/573, branch 211/558; draws per frame base 99/110, branch 108/115.
 - **Captures.** POV of every held class in the fixture one second after its first draw, plus inspect (Bowie, Deagle, USP-S, AK-47, M4A4), grenade pin pull and C4 plant moments, all on the official arms-and-weapon rigs. Players who scroll through weapons show the official draw clip, which starts below the screen; a steady Glock-18 (tick 2272) and flashbang (16196) render on their rigs.
 
+## Player models, 2026-11-26
+
+Production Chromium with ANGLE SwiftShader (960 × 540, DPR 1) rendered the pinned Mirage recording against the same native Mirage pack and a normal install's agent bank (depot 2347770, manifest `5924479096069937098`). The baseline is `main` at `e3673d5`; both builds were verification builds with the capture hook (`VITE_CSWATCH_CAPTURE=1`), which the release build compiles out. The action bank (210 roles, 7.2 MB) and the sound bank (578 samples, 56 MB) were prepared from the pinned depot with the worker's own tools and confinement (Landlock ABI 6). [Audit](product/PLAYER-AUDIT.md)
+
+**Captures.** Fourteen moments, before and after, were inspected: ticks 21241, 43193 and 18142 (POV, a facing observer's POV, follow, free and overhead), the dark T at 43193, strafe 3616, backpedal 6212, crouch-walk 24880, ladder 25704, jump 9332, standing turn 22316, headshot deaths at 12330 and 12520, and the AWP death at 34600. The AWP uses its own hold with the support hand under the forend; Deagles are held two-handed while strafing and backpedalling; the ladder climber takes Valve's climbing pose; the AWP victim falls away from the shooter; the standing turn keeps the feet's stance while the chest follows the aim. At 21241 the MAC-10 leg hit at 21239 shows blood at the right leg; the M4 stomach hits at 21141 and 21146 show blood at the victim's lower back and droplets carried past the body.
+
+**Foot slip.** Twelve windows, two per motion kind, sampled every 2 ticks in follow mode. A foot counts as planted within 4 cm of its lowest height in the window, which also admits low swing feet, so absolute values are high. The definition is the same for both builds.
+
+| p90 slip of planted feet (cm/s) | Baseline | This work |
+| ------------------------------- | -------: | --------: |
+| Walk                            |      394 |       402 |
+| Run                             |      792 |       628 |
+| Strafe                          |      237 |       180 |
+| Backpedal                       |      107 |       107 |
+| Crouch-walk                     |      534 |       534 |
+| Standing turn                   |      633 |       364 |
+
+**Seek.** Tick 21241 reached from 200 ticks before and 200 ticks after rendered pixel-identical frames (0 of 518,400 pixels), with blood, flinch, grip IK and the standing twist active.
+
+**Frame cost.** Three interleaved base/new pairs at tick 18142 in follow during 1× playback, 12 s each, with CPU profiles. `WebGLRenderer.setSize` took 0.05–5.6 s per window in both builds and dominated page JavaScript. Excluding it, page JavaScript per rendered frame averaged 18.8 ms (baseline) and 14.0 ms (this work), and the agent pose, action, IK and evidence functions 0.80 and 0.81 ms. Shader links inside playback frames led to linking the blood pass at mount. SwiftShader numbers are relative only.
+
+**Sounds.** The recording carries 11,387 native sound events. Every footstep, landing and body event that occurred played several authored variations. CT and T concrete steps (4,286) each played all 17, tile 14 of 14, sand 12 of 12, and Player.Death 6 of 6. 124 unregistered hashes (2,615 cues) are weapon pickups, drops and world impacts. Player.PickupGrenadeAudible and Default.WalkJump play a single authored file.
+
+**Lighting.** At tick 43193 the T on the window-room stairs has full probe coverage (volume 18) and bright probe irradiance, and the baked probe shadow marks him out of the sun. Its albedo is near-black trousers and balaclava. Routing probe light into specular and sheen brightened him by a few levels. A live sun shadow for characters remains open.
+
+**Tests.** Backend 586 passed with 4 environment skips (no Docker Compose, no offline speech model). Assets 257 passed with 1 skip. Exporter 43 passed, graphics 19 passed. The public browser suite passed 370 with 3 configuration skips. The private suites passed 142 (registrations off) and 146 (on), and setup passed 4. Formatting and English/French locales passed. No physical device or hardware GPU was measured.
+
 ## Playback frame cost and motion, 2026-11-25
 
 A copied normal-install instance served the native Mirage desktop pack to production Chromium with SwiftShader (DPR 1, default settings, adaptive resolution active). All ten players used the accepted CT agent model: no accepted T bank exists on this host, so the private copy served the CT model for both teams. `main` (85104a9) used its glTF Mirage instance with the same model bank. SwiftShader timings are relative only. Every native frame waits 0.4–2 s for the software GPU in `Commit`, so most long tasks are GPU waits. Script long tasks count only JavaScript longer than 50 ms. Other agents shared the 3 CPUs. The one-minute load average is listed for each run.

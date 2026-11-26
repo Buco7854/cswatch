@@ -14,7 +14,7 @@ Replay checks now join real captures to the full observed official map inventory
 
 Multi-map performance checks now cover moving combat and all three player camera modes. A frame-time budget includes delays before the first frame and after the last one. The remaining hardware check is detailed playback on a desktop GPU. [Four-map results and settings](../VERIFICATION.md#native-worlds)
 
-The shared actor sampler reduces ground stride on curved airborne paths. Uniform climbs and isolated steps lack evidence for that correction. The existing lower-body clips still supply the airborne leg pose. [Verification](../VERIFICATION.md#airborne-arm-and-boot-motion)
+Players use Valve's per-weapon poses with two-hand grip IK, recorded airborne, ladder, flinch and death clips, a standing spine twist and blood at recorded hits; footsteps and body sounds use every authored variation and Valve's distance curves. Next: prepare non-default agents on demand from their recorded model handle, a live sun shadow for characters (the baked probe shadow is 24 units coarse), Valve's turn-in-place steps, simulated ragdolls and blood decals. [Player audit](PLAYER-AUDIT.md)
 
 Schema 9 adds optional account email verification and recovery. It requires a fresh data directory. New signups verify before using the workspace when delivery is enabled. Steam onboarding collects an address locally. [Operator guide](../ACCESS-SETUP.md#email-delivery-verification-and-password-reset)
 
