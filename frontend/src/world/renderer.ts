@@ -680,6 +680,9 @@ export async function createRenderer(
           if (blended && composed && !env.sky) {
             composed.opaque();
             gl.bindFramebuffer(gl.FRAMEBUFFER, composed.framebuffer);
+            // Actor x-ray masks leave a stencil-replace state behind; world
+            // translucents must not mark the stencil the smoke and shells test.
+            gl.disable(gl.STENCIL_TEST);
             gl.viewport(0, 0, width, height);
             current = null;
             gl.bindVertexArray(vertexArray);
