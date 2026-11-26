@@ -97,7 +97,9 @@ test('label occlusion matches the drawn opacity of dense and dilute journal smok
       }
     };
     try {
-      return { dense: draw(255), dilute: draw(20) };
+      // 3/255 is a cloud's faint outer rim. Values at the noise-erosion
+      // threshold speckle per pixel and are not compared one pixel at a time.
+      return { dense: draw(255), dilute: draw(3) };
     } finally {
       renderer.dispose();
     }

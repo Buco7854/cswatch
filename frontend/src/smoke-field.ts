@@ -38,10 +38,14 @@ export const BLAST_SECONDS = 5;
 // recorded journal already carries the spread, so it lasts under a second.
 export const REVEAL_SECONDS = 0.9;
 // The shader's density texture is uploaded by game code at a scale the shaders
-// do not reveal. The journal reconstruction saturates at 1, where the shader's
-// interior darkening (1 - density) would turn a cloud's core black; CS2 shows
-// a mid-grey core from inside, so the journal density is scaled to that range.
-export const SMOKE_DENSITY_SCALE = 0.45;
+// do not reveal. The shader turns density into opacity and interior darkening;
+// a mature CS2 smoke is opaque through its body yet grey inside, so its
+// densities sit mid-range. The journal reconstruction (saturating at 1) maps
+// concavely: a quarter-percentile cell of a grown cloud (0.12) transmits under
+// 2% over 2 m and the densest cores stay near 0.6.
+export const SMOKE_DENSITY_GAIN = 0.65;
+export const smokeShaderDensity = (journal: number) =>
+  SMOKE_DENSITY_GAIN * Math.sqrt(Math.max(0, journal));
 const index = (x: number, y: number, z: number) => x + GRID * (y + GRID * z);
 
 export function scenePoint([x, y, z]: readonly number[]): XYZ {
@@ -195,7 +199,7 @@ export function smokeSampleDensity(
   fromEye: number,
   toSurface: number,
 ) {
-  const density = smokeDensityAt(smoke, x, y, z) * SMOKE_DENSITY_SCALE;
+  const density = smokeShaderDensity(smokeDensityAt(smoke, x, y, z));
   if (density <= 0.01) return 0;
   const span = GRID * CELL * smoke.scale;
   // Grid coordinates in Source axes.

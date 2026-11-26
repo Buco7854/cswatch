@@ -6,7 +6,7 @@ import {
   MAX_HOLES,
   MAX_SMOKE_STEPS,
   REVEAL_SECONDS,
-  SMOKE_DENSITY_SCALE,
+  SMOKE_DENSITY_GAIN,
   SMOKE_STEP,
 } from './smoke-field';
 import { WORLEY_CELLS } from './smoke-noise';
@@ -85,8 +85,8 @@ export const marchFragment = /* glsl */ `
       vec3 position = eye + t * ray;
       vec3 relative = position - origin;
       vec3 cell = relative / span3 + 0.5;
-      float density = mix(texture(previousField, cell).r, texture(currentField, cell).r, fieldMix) *
-                      ${glslFloat(SMOKE_DENSITY_SCALE)};
+      float density = ${glslFloat(SMOKE_DENSITY_GAIN)} *
+        sqrt(max(mix(texture(previousField, cell).r, texture(currentField, cell).r, fieldMix), 0.0));
       if (density <= 0.01) continue;
       // Grid coordinates in Source axes (x, -z, y).
       vec3 grid = vec3(cell.x, 1.0 - cell.z, cell.y);
@@ -123,6 +123,9 @@ export const marchFragment = /* glsl */ `
       float noise = clamp((1.0 - coarse) * 0.6 + (1.0 - fine) * 0.28 + 0.12, 0.0, 1.0);
 
       vec4 light = texture(lightVolume, cell);
+      // The game's light volume holds irradiance; the pack's probe lobes are
+      // radiance-equivalent (the world shades diffuse as albedo x lobe).
+      light.rgb *= 3.14159265;
       float facing = pow(clamp(dot(normalize(relative + vec3(0.0, 0.0001, 0.0)), sunDirection) * 0.8 + 0.2,
                                0.0, 1.0), 2.0) * light.a;
       vec3 color = (light.rgb * (1.0 - value) * 0.5 + sunColor * facing) * noise;

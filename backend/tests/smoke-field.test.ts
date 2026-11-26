@@ -15,6 +15,7 @@ import {
   smokeEnvelope,
   smokeNoiseAt,
   smokeSampleAlpha,
+  smokeShaderDensity,
   smokeTransmittance,
   unionSmokeBounds,
 } from '../../frontend/src/smoke-field.js';
@@ -35,6 +36,24 @@ test('each four-inch sample erodes thin smoke with noise and fills dense smoke',
     assert.ok(alpha >= previous && alpha <= 1);
     previous = alpha;
   }
+});
+
+test('a quarter-percentile cell of a grown cloud blocks a 2 m sightline and the core stays grey', () => {
+  // Track 426 at tick 18142 (seven seconds after detonation): p25 0.12, p90 0.86.
+  const field = densityField(new Uint8Array(GRID ** 3).fill(Math.round(0.12 * 255)));
+  const cloud = {
+    previous: field,
+    current: field,
+    origin: [0, 0, 0],
+    scale: 1,
+    mix: 1,
+    bounds: field.bounds,
+    amount: 1,
+    age: 7,
+    holes: [],
+  };
+  assert.ok(smokeTransmittance(cloud, [-1, 0.3, 0.2], [1, 0.3, 0.2]) <= 0.02);
+  assert.ok(smokeShaderDensity(0.86) < 0.65);
 });
 
 test('cellular noise is deterministic in world space and rises with the cloud age', () => {
