@@ -85,10 +85,14 @@ export function actorLighting(renderer: WebGLRenderer, native: NativeRenderer) {
         )
         .replace(
           '#include <lights_fragment_maps>',
-          '#include <lights_fragment_maps>\n irradiance += PI*bakedActorLight.rgb;',
+          // VRF lights csgo_character's specular and cloth sheen from the map's cubemaps as well as
+          // its diffuse from the probes. The probe light stands in for that environment: as image
+          // light it feeds three's energy-conserving diffuse, specular and sheen terms. At character
+          // roughness the prefiltered cubemap is close to the irradiance over pi.
+          '#include <lights_fragment_maps>\n iblIrradiance += PI*bakedActorLight.rgb; radiance += bakedActorLight.rgb;',
         );
     };
-    material.customProgramCacheKey = () => key.call(material) + ':native-probes-v2';
+    material.customProgramCacheKey = () => key.call(material) + ':native-probes-v3';
     lightingBase.set(material.onBeforeCompile, { before, key });
     material.needsUpdate = true;
   }
