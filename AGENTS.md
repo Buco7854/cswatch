@@ -22,7 +22,7 @@ Start with the current entries in [Handoff](docs/HANDOFF.md) and [Active work](d
 
 ## Verification
 
-Use Node 24 and [README setup and tests](README.md#development). Linux native checks require Landlock ABI 3+, C tools and the pinned fixture. Count fixture skips as skips. Run the relevant tests, `npm run format:check` and `npm run check:locales` when messages change.
+Use Node 24 and [README setup and tests](README.md#development-and-tests). Linux native checks require Landlock ABI 3+, C tools and the pinned fixture. Count fixture skips as skips. Run the relevant tests, `npm run format:check` and `npm run check:locales` when messages change.
 
 For UI work, use the design skill's app workflow and inspect the rendered production build on desktop, tablet and mobile in both themes. Preserve keyboard and touch controls, reduced motion and missing/error/access states. Use isolated test accounts and the [verification methods](docs/VERIFICATION.md#verification-methods).
 

@@ -22,7 +22,7 @@ The opening screen is shared by demo processing, map discovery, worker preparati
 
 Administrative IP checks use the socket on direct requests and resolve `X-Real-IP` and `X-Forwarded-For` from trusted proxies even when the client is on the same LAN. Nginx can also forward `CF-Connecting-IP` in its shared header configuration. [Proxy configuration](ACCESS-SETUP.md#administrative-networks)
 
-The web port defaults to `0.0.0.0:8000` for reverse proxies on another host. The Compose deployment requires `APP_URL` and forwards optional settings by service. Parser and transcription workers receive processing settings. Supply bootstrap, SMTP and provider credentials to the web service. [Docker deployment](../README.md#docker-deployment)
+The web port defaults to `0.0.0.0:8000` for reverse proxies on another host. The Compose deployment requires `APP_URL` and forwards optional settings by service. Parser and transcription workers receive processing settings. Supply bootstrap, SMTP and provider credentials to the web service. [Docker deployment](../README.md#quick-start)
 
 The Steam library can import a completed replay from a user-selected CS2 folder and accepts paired BZip2 uploads. FACEIT rows can take their map from player stats before download. Administration appears in workspace navigation for eligible administrators. A network denial identifies an unresolved client address or an excluded client network. [Operator guide](ACCESS-SETUP.md#administrative-networks)
 
