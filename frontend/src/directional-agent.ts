@@ -48,6 +48,8 @@ export type DirectionalSample = {
   ladder?: { climbed: number; speed: number };
   /** Aim yaw beyond the feet' yaw (degrees), carried by the spine while standing. */
   twist?: number;
+  /** The standing feet's latest catch-up step (recordedStance). */
+  turn?: { side: 'left' | 'right'; turned: number; restAge?: number };
   /** Most recent recorded hit: bank flinch role and its age in seconds. */
   flinch?: { role: string; age: number };
 };
@@ -61,6 +63,8 @@ const smooth = (value: number) => {
   const t = clamp(value);
   return t * t * (3 - 2 * t);
 };
+/** The time fraction at which a smoothstep ease has covered `progress` of its change. */
+const easedTime = (progress: number) => 0.5 - Math.sin(Math.asin(1 - 2 * clamp(progress)) / 3);
 
 const loadedClips = new WeakMap<object, ClipSet | null>();
 /** Agents and their POV rig share one validated set of source animation curves. */
@@ -558,6 +562,24 @@ export function createDirectionalAgent(root: Object3D, clips: ClipSet, actions?:
             actions.delta(`jump-start:${kind}`, jumpAge, 1 - smooth(jumpAge / 0.6));
           if (landAge !== undefined && landAge < actions.duration(`jump-land:${kind}`)!)
             actions.delta(`jump-land:${kind}`, landAge, 1 - smooth((landAge - 0.3) / 0.33));
+        } else if (input.turn && actions && speed < 0.6) {
+          // Valve's 45 degree step: its root yaw is the turn itself, which the recorded feet
+          // already make, so only the legs play. The rotating half is driven by the angle turned
+          // (through the clip's own ease) so the planted foot stays put; the settle plays on.
+          const { side, turned, restAge } = input.turn;
+          const role = `turn-${side}${duck > 0.5 ? '-crouch' : ''}:${kind}`;
+          const duration = actions.duration(role);
+          if (duration) {
+            const fraction = turned >= 45 && turned % 45 < 1e-3 ? 1 : (turned % 45) / 45;
+            const rotating = Math.min(duration, 0.667) * easedTime(fraction);
+            const time = rotating + (restAge ?? 0);
+            if (time < duration) {
+              const weight = smooth(turned / 6) * smooth((duration - time) / 0.3);
+              actions.pose(role, time, (bone) =>
+                bone.name === 'root_motion' ? 0 : weight * lowerOnly(bone),
+              );
+            }
+          }
         }
         const variant = carryClass(input.weapon);
         if (!variant) {

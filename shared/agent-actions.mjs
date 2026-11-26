@@ -16,6 +16,9 @@ for (const kind of contract.classes) {
   roles.set(`jump-land:${kind}`, 'delta');
   roles.set(`ladder:${kind}`, 'full');
   roles.set(`ladder-fast:${kind}`, 'full');
+  // Standing turn steps: the viewer takes their legs and drops the authored root yaw.
+  for (const turn of ['turn-left', 'turn-right', 'turn-left-crouch', 'turn-right-crouch'])
+    roles.set(`${turn}:${kind}`, 'full');
 }
 for (const part of contract.flinches) roles.set(`flinch:${part}`, 'delta');
 for (const death of contract.deaths) roles.set(`death:${death}`, 'full');

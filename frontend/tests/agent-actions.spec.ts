@@ -166,6 +166,34 @@ test('standing feet keep their yaw within the aim cone and turn once the aim lea
   expect(recordedTwist(moving, 'p', 8, 90)).toBe(0);
 });
 
+test('a standing turn reports its side, the angle turned and the settle after the feet stop', async () => {
+  const { recordedStance } = await import('../src/agent-evidence');
+  // Inside the cone: no step.
+  expect(recordedStance(standing([0, 10, 20, 30, 40, 40]), 'p', 20, 40).turn).toBeUndefined();
+  // Aim swings 90 degrees to the left (Source yaw grows to the left).
+  const left = standing([0, 90, 90, 90, 90, 90, 90, 90, 90]);
+  const during = recordedStance(left, 'p', 5, 90).turn!;
+  expect(during.side).toBe('left');
+  expect(during.restAge).toBeUndefined();
+  const later = recordedStance(left, 'p', 24, 90);
+  expect(later.turn!.side).toBe('left');
+  expect(later.turn!.turned).toBeGreaterThan(during.turned);
+  expect(later.turn!.turned).toBeCloseTo(90 - Math.abs(later.twist), 6);
+  expect(later.turn!.restAge).toBeGreaterThan(0);
+  expect(recordedStance(left, 'p', 24, 90)).toEqual(later);
+  const right = standing([90, 0, 0, 0, 0, 0]);
+  expect(recordedStance(right, 'p', 12, 0).turn!.side).toBe('right');
+  // A moving player takes no standing step.
+  expect(
+    recordedStance(
+      standing([0, 90, 90], (i) => ({ x: i * 40 })),
+      'p',
+      8,
+      90,
+    ).turn,
+  ).toBeUndefined();
+});
+
 test('airborne weight and landing age come from the recorded ground flag', async () => {
   const { recordedAir } = await import('../src/agent-evidence');
   const data = standing([0, 0, 0, 0, 0, 0], (i) => (i >= 2 && i <= 3 ? { airborne: true } : {}));

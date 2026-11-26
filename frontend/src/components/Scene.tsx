@@ -126,10 +126,11 @@ import {
   recordedFlinch,
   recordedLadder,
   recordedRagdoll,
-  recordedTwist,
+  recordedStance,
 } from '../agent-evidence';
 import type { RagdollSimulation } from '../agent-ragdoll';
 import BodyHits from './BodyHits';
+import BloodDecals from './BloodDecals';
 import { PerformanceOverlay, PerformanceProbe } from './PerformanceOverlay';
 import RenderAgent, {
   GenericAgentBody,
@@ -409,8 +410,10 @@ function Agent({
       const pose = from
         ? playerPose(from, to, current.alpha, poseTimingAt(data, current, position.id))
         : undefined;
+      const stance = pose ? recordedStance(data, position.id, at, pose.yaw) : { twist: 0 };
       return {
-        twist: pose ? recordedTwist(data, position.id, at, pose.yaw) : 0,
+        twist: stance.twist,
+        turn: stance.turn,
         air: from?.ladder ? undefined : recordedAir(data, position.id, at),
         ladder: from && pose ? recordedLadder({ ...from, z: pose.z }, to, seconds) : undefined,
         flinch: recordedFlinch(data, position.id, at),
@@ -1197,6 +1200,9 @@ function World({
             {!preview && <RecordedEquipment items={items} floor={followTrace} />}
             {!preview && !data.sample && settings.shotEffects && !reduceAgentMotion && (
               <BodyHits data={data} tick={tick} />
+            )}
+            {!preview && !data.sample && settings.shotEffects && nativeWorld && (
+              <BloodDecals data={data} tick={tick} query={nativeWorld.queries.hit} />
             )}
             {!preview && settings.utilities && (
               <Smoke

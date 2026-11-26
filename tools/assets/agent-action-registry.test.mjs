@@ -28,6 +28,14 @@ test('every action role names one fixed official world clip', () => {
   );
   assert.equal(agentActionRegistry['weapon:taser:reload'], undefined);
   assert.equal(
+    agentActionRegistry['turn-left-crouch:knife'],
+    'animation/anims/world/knife/_default_knife/turn_left_45_crouch_knife.vnmclip_c',
+  );
+  assert.equal(
+    agentActionRegistry['turn-right:rifle'],
+    'animation/anims/world/rifle/_default_rifle/turn_right_45_rifle.vnmclip_c',
+  );
+  assert.equal(
     agentActionRegistry['ladder:pistol'],
     'animation/anims/world/pistol/_default_pistol/ladder_facing_slow_pistol.vnmclip_c',
   );

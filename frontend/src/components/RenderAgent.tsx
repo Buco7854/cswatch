@@ -179,7 +179,9 @@ type AgentProps = {
   /** A recorded death simulated as the model's own ragdoll against the world. */
   ragdoll?: { request: RagdollRequest; world: RagdollWorld; cache: Map<string, RagdollSimulation> };
   /** Recorded airborne, ladder and hit evidence at a fractional replay tick. */
-  evidence?: (tick: number) => Pick<DirectionalSample, 'air' | 'ladder' | 'flinch' | 'twist'>;
+  evidence?: (
+    tick: number,
+  ) => Pick<DirectionalSample, 'air' | 'ladder' | 'flinch' | 'twist' | 'turn'>;
 };
 function LoadedAgent({
   url,

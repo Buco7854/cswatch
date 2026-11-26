@@ -45,6 +45,9 @@ function source(role) {
   if (family === 'air-crouch') return plain(`${base}inair_crouch_stand_${subject}`);
   if (family === 'ladder') return plain(`${base}ladder_facing_slow_${subject}`);
   if (family === 'ladder-fast') return plain(`${base}ladder_facing_fast_${subject}`);
+  const turn = /^turn-(left|right)(-crouch)?$/.exec(family);
+  // The 45 degree in-place steps; their root yaw is the turn itself.
+  if (turn) return plain(`${base}turn_${turn[1]}_45${turn[2] ? '_crouch' : ''}_${subject}`);
   if (family === 'jump-start')
     return composed(`${world}shared/jump_additive_start${classSuffix[subject]}`);
   if (family === 'jump-land')

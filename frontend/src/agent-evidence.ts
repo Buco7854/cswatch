@@ -177,6 +177,21 @@ const angleBetween = (from: number, to: number) => ((((to - from) % 360) + 540) 
  * The state is replayed from the recorded yaw samples of the last four seconds, so any
  * seek reaches the same pose. */
 export function recordedTwist(data: Playback, id: string, tick: number, aimYaw: number) {
+  return recordedStance(data, id, tick, aimYaw).twist;
+}
+
+/** A standing turn: the feet catch up with the aim. `turned` is degrees rotated since it began;
+ * `restAge` is the seconds since the feet stopped, while the step settles. */
+export type RecordedTurn = { side: 'left' | 'right'; turned: number; restAge?: number };
+
+/** The standing feet's yaw lags the aim: `twist` is the aim beyond the feet, and `turn` the
+ * most recent step the feet took to catch up (Source yaw grows to the left). */
+export function recordedStance(
+  data: Playback,
+  id: string,
+  tick: number,
+  aimYaw: number,
+): { twist: number; turn?: RecordedTurn } {
   const frames = data.frames;
   const { frame, index } = frameAt(data, tick);
   const state = (i: number) => frames[i].players.find((player) => player.id === id);
@@ -196,23 +211,44 @@ export function recordedTwist(data: Playback, id: string, tick: number, aimYaw: 
   let start = index;
   while (start > 0 && frame.tick - frames[start - 1].tick <= rate * 4 && !moving(start)) start--;
   const first = state(start);
-  if (!first?.alive || moving(index)) return 0;
+  if (!first?.alive || moving(index)) return { twist: 0 };
   let body = first.yaw,
     turning = false,
-    time = frames[start].tick;
+    time = frames[start].tick,
+    turn: { side: 'left' | 'right'; from: number; turned: number; stopped?: number } | undefined;
   const step = (aim: number, until: number) => {
     const seconds = (until - time) / rate;
     time = until;
     const offset = angleBetween(body, aim);
-    if (Math.abs(offset) > turnThreshold) turning = true;
+    if (!turning && Math.abs(offset) > turnThreshold) {
+      turning = true;
+      turn = { side: offset > 0 ? 'left' : 'right', from: body, turned: 0 };
+    }
     if (!turning) return;
     const change = Math.min(Math.abs(offset), turnRate * seconds);
     body += Math.sign(offset) * change;
-    if (Math.abs(angleBetween(body, aim)) <= turnSettle) turning = false;
+    turn!.turned = Math.abs(angleBetween(turn!.from, body));
+    if (Math.abs(angleBetween(body, aim)) <= turnSettle) {
+      turning = false;
+      turn!.stopped = until;
+    }
   };
   for (let i = start + 1; i <= index; i++) step(state(i)!.yaw, frames[i].tick);
   step(aimYaw, Math.max(time, tick));
-  return angleBetween(body, aimYaw);
+  return {
+    twist: angleBetween(body, aimYaw),
+    ...(turn
+      ? {
+          turn: {
+            side: turn.side,
+            turned: turn.turned,
+            ...(turn.stopped === undefined
+              ? {}
+              : { restAge: Math.max(0, (tick - turn.stopped) / rate) }),
+          },
+        }
+      : {}),
+  };
 }
 
 /** Ragdoll bodies the recorded hitgroup lands on (skeleton bone names). */
