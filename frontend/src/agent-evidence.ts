@@ -119,9 +119,7 @@ export function recordedDeath(data: Playback, id: string, tick: number, yaw: num
 export function recordedAir(data: Playback, id: string, tick: number) {
   if (!data.capabilities?.pawnMovement) return;
   const frames = data.frames;
-  const { frame } = frameAt(data, tick);
-  let index = frames.indexOf(frame);
-  if (index < 0) return;
+  const { frame, index } = frameAt(data, tick);
   const state = (at: Frame) => at.players.find((player) => player.id === id);
   const current = state(frame);
   if (!current?.alive) return;
@@ -160,4 +158,52 @@ export function recordedLadder(position: Position, next: Position | undefined, s
   const climbed = position.z * 0.0254;
   const speed = next && seconds > 0 ? ((next.z - position.z) * 0.0254) / seconds : 0;
   return { climbed, speed };
+}
+
+const turnThreshold = 50,
+  turnSettle = 12,
+  turnRate = 320,
+  movingSpeed = 0.6;
+const angleBetween = (from: number, to: number) => ((((to - from) % 360) + 540) % 360) - 180;
+/** Aim yaw beyond the feet' yaw while standing. Moving players face their aim; a standing
+ * player's feet keep their yaw until the aim leaves a 50° cone, then turn to within 12°.
+ * The state is replayed from the recorded yaw samples of the last four seconds, so any
+ * seek reaches the same pose. */
+export function recordedTwist(data: Playback, id: string, tick: number, aimYaw: number) {
+  const frames = data.frames;
+  const { frame, index } = frameAt(data, tick);
+  const state = (i: number) => frames[i].players.find((player) => player.id === id);
+  const rate = data.tickRate;
+  const moving = (i: number) => {
+    const a = state(i - 1),
+      b = state(i);
+    if (!a?.alive || !b?.alive) return true;
+    const seconds = (frames[i].tick - frames[i - 1].tick) / rate;
+    return (
+      !(seconds > 0) ||
+      seconds > 0.25 ||
+      (Math.hypot(b.x - a.x, b.y - a.y) * 0.0254) / seconds > movingSpeed ||
+      Boolean(b.ladder || b.airborne)
+    );
+  };
+  let start = index;
+  while (start > 0 && frame.tick - frames[start - 1].tick <= rate * 4 && !moving(start)) start--;
+  const first = state(start);
+  if (!first?.alive || moving(index)) return 0;
+  let body = first.yaw,
+    turning = false,
+    time = frames[start].tick;
+  const step = (aim: number, until: number) => {
+    const seconds = (until - time) / rate;
+    time = until;
+    const offset = angleBetween(body, aim);
+    if (Math.abs(offset) > turnThreshold) turning = true;
+    if (!turning) return;
+    const change = Math.min(Math.abs(offset), turnRate * seconds);
+    body += Math.sign(offset) * change;
+    if (Math.abs(angleBetween(body, aim)) <= turnSettle) turning = false;
+  };
+  for (let i = start + 1; i <= index; i++) step(state(i)!.yaw, frames[i].tick);
+  step(aimYaw, Math.max(time, tick));
+  return angleBetween(body, aimYaw);
 }

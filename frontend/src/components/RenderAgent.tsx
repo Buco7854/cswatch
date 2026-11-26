@@ -154,7 +154,7 @@ type AgentProps = {
   floor?: ReturnType<SceneTrace['fork']>;
   airborne?: number;
   /** Recorded airborne, ladder and hit evidence at a fractional replay tick. */
-  evidence?: (tick: number) => Pick<DirectionalSample, 'air' | 'ladder' | 'flinch'>;
+  evidence?: (tick: number) => Pick<DirectionalSample, 'air' | 'ladder' | 'flinch' | 'twist'>;
 };
 function LoadedAgent({
   url,
@@ -296,6 +296,8 @@ function LoadedAgent({
         airborne,
       );
     const recorded = !directional.death && bank ? evidence?.(tick) : undefined;
+    // The feet keep their own yaw while standing; the spine carries the rest of the aim.
+    prepared.root.rotation.y = Math.PI / 2 - MathUtils.degToRad(recorded?.twist ?? 0);
     const input = motion ? { ...directional, ...motion } : directional;
     const deathTime = pose.sample(
       tick / rate,

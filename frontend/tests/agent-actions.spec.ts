@@ -121,3 +121,60 @@ test('recorded footsteps follow the authored distance curve and stop where the g
   expect(authoredDistanceGain('Weapon_AK47.Single', 300)).toBeUndefined();
   expect(authoredDistanceGain(undefined, 300)).toBeUndefined();
 });
+
+function standing(yaws: number[], extra: (i: number) => object = () => ({})) {
+  return {
+    tickRate: 64,
+    rounds: [],
+    events: [],
+    capabilities: { pawnMovement: true },
+    frames: yaws.map((yaw, i) => ({
+      tick: i * 4,
+      players: [
+        {
+          id: 'p',
+          x: 0,
+          y: 0,
+          z: 0,
+          yaw,
+          pitch: 0,
+          alive: true,
+          team: 2,
+          health: 100,
+          weapon: 'ak47',
+          ...extra(i),
+        },
+      ],
+    })),
+  } as unknown as Parameters<typeof import('../src/agent-evidence').recordedTwist>[0];
+}
+
+test('standing feet keep their yaw within the aim cone and turn once the aim leaves it', async () => {
+  const { recordedTwist } = await import('../src/agent-evidence');
+  // Aim sweeps 0 -> 40 degrees: inside the cone the spine carries all of it.
+  const small = standing([0, 10, 20, 30, 40, 40]);
+  expect(recordedTwist(small, 'p', 20, 40)).toBeCloseTo(40, 6);
+  // A quick 120 degree turn: the feet follow and settle within 12 degrees of the aim.
+  const large = standing([0, 60, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120]);
+  const settled = recordedTwist(large, 'p', 48, 120);
+  expect(Math.abs(settled)).toBeLessThanOrEqual(12);
+  // Deterministic for any seek order.
+  expect(recordedTwist(large, 'p', 48, 120)).toBe(settled);
+  expect(recordedTwist(large, 'p', 8, 120)).toBe(recordedTwist(large, 'p', 8, 120));
+  // A moving player faces the aim.
+  const moving = standing([0, 90, 90], (i) => ({ x: i * 40 }));
+  expect(recordedTwist(moving, 'p', 8, 90)).toBe(0);
+});
+
+test('airborne weight and landing age come from the recorded ground flag', async () => {
+  const { recordedAir } = await import('../src/agent-evidence');
+  const data = standing([0, 0, 0, 0, 0, 0], (i) => (i >= 2 && i <= 3 ? { airborne: true } : {}));
+  expect(recordedAir(data, 'p', 4)?.weight).toBe(0);
+  const air = recordedAir(data, 'p', 12)!;
+  expect(air.jumpAge).toBeCloseTo(4 / 64, 6);
+  expect(air.weight).toBeGreaterThan(0);
+  const landed = recordedAir(data, 'p', 18)!;
+  expect(landed.landAge).toBeCloseTo(2 / 64, 6);
+  // Without the recorded capability the state stays unknown.
+  expect(recordedAir({ ...data, capabilities: undefined }, 'p', 12)).toBeUndefined();
+});

@@ -109,7 +109,13 @@ import type { DirectionalSample } from '../directional-agent';
 import { indexRecordedTravel, recordedMotion, type PreviousPose } from '../recorded-motion';
 import './spectator-hud.css';
 import { captureRegister } from '../capture-hook';
-import { recordedAir, recordedDeath, recordedFlinch, recordedLadder } from '../agent-evidence';
+import {
+  recordedAir,
+  recordedDeath,
+  recordedFlinch,
+  recordedLadder,
+  recordedTwist,
+} from '../agent-evidence';
 import BodyHits from './BodyHits';
 import RenderAgent, {
   GenericAgentBody,
@@ -382,12 +388,13 @@ function Agent({
       const from = current.frame.players.find((p) => p.id === position.id);
       const to = current.next.players.find((p) => p.id === position.id);
       const seconds = (current.next.tick - current.frame.tick) / data.tickRate;
-      const z = from
-        ? playerPose(from, to, current.alpha, poseTimingAt(data, current, position.id)).z
-        : 0;
+      const pose = from
+        ? playerPose(from, to, current.alpha, poseTimingAt(data, current, position.id))
+        : undefined;
       return {
+        twist: pose ? recordedTwist(data, position.id, at, pose.yaw) : 0,
         air: from?.ladder ? undefined : recordedAir(data, position.id, at),
-        ladder: from ? recordedLadder({ ...from, z }, to, seconds) : undefined,
+        ladder: from && pose ? recordedLadder({ ...from, z: pose.z }, to, seconds) : undefined,
         flinch: recordedFlinch(data, position.id, at),
       };
     },

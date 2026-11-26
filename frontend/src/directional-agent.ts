@@ -46,6 +46,8 @@ export type DirectionalSample = {
   air?: { weight: number; jumpAge?: number; landAge?: number };
   /** Recorded ladder movement: metres climbed (signed) and vertical speed (m/s). */
   ladder?: { climbed: number; speed: number };
+  /** Aim yaw beyond the feet' yaw (degrees), carried by the spine while standing. */
+  twist?: number;
   /** Most recent recorded hit: bank flinch role and its age in seconds. */
   flinch?: { role: string; age: number };
 };
@@ -283,9 +285,12 @@ function rigAim(root: Object3D, bones: Map<string, Bone>) {
     carriedScale = new Vector3(),
     worldRotation = new Quaternion();
   const weights = [0.12, 0.18, 0.28, 0.42];
-  return (pitch: number) => {
+  const up = new Vector3();
+  /** Pitch bends and yaw twist (the aim beyond the feet' yaw) spread over the spine. */
+  return (pitch: number, twist = 0) => {
     const angle = MathUtils.degToRad(MathUtils.clamp(shortestAngle(0, pitch), -70, 70));
-    if (!angle) return;
+    const turn = MathUtils.degToRad(MathUtils.clamp(twist, -70, 70));
+    if (!angle && !turn) return;
     chest.updateWorldMatrix(true, false);
     before.copy(chest.matrixWorld).invert();
     carried.updateWorldMatrix(true, false);
@@ -293,11 +298,22 @@ function rigAim(root: Object3D, bones: Map<string, Bone>) {
     // The four spine bends share the rig's lateral axis. Everything descended
     // from the upper spine keeps its rigid transform, including both hands.
     root.getWorldQuaternion(worldRotation);
-    axis.set(1, 0, 0).applyQuaternion(worldRotation);
+    up.set(0, 1, 0).applyQuaternion(worldRotation);
+    // The lateral axis follows the twisted chest, so pitch stays a forward bend.
+    axis.set(1, 0, 0).applyQuaternion(worldRotation).applyAxisAngle(up, turn);
     for (const [index, joint] of spine.entries()) {
       joint!.getWorldQuaternion(worldRotation).invert();
-      localAxis.copy(axis).applyQuaternion(worldRotation);
-      joint!.rotateOnAxis(localAxis, angle * weights[index]);
+      if (turn)
+        joint!.rotateOnAxis(
+          localAxis.copy(up).applyQuaternion(worldRotation),
+          turn * weights[index],
+        );
+      joint!.getWorldQuaternion(worldRotation).invert();
+      if (angle)
+        joint!.rotateOnAxis(
+          localAxis.copy(axis).applyQuaternion(worldRotation),
+          angle * weights[index],
+        );
     }
     chest.updateWorldMatrix(true, false);
     delta.multiplyMatrices(chest.matrixWorld, before);
@@ -613,7 +629,7 @@ export function createDirectionalAgent(root: Object3D, clips: ClipSet, actions?:
             );
         }
       }
-      if (!death) aim?.(input.pitch);
+      if (!death) aim?.(input.pitch, input.twist ?? 0);
       if (base && hands > 0) holdWeapon(input.weapon, hands);
       return deathTime;
     },
