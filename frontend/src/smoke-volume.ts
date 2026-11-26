@@ -3,6 +3,10 @@ import {
   Camera,
   Color,
   Data3DTexture,
+  HalfFloatType,
+  RGBAFormat,
+  RedFormat,
+  WebGL3DRenderTarget,
   DepthStencilFormat,
   DepthTexture,
   Frustum,
@@ -15,7 +19,6 @@ import {
   NotEqualStencilFunc,
   PerspectiveCamera,
   PlaneGeometry,
-  RGFormat,
   Scene,
   ShaderMaterial,
   UnsignedInt248Type,
@@ -26,33 +29,38 @@ import {
   type WebGLRenderer,
 } from 'three';
 import {
-  BILLOW_SPAN,
-  CELL,
   GRID,
   HALF_GRID,
   MAX_HOLES,
+  SMOKE_STEP,
   type SmokeField,
   type SmokeSample,
 } from './smoke-field';
-import { compositeFragment, marchFragment, quadVertex } from './smoke-volume-shaders';
+import {
+  LIGHT_CELLS,
+  compositeFragment,
+  lightFragment,
+  marchFragment,
+  quadVertex,
+} from './smoke-volume-shaders';
 
 import { cropSmokeCamera, SmokeDepthPass, type SmokeRect as Rect } from './smoke-depth';
 import { smokeNoise } from './smoke-noise';
-import type { FollowCamera } from './follow-camera';
-
-export type SmokeSunTrace = (
-  ray: Pick<FollowCamera, 'target' | 'position'>,
-) => FollowCamera['position'];
 export type SmokeDraw = SmokeSample & {
   key: string;
-  tint: Color;
-  drift: number;
   recorded: boolean;
+};
+/** The map's probe-volume uniforms (see world/actor-lighting.ts) and its sun, in scene axes. */
+export type SmokeLighting = {
+  /** Absent without a native world: the volume uses a neutral constant light. */
+  probes?: Record<string, { value: unknown }>;
+  sunDirection: Vector3;
+  sunColor: Color;
 };
 
 function upload(field: SmokeField) {
   const texture = new Data3DTexture(field.texels, GRID, GRID, GRID);
-  texture.format = RGFormat;
+  texture.format = RedFormat;
   texture.minFilter = texture.magFilter = LinearFilter;
   texture.needsUpdate = true;
   return texture;
@@ -100,6 +108,15 @@ class Surface {
   readonly uniforms: ReturnType<typeof compositeUniforms>;
   readonly surfaceMaterial: ShaderMaterial;
   readonly mesh: Mesh;
+  /** The baked light volume and the lighting bundle it was baked from. */
+  readonly light = new WebGL3DRenderTarget(LIGHT_CELLS, LIGHT_CELLS, LIGHT_CELLS, {
+    type: HalfFloatType,
+    format: RGBAFormat,
+    minFilter: LinearFilter,
+    magFilter: LinearFilter,
+    depthBuffer: false,
+  });
+  bakedFrom?: SmokeLighting;
 
   constructor(
     smoke: SmokeDraw,
@@ -138,6 +155,7 @@ class Surface {
     this.surfaceMaterial.dispose();
     this.from.dispose();
     this.to.dispose();
+    this.light.dispose();
   }
 }
 
@@ -210,7 +228,6 @@ export class SmokeVolumePass {
   // allocation or completeness check.
   private readonly spareTargets: WebGLRenderTarget[] = [];
   private warmed = false;
-  private readonly sunlight = new Map<string, number>();
   private reserveDepthStorage = true;
   private targetStatus = new WeakMap<
     WebGLRenderTarget,
@@ -231,7 +248,13 @@ export class SmokeVolumePass {
   });
   private readonly depthPass = new SmokeDepthPass();
   private readonly depthCamera = new PerspectiveCamera();
-  private readonly detail = smokeNoise();
+  private readonly worley = smokeNoise();
+  // A uniform neutral light for scenes without a probe volume.
+  private readonly constantLight = Object.assign(
+    new Data3DTexture(new Uint8Array([89, 89, 89, 255]), 1, 1, 1),
+    { format: RGBAFormat, needsUpdate: true },
+  );
+  private lightMaterial?: { probes: SmokeLighting['probes']; material: ShaderMaterial };
   private readonly quadScene = new Scene();
   private readonly quadCamera = new Camera();
   private readonly size = new Vector2();
@@ -246,7 +269,8 @@ export class SmokeVolumePass {
     clipRect: { value: new Vector4(-1, -1, 1, 1) },
     screenRect: { value: new Vector4() },
     depthRect: { value: new Vector4() },
-    detailField: { value: this.detail },
+    worley: { value: this.worley },
+    lightVolume: { value: this.constantLight as Data3DTexture | WebGL3DRenderTarget['texture'] },
     opaqueDepth: { value: this.depth.depthTexture },
     previousField: { value: null as Data3DTexture | null },
     currentField: { value: null as Data3DTexture | null },
@@ -256,18 +280,14 @@ export class SmokeVolumePass {
     origin: { value: new Vector3() },
     boxMin: { value: new Vector3() },
     boxMax: { value: new Vector3() },
-    tint: { value: new Color() },
     sunColor: { value: new Color() },
-    sunVisibility: { value: 1 },
     sunDirection: { value: new Vector3() },
     fieldMix: { value: 0 },
     amount: { value: 0 },
-    recorded: { value: false },
     fieldScale: { value: 1 },
-    drift: { value: 0 },
-    stepSize: { value: CELL * 0.3 },
-    blastHoles: { value: Array.from({ length: MAX_HOLES }, () => new Vector4()) },
-    blastStrength: { value: new Float32Array(MAX_HOLES) },
+    age: { value: 0 },
+    stepSize: { value: SMOKE_STEP },
+    blasts: { value: Array.from({ length: MAX_HOLES }, () => new Vector4(0, 0, 0, -1)) },
   };
   private readonly marchMaterial = new ShaderMaterial({
     vertexShader: quadVertex,
@@ -281,11 +301,7 @@ export class SmokeVolumePass {
   private readonly keeperTarget = marchTarget();
   private readonly keeper = compositeMaterial(compositeUniforms(this.keeperTarget));
 
-  constructor(
-    private readonly group: Group,
-    private readonly sun: Vector3,
-    private readonly sunTrace?: SmokeSunTrace,
-  ) {
+  constructor(private readonly group: Group) {
     const quad = new Mesh(this.geometry, this.marchMaterial);
     quad.frustumCulled = false;
     this.quadScene.add(quad);
@@ -296,7 +312,7 @@ export class SmokeVolumePass {
     world: Scene,
     camera: PerspectiveCamera,
     smoke: SmokeDraw[],
-    sunColor: Color,
+    lighting: SmokeLighting,
     low: boolean,
     xray: boolean,
     sceneLightScale = 1,
@@ -308,9 +324,9 @@ export class SmokeVolumePass {
       if (!keys.has(key)) {
         this.release(surface);
         this.surfaces.delete(key);
-        this.sunlight.delete(key);
       }
     }
+    if (lighting.probes && !gl.getContext().isContextLost()) this.lightBake(gl, lighting.probes);
     if (!smoke.length || !this.group.visible) return true;
     gl.getDrawingBufferSize(this.size);
     if (this.size.x === 0 || this.size.y === 0) return true;
@@ -413,7 +429,7 @@ export class SmokeVolumePass {
           cloud,
           rect,
           crop,
-          sunColor,
+          lighting,
           low,
           xray,
           7 + i / visible.length,
@@ -479,37 +495,72 @@ export class SmokeVolumePass {
   private setBox(smoke: SmokeDraw) {
     this.box.min.fromArray(smoke.bounds.min).multiplyScalar(smoke.scale);
     this.box.max.fromArray(smoke.bounds.max).multiplyScalar(smoke.scale);
-    // Procedural event clouds can displace their edge beyond the grid's trilinear support.
-    if (!smoke.recorded) this.box.expandByScalar(BILLOW_SPAN * 0.5 * smoke.scale);
     this.box.min.max(this.gridMin.setScalar(-HALF_GRID * smoke.scale));
     this.box.max.min(this.gridMax.setScalar(HALF_GRID * smoke.scale));
     this.box.translate(this.marchUniforms.origin.value.fromArray(smoke.origin));
   }
 
-  private sunVisibility(cloud: SmokeDraw) {
-    if (!this.sunTrace) return 1;
-    const cached = this.sunlight.get(cloud.key);
-    if (cached !== undefined) return cached;
-    const [x, y, z] = cloud.origin;
-    let open = 0;
-    // The main map trace is shared with the shoulder camera. A few static
-    // probes distinguish a covered cloud from a sunlit one on every tier,
-    // without updating a shadow map or tracing once per frame.
-    for (const lateral of [-0.9, 0, 0.9]) {
-      const target: FollowCamera['target'] = [x + lateral, y + 1.0, z - lateral * 0.55];
-      const position: FollowCamera['position'] = [
-        target[0] + this.sun.x * 48,
-        target[1] + this.sun.y * 48,
-        target[2] + this.sun.z * 48,
-      ];
-      const end = this.sunTrace({ target, position });
-      open += Number(
-        Math.hypot(end[0] - position[0], end[1] - position[1], end[2] - position[2]) < 0.02,
-      );
+  /** The light-bake program for this probe set, linked once when the map's lighting arrives. */
+  private lightBake(gl: WebGLRenderer, probes: NonNullable<SmokeLighting['probes']>) {
+    if (this.lightMaterial?.probes === probes) return this.lightMaterial.material;
+    this.lightMaterial?.material.dispose();
+    const material = new ShaderMaterial({
+      vertexShader: quadVertex,
+      fragmentShader: lightFragment,
+      uniforms: {
+        ...probes,
+        clipRect: { value: new Vector4(-1, -1, 1, 1) },
+        origin: { value: new Vector3() },
+        layer: { value: 0 },
+        fieldScale: { value: 1 },
+      },
+      depthTest: false,
+      depthWrite: false,
+      blending: NoBlending,
+      toneMapped: false,
+    });
+    this.lightMaterial = { probes, material };
+    const scene = new Scene();
+    scene.add(new Mesh(this.geometry, material));
+    const previous = gl.getRenderTarget();
+    try {
+      gl.setRenderTarget(this.keeperTarget);
+      gl.compile(scene, this.quadCamera);
+    } finally {
+      gl.setRenderTarget(previous);
     }
-    const visible = open / 3;
-    this.sunlight.set(cloud.key, visible);
-    return visible;
+    return material;
+  }
+
+  /** Bake the cloud's light volume once per cloud and lighting bundle. */
+  private bakeLight(
+    gl: WebGLRenderer,
+    surface: Surface,
+    cloud: SmokeDraw,
+    lighting: SmokeLighting,
+  ) {
+    if (!lighting.probes) return this.constantLight;
+    if (surface.bakedFrom === lighting) return surface.light.texture;
+    const material = this.lightBake(gl, lighting.probes);
+    material.uniforms.origin.value.fromArray(cloud.origin);
+    material.uniforms.fieldScale.value = cloud.scale;
+    const quad = this.quadScene.children[0] as Mesh;
+    const march = quad.material;
+    quad.material = material;
+    try {
+      for (let layer = 0; layer < LIGHT_CELLS; layer++) {
+        material.uniforms.layer.value = layer;
+        if (layer === 0) {
+          if (!this.bindTarget(gl, surface.light)) return this.constantLight;
+        } else gl.setRenderTarget(surface.light, layer);
+        gl.render(this.quadScene, this.quadCamera);
+      }
+    } finally {
+      quad.material = march;
+    }
+    // A growing analytic cloud changes scale; bake again only when it settles.
+    if (cloud.recorded || cloud.scale >= 1) surface.bakedFrom = lighting;
+    return surface.light.texture;
   }
 
   private renderCloud(
@@ -518,7 +569,7 @@ export class SmokeVolumePass {
     cloud: SmokeDraw,
     rect: Rect,
     crop: Rect,
-    sunColor: Color,
+    lighting: SmokeLighting,
     low: boolean,
     xray: boolean,
     order: number,
@@ -571,21 +622,25 @@ export class SmokeVolumePass {
     u.boxMax.value.copy(this.box.max);
     u.previousField.value = surface.from;
     u.currentField.value = surface.to;
-    u.sunDirection.value.copy(this.sun);
-    u.sunColor.value.copy(sunColor);
-    u.sunVisibility.value = this.sunVisibility(cloud);
-    u.tint.value.copy(cloud.tint);
+    u.sunDirection.value.copy(lighting.sunDirection);
+    // The smoke shader clamps the sun colour to [0, 1].
+    u.sunColor.value.setRGB(
+      Math.min(1, Math.max(0, lighting.sunColor.r)),
+      Math.min(1, Math.max(0, lighting.sunColor.g)),
+      Math.min(1, Math.max(0, lighting.sunColor.b)),
+    );
     u.amount.value = cloud.amount;
-    u.recorded.value = cloud.recorded;
     u.fieldMix.value = cloud.mix;
     u.fieldScale.value = cloud.scale;
-    u.drift.value = cloud.drift;
-    u.stepSize.value = CELL * (low ? 0.43 : 0.3);
-    u.blastStrength.value.fill(0);
-    cloud.holes.forEach(({ position, radius, strength }, i) => {
-      u.blastHoles.value[i].set(...position, radius);
-      u.blastStrength.value[i] = strength;
+    u.age.value = cloud.age;
+    // Low quality halves the samples; each one stands for two of the game's steps.
+    u.stepSize.value = SMOKE_STEP * (low ? 2 : 1);
+    u.blasts.value.forEach((blast, i) => {
+      const hole = cloud.holes[i];
+      if (hole) blast.set(...hole.position, hole.since);
+      else blast.set(0, 0, 0, -1);
     });
+    u.lightVolume.value = this.bakeLight(gl, surface, cloud, lighting);
     if (!this.bindTarget(gl, target)) return;
     gl.render(this.quadScene, this.quadCamera);
 
@@ -611,11 +666,13 @@ export class SmokeVolumePass {
     this.keeper.dispose();
     this.keeperTarget.dispose();
     this.warmed = false;
-    this.sunlight.clear();
+    this.lightMaterial?.material.dispose();
+    this.lightMaterial = undefined;
+    this.constantLight.dispose();
     this.depth.dispose();
     this.revalidateTargets();
     this.depthPass.dispose();
-    this.detail.dispose();
+    this.worley.dispose();
     this.marchMaterial.dispose();
     this.geometry.dispose();
   }

@@ -94,6 +94,10 @@ export function actorLighting(renderer: WebGLRenderer, native: NativeRenderer) {
   }
   return {
     bind,
+    /** The probe-volume uniforms, shared with effects that sample the same lighting. */
+    uniforms,
+    /** The authored sun of the playable environment, in Source axes towards the sun. */
+    sun: { direction: env.lightDir, color: env.color },
     dispose() {
       for (const restore of patched.values()) restore();
       for (const wrapper of wrappers) renderer.properties.remove(wrapper);

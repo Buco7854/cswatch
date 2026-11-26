@@ -1,9 +1,11 @@
 import type { GameEvent } from './types';
+import { WORLEY_CELLS, worleyAt } from './smoke-noise';
 
 export type XYZ = [number, number, number];
 type SmokeBounds = { min: XYZ; max: XYZ };
 export type SmokeField = { texels: Uint8Array; bounds: SmokeBounds | null };
-type SmokeHole = { position: XYZ; radius: number; strength: number };
+/** A recorded HE detonation near a cloud and the seconds since it. */
+type SmokeHole = { position: XYZ; since: number };
 export type SmokeSample = {
   origin: XYZ;
   scale: number;
@@ -11,32 +13,36 @@ export type SmokeSample = {
   current: SmokeField;
   mix: number;
   bounds: SmokeBounds;
+  /** Lifetime envelope of the recorded detonation and expiry. */
   amount: number;
+  /** Seconds since detonation; drives the noise drift and the reveal. */
+  age: number;
   holes: SmokeHole[];
 };
 
 // The recorded journal's 32-cell Source-space grid uses 20-inch voxels.
 export const GRID = 32;
-const INCH = 0.0254;
+export const INCH = 0.0254;
 export const CELL = 20 * INCH;
-export const BILLOW_SPAN = 1.12;
 export const HALF_GRID = (GRID * CELL) / 2;
 export const HIGH_SUN: XYZ = [0.36, 0.86, -0.36];
 export const MAX_HOLES = 4;
-// The simulator uses 50 as its local saturation reference. Its scalar has no
-// documented SI unit. Use it linearly as relative aerosol concentration, with
-// a 2 m path at 65% of saturation yielding less than 2% transmittance.
-export const EXTINCTION = 3.05;
+// The CS2 smoke shader (smoke_volume.vfx) samples every four inches and
+// treats each sample's opacity as a per-step alpha.
+export const SMOKE_STEP = 4 * INCH;
+export const MAX_SMOKE_STEPS = 96;
+// An HE blast clears smoke within 200-240 inches and lets it refill over five seconds.
+export const BLAST_REACH = 250 * INCH;
+export const BLAST_SECONDS = 5;
+// The smoke shader's reveal grows a sphere from the cloud centre; the
+// recorded journal already carries the spread, so it lasts under a second.
+export const REVEAL_SECONDS = 0.9;
+// The shader's density texture is uploaded by game code at a scale the shaders
+// do not reveal. The journal reconstruction saturates at 1, where the shader's
+// interior darkening (1 - density) would turn a cloud's core black; CS2 shows
+// a mid-grey core from inside, so the journal density is scaled to that range.
+export const SMOKE_DENSITY_SCALE = 0.45;
 const index = (x: number, y: number, z: number) => x + GRID * (y + GRID * z);
-const inGrid = (i: number) => i >= 0 && i < GRID;
-
-/** Approximate scattering albedo. Neutral suspended particles still scatter
- * light in each channel; the recorded smoke dye absorbs the remaining share. */
-export function smokeAlbedo(color?: readonly [number, number, number]): XYZ {
-  if (!color) return [1, 1, 1];
-  const channel = (value: number) => 0.25 + 0.75 * (value / 255);
-  return [channel(color[0]), channel(color[1]), channel(color[2])];
-}
 
 export function scenePoint([x, y, z]: readonly number[]): XYZ {
   return [x * INCH, z * INCH, -y * INCH];
@@ -73,55 +79,12 @@ export function unionSmokeBounds(a: SmokeBounds | null, b: SmokeBounds | null) {
   };
 }
 
-/** Sweep optical depth plane by plane from the light. Each voxel reads the
- * bilinear upstream intersection from the previous plane of the dominant axis. */
-export function lightField(density: Uint8Array, sun: XYZ) {
-  const bounds = occupiedBounds(density);
-  const texels = new Uint8Array(2 * density.length);
-  const opticalDepth = new Float32Array(density.length);
-  const length = Math.hypot(...sun);
-  const direction = length > 0 ? (sun.map((v) => v / length) as XYZ) : HIGH_SUN;
-  const axis = direction.reduce(
-    (best, v, i) => (Math.abs(v) > Math.abs(direction[best]) ? i : best),
-    0,
-  );
-  const u = (axis + 1) % 3;
-  const v = (axis + 2) % 3;
-  const sign = Math.sign(direction[axis]);
-  const plane = Math.abs(direction[axis]);
-  const step = (CELL * EXTINCTION) / plane;
-  const strides = [1, GRID, GRID ** 2];
-  const upstream = (p: number, a: number, b: number) =>
-    inGrid(p) && inGrid(a) && inGrid(b)
-      ? opticalDepth[p * strides[axis] + a * strides[u] + b * strides[v]]
-      : 0;
-  const du = direction[u] / plane;
-  const dv = direction[v] / plane;
-  const iu = Math.floor(du),
-    iv = Math.floor(dv);
-  const fu = du - iu,
-    fv = dv - iv;
-  for (let layer = 0; layer < GRID; layer++) {
-    const p = sign > 0 ? GRID - 1 - layer : layer;
-    for (let b = 0; b < GRID; b++)
-      for (let a = 0; a < GRID; a++) {
-        const j = p * strides[axis] + a * strides[u] + b * strides[v];
-        const q = p + sign;
-        const x = a + iu,
-          y = b + iv;
-        const near = upstream(q, x, y) * (1 - fu) + upstream(q, x + 1, y) * fu;
-        const far = upstream(q, x, y + 1) * (1 - fu) + upstream(q, x + 1, y + 1) * fu;
-        const before = near * (1 - fv) + far * fv;
-        const depth = (density[j] / 255) * step;
-        opticalDepth[j] = before + depth;
-        texels[j * 2] = density[j];
-        texels[j * 2 + 1] = Math.round(255 * Math.exp(-before - depth * 0.5));
-      }
-  }
-  return { texels, bounds };
+/** The recorded density as a single-channel 3D field in scene axes. */
+export function densityField(density: Uint8Array): SmokeField {
+  return { texels: density, bounds: occupiedBounds(density) };
 }
 
-export function analyticSmokeField(sun: XYZ) {
+export function analyticSmokeField() {
   const density = new Uint8Array(GRID ** 3);
   const metres = (i: number) => (i + 0.5) * CELL - HALF_GRID;
   for (let z = 0; z < GRID; z++)
@@ -130,7 +93,7 @@ export function analyticSmokeField(sun: XYZ) {
         const r = Math.hypot(metres(x) / 3.8, (metres(y) - 1.3) / 2.45, metres(z) / 3.8);
         density[index(x, y, z)] = Math.round(255 * smooth(1 - r, 0.35));
       }
-  return lightField(density, sun);
+  return densityField(density);
 }
 
 export function smooth(value: number, duration: number) {
@@ -152,7 +115,7 @@ function sampleDensity(field: SmokeField, x: number, y: number, z: number) {
   const ni = Math.min(GRID - 1, i + 1),
     nj = Math.min(GRID - 1, j + 1),
     nk = Math.min(GRID - 1, k + 1);
-  const at = (x: number, y: number, z: number) => field.texels[index(x, y, z) * 2];
+  const at = (x: number, y: number, z: number) => field.texels[index(x, y, z)];
   const lerp = (a: number, b: number, f: number) => a + (b - a) * f;
   const low = lerp(
     lerp(at(i, j, k), at(ni, j, k), a - i),
@@ -175,10 +138,105 @@ function smokeDensityAt(smoke: SmokeSample, x: number, y: number, z: number) {
   return a + (b - a) * mix;
 }
 
-/** Integrate the recorded field along the clipped segment for label occlusion.
- * Edge noise is cosmetic and omitted. Returns 1 for a miss or an empty field. */
+const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
+export const smoothstep = (low: number, high: number, value: number) => {
+  const t = clamp01((value - low) / (high - low));
+  return t * t * (3 - 2 * t);
+};
+
+/** Two octaves of cellular noise in world inches, rising with the cloud's age
+ * (smoke_volume.vfx). Returns the shader's brightness/erosion factor. */
+export function smokeNoiseAt(x: number, y: number, z: number, age: number) {
+  // Scene metres to Source inches (x, -z, y), scaled by the shader's 0.01.
+  const sx = x / INCH / 100,
+    sy = -z / INCH / 100;
+  let sz = y / INCH / 100 - age * 0.05;
+  const coarse = worleyAt(
+    (sx * 2.3) / WORLEY_CELLS,
+    (sy * 2.3) / WORLEY_CELLS,
+    (sz * 2.3) / WORLEY_CELLS,
+  );
+  sz -= age * 0.03;
+  const fine = worleyAt((sx * 6) / WORLEY_CELLS, (sy * 6) / WORLEY_CELLS, (sz * 6) / WORLEY_CELLS);
+  return clamp01((1 - coarse) * 0.6 + (1 - fine) * 0.28 + 0.12);
+}
+
+/** The density remaining after recorded HE blasts, and its effect on colour. */
+export function smokeBlastKeep(
+  holes: readonly SmokeHole[],
+  x: number,
+  y: number,
+  z: number,
+  toSurface: number,
+) {
+  let keep = 1;
+  for (const { position, since } of holes) {
+    const distance = Math.hypot(x - position[0], y - position[1], z - position[2]) / INCH;
+    if (distance >= BLAST_REACH / INCH) continue;
+    const flash = Math.pow(1 - smoothstep(0, 2, since), 128);
+    const wall = (toSurface / INCH <= 16 ? 1 : 0) * (1 - smoothstep(0, 7, since));
+    keep = Math.min(
+      keep,
+      Math.max(
+        smoothstep(200, 240, distance + flash * 250) + Math.pow(smoothstep(0.5, 5, since), 1.8),
+        wall,
+      ),
+    );
+  }
+  return keep;
+}
+
+/** Density after the shader's reveal, ripple, lifetime and blast terms. */
+export function smokeSampleDensity(
+  smoke: SmokeSample,
+  x: number,
+  y: number,
+  z: number,
+  fromEye: number,
+  toSurface: number,
+) {
+  const density = smokeDensityAt(smoke, x, y, z) * SMOKE_DENSITY_SCALE;
+  if (density <= 0.01) return 0;
+  const span = GRID * CELL * smoke.scale;
+  // Grid coordinates in Source axes.
+  const u = (x - smoke.origin[0]) / span + 0.5,
+    v = 0.5 - (z - smoke.origin[2]) / span,
+    w = (y - smoke.origin[1]) / span + 0.5;
+  const ripple = Math.max(
+    0.5,
+    clamp01(
+      (Math.abs(Math.sin(u * 18.84 + smoke.age * 0.7)) +
+        Math.abs(Math.cos(v * 31.4 + smoke.age * 0.5))) *
+        0.5,
+    ),
+  );
+  let value = clamp01((density - 0.01) * 1.0101) * ripple * smoke.amount;
+  value = clamp01(value + (1 - clamp01((fromEye / INCH) * 0.1)) * value);
+  const keep = smokeBlastKeep(smoke.holes, x, y, z, toSurface);
+  value = value * 0.02 + (value - value * 0.02) * keep;
+  const growth = smoke.age / REVEAL_SECONDS;
+  if (growth < 1) {
+    const g = Math.min(0.9999, Math.max(0.0001, growth));
+    const low = smoothstep(0, 0.8, g),
+      high = smoothstep(0.2, 1, g);
+    const radius = clamp01(Math.hypot(u - 0.5, v - 0.5, (w - 0.5) * 1.2));
+    value *= low === high ? g : clamp01(smoothstep(low, high, radius));
+  }
+  return value;
+}
+
+/** Opacity of one four-inch sample: noise erodes thin smoke and fills dense smoke. */
+export function smokeSampleAlpha(density: number, noise: number) {
+  const eroded = density - (1 - noise);
+  return smoothstep(0, 0.2, clamp01(eroded + (density + noise - eroded) * density));
+}
+
+/** March the cloud the way the volume shader does, for label occlusion.
+ * Returns the fraction of light passing between the two points. */
 export function smokeTransmittance(smoke: SmokeSample, from: XYZ, to: XYZ) {
   const delta = to.map((v, i) => v - from[i]);
+  const total = Math.hypot(...delta);
+  if (!(total > 0) || smoke.amount <= 0) return 1;
   let entry = 0,
     exit = 1;
   for (let axis = 0; axis < 3; axis++) {
@@ -193,30 +251,27 @@ export function smokeTransmittance(smoke: SmokeSample, from: XYZ, to: XYZ) {
     entry = Math.max(entry, Math.min(near, far));
     exit = Math.min(exit, Math.max(near, far));
   }
-  const length = Math.hypot(...delta) * (exit - entry);
-  if (!(length > 0) || smoke.amount <= 0) return 1;
-  const steps = Math.min(96, Math.ceil(length / (CELL * smoke.scale * 0.5)));
-  let sum = 0;
-  for (let i = 0; i < steps; i++) {
-    const t = entry + ((exit - entry) * (i + 0.5)) / steps;
-    const x = from[0] + t * delta[0],
-      y = from[1] + t * delta[1],
-      z = from[2] + t * delta[2];
-    let density = smokeDensityAt(smoke, x, y, z);
-    for (const {
-      position: [hx, hy, hz],
-      radius,
-      strength,
-    } of smoke.holes)
-      density *=
-        1 -
-        strength * (1 - smooth(Math.hypot(x - hx, y - hy, z - hz) - radius * 0.55, radius * 0.45));
-    sum += density;
+  const begin = entry * total,
+    end = exit * total;
+  if (!(end > begin)) return 1;
+  const stride = Math.max(SMOKE_STEP, (end - begin) / MAX_SMOKE_STEPS);
+  const power = stride / SMOKE_STEP;
+  let transmission = 1;
+  for (let t = begin + stride * 0.5; t < end; t += stride) {
+    const f = t / total;
+    const x = from[0] + f * delta[0],
+      y = from[1] + f * delta[1],
+      z = from[2] + f * delta[2];
+    // Labels end at a character, where the shader skips its keep-near-surface term.
+    const density = smokeSampleDensity(smoke, x, y, z, t, Infinity);
+    if (density <= 0) continue;
+    const alpha = smokeSampleAlpha(density, smokeNoiseAt(x, y, z, smoke.age));
+    transmission *= Math.pow(1 - alpha, power);
+    if (transmission < 0.009) return 0;
   }
-  return Math.exp((-sum * EXTINCTION * smoke.amount * length) / steps);
+  return transmission;
 }
 
-const HOLE_SECONDS = 1.1;
 export function indexSmokeBlasts(events: GameEvent[]) {
   return events
     .flatMap(({ type, tick, x, y, z }) =>
@@ -233,7 +288,7 @@ export function indexSmokeBlasts(events: GameEvent[]) {
 
 export function activeSmokeHoles(
   blasts: ReturnType<typeof indexSmokeBlasts>,
-  smoke: SmokeSample,
+  smoke: Pick<SmokeSample, 'origin' | 'bounds' | 'scale'>,
   start: number,
   tick: number,
   rate: number,
@@ -245,25 +300,21 @@ export function activeSmokeHoles(
     if (blasts[mid].tick <= tick) low = mid + 1;
     else high = mid;
   }
-  const holes = [];
+  const holes: SmokeHole[] = [];
   for (let i = low - 1; i >= 0 && holes.length < MAX_HOLES; i--) {
     const { position, tick: at } = blasts[i];
-    const age = (tick - at) / rate;
-    if (at < start || age >= HOLE_SECONDS) break;
+    const since = (tick - at) / rate;
+    if (at < start || since >= BLAST_SECONDS) break;
+    // Blasts reach 250 inches past the occupied bounds.
     if (
       position.some(
         (value, axis) =>
-          value < smoke.origin[axis] + smoke.bounds.min[axis] * smoke.scale ||
-          value > smoke.origin[axis] + smoke.bounds.max[axis] * smoke.scale,
+          value < smoke.origin[axis] + smoke.bounds.min[axis] * smoke.scale - BLAST_REACH ||
+          value > smoke.origin[axis] + smoke.bounds.max[axis] * smoke.scale + BLAST_REACH,
       )
     )
       continue;
-    if (smokeDensityAt(smoke, ...position) < 0.06) continue;
-    holes.push({
-      position,
-      radius: 2.4 * smooth(age + 0.05, 0.17) * (1 - 0.65 * smooth(age - 0.16, 0.94)),
-      strength: 1 - smooth(age - 0.2, HOLE_SECONDS - 0.2),
-    });
+    holes.push({ position, since });
   }
   return holes;
 }

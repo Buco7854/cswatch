@@ -5,7 +5,7 @@ import {
   mortonDecode3,
 } from 'cs2parser/browser';
 import { smokeLimits, type SmokeTrack } from '../../shared/smoke-state.mjs';
-import { GRID, lightField, type SmokeField, type XYZ } from './smoke-field.ts';
+import { GRID, densityField, type SmokeField } from './smoke-field.ts';
 
 export function encodeDensity(density: Float32Array) {
   const ordered = new Uint8Array(GRID ** 3);
@@ -21,7 +21,7 @@ export function encodeDensity(density: Float32Array) {
 
 /** The journal can be replayed from zero on backward seeks. Cache only the
  * latest pair so the maximum retained memory is independent of replay length. */
-export function smokeJournal(track: SmokeTrack, sun: XYZ) {
+export function smokeJournal(track: SmokeTrack) {
   const encoded = Uint8Array.from(atob(track.journal), (byte) => byte.charCodeAt(0));
   if (encoded.length > smokeLimits.journalBytes) throw new Error('Smoke journal limit');
   const frames = decodeSmokeVoxelJournal(encoded);
@@ -40,7 +40,7 @@ export function smokeJournal(track: SmokeTrack, sun: XYZ) {
   let simulation = new SmokeDensitySimulation(track.origin);
   let pair: { previous: SmokeField; current: SmokeField } | undefined;
   let pairedPrevious = -1;
-  const field = () => lightField(encodeDensity(simulation.snapshot().density), sun);
+  const field = () => densityField(encodeDensity(simulation.snapshot().density));
   const advance = (seq: number) => {
     while (simulation.seq < seq) simulation.step(frames[simulation.seq + 1]);
   };

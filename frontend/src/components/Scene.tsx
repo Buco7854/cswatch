@@ -539,7 +539,6 @@ function World({
     () => (tracers ? followTrace?.fork() : undefined),
     [followTrace, tracers],
   );
-  const smokeSunTrace = useMemo(() => followTrace?.fork(), [followTrace]);
   // Separate per-actor floor queries keep their paused-ray caches independent.
   const floorTraces = useMemo(
     () => new Map(followTrace ? data.players.map(({ id }) => [id, followTrace.fork(0)]) : []),
@@ -1042,7 +1041,6 @@ function World({
               tick={tick}
               modelReady={modelReady}
               onUnavailable={onSmokeUnavailable}
-              sunTrace={smokeSunTrace}
               low={low}
               xray={settings.xray}
               sun={sun}

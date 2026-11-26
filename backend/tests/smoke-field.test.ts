@@ -2,18 +2,19 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mortonEncode3 } from 'cs2parser/browser';
 import {
+  BLAST_SECONDS,
   CELL,
-  EXTINCTION,
   GRID,
   HALF_GRID,
-  lightField,
+  densityField,
   analyticSmokeField,
   activeSmokeHoles,
   indexSmokeBlasts,
   occupiedBounds,
   scenePoint,
-  smokeAlbedo,
   smokeEnvelope,
+  smokeNoiseAt,
+  smokeSampleAlpha,
   smokeTransmittance,
   unionSmokeBounds,
 } from '../../frontend/src/smoke-field.js';
@@ -23,14 +24,27 @@ const index = (x, y, z) => x + GRID * (y + GRID * z);
 const close = (actual, expected, tolerance = 1e-6) =>
   assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} vs ${expected}`);
 
-test('recorded dye absorbs light per channel while event-only smoke stays neutral', () => {
-  assert.deepEqual(smokeAlbedo(), [1, 1, 1]);
-  assert.deepEqual(smokeAlbedo([255, 255, 255]), [1, 1, 1]);
-  assert.deepEqual(smokeAlbedo([0, 0, 0]), [0.25, 0.25, 0.25]);
-  const [red, green, blue] = smokeAlbedo([180, 129, 50]);
-  assert.ok(red > green && green > blue && red < 1);
-  const cool = smokeAlbedo([75, 127, 155]);
-  assert.ok(cool[2] > cool[1] && cool[1] > cool[0]);
+test('each four-inch sample erodes thin smoke with noise and fills dense smoke', () => {
+  // smoke_volume.vfx: smoothstep(0, 0.2, mix(d - (1 - n), d + n, d)).
+  close(smokeSampleAlpha(0.45, 0.8), 1);
+  assert.equal(smokeSampleAlpha(0.03, 0.5), 0);
+  assert.ok(smokeSampleAlpha(0.2, 0.9) > smokeSampleAlpha(0.2, 0.6));
+  let previous = 0;
+  for (let density = 0; density <= 1; density += 0.05) {
+    const alpha = smokeSampleAlpha(density, 0.7);
+    assert.ok(alpha >= previous && alpha <= 1);
+    previous = alpha;
+  }
+});
+
+test('cellular noise is deterministic in world space and rises with the cloud age', () => {
+  const at = (age) => smokeNoiseAt(1.3, 0.4, -2.2, age);
+  assert.equal(at(2), at(2));
+  assert.notEqual(at(0), at(3));
+  for (let i = 0; i < 64; i++) {
+    const value = smokeNoiseAt(i * 0.37, i * 0.11, -i * 0.29, i * 0.1);
+    assert.ok(value >= 0.12 && value <= 1, String(value));
+  }
 });
 
 test('encoding is linear in simulated concentration and rotates Source axes', () => {
@@ -66,27 +80,18 @@ test('occupied bounds include trilinear support, clip to the grid and union both
   union.max.forEach((v, i) => close(v, [HALF_GRID, 1.5 * CELL, HALF_GRID][i]));
 });
 
-test('sun sweep integrates optical depth through each occupied cell and reverses with the sun', () => {
+test('the density field keeps the recorded bytes and their occupied bounds', () => {
   const density = new Uint8Array(GRID ** 3);
   density[index(16, 16, 16)] = 255;
-  const lit = lightField(density, [0, 1, 0]).texels;
-  const reversed = lightField(density, [0, -1, 0]).texels;
-  const lookup = (field, x, y, z) => field[index(x, y, z) * 2 + 1] / 255;
-  close(lookup(lit, 16, 16, 16), Math.exp(-EXTINCTION * CELL * 0.5), 0.002);
-  close(lookup(lit, 16, 15, 16), Math.exp(-EXTINCTION * CELL), 0.002);
-  assert.equal(lookup(lit, 16, 17, 16), 1);
-  assert.equal(lookup(lit, 15, 15, 16), 1);
-  assert.equal(lookup(reversed, 16, 15, 16), 1);
-  assert.equal(lookup(reversed, 16, 17, 16), lookup(lit, 16, 15, 16));
-
-  const oblique = lightField(density, [0.5, 1, 0]).texels;
-  assert.ok(lookup(oblique, 16, 15, 16) < 1);
-  assert.equal(lookup(oblique, 17, 15, 16), 1);
+  const field = densityField(density);
+  assert.equal(field.texels, density);
+  assert.deepEqual(field.bounds, occupiedBounds(density));
+  assert.equal(densityField(new Uint8Array(GRID ** 3)).bounds, null);
 });
 
 test('transmittance clips segment bounds and applies blend, envelope and HE clearing', () => {
-  const current = lightField(new Uint8Array(GRID ** 3).fill(255), [0, 1, 0]);
-  const previous = lightField(new Uint8Array(GRID ** 3), [0, 1, 0]);
+  const current = densityField(new Uint8Array(GRID ** 3).fill(255));
+  const previous = densityField(new Uint8Array(GRID ** 3));
   const cloud = {
     previous,
     current,
@@ -95,28 +100,23 @@ test('transmittance clips segment bounds and applies blend, envelope and HE clea
     mix: 1,
     bounds: current.bounds,
     amount: 1,
+    age: 4,
     holes: [],
   };
   const core = smokeTransmittance(cloud, [0, 0, 0], [2, 0, 0]);
   assert.ok(core < 0.02);
-  close(core, Math.exp(-EXTINCTION * 2));
-  close(smokeTransmittance(cloud, [HALF_GRID - 2, 0, 0], [HALF_GRID + 5, 0, 0]), core);
+  assert.ok(smokeTransmittance(cloud, [HALF_GRID - 2, 0, 0], [HALF_GRID + 5, 0, 0]) < 0.02);
   assert.equal(smokeTransmittance(cloud, [0, 0, 0], [0, 0, 0]), 1);
   assert.equal(smokeTransmittance(cloud, [0, HALF_GRID + 1, 0], [2, HALF_GRID + 1, 0]), 1);
-  close(
-    smokeTransmittance({ ...cloud, mix: 0.5, amount: 0.5 }, [0, 0, 0], [2, 0, 0]),
-    core ** 0.25,
-  );
-  close(
+  // An empty previous state, half blended and half faded, leaves a thin, eroded cloud.
+  assert.ok(smokeTransmittance({ ...cloud, mix: 0.5, amount: 0.5 }, [0, 0, 0], [2, 0, 0]) > core);
+  assert.equal(smokeTransmittance({ ...cloud, amount: 0 }, [0, 0, 0], [2, 0, 0]), 1);
+  assert.ok(
     smokeTransmittance(
-      {
-        ...cloud,
-        holes: [{ position: [1, 0, 0], radius: 2, strength: 1 }],
-      },
+      { ...cloud, holes: [{ position: [1, 0, 0], since: 0.3 }] },
       [0, 0, 0],
       [2, 0, 0],
-    ),
-    1,
+    ) > 0.9,
   );
   assert.equal(smokeEnvelope(0, 1, 0.5), 0);
   assert.equal(smokeEnvelope(1, 0.25, 0.5), 0.5);
@@ -134,8 +134,7 @@ test('forward, backward and direct journal seeks yield identical paired bytes', 
     frames.flatMap((payload, seq) => [seq, 0, payload.length, 0, ...payload]),
   ).toString('base64');
   const track = { journal, updates, origin: [0, 0, 0] };
-  const sun = [0.4, 0.8, -0.2];
-  const seek = smokeJournal(track, sun);
+  const seek = smokeJournal(track);
   const offset = (i) => updates[i][1];
   for (let i = 0; i < 3; i++) seek(offset(i), offset(Math.max(0, i - 1)));
   const forward = seek(offset(3), offset(2));
@@ -144,7 +143,7 @@ test('forward, backward and direct journal seeks yield identical paired bytes', 
   assert.equal(forward.stoppedAt, 33);
   seek(offset(5), offset(4));
   assert.deepEqual(seek(offset(3), offset(2)), forward);
-  assert.deepEqual(smokeJournal(track, sun)(offset(3), offset(2)), forward);
+  assert.deepEqual(smokeJournal(track)(offset(3), offset(2)), forward);
 });
 
 test('cropped smoke depth camera preserves offset world rays and re-encodes linear depth', async () => {
@@ -181,8 +180,8 @@ test('cropped smoke depth camera preserves offset world rays and re-encodes line
   assert.equal(main.far, 3000);
 });
 
-test('HE clearing is tied to recorded detonation time and occupied space', () => {
-  const field = lightField(new Uint8Array(GRID ** 3).fill(210), [0, 1, 0]);
+test('HE clearing is tied to recorded detonation time and reach, and refills over five seconds', () => {
+  const field = densityField(new Uint8Array(GRID ** 3).fill(210));
   const cloud = {
     previous: field,
     current: field,
@@ -191,29 +190,32 @@ test('HE clearing is tied to recorded detonation time and occupied space', () =>
     mix: 1,
     bounds: field.bounds,
     amount: 1,
+    age: 4,
     holes: [],
   };
   const blasts = indexSmokeBlasts([
     { type: 'flashbang_detonate', tick: 100, x: 0, y: 0, z: 0 },
     { type: 'hegrenade_detonate', tick: 100, x: 0, y: 0, z: 0 },
-    { type: 'hegrenade_detonate', tick: 101, x: 950, y: 0, z: 0 },
+    // 2000 inches away: beyond the 250-inch reach past the occupied grid.
+    { type: 'hegrenade_detonate', tick: 101, x: 2000, y: 0, z: 0 },
   ]);
   assert.deepEqual(activeSmokeHoles(blasts, cloud, 90, 99, 64), []);
   const opened = activeSmokeHoles(blasts, cloud, 90, 111, 64);
   assert.equal(opened.length, 1);
-  assert.equal(opened[0].strength, 1);
-  assert.equal(smokeTransmittance({ ...cloud, holes: opened }, [-1, 0, 0], [1, 0, 0]), 1);
-  const closing = activeSmokeHoles(blasts, cloud, 90, 149, 64);
-  assert.ok(closing[0].radius < opened[0].radius && closing[0].strength < 0.5);
-  assert.deepEqual(activeSmokeHoles(blasts, cloud, 90, 171, 64), []);
+  close(opened[0].since, 11 / 64);
+  const through = (holes) => smokeTransmittance({ ...cloud, holes }, [-1, 0, 0], [1, 0, 0]);
+  assert.ok(through(opened) > 0.9);
+  const refilling = activeSmokeHoles(blasts, cloud, 90, 100 + 64 * 3, 64);
+  assert.ok(through(refilling) < through(opened));
+  assert.deepEqual(activeSmokeHoles(blasts, cloud, 90, 100 + 64 * BLAST_SECONDS, 64), []);
   assert.deepEqual(activeSmokeHoles(blasts, cloud, 102, 111, 64), []);
 });
 
-test('the analytic field supplies a lit, bounded cloud without a journal', () => {
-  const current = analyticSmokeField([0, 1, 0]);
+test('the analytic field supplies a bounded cloud without a journal', () => {
+  const current = analyticSmokeField();
   assert.ok(current.bounds);
-  assert.equal(current.texels.length, GRID ** 3 * 2);
-  assert.deepEqual(current, analyticSmokeField([0, 1, 0]));
+  assert.equal(current.texels.length, GRID ** 3);
+  assert.deepEqual(current, analyticSmokeField());
   const cloud = {
     origin: [0, 0, 0] as [number, number, number],
     scale: 1,
@@ -222,6 +224,7 @@ test('the analytic field supplies a lit, bounded cloud without a journal', () =>
     mix: 1,
     bounds: current.bounds,
     amount: 1,
+    age: 4,
     holes: [],
   };
   assert.ok(smokeTransmittance(cloud, [-1, 1.3, 0], [1, 1.3, 0]) < 0.02);

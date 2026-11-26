@@ -1,5 +1,19 @@
-import { BILLOW_SPAN, EXTINCTION, HALF_GRID, MAX_HOLES } from './smoke-field';
+import {
+  BLAST_REACH,
+  GRID,
+  CELL,
+  INCH,
+  MAX_HOLES,
+  MAX_SMOKE_STEPS,
+  REVEAL_SECONDS,
+  SMOKE_DENSITY_SCALE,
+  SMOKE_STEP,
+} from './smoke-field';
+import { WORLEY_CELLS } from './smoke-noise';
+import probeShader from './world/glsl/actor-probes.glsl?raw';
 
+export const LIGHT_CELLS = 16;
+const glslFloat = (value: number) => (Number.isInteger(value) ? value.toFixed(1) : String(value));
 export const quadVertex = /* glsl */ `
   uniform vec4 clipRect;
   varying vec2 localUv;
@@ -20,34 +34,25 @@ const depthFunctions = /* glsl */ `
   }
 `;
 
+// Ported from the CS2 smoke volume pixel shader (smoke_volume.vfx, D_SMOKE_INSTANCES=1):
+// four-inch samples, cellular-noise erosion, per-sample alpha, light from the
+// map's probe volume facing away from the cloud centre, a sun lobe on the
+// sun-facing side of the cloud, and recorded HE blasts clearing the volume.
 export const marchFragment = /* glsl */ `
   precision highp sampler3D;
-  uniform sampler3D previousField, currentField, detailField;
+  uniform sampler3D previousField, currentField, lightVolume, worley;
   uniform vec4 screenRect;
   uniform mat4 inverseProjection, cameraWorld;
-  uniform vec3 origin, boxMin, boxMax, sunDirection, sunColor, tint;
-  uniform float fieldMix, amount, fieldScale, drift, stepSize, sunVisibility;
-  uniform bool recorded;
-  uniform vec4 blastHoles[${MAX_HOLES}];
-  uniform float blastStrength[${MAX_HOLES}];
+  uniform vec3 origin, boxMin, boxMax, sunDirection, sunColor;
+  uniform float fieldMix, amount, fieldScale, age, stepSize;
+  uniform vec4 blasts[${MAX_HOLES}];
   varying vec2 localUv;
   ${depthFunctions}
 
-  const float fieldWidth = ${2 * HALF_GRID};
-  const float noisePeriod = 5.2;
-  vec2 fieldAt(vec3 cell) {
-    return mix(texture(previousField, cell).rg, texture(currentField, cell).rg, fieldMix);
-  }
+  const float inch = ${glslFloat(INCH)};
+  const float span = ${glslFloat(GRID * CELL)};
 
-  vec3 displacedCell(vec3 cell, vec4 detail, float freedom) {
-    return cell + (detail.rgb - 0.5) * (${BILLOW_SPAN} / fieldWidth) * freedom;
-  }
-
-  float billowed(float density, vec4 detail) {
-    float threshold = 0.07 + 0.35 * (1.0 - smoothstep(0.14, 0.88, detail.r))
-                           + 0.075 * (1.0 - detail.a);
-    return density * smoothstep(threshold - 0.055, threshold + 0.13, density);
-  }
+  float cellular(vec3 p) { return texture(worley, p / ${glslFloat(WORLEY_CELLS)}).r; }
 
   void main() {
     gl_FragColor = vec4(0.0);
@@ -62,78 +67,98 @@ export const marchFragment = /* glsl */ `
     float begin = max(max(first.x, first.y), max(first.z, cameraRange.x / -viewRay.z));
     float volumeEnd = min(min(last.x, last.y), last.z);
     float surface = eyeDepth(localUv) / -viewRay.z;
-    float end = min(volumeEnd, surface);
+    // The shader stops two inches in front of opaque surfaces.
+    float end = min(volumeEnd, surface - 2.0 * inch);
     if (end <= begin) return;
 
-    float stride = max(stepSize * fieldScale, (end - begin) / 96.0);
-    float interleave = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))) - 0.5;
-    float g = 0.32;
-    float phase = (1.0 - g*g) / pow(1.0 + g*g - 2.0*g*dot(ray, sunDirection), 1.5);
-    float transmission = 1.0, lastDensity = 0.0;
-    vec3 radiance = vec3(0.0);
-    float cursor = begin;
-    for (int i = 0; i < 96; ++i) {
-      float width = min(stride * mix(1.0, 1.35, smoothstep(0.35, 0.77, 1.0 - transmission)), end - cursor);
-      if (width <= 0.0 || transmission < 0.004) break;
-      float wallDistance = surface <= volumeEnd ? (surface - cursor - width * 0.5) / fieldScale : 5.0;
-      float awayFromWall = smoothstep(0.13, 0.80, wallDistance);
-      // Use midpoint integration for thin smoke and surface contacts. A small
-      // fixed interleaved phase breaks bands only after enough opacity builds.
-      float offset = 0.5 + 0.28 * interleave * awayFromWall * smoothstep(0.15, 0.65, 1.0 - transmission);
-      float t = cursor + width * offset;
-      cursor += width;
+    float stride = max(stepSize, (end - begin) / ${glslFloat(MAX_SMOKE_STEPS)});
+    float power = stride / ${glslFloat(SMOKE_STEP)};
+    // Like the game, sample every four inches; interleave only a lengthened stride.
+    float jitter = stride > ${glslFloat(SMOKE_STEP * 1.001)}
+      ? fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))))
+      : 0.5;
+    float span3 = span * fieldScale;
+    vec4 sum = vec4(0.0);
+    for (int i = 0; i < ${MAX_SMOKE_STEPS}; ++i) {
+      float t = begin + stride * (float(i) + jitter);
+      if (t >= end) break;
       vec3 position = eye + t * ray;
-      vec3 relative = (position - origin) / fieldScale;
-      vec3 cell = relative / fieldWidth + 0.5;
-      vec2 field = fieldAt(cell);
-      if (recorded && field.r < 0.003 && wallDistance >= 0.58) {
-        lastDensity = 0.0;
-        continue;
-      }
-      vec3 p = (relative + vec3(drift * 0.018, -drift * 0.072, drift * 0.031)) / noisePeriod;
-      vec4 detail = texture(detailField, p);
-      float freedom = mix(0.45, 1.0, awayFromWall) * (1.0 - smoothstep(0.58, 0.86, field.r));
-      // The journal already describes the density shape, including dilute edge
-      // voxels. Only event-based approximations need a procedural silhouette.
-      float density = field.r;
-      float beam = field.g;
-      if (!recorded) {
-        vec2 shifted = freedom > 0.015 ? fieldAt(displacedCell(cell, detail, freedom)) : field;
-        float core = field.r * smoothstep(0.50, 0.71, field.r);
-        density = max(core, billowed(shifted.r, detail));
-        beam = mix(shifted.g, field.g, 0.45);
-      }
-      if (wallDistance < 0.58) {
-        // Keep the last interior density just ahead of an opaque surface.
-        // Multiplying the carry by the distance avoids a sharp extra layer.
-        density = max(density, lastDensity * (1.0 - smoothstep(0.15, 0.58, wallDistance)));
-      }
-      lastDensity = density;
-      if (density < 0.003) continue;
+      vec3 relative = position - origin;
+      vec3 cell = relative / span3 + 0.5;
+      float density = mix(texture(previousField, cell).r, texture(currentField, cell).r, fieldMix) *
+                      ${glslFloat(SMOKE_DENSITY_SCALE)};
+      if (density <= 0.01) continue;
+      // Grid coordinates in Source axes (x, -z, y).
+      vec3 grid = vec3(cell.x, 1.0 - cell.z, cell.y);
+      float ripple = max(0.5, clamp((abs(sin(grid.x * 18.84 + age * 0.7)) +
+                                     abs(cos(grid.y * 31.4 + age * 0.5))) * 0.5, 0.0, 1.0));
+      float value = clamp((density - 0.01) * 1.0101, 0.0, 1.0) * ripple * amount;
+      value = clamp(value + (1.0 - clamp(t / inch * 0.1, 0.0, 1.0)) * value, 0.0, 1.0);
+      float keep = 1.0;
       for (int j = 0; j < ${MAX_HOLES}; ++j) {
-        if (blastStrength[j] > 0.0) {
-          float radius = blastHoles[j].w;
-          density *= 1.0 - blastStrength[j] * (1.0 - smoothstep(radius * 0.55, radius,
-            distance(position, blastHoles[j].xyz)));
-        }
+        if (blasts[j].w < 0.0) continue;
+        float since = blasts[j].w;
+        float reach = distance(position, blasts[j].xyz) / inch;
+        if (reach >= ${glslFloat(BLAST_REACH / INCH)}) continue;
+        float flash = pow(1.0 - smoothstep(0.0, 2.0, since), 128.0);
+        float wall = step((end - t) / inch, 16.0) * (1.0 - smoothstep(0.0, 7.0, since));
+        keep = min(keep, max(smoothstep(200.0, 240.0, reach + flash * 250.0) +
+                             pow(smoothstep(0.5, 5.0, since), 1.8), wall));
       }
+      value = mix(value * 0.02, value, keep);
+      float growth = age / ${glslFloat(REVEAL_SECONDS)};
+      if (growth < 1.0) {
+        float g = clamp(growth, 0.0001, 0.9999);
+        float low = smoothstep(0.0, 0.8, g), high = smoothstep(0.2, 1.0, g);
+        vec3 centred = grid - 0.5;
+        centred.z *= 1.2;
+        value *= low == high ? g : clamp(smoothstep(low, high, clamp(length(centred), 0.0, 1.0)), 0.0, 1.0);
+      }
+      // Two octaves of cellular noise in world inches, rising over time.
+      vec3 source = vec3(position.x, -position.z, position.y) / inch * 0.01;
+      source.z -= age * 0.05;
+      float coarse = cellular(source * 2.3);
+      source.z -= age * 0.03;
+      float fine = cellular(source * 6.0);
+      float noise = clamp((1.0 - coarse) * 0.6 + (1.0 - fine) * 0.28 + 0.12, 0.0, 1.0);
 
-      float opacity = 1.0 - exp(-${EXTINCTION} * density * amount * width);
-      vec4 sunDetail = texture(detailField, p + sunDirection * (0.43 / noisePeriod));
-      vec3 sunCell = cell + sunDirection * (0.43 / fieldWidth);
-      float toward = billowed(fieldAt(displacedCell(sunCell, sunDetail, freedom)).r, sunDetail);
-      float slope = density - toward + 0.95 * (detail.r - sunDetail.r);
-      float facing = smoothstep(-0.14, 0.24, slope);
-      float crests = smoothstep(0.20, 0.80, 0.84 * detail.r + 0.16 * detail.a);
-      // The diffuse floor is neutral. Regard the sun lobe as stronger on
-      // exposed lobes and retain a small broad contribution in the core.
-      vec3 ambient = vec3(0.168 + 0.135 * crests + 0.080 * smoothstep(0.43, 1.0, field.r));
-      float diffuse = facing * (0.074 + 0.34 * sqrt(beam) * sunVisibility);
-      vec3 scatter = mix(vec3(1.0), sunColor, 0.14) * (diffuse + (0.03 + 0.12 * phase) * beam * sunVisibility);
-      radiance += transmission * opacity * (ambient + scatter);
-      transmission *= 1.0 - opacity;
+      vec4 light = texture(lightVolume, cell);
+      float facing = pow(clamp(dot(normalize(relative + vec3(0.0, 0.0001, 0.0)), sunDirection) * 0.8 + 0.2,
+                               0.0, 1.0), 2.0) * light.a;
+      vec3 color = (light.rgb * (1.0 - value) * 0.5 + sunColor * facing) * noise;
+      // The material's g_vSmokeColor is white: its luminance-preserving tint
+      // pulls the probe light halfway to grey.
+      color = mix(color, vec3(dot(color, vec3(0.2125, 0.7154, 0.0721))), 0.5);
+      color = mix(color, color * keep, 0.6);
+      float eroded = value - (1.0 - noise);
+      float alpha = smoothstep(0.0, 0.2, clamp(mix(eroded, value + noise, value), 0.0, 1.0));
+      alpha = 1.0 - pow(1.0 - alpha, power);
+      sum += vec4(clamp(color * alpha, 0.0, 1.0), alpha) * (1.0 - sum.a);
+      if (sum.a > 0.991) {
+        sum.a = 1.0;
+        break;
+      }
     }
-    gl_FragColor = vec4(radiance * tint, 1.0 - transmission);
+    gl_FragColor = sum;
+  }
+`;
+
+/** Bake one slice of the cloud's light volume: the map's probe irradiance
+ * facing away from the cloud centre, and the probe volume's sun visibility. */
+export const lightFragment = /* glsl */ `
+  uniform vec3 origin;
+  uniform float layer, fieldScale;
+  varying vec2 localUv;
+  ${probeShader.replace('varying vec3 actorSourcePosition;', 'vec3 actorSourcePosition;')}
+
+  void main() {
+    vec3 cell = vec3(localUv, (layer + 0.5) / ${glslFloat(LIGHT_CELLS)});
+    vec3 position = origin + (cell - 0.5) * ${glslFloat(GRID * CELL)} * fieldScale;
+    actorSourcePosition = vec3(position.x, -position.z, position.y) / ${glslFloat(INCH)};
+    vec3 outward = vec3(cell.x - 0.5, 0.5 - cell.z, cell.y - 0.5);
+    outward = dot(outward, outward) > 1e-6 ? normalize(outward) : vec3(0.0, 0.0, 1.0);
+    vec4 lighting = actorLightingAt(outward);
+    gl_FragColor = vec4(max(lighting.rgb, vec3(0.0)), 1.0 - clamp(lighting.a, 0.0, 1.0));
   }
 `;
 

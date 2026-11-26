@@ -14,35 +14,30 @@ import {
   analyticSmokeField,
   indexSmokeBlasts,
   scenePoint,
-  smokeAlbedo,
   smokeEnvelope,
   unionSmokeBounds,
   type SmokeField,
   type SmokeSample,
 } from '../smoke-field';
-import { SmokeVolumePass, type SmokeDraw, type SmokeSunTrace } from '../smoke-volume';
+import { SmokeVolumePass, type SmokeDraw, type SmokeLighting } from '../smoke-volume';
 
 function VolumePass({
   draws,
-  sun,
-  color,
+  lighting,
   low,
   xray,
-  sunTrace,
   labelSmoke,
   onUnavailable,
 }: {
   draws: SmokeDraw[];
-  sun: Vector3;
-  color: Color;
+  lighting: SmokeLighting;
   low: boolean;
   xray: boolean;
-  sunTrace?: SmokeSunTrace;
   labelSmoke: RefObject<SmokeSample[]>;
   onUnavailable: (unavailable: boolean) => void;
 }) {
   const group = useMemo(() => new Group(), []);
-  const pass = useMemo(() => new SmokeVolumePass(group, sun, sunTrace), [group, sun, sunTrace]);
+  const pass = useMemo(() => new SmokeVolumePass(group), [group]);
   const { gl, invalidate } = useThree();
   const available = useRef(true);
   useLayoutEffect(() => {
@@ -83,10 +78,11 @@ function VolumePass({
     [native],
   );
   useFrame(({ gl, scene, camera }) => {
-    const prepare = (framebuffer?: WebGLFramebuffer) => {
+    // The native compositor supplies the map's probe volume and authored sun.
+    const prepare = (framebuffer?: WebGLFramebuffer, native?: SmokeLighting) => {
       const ready =
         camera instanceof PerspectiveCamera &&
-        pass.render(gl, scene, camera, draws, color, low, xray, 1, framebuffer);
+        pass.render(gl, scene, camera, draws, native ?? lighting, low, xray, 1, framebuffer);
       if (available.current === ready) return;
       if (!ready) pass.hide();
       available.current = ready;
@@ -105,7 +101,6 @@ export default function Smoke({
   zones,
   tick,
   modelReady,
-  sunTrace,
   low,
   xray,
   labelSmoke,
@@ -116,7 +111,6 @@ export default function Smoke({
   zones: UtilityZone[];
   tick: number;
   modelReady: boolean;
-  sunTrace?: SmokeSunTrace;
   low: boolean;
   xray: boolean;
   labelSmoke: RefObject<SmokeSample[]>;
@@ -137,8 +131,11 @@ export default function Smoke({
     () => (sun ? new Color(...sun.color) : new Color(1, 0.95, 0.86)),
     [sun],
   );
-  const sunVector = useMemo(() => direction.toArray(), [direction]);
-  const active = useSmokeDensity(modelReady ? data.smokeTracks : undefined, tick, rate, sunVector);
+  const lighting = useMemo<SmokeLighting>(
+    () => ({ sunDirection: direction, sunColor: solarColor }),
+    [direction, solarColor],
+  );
+  const active = useSmokeDensity(modelReady ? data.smokeTracks : undefined, tick, rate);
   const matches = (zone: UtilityZone, track: SmokeTrack) =>
     (zone.entity === undefined || track.entity === zone.entity) &&
     Math.abs(track.start - zone.start) <= rate &&
@@ -154,7 +151,6 @@ export default function Smoke({
       origin: scenePoint(track.origin),
       start: track.start,
       end: track.end,
-      color: track.color,
       density,
     })),
     ...events.map(({ id, x, y, z, start, end }) => ({
@@ -162,17 +158,16 @@ export default function Smoke({
       origin: scenePoint([x, y, z]),
       start,
       end,
-      color: undefined,
       density: undefined,
     })),
   ];
   const blasts = useMemo(() => indexSmokeBlasts(data.events), [data.events]);
   const analytic = useMemo(() => {
     let cached: SmokeField | undefined;
-    return () => (cached ??= analyticSmokeField(sunVector));
-  }, [sunVector]);
+    return () => (cached ??= analyticSmokeField());
+  }, []);
   const draws: SmokeDraw[] = [];
-  for (const { key, origin, start, end, color, density } of sources) {
+  for (const { key, origin, start, end, density } of sources) {
     // A valid empty journal sample remains empty. Use the analytic field only
     // while voxels are unavailable, with the observed origin and interval.
     const previous = density?.previous ?? analytic();
@@ -202,9 +197,9 @@ export default function Smoke({
       bounds,
       mix,
       amount: smokeEnvelope(age, (end - tick) / rate, fade),
-      tint: new Color(...smokeAlbedo(color)),
       recorded: Boolean(density),
-      drift: reducedMotion ? 0 : age,
+      // Reduced motion holds the noise still; the recorded density still evolves.
+      age: reducedMotion ? Math.min(age, 1) : age,
       holes: [],
     };
     cloud.holes = activeSmokeHoles(blasts, cloud, start, tick, rate);
@@ -214,9 +209,7 @@ export default function Smoke({
   return (
     <VolumePass
       draws={draws}
-      sun={direction}
-      sunTrace={sunTrace}
-      color={solarColor}
+      lighting={lighting}
       low={low}
       xray={xray}
       labelSmoke={labelSmoke}

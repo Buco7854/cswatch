@@ -20,7 +20,7 @@ type SmokeTarget = {
   updateTick: number;
   fadeTicks: number;
 };
-export type SmokeDensityRequest = { targets: SmokeTarget[]; sun: XYZ };
+export type SmokeDensityRequest = { targets: SmokeTarget[] };
 export type SmokeDensityResult = {
   key: string;
   offset: number;
@@ -54,15 +54,9 @@ const requestKey = (targets: SmokeTarget[]) =>
 
 /** Ask for the latest visible revision. Keep exact matches only, including
  * when a response arrives after a seek but before the next demand frame. */
-export function useSmokeDensity(
-  tracks: SmokeTrack[] | undefined,
-  tick: number,
-  rate: number,
-  sun: XYZ,
-) {
+export function useSmokeDensity(tracks: SmokeTrack[] | undefined, tick: number, rate: number) {
   const [responses, setResponses] = useState<{
     tracks: SmokeTrack[];
-    sun: XYZ;
     rows: SmokeDensityResult[];
   }>();
   const invalidate = useThree((state) => state.invalidate);
@@ -118,7 +112,7 @@ export function useSmokeDensity(
           if (exact.length) {
             setResponses((previous) => {
               const retained =
-                previous?.tracks === tracks && previous.sun === sun
+                previous?.tracks === tracks
                   ? previous.rows.filter(
                       (row) =>
                         desired.current.some(
@@ -128,7 +122,7 @@ export function useSmokeDensity(
                         ) && !exact.some(({ key }) => key === row.key),
                     )
                   : [];
-              return { tracks, sun, rows: [...retained, ...exact] };
+              return { tracks, rows: [...retained, ...exact] };
             });
           } else last = '';
           waiting = false;
@@ -139,7 +133,7 @@ export function useSmokeDensity(
       }
       waiting = true;
       try {
-        worker.postMessage({ targets: latest, sun } satisfies SmokeDensityRequest);
+        worker.postMessage({ targets: latest } satisfies SmokeDensityRequest);
       } catch {
         fail();
       }
@@ -153,9 +147,9 @@ export function useSmokeDensity(
       controller.current = undefined;
       worker?.terminate();
     };
-  }, [tracks, sun, invalidate]);
+  }, [tracks, invalidate]);
 
-  const rows = responses?.tracks === tracks && responses?.sun === sun ? responses.rows : [];
+  const rows = responses && responses.tracks === tracks ? responses.rows : [];
   const projection = useMemo(() => new Matrix4(), []);
   const frustum = useMemo(() => new Frustum(), []);
   const box = useMemo(() => new Box3(), []);

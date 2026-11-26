@@ -11,7 +11,7 @@ self.onmessage = ({ data }: MessageEvent<SmokeDensityRequest>) => {
     try {
       let journal = live.get(key);
       if (journal) live.delete(key);
-      else journal = smokeJournal(track, data.sun);
+      else journal = smokeJournal(track);
       live.set(key, journal);
       if (live.size > smokeLimits.active) live.delete(live.keys().next().value!);
       const pair = journal(offset, previousOffset);

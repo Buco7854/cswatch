@@ -18,10 +18,11 @@ import {
 import type { NativeRenderer } from './renderer';
 import { viewerToSource } from './space';
 import { actorLighting } from './actor-lighting';
+import type { SmokeLighting } from '../smoke-volume';
 
 export interface FramePasses {
   sun?: import('three').DirectionalLight;
-  smoke?: (framebuffer: WebGLFramebuffer) => void;
+  smoke?: (framebuffer: WebGLFramebuffer, lighting: SmokeLighting) => void;
   equipment?: (render: (scene: Scene, camera: PerspectiveCamera) => void) => void;
 }
 
@@ -44,6 +45,13 @@ export function compositor(renderer: WebGLRenderer, native: NativeRenderer) {
     samples: 0,
   });
   const lighting = actorLighting(renderer, native);
+  const [sx, sy, sz] = lighting.sun.direction,
+    [sr, sg, sb] = lighting.sun.color;
+  const smokeLighting: SmokeLighting = {
+    probes: lighting.uniforms,
+    sunDirection: new Vector3(sx, sz, -sy).normalize(),
+    sunColor: new Color(sr, sg, sb),
+  };
   const sourceEye = new Vector3();
   const originals: Color[] = [];
   // Link the programs of newly mounted meshes in the composed pass state, even
@@ -179,7 +187,7 @@ export function compositor(renderer: WebGLRenderer, native: NativeRenderer) {
           opaque: () => objects(false),
           transparent: () => {
             bindTarget();
-            passes.smoke?.(framebuffer);
+            passes.smoke?.(framebuffer, smokeLighting);
             objects(true);
           },
           equipment: () =>
