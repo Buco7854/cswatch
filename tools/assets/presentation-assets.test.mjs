@@ -564,7 +564,9 @@ test('retry consumption rejects a renewed failure, terminal evidence or cooldown
       renewed,
     );
     assert.equal(
-      (await readdir(options.jobs)).includes('presentation-retry-v2-equipment-models.json'),
+      (await readdir(options.jobs)).includes(
+        `presentation-retry-v${preparerRevision}-equipment-models.json`,
+      ),
       false,
     );
   }
@@ -629,7 +631,7 @@ test('enqueue revalidates the complete failure snapshot and current cooldown aft
     assert.equal(await operation, 'stale');
     assert.equal(authorized, 0);
     assert.equal(
-      (await readdir(options.jobs)).includes('presentation-retry-v2-agents.json'),
+      (await readdir(options.jobs)).includes(`presentation-retry-v${preparerRevision}-agents.json`),
       false,
     );
   }
@@ -675,7 +677,9 @@ test('presentation failures retain a durable three-attempt budget and require ex
     /session revoked/,
   );
   assert.equal(
-    (await readdir(options.jobs)).some((name) => name === 'presentation-retry-v2-agents.json'),
+    (await readdir(options.jobs)).some(
+      (name) => name === `presentation-retry-v${preparerRevision}-agents.json`,
+    ),
     false,
   );
   assert.equal(

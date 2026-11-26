@@ -1,4 +1,4 @@
-import { mapPreparerRevision } from '../src/asset-preparer.js';
+import { mapPreparerRevision, preparerRevision } from '../src/asset-preparer.js';
 import { fixtureCookie, insertFixtureSession } from './fixtures/member-session.js';
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
@@ -388,7 +388,7 @@ test('map administration requires current admin, exact Origin, CSRF and reviewed
   );
 
   await writePresentationStatus(f.jobs, {
-    schemaVersion: 2,
+    schemaVersion: preparerRevision,
     categories: {
       agents: {
         manifest: approval.source.manifest,
@@ -461,12 +461,12 @@ test('map administration requires current admin, exact Origin, CSRF and reviewed
     202,
   );
   const intent = JSON.parse(
-    await readFile(join(f.jobs, 'presentation-retry-v2-agents.json'), 'utf8'),
+    await readFile(join(f.jobs, `presentation-retry-v${preparerRevision}-agents.json`), 'utf8'),
   );
   assert.match(intent.expectedFailure, /^[a-f0-9]{64}$/);
   const { expectedFailure: _failure, ...selection } = intent;
   assert.deepEqual(selection, {
-    schemaVersion: 2,
+    schemaVersion: preparerRevision,
     kind: 'agents',
     expectedGeneration: 'a'.repeat(24),
   });
@@ -490,7 +490,7 @@ test('a revoked administrator cannot receive an outcome from a queued asset retr
   insertFixtureSession(db, 'admin-session', 'admin', 'admin-csrf', now() + 600);
   await writeMapWorkerStatus(f.jobs, { schemaVersion: 1, status: 'idle', updatedAt: now() });
   await writePresentationStatus(f.jobs, {
-    schemaVersion: 2,
+    schemaVersion: preparerRevision,
     categories: {
       agents: {
         manifest: approval.source.manifest,
@@ -563,9 +563,12 @@ test('a revoked administrator cannot receive an outcome from a queued asset retr
   const revoked = await response;
   assert.equal(revoked.statusCode, 409);
   assert.equal(revoked.headers['x-session-changed'], '1');
-  await assert.rejects(readFile(join(f.jobs, 'presentation-retry-v2-equipment.json')), {
-    code: 'ENOENT',
-  });
+  await assert.rejects(
+    readFile(join(f.jobs, `presentation-retry-v${preparerRevision}-equipment.json`)),
+    {
+      code: 'ENOENT',
+    },
+  );
 });
 
 test('an administrator revoked after a matching queue lookup cannot receive its outcome', async (t) => {
@@ -575,7 +578,7 @@ test('an administrator revoked after a matching queue lookup cannot receive its 
   db.run("INSERT INTO users(id,username,role,created_at) VALUES('admin','admin','admin',?)", now());
   await writeMapWorkerStatus(f.jobs, { schemaVersion: 1, status: 'idle', updatedAt: now() });
   await writePresentationStatus(f.jobs, {
-    schemaVersion: 2,
+    schemaVersion: preparerRevision,
     categories: {
       agents: {
         manifest: approval.source.manifest,
@@ -606,7 +609,7 @@ test('an administrator revoked after a matching queue lookup cannot receive its 
       method: 'POST',
       url: '/api/admin/assets/presentation/agents/retry',
       payload: {},
-      queueFile: join(f.jobs, 'presentation-retry-v2-agents.json'),
+      queueFile: join(f.jobs, `presentation-retry-v${preparerRevision}-agents.json`),
     },
     {
       action: 'map.removal_requested',
