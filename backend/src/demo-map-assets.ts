@@ -124,6 +124,8 @@ export async function demoMapAssetRoutes(
     const fresh = state.inventoryFresh;
     const inventory = state.inventory;
     const selection = inventory && latestOfficialSelection(inventory, demo.map);
+    // A recording that names its map's own addon matches only an official community addon map.
+    if (identity?.addonPresence === 'own' && !selection?.addon) return exact;
     if (selection && !fresh) {
       const requestId = latestMapRequestId(selection),
         queued = await readMapRequest(c.mapJobsDir, requestId),

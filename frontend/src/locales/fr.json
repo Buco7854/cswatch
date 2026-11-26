@@ -808,6 +808,7 @@
   "Recorded add-ons": "Extensions enregistrées",
   "No add-ons recorded": "Aucune extension enregistrée",
   "Add-ons recorded": "Extensions présentes",
+  "The map's own community add-on": "Module communautaire officiel de la carte",
   "The recording contains conflicting map identity evidence.": "L’enregistrement contient des informations contradictoires sur l’identité de la carte.",
   "Recorded build and protocol values are header evidence. They do not identify a Steam manifest or prove the map layout.": "Le build et le protocole proviennent de l’en-tête. Ils n’identifient pas un manifeste Steam et ne prouvent pas la géométrie de la carte.",
   "Official inventory checked": "Inventaire officiel vérifié",

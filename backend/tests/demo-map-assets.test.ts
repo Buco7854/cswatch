@@ -1,3 +1,4 @@
+import { recordedMapIdentity } from '../src/map-identity.js';
 import { readFileSync } from 'node:fs';
 import { writeNativeWorld, vertexFile } from '../../tools/assets/fixtures/native-world.mjs';
 import { mapPreparerRevision } from '../src/asset-preparer.js';
@@ -323,6 +324,46 @@ test('exact approval stays preferred; explicit addons, conflicts and unlisted na
       'private-demo',
     );
     assert.notEqual((await f.request()).json().resolution.status, 'latest');
+  } finally {
+    await f.close();
+  }
+});
+
+test('a recording naming only its own official community addon resolves to that map; other addons stay blocked', async () => {
+  const f = await fixture();
+  try {
+    writeFileSync(f.catalog, JSON.stringify({ schemaVersion: 1, entries: [] }));
+    const header = (addons: string) =>
+      recordedMapIdentity({
+        map_name: 'de_mirage',
+        build_num: approval.identity.buildNum,
+        patch_version: approval.identity.patchVersion,
+        demo_version_guid: approval.identity.demoVersionGuid,
+        addons,
+      })!;
+    assert.equal(header('').addonPresence, 'none');
+    assert.equal(header(' DE_MIRAGE ').addonPresence, 'own');
+    assert.equal(header('de_mirage,3070284539').addonPresence, 'present');
+    assert.equal(header('de_dust2').addonPresence, 'present');
+    const resolve = async (addons: string) => {
+      f.db.run(
+        'UPDATE demos SET metadata=? WHERE id=?',
+        JSON.stringify({ mapIdentity: header(addons) }),
+        'private-demo',
+      );
+      return (await f.request()).json().resolution.status;
+    };
+    // Without an official addon in the inventory, the map's own addon is not trusted.
+    await writeOfficialMapInventory(f.jobs, latestInventory());
+    assert.notEqual(await resolve('de_mirage'), 'latest');
+    const inventory = latestInventory();
+    inventory.maps[0] = {
+      ...inventory.maps[0],
+      addon: { manifest: '42', sha1: 'd'.repeat(40), bytes: 34647 },
+    } as (typeof inventory.maps)[number];
+    await writeOfficialMapInventory(f.jobs, inventory);
+    assert.equal(await resolve('de_mirage'), 'latest');
+    assert.notEqual(await resolve('de_mirage,3070284539'), 'latest');
   } finally {
     await f.close();
   }

@@ -5,7 +5,8 @@ export type MapIdentity = {
   buildNum?: number;
   patchVersion?: number;
   demoVersionGuid?: string;
-  addonPresence?: 'none' | 'present';
+  /** `own`: the only addon is the map's own official community addon. */
+  addonPresence?: 'none' | 'present' | 'own';
   conflicted?: true;
 };
 type ApprovedMapIdentity = Required<Omit<MapIdentity, 'conflicted'>> & {

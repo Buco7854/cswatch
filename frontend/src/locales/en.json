@@ -808,6 +808,7 @@
   "Recorded add-ons": "Recorded add-ons",
   "No add-ons recorded": "No add-ons recorded",
   "Add-ons recorded": "Add-ons recorded",
+  "The map's own community add-on": "The map's own community add-on",
   "The recording contains conflicting map identity evidence.": "The recording contains conflicting map identity evidence.",
   "Recorded build and protocol values are header evidence. They do not identify a Steam manifest or prove the map layout.": "Recorded build and protocol values are header evidence. They do not identify a Steam manifest or prove the map layout.",
   "Official inventory checked": "Official inventory checked",

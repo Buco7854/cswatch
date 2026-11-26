@@ -13,10 +13,22 @@ export const mapIdentitySchema = z
       .string()
       .regex(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/)
       .optional(),
-    addonPresence: z.enum(['none', 'present']).optional(),
+    addonPresence: z.enum(['none', 'present', 'own']).optional(),
     conflicted: z.literal(true).optional(),
   })
   .strict();
+
+/** An official community map loads as an addon named after the map itself
+ * (csgo_community_addons/<map>); any other addon is third-party content. */
+function addonPresence(addons: string, map: string): 'none' | 'present' | 'own' {
+  if (addons.length > 4096) return 'present';
+  const names = addons
+    .split(',')
+    .map((name) => name.trim().toLowerCase())
+    .filter(Boolean);
+  if (!names.length) return 'none';
+  return names.every((name) => name === map.toLowerCase()) ? 'own' : 'present';
+}
 
 /** Raw header fields only. No coercion from game paths, protocol guesses or
  * Steam metadata. The recording is evidence supplied by its uploader. */
@@ -34,7 +46,7 @@ export function recordedMapIdentity(header: unknown): MapIdentity | undefined {
       identity.demoVersionGuid = guid;
   }
   if (typeof value.addons === 'string')
-    identity.addonPresence = value.addons.length > 4096 || value.addons.trim() ? 'present' : 'none';
+    identity.addonPresence = addonPresence(value.addons, identity.map);
   return identity;
 }
 
@@ -58,7 +70,7 @@ export function observeMapIdentity(reader: Pick<import('cs2parser').DemoReader, 
     )
       conflict = true;
     if (typeof message.addon_name === 'string') {
-      const presence = message.addon_name.trim() ? 'present' : 'none';
+      const presence = addonPresence(message.addon_name, identity.map);
       if (identity.addonPresence && identity.addonPresence !== presence) conflict = true;
       // The network field can establish absence/presence when the header omits it.
       identity.addonPresence ??= presence;

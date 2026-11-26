@@ -23,7 +23,9 @@ export default function MapDetails({
         ? t('No add-ons recorded')
         : recorded?.addonPresence === 'present'
           ? t('Add-ons recorded')
-          : undefined,
+          : recorded?.addonPresence === 'own'
+            ? t("The map's own community add-on")
+            : undefined,
     ],
   ] as const;
   return (
