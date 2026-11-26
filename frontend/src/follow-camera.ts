@@ -41,3 +41,24 @@ export function thirdPersonFollow(
     target: [x, y + 1.25 - crouch, z],
   };
 }
+
+/** The follow camera's boom length. Geometry pulls it in at once; it eases back out, so a
+ * grazing wall never makes it jitter. A new player or a jump in time snaps it. */
+export function createFollowBoom(easeOutPerSecond = 4) {
+  let length: number | undefined, actor: string | undefined, last: number | undefined;
+  return {
+    update(id: string, seconds: number, allowed: number) {
+      const dt = last === undefined ? Infinity : seconds - last;
+      last = seconds;
+      if (id !== actor || length === undefined || !(dt >= 0) || dt > 0.5) length = allowed;
+      else if (allowed < length) length = allowed;
+      else length += (allowed - length) * (1 - Math.exp(-dt * easeOutPerSecond));
+      actor = id;
+      return length;
+    },
+    /** Whether the boom is still easing and needs another frame. */
+    settling(allowed: number) {
+      return length !== undefined && Math.abs(allowed - length) > 0.005;
+    },
+  };
+}

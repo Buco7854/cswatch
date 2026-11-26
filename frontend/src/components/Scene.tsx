@@ -52,6 +52,9 @@ import {
   type ProjectileState,
   type UtilityZone,
 } from '../utility-state';
+/** Radius of the follow camera's collision sphere (metres): wider than the near plane's
+ * footprint at the default lens, so walls never fill the view. */
+const followRadius = 0.3;
 type UtilityPresentation = {
   projectiles: ProjectileState[];
   zones: UtilityZone[];
@@ -75,7 +78,8 @@ import {
 import { Line } from '@react-three/drei';
 import { freeCameraAction, typingOrDialog } from '../free-camera';
 import { installFreeCameraLook } from '../free-camera-look';
-import { thirdPersonFollow } from '../follow-camera';
+import { createFollowBoom, thirdPersonFollow } from '../follow-camera';
+
 import type { SceneTrace } from '../world/queries';
 import {
   firstPersonView,
@@ -790,6 +794,11 @@ function World({
     };
   }, [data.sample, data.worldBounds, data.worldBounds ? null : data.frames]);
   const focusTrace = focus ? followTrace : null;
+  const followSweep = useMemo(
+    () => (followTrace && nativeWorld?.queries.sweep) || null,
+    [followTrace, nativeWorld],
+  );
+  const followBoom = useMemo(createFollowBoom, []);
   const freeView = useRef<{ position: THREE.Vector3; target: THREE.Vector3 }>(undefined);
   useLayoutEffect(() => {
     if (mode !== 'orbit') return;
@@ -914,7 +923,10 @@ function World({
     if (mode === 'follow') {
       const follow = thirdPersonFollow(p, n, alpha, poseTiming);
       if (!follow) return;
-      let position = followTrace?.(follow) ?? follow.position;
+      // A sphere swept from the head keeps the lens out of walls; a ray alone grazes them.
+      const reach = (segment: Pick<typeof follow, 'position' | 'target'>) =>
+        followSweep?.(segment, followRadius) ?? followTrace?.(segment) ?? segment.position;
+      let position = reach(follow);
       const [x, y, z] = follow.target;
       if (followTrace && Math.hypot(position[0] - x, position[2] - z) < 1.05) {
         const yaw = THREE.MathUtils.degToRad(playerPose(p, n, alpha, poseTiming).yaw);
@@ -923,13 +935,24 @@ function World({
           follow.position[1],
           follow.position[2] - Math.cos(yaw) * 3.2,
         ];
-        const alternate = followTrace({ position: across, target: follow.target });
+        const alternate = reach({ position: across, target: follow.target });
         if (
           Math.hypot(alternate[0] - x, alternate[2] - z) >
           Math.hypot(position[0] - x, position[2] - z)
         )
           position = alternate;
       }
+      const allowed = Math.hypot(position[0] - x, position[1] - y, position[2] - z);
+      const length = followBoom.update(selected, performance.now() / 1000, allowed);
+      if (allowed > 1e-6 && length < allowed) {
+        const scale = length / allowed;
+        position = [
+          x + (position[0] - x) * scale,
+          y + (position[1] - y) * scale,
+          z + (position[2] - z) * scale,
+        ];
+      }
+      if (followBoom.settling(allowed)) invalidate();
       // At a fully retracted boom the camera would look through the selected model.
       if (Math.hypot(position[0] - x, position[1] - y, position[2] - z) >= 0.65) {
         camera.position.fromArray(position);

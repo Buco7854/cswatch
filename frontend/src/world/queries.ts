@@ -278,8 +278,62 @@ export function worldQueries(
     }
     visit(root);
   }
+  /** True when no visible world triangle comes within `radius` of `point`. */
+  function clear(point: Vector3, radius: number) {
+    let blocked = false;
+    const closest = new Vector3();
+    nearby(point, radius, (triangle) => {
+      if (!blocked && triangle.closestPointToPoint(point, closest).distanceTo(point) < radius)
+        blocked = true;
+    });
+    return !blocked;
+  }
+  /** Sweep a sphere from `segment.target` toward `segment.position` and return the
+   * furthest centre that keeps it out of the world: the nearest of a centre ray and eight
+   * rays on the sphere's rim, then an exact clearance check against nearby triangles. */
+  function sweep(segment: Segment, radius: number): Point {
+    const from = new Vector3(...segment.target),
+      to = new Vector3(...segment.position);
+    const direction = to.clone().sub(from);
+    const length = direction.length();
+    if (!(length > 1e-6)) return segment.position;
+    direction.divideScalar(length);
+    const side = new Vector3(0, 1, 0).cross(direction);
+    if (side.lengthSq() < 1e-6) side.set(1, 0, 0);
+    side.normalize();
+    const up = direction.clone().cross(side).normalize();
+    let free = length;
+    const offset = new Vector3();
+    for (let ray = 0; ray < 9; ray++) {
+      if (ray) {
+        const angle = ((ray - 1) * Math.PI) / 4;
+        offset
+          .copy(side)
+          .multiplyScalar(Math.cos(angle) * radius)
+          .addScaledVector(up, Math.sin(angle) * radius);
+      } else offset.set(0, 0, 0);
+      const found = hit({
+        target: from.clone().add(offset).toArray() as Point,
+        position: to.clone().add(offset).toArray() as Point,
+      });
+      if (found) free = Math.min(free, found.distance);
+    }
+    // The rays bound the sphere's travel; back off its radius and confirm the final
+    // sphere is clear, retreating toward the start if a corner reaches into it.
+    // Without a hit the camera keeps its full boom.
+    let distance = free < length ? Math.max(0, free - radius) : length;
+    const point = new Vector3();
+    for (let step = 0; step < 6 && distance > 0; step++) {
+      point.copy(from).addScaledVector(direction, distance);
+      if (clear(point, radius)) break;
+      distance *= 0.75;
+    }
+    return point.copy(from).addScaledVector(direction, distance).toArray() as Point;
+  }
   return {
     hit,
+    sweep,
+    clear,
     trace: Object.assign(fork(), { fork }),
     updateEntity,
     nearby,
