@@ -1,0 +1,163 @@
+import { MathUtils } from 'three';
+import { frameAt } from './playback';
+import type { Frame, GameEvent, Playback, Position } from './types';
+
+/** Recorded per-player evidence for the action layers. Every value is a pure function of
+ * the replay and the tick, so seeking either way gives the same pose. */
+
+type Hit = { tick: number; hitgroup: string; attacker?: string; headshot?: boolean };
+const hits = new WeakMap<GameEvent[], Map<string, Hit[]>>();
+const deaths = new WeakMap<GameEvent[], Map<string, Hit[]>>();
+
+function indexHits(events: GameEvent[], type: 'player_hurt' | 'player_death') {
+  const cache = type === 'player_hurt' ? hits : deaths;
+  let index = cache.get(events);
+  if (index) return index;
+  index = new Map();
+  for (const event of events) {
+    if (event.type !== type || typeof event.user_steamid !== 'string') continue;
+    const list = index.get(event.user_steamid) ?? [];
+    list.push({
+      tick: event.tick,
+      hitgroup: typeof event.hitgroup === 'string' ? event.hitgroup : 'generic',
+      attacker: typeof event.attacker_steamid === 'string' ? event.attacker_steamid : undefined,
+      headshot: event.headshot === true,
+    });
+    index.set(event.user_steamid, list);
+  }
+  for (const list of index.values()) list.sort((a, b) => a.tick - b.tick);
+  cache.set(events, index);
+  return index;
+}
+
+function latest<T extends { tick: number }>(list: T[] | undefined, tick: number) {
+  if (!list) return;
+  let lo = 0,
+    hi = list.length;
+  while (lo < hi) {
+    const middle = (lo + hi) >>> 1;
+    if (list[middle].tick <= tick) lo = middle + 1;
+    else hi = middle;
+  }
+  return list[lo - 1];
+}
+
+/** Side of the victim the shot came from: front, left, right or rear. */
+function hitSide(data: Playback, hit: Hit, victim: string) {
+  if (!hit.attacker || hit.attacker === victim) return 'front';
+  const { frame } = frameAt(data, hit.tick);
+  const from = frame.players.find((player) => player.id === hit.attacker);
+  const to = frame.players.find((player) => player.id === victim);
+  if (!from || !to) return 'front';
+  const bearing = MathUtils.radToDeg(Math.atan2(from.y - to.y, from.x - to.x)) - to.yaw;
+  const relative = (((bearing % 360) + 540) % 360) - 180;
+  if (Math.abs(relative) <= 50) return 'front';
+  if (Math.abs(relative) >= 130) return 'rear';
+  return relative > 0 ? 'left' : 'right';
+}
+
+/** Valve's flinch for the recorded hitgroup and the side the shot came from. */
+export function flinchRole(hitgroup: string, side: string) {
+  const directional = (part: string, sides: string[]) =>
+    `flinch:${part}${sides.includes(side) ? '-' + side : ''}`;
+  switch (hitgroup) {
+    case 'head':
+    case 'neck':
+      return directional('head', ['left', 'right', 'rear']);
+    case 'stomach':
+      return directional('stomach', ['rear']);
+    case 'left_arm':
+      return 'flinch:arm-left';
+    case 'right_arm':
+      return 'flinch:arm-right';
+    case 'left_leg':
+      return 'flinch:leg-left';
+    case 'right_leg':
+      return 'flinch:leg-right';
+    default:
+      return directional('chest', ['left', 'right', 'rear']);
+  }
+}
+
+export function recordedFlinch(data: Playback, id: string, tick: number) {
+  const hit = latest(indexHits(data.events, 'player_hurt').get(id), tick);
+  if (!hit) return;
+  const age = (tick - hit.tick) / data.tickRate;
+  if (age < 0 || age > 0.75) return;
+  return { role: flinchRole(hit.hitgroup, hitSide(data, hit, id)), age };
+}
+
+/** Valve's death clip for the recorded kill, and the yaw that sends its fall along
+ * the shot. Clips fall backward (chest, shoulder, knee) or forward (gut). */
+export function recordedDeath(data: Playback, id: string, tick: number, yaw: number) {
+  const death = latest(indexHits(data.events, 'player_death').get(id), tick);
+  if (!death) return;
+  const variant = death.tick % 2 ? 'a' : 'b';
+  const side = hitSide(data, death, id);
+  let role: string;
+  if (death.hitgroup === 'stomach') role = `death:gut-${variant}`;
+  else if (death.hitgroup === 'right_arm' || death.hitgroup === 'left_arm')
+    role = 'death:rshoulder';
+  else if (death.hitgroup === 'left_leg' || death.hitgroup === 'right_leg')
+    role = `death:rknee-${variant}`;
+  else role = `death:chest-${variant}`;
+  // Turn the body so it falls away from the attacker (or toward, for a gut fall).
+  let facing = yaw;
+  if (death.attacker && death.attacker !== id) {
+    const { frame } = frameAt(data, death.tick);
+    const from = frame.players.find((player) => player.id === death.attacker);
+    const to = frame.players.find((player) => player.id === id);
+    if (from && to) {
+      const toward = MathUtils.radToDeg(Math.atan2(from.y - to.y, from.x - to.x));
+      facing = role.startsWith('death:gut') ? toward + 180 : toward;
+    }
+  }
+  return { role, yaw: facing, side };
+}
+
+/** Recorded airborne state (FL_ONGROUND), from the stored frames around the tick. */
+export function recordedAir(data: Playback, id: string, tick: number) {
+  if (!data.capabilities?.pawnMovement) return;
+  const frames = data.frames;
+  const { frame } = frameAt(data, tick);
+  let index = frames.indexOf(frame);
+  if (index < 0) return;
+  const state = (at: Frame) => at.players.find((player) => player.id === id);
+  const current = state(frame);
+  if (!current?.alive) return;
+  const rate = data.tickRate;
+  const limit = rate * 3;
+  if (current.airborne) {
+    // Walk back to the take-off: the first airborne sample after ground contact.
+    let start = frame.tick;
+    for (let i = index - 1; i >= 0 && frame.tick - frames[i].tick <= limit; i--) {
+      const pose = state(frames[i]);
+      if (!pose?.alive || !pose.airborne) break;
+      start = frames[i].tick;
+    }
+    const air = Math.max(0, (tick - start) / rate);
+    return { weight: MathUtils.smoothstep(air, 0, 0.12), jumpAge: air };
+  }
+  // On the ground: find the landing, the first grounded sample after flight.
+  let landing: number | undefined;
+  for (let i = index; i > 0 && frame.tick - frames[i].tick <= rate; i--) {
+    const pose = state(frames[i]),
+      before = state(frames[i - 1]);
+    if (!pose?.alive || !before?.alive) break;
+    if (before.airborne) {
+      landing = frames[i].tick;
+      break;
+    }
+  }
+  if (landing === undefined) return { weight: 0 };
+  const age = (tick - landing) / rate;
+  return { weight: 1 - MathUtils.smoothstep(age, 0, 0.1), landAge: age };
+}
+
+/** Recorded ladder movement: the cycle is locked to height so feet keep to the rungs. */
+export function recordedLadder(position: Position, next: Position | undefined, seconds: number) {
+  if (!position.ladder) return;
+  const climbed = position.z * 0.0254;
+  const speed = next && seconds > 0 ? ((next.z - position.z) * 0.0254) / seconds : 0;
+  return { climbed, speed };
+}

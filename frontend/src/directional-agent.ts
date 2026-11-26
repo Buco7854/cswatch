@@ -16,6 +16,8 @@ import contract from '../../shared/agent-animation.json' with { type: 'json' };
 import { agentWeaponClass } from '../../shared/agent-gait-history.mjs';
 import type { AgentActionSample } from './agent-replay';
 import { shortestAngle } from './player-pose';
+import type { AgentActions } from './agent-actions';
+import { createGripRig } from './agent-grip';
 export { agentWeaponClass } from '../../shared/agent-gait-history.mjs';
 import type {
   AgentDeath,
@@ -39,7 +41,13 @@ export type DirectionalSample = {
   weapon: string;
   action?: AgentActionSample;
   defusing?: boolean;
-  death?: { variant: number; age: number };
+  death?: { variant: number; age: number; role?: string };
+  /** Recorded airborne state: weight in the air, seconds since take-off and landing. */
+  air?: { weight: number; jumpAge?: number; landAge?: number };
+  /** Recorded ladder movement: metres climbed (signed) and vertical speed (m/s). */
+  ladder?: { climbed: number; speed: number };
+  /** Most recent recorded hit: bank flinch role and its age in seconds. */
+  flinch?: { role: string; age: number };
 };
 type NativeClip = { clip: AnimationClip; metadata: DirectionalAgentMetadata };
 type ClipSet = ReadonlyMap<DirectionalAgentRole, NativeClip>;
@@ -299,7 +307,7 @@ function rigAim(root: Object3D, bones: Map<string, Bone>) {
   };
 }
 
-export function createDirectionalAgent(root: Object3D, clips: ClipSet) {
+export function createDirectionalAgent(root: Object3D, clips: ClipSet, actions?: AgentActions) {
   const bank = poseBank(clips);
   if (!bank) return;
   const bones = new Map<string, Bone>();
@@ -307,6 +315,12 @@ export function createDirectionalAgent(root: Object3D, clips: ClipSet) {
     if (node instanceof Bone) bones.set(node.name, node);
   });
   const aim = rigAim(root, bones);
+  const grip = actions ? createGripRig(root) : undefined;
+  const upperBones = new Set<Object3D>();
+  for (const name of ['spine_0', 'wpnPivot'])
+    bones.get(name)?.traverse((node) => upperBones.add(node));
+  const lowerOnly = (bone: Bone) => (upperBones.has(bone) ? 0 : 1);
+  const notPelvis = (bone: Bone) => bone.name === 'pelvis';
   const upper = new Set<Object3D>();
   for (const name of ['spine_0', 'wpnPivot']) bones.get(name)?.traverse((node) => upper.add(node));
   const channels = new Map<string, Channel>();
@@ -340,6 +354,14 @@ export function createDirectionalAgent(root: Object3D, clips: ClipSet) {
       channelFor(bones.get(name)!, 'quaternion');
     channelFor(bones.get('wpnPivot')!, 'position');
   }
+  // Action layers and hand IK write joints the locomotion bank may leave untouched;
+  // each sample must start again from rest for seek-deterministic poses.
+  if (actions)
+    for (const bone of bones.values()) {
+      channelFor(bone, 'quaternion');
+      if (['root_motion', 'pelvis', 'wpnPivot', 'wpn'].includes(bone.name))
+        channelFor(bone, 'position');
+    }
   for (const side of ['L', 'R'])
     for (const prefix of ['leg_upper_', 'leg_lower_', 'ankle_']) {
       const joint = bones.get(prefix + side);
@@ -406,7 +428,46 @@ export function createDirectionalAgent(root: Object3D, clips: ClipSet) {
       accumulate(role, phase * clip.duration, weight * blend);
     }
   }
-  let lastDeath: { role: AgentDeath; time: number } | undefined;
+  let lastDeath: { role: string; time: number } | undefined;
+  const classIdle = { rifle: 'm4a1', pistol: 'glock' } as Record<string, string>;
+  const bankWeapon = (weapon: string) => {
+    const key = canonicalEquipmentKey(weapon);
+    return actions?.has(`weapon:${key}:idle`) ? key : undefined;
+  };
+  /** Valve's per-weapon carry pose, as a difference from the class's default weapon, so
+   * locomotion keeps its torso motion while the arms take this weapon's grip. */
+  function weaponCarry(weapon: string, duck: number, weight: number) {
+    const key = bankWeapon(weapon),
+      kind = agentWeaponClass(weapon);
+    const base = classIdle[kind];
+    if (!actions || !key || !base || !(weight > 0) || key === base) return;
+    const crouch = clamp(duck);
+    if (crouch < 1)
+      actions.delta(
+        `weapon:${key}:idle`,
+        0,
+        weight * (1 - crouch),
+        { role: `weapon:${base}:idle`, time: 0 },
+        notPelvis,
+      );
+    if (crouch > 0)
+      actions.delta(
+        `weapon:${key}:crouch-idle`,
+        0,
+        weight * crouch,
+        { role: `weapon:${base}:crouch-idle`, time: 0 },
+        notPelvis,
+      );
+  }
+  /** Both hands return to this weapon's authored grip after every other layer. */
+  function holdWeapon(weapon: string, amount: number) {
+    const key = bankWeapon(weapon);
+    if (!grip || !actions || !key || !(amount > 0)) return;
+    const offsets = grip.offsets(key, (hand, target) =>
+      actions.relative(`weapon:${key}:idle`, 0, hand, 'wpn', target),
+    );
+    if (offsets) grip.apply(offsets, amount, amount);
+  }
   return {
     sample(
       seconds: number,
@@ -416,9 +477,15 @@ export function createDirectionalAgent(root: Object3D, clips: ClipSet) {
       input: DirectionalSample,
     ) {
       const death = input.death;
-      const deathRole = death && deathRoles[death.variant % deathRoles.length];
-      const deathTime =
-        death && deathRole ? Math.min(death.age, clips.get(deathRole)!.clip.duration) : undefined;
+      const bankDeath =
+        death?.role && actions?.has(death.role) ? (death.role as string) : undefined;
+      const deathRole = bankDeath ?? (death && deathRoles[death.variant % deathRoles.length]);
+      const deathDuration = !deathRole
+        ? 0
+        : bankDeath
+          ? actions!.duration(bankDeath)!
+          : clips.get(deathRole as AgentDeath)!.clip.duration;
+      const deathTime = death && deathRole ? Math.min(death.age, deathDuration) : undefined;
       if (deathRole && lastDeath?.role === deathRole && lastDeath.time === deathTime)
         return deathTime;
       lastDeath =
@@ -428,8 +495,8 @@ export function createDirectionalAgent(root: Object3D, clips: ClipSet) {
       const previousWeapon =
         input.action?.kind === 'draw' ? input.action.previousWeapon : undefined;
       const blend = previousWeapon ? smooth(input.action!.age / 0.12) : 1;
-      if (deathRole && deathTime !== undefined) {
-        accumulate(deathRole, deathTime, 1);
+      if (deathRole && deathTime !== undefined && !bankDeath) {
+        accumulate(deathRole as AgentDeath, deathTime, 1);
       } else if (base) {
         if (previousWeapon && blend < 1) {
           const prior = directionalGait(
@@ -448,18 +515,72 @@ export function createDirectionalAgent(root: Object3D, clips: ClipSet) {
           target.copy(rest as Quaternion).slerp(value as Quaternion, Math.min(weight, 1));
         else target.copy(rest as Vector3).lerp(value as Vector3, Math.min(weight, 1));
       }
+      if (bankDeath && deathTime !== undefined) {
+        actions!.pose(bankDeath, deathTime, 1);
+        return deathTime;
+      }
+      let hands = 0;
       if (base) {
+        const kind = base.weapon;
+        // Airborne and ladder layers own the legs; the upper body keeps its weapon pose.
+        const ladder = input.ladder;
+        const ladderRole = ladder && `ladder${Math.abs(ladder.speed) > 2.2 ? '-fast' : ''}:${kind}`;
+        const climb = ladderRole && actions?.climbMeters(ladderRole);
+        if (ladder && ladderRole && climb) {
+          const duration = actions!.duration(ladderRole)!;
+          actions!.pose(ladderRole, cycle(ladder.climbed / climb) * duration, lowerOnly);
+        } else if (input.air && actions) {
+          const { weight, jumpAge, landAge } = input.air;
+          const airRole = `air${duck > 0.5 ? '-crouch' : ''}:${kind}`;
+          if (weight > 0)
+            actions.pose(
+              airRole,
+              cycle(seconds / actions.duration(airRole)!) * actions.duration(airRole)!,
+              (bone) => weight * lowerOnly(bone),
+            );
+          if (jumpAge !== undefined && jumpAge < actions.duration(`jump-start:${kind}`)!)
+            actions.delta(`jump-start:${kind}`, jumpAge, 1 - smooth(jumpAge / 0.6));
+          if (landAge !== undefined && landAge < actions.duration(`jump-land:${kind}`)!)
+            actions.delta(`jump-land:${kind}`, landAge, 1 - smooth((landAge - 0.3) / 0.33));
+        }
         const variant = carryClass(input.weapon);
+        if (!variant) {
+          if (previousWeapon) weaponCarry(previousWeapon, duck, 1 - blend);
+          weaponCarry(input.weapon, duck, blend);
+        }
         if (previousWeapon) carryPose(previousWeapon, duck, 1 - blend);
         carryPose(input.weapon, duck, blend);
+        hands = variant || kind === 'knife' ? 0 : 1;
         if (input.defusing) {
+          hands = 0;
           const role = `${base.weapon}-defuse` as const;
           const duration = clips.get(role)!.clip.duration;
           overlay(role, cycle(seconds / duration) * duration, 1);
         } else if (input.action) {
-          const { kind, age } = input.action;
-          const role = `${variant ?? base.weapon}-${kind}` as DirectionalAgentRole;
-          const duration = clips.get(role)?.clip.duration || 0;
+          const { kind: action, age } = input.action;
+          const key = !variant ? bankWeapon(input.weapon) : undefined;
+          const native =
+            key && (action === 'fire' || action === 'reload' || action === 'draw')
+              ? `weapon:${key}:${action}`
+              : undefined;
+          const role =
+            native && actions!.has(native)
+              ? native
+              : (`${variant ?? base.weapon}-${action}` as DirectionalAgentRole);
+          const duration =
+            (role === native
+              ? actions!.duration(role)
+              : clips.get(role as DirectionalAgentRole)?.clip.duration) || 0;
+          const apply = (time: number, weight: number, spineWeight = 1) =>
+            role === native
+              ? actions!.pose(role, time, (bone) =>
+                  bone.name === 'pelvis'
+                    ? 0
+                    : bone.name.startsWith('spine_')
+                      ? weight * spineWeight
+                      : weight,
+                )
+              : overlay(role as DirectionalAgentRole, time, weight, spineWeight);
           if (age >= 0 && age < duration) {
             // Complete the entry by the next recorded shot even in a tight burst.
             const entry = Math.min(0.06, duration / 4, input.action.nextFireInterval ?? Infinity);
@@ -467,20 +588,33 @@ export function createDirectionalAgent(root: Object3D, clips: ClipSet) {
             const incoming = smooth(age / entry);
             const envelope = incoming * smooth((duration - age) / tail);
             const prior = input.action.priorFireAge;
-            if (kind === 'fire' && incoming < 1 && prior !== undefined && prior < duration) {
+            if (action === 'fire' && incoming < 1 && prior !== undefined && prior < duration) {
               // The new shot blends from the outgoing authored pose. Both
               // samples use the same replay instant even after a backward seek.
-              overlay(role, prior, smooth((duration - prior) / tail));
+              apply(prior, smooth((duration - prior) / tail));
             }
-            const throwing = kind === 'throw' || kind === 'throw-underhand';
+            const throwing = action === 'throw' || action === 'throw-underhand';
             const running = throwing ? smooth((speed - 2.5) / 2) : 0;
-            const release = kind === 'throw-underhand' ? 13 / 30 : 0.5;
+            const release = action === 'throw-underhand' ? 13 / 30 : 0.5;
             const windup = 1 - smooth((age - release + 0.16) / 0.12);
-            overlay(role, age, envelope * (1 - 0.32 * running * windup), 1 - 0.6 * running);
+            apply(age, envelope * (1 - 0.32 * running * windup), 1 - 0.6 * running);
+            // Reload and draw take the support hand off the weapon by authorship.
+            if (action !== 'fire') hands *= 1 - envelope;
           }
+        }
+        if (input.flinch && actions?.has(input.flinch.role)) {
+          const duration = actions.duration(input.flinch.role)!;
+          const { age } = input.flinch;
+          if (age >= 0 && age < duration)
+            actions.delta(
+              input.flinch.role,
+              age,
+              smooth(age / 0.04) * smooth((duration - age) / 0.2),
+            );
         }
       }
       if (!death) aim?.(input.pitch);
+      if (base && hands > 0) holdWeapon(input.weapon, hands);
       return deathTime;
     },
   };

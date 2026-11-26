@@ -1,4 +1,5 @@
 import { ReplayFrameContext } from '../replay-frames';
+import { captureAgent } from '../capture-hook';
 import {
   Component,
   Suspense,
@@ -28,6 +29,7 @@ import { assertBaseColorTextures } from '../model-textures';
 import type { AgentDeathSample } from '../agent-replay';
 import { weaponAnchor, type WeaponAnchor } from '../agent-attachment';
 import { agentXray, xrayHiddenMaterial, xrayOutlineMaterial } from '../agent-xray';
+import { agentActionBank, bindAgentActions, type ActionBank } from '../agent-actions';
 import { createAgentFootLock, type FootPoseAt } from '../agent-feet';
 import { createCorpseFloor } from '../agent-corpse-floor';
 import type { SceneTrace } from '../world/queries';
@@ -39,6 +41,8 @@ export type AgentInstanceStatus = 'pending' | 'ready' | 'error';
 export const AgentModels = createContext<{
   identity: object;
   report: (id: string, status: AgentInstanceStatus | null) => void;
+  /** The shared native action bank; agents keep their class poses without it. */
+  actions?: string | null;
 } | null>(null);
 export function GenericAgentBody({
   team,
@@ -148,6 +152,8 @@ type AgentProps = {
   footPoseAt?: FootPoseAt;
   floor?: ReturnType<SceneTrace['fork']>;
   airborne?: number;
+  /** Recorded airborne, ladder and hit evidence at a fractional replay tick. */
+  evidence?: (tick: number) => Pick<DirectionalSample, 'air' | 'ladder' | 'flinch'>;
 };
 function LoadedAgent({
   url,
@@ -168,7 +174,9 @@ function LoadedAgent({
   footPoseAt,
   floor,
   airborne,
-}: AgentProps & { scope: ModelScope; ready: () => void }) {
+  evidence,
+  bank,
+}: AgentProps & { scope: ModelScope; ready: () => void; bank?: ActionBank }) {
   const gltf = useEquipmentGLTF(url),
     { invalidate } = useThree();
   useLayoutEffect(() => scope.acquire(), [scope]);
@@ -177,7 +185,11 @@ function LoadedAgent({
     const prepared = prepareAgentModel(gltf.scene);
     try {
       assertBaseColorTextures({ scene: gltf.scene, parser: gltf.parser });
-      const pose = createDirectionalAgent(prepared.instance, clips);
+      const pose = createDirectionalAgent(
+        prepared.instance,
+        clips,
+        bank ? bindAgentActions(prepared.instance, bank) : undefined,
+      );
       if (!pose) throw Error('Agent model has unsupported directional tracks.');
       return {
         prepared,
@@ -191,7 +203,7 @@ function LoadedAgent({
       prepared.disposeMaterials();
       throw error;
     }
-  }, [gltf]);
+  }, [gltf, bank]);
   const xrayEnabled = xrayColor !== undefined;
   const xray = useMemo(
     () => (xrayEnabled ? agentXray(prepared.instance) : undefined),
@@ -235,6 +247,7 @@ function LoadedAgent({
       invalidate();
     }
   }, [scope, ready, invalidate]);
+  useLayoutEffect(() => captureAgent(id, prepared.root), [id, prepared]);
   useLayoutEffect(() => {
     const anchor = weaponAnchor(prepared.instance);
     if (anchor) return registerWeaponAnchor?.(anchor);
@@ -280,18 +293,43 @@ function LoadedAgent({
         floor,
         airborne,
       );
+    const recorded = !directional.death && bank ? evidence?.(tick) : undefined;
+    const input = motion ? { ...directional, ...motion } : directional;
     const deathTime = pose.sample(
       tick / rate,
       motion?.speed ?? speed,
       duck,
       phase,
-      motion ? { ...directional, ...motion } : directional,
+      recorded ? { ...input, ...recorded } : input,
     );
     if (lock) footLock.apply();
     if (deathTime !== undefined) corpseFloor?.(deathTime, floor);
     xray?.sample(xrayColor);
   }, -2);
   return <primitive object={prepared.root} dispose={null} />;
+}
+/** Load the shared bank beside the model. A missing or invalid bank leaves the
+ * agent on its class poses instead of failing the actor. */
+class ActionBankBoundary extends Component<
+  { fallback: ReactNode; children: ReactNode },
+  { error: boolean }
+> {
+  state = { error: false };
+  static getDerivedStateFromError() {
+    return { error: true };
+  }
+  render() {
+    return this.state.error ? this.props.fallback : this.props.children;
+  }
+}
+function WithActionBank({
+  url,
+  children,
+}: {
+  url: string;
+  children: (bank: ActionBank | undefined) => ReactNode;
+}) {
+  return children(agentActionBank(useEquipmentGLTF(url)));
 }
 function PendingAgent({ id, children }: { id: string; children: ReactNode }) {
   const context = useContext(AgentModels)!;
@@ -323,7 +361,19 @@ export default function RenderAgent(props: AgentProps & { fallback: ReactNode })
       fallback={props.fallback}
     >
       <Suspense fallback={<PendingAgent id={props.id}>{props.fallback}</PendingAgent>}>
-        <LoadedAgent {...props} scope={scope} ready={callbacks.ready} />
+        {context.actions ? (
+          <ActionBankBoundary
+            fallback={<LoadedAgent {...props} scope={scope} ready={callbacks.ready} />}
+          >
+            <WithActionBank url={context.actions}>
+              {(bank) => (
+                <LoadedAgent {...props} scope={scope} ready={callbacks.ready} bank={bank} />
+              )}
+            </WithActionBank>
+          </ActionBankBoundary>
+        ) : (
+          <LoadedAgent {...props} scope={scope} ready={callbacks.ready} />
+        )}
       </Suspense>
     </AgentBoundary>
   );
@@ -331,6 +381,7 @@ export default function RenderAgent(props: AgentProps & { fallback: ReactNode })
 
 export function RecordedAgentBody({
   body: { position, variant, age },
+  death,
   url,
   tick,
   rate,
@@ -339,6 +390,8 @@ export function RecordedAgentBody({
   floor,
 }: {
   body: AgentDeathSample;
+  /** Valve's death clip for the recorded kill and the yaw that sends the fall along the shot. */
+  death?: { role: string; yaw: number };
   url: string | null;
   tick: number;
   rate: number;
@@ -355,7 +408,7 @@ export function RecordedAgentBody({
         position.z * inchesToMeters,
         -position.y * inchesToMeters,
       ]}
-      rotation={[0, MathUtils.degToRad(position.yaw), 0]}
+      rotation={[0, MathUtils.degToRad(death?.yaw ?? position.yaw), 0]}
     >
       <RenderAgent
         url={url}
@@ -373,7 +426,7 @@ export function RecordedAgentBody({
           weapon: '',
           velocityX: 0,
           velocityY: 0,
-          death: { age: reducedMotion ? Infinity : age, variant },
+          death: { age: reducedMotion ? Infinity : age, variant, role: death?.role },
         }}
       />
     </group>

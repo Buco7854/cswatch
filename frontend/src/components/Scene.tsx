@@ -108,6 +108,8 @@ import { streamedReplayViews } from '../replay-cache';
 import type { DirectionalSample } from '../directional-agent';
 import { indexRecordedTravel, recordedMotion, type PreviousPose } from '../recorded-motion';
 import './spectator-hud.css';
+import { captureRegister } from '../capture-hook';
+import { recordedAir, recordedDeath, recordedFlinch, recordedLadder } from '../agent-evidence';
 import RenderAgent, {
   GenericAgentBody,
   RecordedAgentBody,
@@ -373,6 +375,23 @@ function Agent({
       camera.position.distanceToSquared(eye.current.fromArray(recordedEyePosition(pose))) < 0.25;
     ref.current.visible = !near;
   }, -3);
+  const evidence = useCallback(
+    (at: number) => {
+      const current = frameAt(data, at);
+      const from = current.frame.players.find((p) => p.id === position.id);
+      const to = current.next.players.find((p) => p.id === position.id);
+      const seconds = (current.next.tick - current.frame.tick) / data.tickRate;
+      const z = from
+        ? playerPose(from, to, current.alpha, poseTimingAt(data, current, position.id)).z
+        : 0;
+      return {
+        air: from?.ladder ? undefined : recordedAir(data, position.id, at),
+        ladder: from ? recordedLadder({ ...from, z }, to, seconds) : undefined,
+        flinch: recordedFlinch(data, position.id, at),
+      };
+    },
+    [data, position.id],
+  );
   const color = position.team === 3 ? '#9ec7da' : '#e7ba73';
   if (!position.alive) return null;
   return (
@@ -389,6 +408,7 @@ function Agent({
           footPoseAt={footPoseAt}
           floor={contactTrace ?? undefined}
           airborne={airborne}
+          evidence={evidence}
           shadowPose={shadowPose}
           directional={{
             yaw: pose.yaw,
@@ -475,6 +495,11 @@ function World({
   const { camera, gl, invalidate } = useThree();
   const replayFrames = useContext(ReplayFrameContext);
   useLayoutEffect(() => replayFrames?.attach(invalidate), [replayFrames, invalidate]);
+  const captureScene = useThree((state) => state.scene);
+  useLayoutEffect(
+    () => captureRegister({ camera, invalidate, replayFrames, gl, scene: captureScene }),
+    [camera, invalidate, replayFrames, gl, captureScene],
+  );
   useFrame(() => replayFrames?.sample(performance.now()), -100);
   const isNative = !!model?.endsWith('/map.json') && !data.sample;
   const nativePasses = useMemo<FramePasses>(() => ({}), [model]);
@@ -1011,6 +1036,7 @@ function World({
               <RecordedAgentBody
                 key={body.position.id + ':' + body.variant}
                 body={body}
+                death={recordedDeath(data, body.position.id, tick, body.position.yaw)}
                 url={body.position.team === 3 ? agents.ct : agents.t}
                 tick={tick}
                 rate={data.tickRate}
@@ -1335,7 +1361,7 @@ export default function Scene({
   const agentAssets = useAgentAssets(`${assetScope}:${data.map}`, !preview && !data.sample);
   const agents = agentAssets.assets;
   useModelLeases(
-    [agents.ct, agents.t].filter((url): url is string => !!url),
+    [agents.ct, agents.t, agents.actions].filter((url): url is string => !!url),
     equipmentIdentity,
   );
   const [agentStatuses, setAgentStatuses] = useState<{
@@ -1359,8 +1385,8 @@ export default function Scene({
     [equipmentIdentity],
   );
   const agentContext = useMemo(
-    () => ({ identity: equipmentIdentity, report: reportAgent }),
-    [equipmentIdentity, reportAgent],
+    () => ({ identity: equipmentIdentity, report: reportAgent, actions: agents.actions }),
+    [equipmentIdentity, reportAgent, agents.actions],
   );
   const agentCounts = useMemo(() => {
     const counts = { ready: 0, pending: 0, error: 0 };
