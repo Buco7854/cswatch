@@ -141,8 +141,9 @@ export default function BodyHits({ data, tick }: { data: Playback; tick: number 
         count++;
       }
     }
+    // Stays visible with zero instances, so the compositor links its program when the
+    // scene mounts rather than at the first recorded hit during playback.
     (mesh.geometry as InstancedBufferGeometry).instanceCount = count;
-    mesh.visible = count > 0;
     if (count) {
       centers.needsUpdate = true;
       shapes.needsUpdate = true;
