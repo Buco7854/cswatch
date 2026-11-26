@@ -149,6 +149,8 @@ if (inContainer) {
     'map-identity.js',
     'map-jobs.js',
     'map-removals.js',
+    'native-map-files.js',
+    'native-world-format.mjs',
     'png.js',
     'presentation-assets.js',
   ]);

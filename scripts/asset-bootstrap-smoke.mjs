@@ -100,9 +100,11 @@ try {
             'ls',
             '730',
             '2347770',
+            '2347773',
             '--anonymous',
             '--',
             'game/csgo/maps/*.vpk',
+            'game/csgo_community_addons/*/*_dir.vpk',
           ]);
           assert.equal(context.timeoutMs, 120000);
           context.signal.throwIfAborted();
