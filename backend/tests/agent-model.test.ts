@@ -21,16 +21,30 @@ test('raw S2V agent forward receives exactly one runtime quarter-turn without ch
 });
 
 test('optional native agent discovery accepts only fixed local CT/T URLs and preserves honest missing bodies', () => {
-  assert.deepEqual(validateAgentAssets({ ct: null, t: null }), { ct: null, t: null });
+  assert.deepEqual(validateAgentAssets({ ct: null, t: null }), {
+    ct: null,
+    t: null,
+    actions: null,
+  });
   assert.deepEqual(
     validateAgentAssets({ ct: '/map-assets/agents/ct.glb', t: '/map-assets/agents/t.glb' }),
-    { ct: '/map-assets/agents/ct.glb', t: '/map-assets/agents/t.glb' },
+    { ct: '/map-assets/agents/ct.glb', t: '/map-assets/agents/t.glb', actions: null },
+  );
+  assert.deepEqual(
+    validateAgentAssets({
+      ct: '/map-assets/agents/ct.glb',
+      t: null,
+      actions: '/map-assets/agents/actions.glb',
+    }),
+    { ct: '/map-assets/agents/ct.glb', t: null, actions: '/map-assets/agents/actions.glb' },
   );
   for (const value of [
     { ct: 'https://example.com/model.glb', t: null },
     { ct: '/map-assets/agents/t.glb', t: null },
     { ct: '/api/private-data', t: null },
     { ct: null },
+    { ct: null, t: null, actions: '/map-assets/agents/ct.glb' },
+    { ct: null, t: null, actions: 'https://example.com/actions.glb' },
   ])
     assert.throws(() => validateAgentAssets(value));
 });

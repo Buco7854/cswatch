@@ -215,12 +215,13 @@ export class GameplayPlayback {
             panner.positionZ.value = -position.y * 0.0254;
             // Footsteps, landings and body sounds fall off along their event's authored curve,
             // firearms and explosions along their sample's; the panner then only places them.
+            // The listener distance is only measured for sounds with an authored curve.
             const listener = context.listener as Partial<AudioListener> | undefined;
-            const inches =
+            const inches = () =>
               Math.hypot(
-                panner.positionX.value - (listener?.positionX?.value ?? 0),
-                panner.positionY.value - (listener?.positionY?.value ?? 0),
-                panner.positionZ.value - (listener?.positionZ?.value ?? 0),
+                panner!.positionX.value - (listener?.positionX?.value ?? 0),
+                panner!.positionY.value - (listener?.positionY?.value ?? 0),
+                panner!.positionZ.value - (listener?.positionZ?.value ?? 0),
               ) / 0.0254;
             const eventGain = authoredDistanceGain(cue.eventName, inches);
             const curve = authored[cue.soundId]?.distance;
@@ -235,7 +236,7 @@ export class GameplayPlayback {
               cueGain.gain.value = (cue.volume ?? 1) * eventGain;
             } else if (curve) {
               panner.rolloffFactor = 0;
-              cueGain.gain.value *= distanceGain(curve, inches);
+              cueGain.gain.value *= distanceGain(curve, inches());
             }
             cueGain.connect(panner);
             panner.connect(this.gain!);

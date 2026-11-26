@@ -8,9 +8,15 @@ for (const [name, event] of Object.entries(registry.events))
 
 /** Valve's authored distance-to-gain curve for a recorded sound event, linear between its
  * points (Source inches). Undefined when the event has no authored curve. */
-export function authoredDistanceGain(eventName: string | undefined, inches: number) {
+export function authoredDistanceGain(
+  eventName: string | undefined,
+  distance: number | (() => number),
+) {
   const curve = eventName ? curves.get(eventName.toLowerCase()) : undefined;
-  if (!curve || !Number.isFinite(inches)) return;
+  if (!curve) return;
+  // The listener distance is only measured for events that have an authored curve.
+  const inches = typeof distance === 'number' ? distance : distance();
+  if (!Number.isFinite(inches)) return;
   if (inches <= curve[0][0]) return curve[0][1];
   for (let i = 1; i < curve.length; i++) {
     const [d1, g1] = curve[i];
