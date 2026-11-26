@@ -397,6 +397,9 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
     !communicationsOpen &&
     !timelineOptionsOpen &&
     !scoreboardOpen;
+  // The inline Kills list already shows the round's eliminations beside the
+  // passive feed's position, so only one of them is drawn.
+  const inlineKillList = showReviewFeed && !compactPanels && feedTab === 'kills';
   const mutationScope = useRef({ active: true });
   const [eventReviewKey, setEventReviewKey] = useState(0);
   const panelClose = useRef<HTMLButtonElement>(null);
@@ -1523,7 +1526,7 @@ export default function Viewer({ theme, toggleTheme }: { theme: string; toggleTh
             inert={!controlsVisible}
             aria-hidden={!controlsVisible}
           >
-            {settings.killfeed && spectatorEvents && (
+            {settings.killfeed && spectatorEvents && !inlineKillList && (
               <div className="killfeed">
                 {killfeedAt(spectatorEvents, tick, rate).map((e, i) => (
                   <div key={i} className="killfeed-entry">

@@ -3,7 +3,7 @@ import {
   Bone,
   BoxGeometry,
   GreaterDepth,
-  NotEqualStencilFunc,
+  EqualStencilFunc,
   ReplaceStencilOp,
   Group,
   Mesh,
@@ -27,20 +27,36 @@ test('occluded native silhouettes share the posed skeleton and geometry, retain 
   body.bind(skeleton);
   body.morphTargetInfluences = [0.4];
   const xray = agentXray(root);
-  expect(root.getObjectByName('xray:original-actor')).toBeUndefined();
+  expect(root.getObjectByName('xray-outline:original-actor')).toBeUndefined();
   const release = xray.acquire(),
-    shell = root.getObjectByName('xray:original-actor') as SkinnedMesh;
-  expect(shell).toBeInstanceOf(SkinnedMesh);
-  expect(shell.skeleton).toBe(skeleton);
-  expect(shell.geometry).toBe(geometry);
-  expect(shell.visible).toBe(false);
+    hiddenShell = root.getObjectByName('xray-hidden:original-actor') as SkinnedMesh,
+    shell = root.getObjectByName('xray-outline:original-actor') as SkinnedMesh;
+  for (const each of [hiddenShell, shell]) {
+    expect(each).toBeInstanceOf(SkinnedMesh);
+    expect(each.skeleton).toBe(skeleton);
+    expect(each.geometry).toBe(geometry);
+    expect(each.visible).toBe(false);
+  }
+  // Every hidden-pixel mask is drawn before any outline.
+  expect(hiddenShell.renderOrder).toBeLessThan(shell.renderOrder);
+  const hiddenPass = hiddenShell.material as MeshBasicMaterial;
+  expect(hiddenPass.colorWrite).toBe(false);
+  expect(hiddenPass.depthFunc).toBe(GreaterDepth);
+  expect(hiddenPass.map).toBe(texture);
+  expect(hiddenPass.stencilFunc).toBe(EqualStencilFunc);
+  expect(hiddenPass.stencilFuncMask).toBe(1);
+  expect(hiddenPass.stencilWriteMask).toBe(2);
+  expect(hiddenPass.stencilZPass).toBe(ReplaceStencilOp);
   const pass = shell.material as MeshBasicMaterial;
   expect(pass).not.toBe(material);
   expect(pass.map).toBe(texture);
   expect(pass.alphaTest).toBe(0.5);
   expect(pass.depthFunc).toBe(GreaterDepth);
   expect(pass.depthWrite).toBe(false);
-  expect(pass.stencilFunc).toBe(NotEqualStencilFunc);
+  // The outline draws only off both the visible body and its hidden interior.
+  expect(pass.stencilFunc).toBe(EqualStencilFunc);
+  expect(pass.stencilRef).toBe(0);
+  expect(pass.stencilFuncMask).toBe(3);
   expect(pass.stencilWriteMask).toBe(0);
   expect((body.material as MeshBasicMaterial).stencilZPass).toBe(ReplaceStencilOp);
   expect(body.material as MeshBasicMaterial).not.toBe(material);
@@ -50,6 +66,7 @@ test('occluded native silhouettes share the posed skeleton and geometry, retain 
   xray.sample('#83c3e5');
   root.updateMatrixWorld(true);
   expect(shell.matrixWorld.elements).toEqual(body.matrixWorld.elements);
+  expect(hiddenShell.matrixWorld.elements).toEqual(body.matrixWorld.elements);
   expect(shell.morphTargetInfluences).toBe(body.morphTargetInfluences);
   expect(shell.skeleton.bones[0]).toBe(bone);
   expect(pass.color.getHexString()).toBe('83c3e5');
@@ -62,15 +79,16 @@ test('occluded native silhouettes share the posed skeleton and geometry, retain 
   expect((body.material as MeshBasicMaterial).stencilWrite).toBe(false);
   let disposed = 0,
     sharedDisposed = 0;
-  pass.addEventListener('dispose', () => disposed++);
+  for (const owned of [pass, hiddenPass]) owned.addEventListener('dispose', () => disposed++);
   for (const shared of [geometry, material, texture])
     shared.addEventListener('dispose', () => sharedDisposed++);
   skeleton.dispose = () => {
     sharedDisposed++;
   };
   release();
-  expect(root.getObjectByName('xray:original-actor')).toBeUndefined();
-  expect(disposed).toBe(1);
+  expect(root.getObjectByName('xray-outline:original-actor')).toBeUndefined();
+  expect(root.getObjectByName('xray-hidden:original-actor')).toBeUndefined();
+  expect(disposed).toBe(2);
   expect(sharedDisposed).toBe(0);
   expect(body.material).toBe(material);
 });
@@ -86,13 +104,15 @@ test('silhouettes preserve material groups and hidden parts without modifying ca
   const xray = agentXray(root);
   const release = xray.acquire();
   xray.sample('#e7ba73');
-  const shell = root.getObjectByName('xray:original-grouped-body') as Mesh;
-  expect((shell.material as MeshBasicMaterial[]).map((item) => item.visible)).toEqual([
-    true,
-    false,
-  ]);
+  for (const prefix of ['xray-hidden:', 'xray-outline:']) {
+    const shell = root.getObjectByName(prefix + 'original-grouped-body') as Mesh;
+    expect((shell.material as MeshBasicMaterial[]).map((item) => item.visible)).toEqual([
+      true,
+      false,
+    ]);
+  }
   expect(mesh.material).not.toEqual([visible, hidden]);
-  expect(root.children).toHaveLength(2);
+  expect(root.children).toHaveLength(3);
   release();
   expect(root.children).toEqual([mesh]);
   expect(mesh.material).toEqual([visible, hidden]);
@@ -113,18 +133,20 @@ test('committed silhouette leases restore and reacquire masks and shells across 
   expect(root.children).toEqual([body]);
   const release = xray.acquire(),
     second = xray.acquire(),
-    shell = root.getObjectByName('xray:strict-lifetime-body') as Mesh,
+    shell = root.getObjectByName('xray-outline:strict-lifetime-body') as Mesh,
+    hiddenShell = root.getObjectByName('xray-hidden:strict-lifetime-body') as Mesh,
     mask = body.material as MeshBasicMaterial,
     pass = shell.material as MeshBasicMaterial;
   let disposed = 0;
-  for (const owned of [mask, pass]) owned.addEventListener('dispose', () => disposed++);
+  for (const owned of [mask, pass, hiddenShell.material as MeshBasicMaterial])
+    owned.addEventListener('dispose', () => disposed++);
   xray.sample('#83c3e5');
   release();
   release();
   expect(root.getObjectByName(shell.name)).toBe(shell);
   expect(disposed).toBe(0);
   second();
-  expect(disposed).toBe(2);
+  expect(disposed).toBe(3);
   expect(root.children).toEqual([body]);
   expect(body.material).toBe(material);
   expect(body.renderOrder).toBe(2);
@@ -141,7 +163,7 @@ test('committed silhouette leases restore and reacquire masks and shells across 
   expect(mask.stencilWrite).toBe(false);
   remount();
   remount();
-  expect(disposed).toBe(4);
+  expect(disposed).toBe(6);
   expect(root.children).toEqual([body]);
   expect(body.material).toBe(material);
   expect(material.stencilWrite).toBe(false);

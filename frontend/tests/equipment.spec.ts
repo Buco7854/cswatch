@@ -72,6 +72,14 @@ test('many glyphs share one equipment manifest and ignore external artwork URLs'
   ).toHaveText(Array(5).fill('AK-47'));
   await page.locator('.timeline-slider').fill('620');
   const feed = page.locator('.killfeed-entry');
+  // The open Kills list already lists this elimination, so the passive feed waits.
+  const review = page.locator('.review-feed');
+  await expect(review.getByRole('tab', { name: /^Kills/ })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(feed).toHaveCount(0);
+  await review.getByRole('tab', { name: /^Utility/ }).click();
   await expect(feed).toBeVisible();
   await expect(feed.getByRole('img', { name: 'AK-47 · Headshot', exact: true })).toBeVisible();
   await expect(feed.locator('.equipment-text-fallback.is-weapon')).toHaveCount(1);

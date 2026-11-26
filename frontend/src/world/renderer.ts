@@ -312,11 +312,23 @@ export async function createRenderer(
           (skyMaterial?.scalars.g_flRenderOnlyExposureBias ?? 0));
     const bounds = (a: number[]) =>
       new Box3(new Vector3(...a.slice(0, 3)), new Vector3(...a.slice(3)));
+    const transparent = (family: string) =>
+      ['glass', 'blended', 'overlay', 'additive', 'modulate', 'water'].includes(family);
     const chunks = manifest.chunks.map((chunk) => ({
       ...chunk,
       box: bounds(chunk.bounds),
       ranges: chunk.ranges.map((range) => ({ ...range, box: bounds(range.bounds) })),
+      // Draw-state key without the placement suffix.
+      stateKey: chunk.family + '/' + chunk.side + '/' + chunk.banks.join(),
     }));
+    // Each (sky, blended) pass visits only its own chunks.
+    const passChunks = (sky: boolean, blended: boolean) =>
+      chunks.filter((chunk) => chunk.sky === sky && transparent(chunk.family) === blended);
+    const chunkPasses = new Map(
+      [false, true].flatMap((sky) =>
+        [false, true].map((blended) => [`${sky}/${blended}`, passChunks(sky, blended)] as const),
+      ),
+    );
     const identity = new Matrix4();
     const transforms = new Map<number, Matrix4>();
     const visibility = manifest.entities.map((entity) => entity.initialVisibility);
@@ -343,8 +355,6 @@ export async function createRenderer(
         }
       }
     }
-    const transparent = (family: string) =>
-      ['glass', 'blended', 'overlay', 'additive', 'modulate', 'water'].includes(family);
     function bind(unit: number, target: number, tex: WebGLTexture | null) {
       gl.activeTexture(gl.TEXTURE0 + unit);
       gl.bindTexture(target, tex);
@@ -389,13 +399,15 @@ export async function createRenderer(
     const slotLimit = roleLimit;
     type Variant = ReturnType<typeof program> & { version: number; slots: number[] };
     const variants = new Map<string, Variant>();
-    const uniformState = new Map<string, (p: Variant) => void>();
+    // Each uniform remembers when it last changed; a variant that becomes current
+    // applies only the uniforms that changed since it was last brought up to date.
+    const uniformState = new Map<string, { apply: (p: Variant) => void; version: number }>();
     let stateVersion = 0,
       current: Variant | null = null;
     function setUniform(name: string, apply: (p: Variant) => void) {
       const fresh = current?.version === stateVersion;
-      uniformState.set(name, apply);
       stateVersion++;
+      uniformState.set(name, { apply, version: stateVersion });
       if (current && fresh) {
         apply(current);
         current.version = stateVersion;
@@ -457,7 +469,8 @@ export async function createRenderer(
         current = next;
       }
       if (next.version !== stateVersion) {
-        for (const apply of uniformState.values()) apply(next);
+        for (const { apply, version } of uniformState.values())
+          if (version > next.version) apply(next);
         next.version = stateVersion;
       }
       next.slots.forEach((role, slot) =>
@@ -467,6 +480,7 @@ export async function createRenderer(
     }
     // Compile the variants this map uses before the first frame.
     for (const chunk of manifest.chunks) variant(chunk.banks, chunk.family === 'water');
+    const rangeCenter = new Vector3();
     const multiCounts = new Int32Array(8192),
       multiOffsets = new Int32Array(8192);
     let renderedFrames = 0;
@@ -475,6 +489,8 @@ export async function createRenderer(
     const displayScale =
       (2.8 * params.tonemap.m_flWhitePoint) /
       (2.8 * exposure * 2 ** (params.tonemap.m_flExposureBias - 0.4));
+    const inverseView = new Matrix4(),
+      background = new Float32Array(3);
     function render(pose: Pose, mode: number, options: ViewOptions = {}) {
       const start = performance.now();
       const composed = options.composed;
@@ -524,20 +540,19 @@ export async function createRenderer(
         );
       }
       frustum.setFromProjectionMatrix(viewProjection);
-      const inverseViewProjection = viewProjection.clone().invert().elements;
+      const inverseViewProjection = inverseView.copy(viewProjection).invert().elements;
       gl.viewport(0, 0, width, height);
       gl.bindFramebuffer(gl.FRAMEBUFFER, composed?.framebuffer ?? frame);
       gl.disable(gl.DEPTH_TEST);
       gl.disable(gl.CULL_FACE);
       gl.disable(gl.BLEND);
       sky.use();
-      gl.uniformMatrix4fv(sky.u('unproject'), false, viewProjection.clone().invert().elements);
+      gl.uniformMatrix4fv(sky.u('unproject'), false, inverseViewProjection);
       gl.uniform3fv(sky.u('eye'), pose.pos);
       gl.uniform1f(sky.u('gain'), mode === 7 || options.background ? 0 : skyGain);
-      gl.uniform3fv(
-        sky.u('background'),
-        mode === 7 ? [0, 0, 0] : (options.background ?? [0, 0, 0]).map((c) => c * displayScale),
-      );
+      for (let c = 0; c < 3; c++)
+        background[c] = mode === 7 ? 0 : (options.background?.[c] ?? 0) * displayScale;
+      gl.uniform3fv(sky.u('background'), background);
       gl.uniform1i(sky.u('skyMap'), 12);
       gl.uniform1f(sky.u('hdrRange'), skyRange);
       bind(12, arrayTarget, skyTexture ?? null);
@@ -682,22 +697,10 @@ export async function createRenderer(
             if (last && last.first + last.count === first) last.count += count;
             else group.list.push({ first, count });
           };
-          for (const chunk of chunks) {
-            if (
-              chunk.sky !== env.sky ||
-              transparent(chunk.family) !== blended ||
-              !frustum.intersectsBox(chunk.box)
-            )
-              continue;
+          for (const chunk of chunkPasses.get(`${Boolean(env.sky)}/${blended}`)!) {
+            if (!frustum.intersectsBox(chunk.box)) continue;
             const placed = chunk.ranges[0].entity;
-            const key =
-              chunk.family +
-              '/' +
-              chunk.side +
-              '/' +
-              chunk.banks.join() +
-              '/' +
-              (transforms.has(placed) ? placed : -1);
+            const key = chunk.stateKey + '/' + (transforms.has(placed) ? placed : -1);
             for (const range of chunk.ranges) {
               if (
                 (range.entity >= 0 && !visibility[range.entity]) ||
@@ -707,7 +710,7 @@ export async function createRenderer(
               if (mode === 7) gl.disable(gl.BLEND);
               if (blended && mode !== 7) {
                 const center = range.box
-                  .getCenter(new Vector3())
+                  .getCenter(rangeCenter)
                   .applyMatrix4(camera.matrixWorldInverse);
                 byDepth.push({
                   chunk,

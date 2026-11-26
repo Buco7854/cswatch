@@ -58,28 +58,29 @@ function upload(field: SmokeField) {
   return texture;
 }
 
-class Surface {
-  private previous: SmokeField;
-  private current: SmokeField;
-  readonly from: Data3DTexture;
-  readonly to: Data3DTexture;
-  readonly target = new WebGLRenderTarget(1, 1, {
+const marchTarget = () =>
+  new WebGLRenderTarget(1, 1, {
     minFilter: NearestFilter,
     magFilter: NearestFilter,
     depthBuffer: false,
   });
-  readonly uniforms = {
+
+function compositeUniforms(target: WebGLRenderTarget) {
+  return {
     clipRect: { value: new Vector4() },
     depthRect: { value: new Vector4() },
-    marched: { value: this.target.texture },
+    marched: { value: target.texture },
     opaqueDepth: { value: null as DepthTexture | null },
     cameraRange: { value: new Vector2() },
     marchSize: { value: new Vector2() },
     targetSize: { value: new Vector2() },
     sceneLightScale: { value: 1 },
   };
-  readonly surfaceMaterial = new ShaderMaterial({
-    uniforms: this.uniforms,
+}
+
+const compositeMaterial = (uniforms: ReturnType<typeof compositeUniforms>) =>
+  new ShaderMaterial({
+    uniforms,
     vertexShader: quadVertex,
     fragmentShader: compositeFragment,
     transparent: true,
@@ -90,9 +91,24 @@ class Surface {
     stencilRef: 1,
     stencilWriteMask: 0,
   });
+
+class Surface {
+  private previous: SmokeField;
+  private current: SmokeField;
+  readonly from: Data3DTexture;
+  readonly to: Data3DTexture;
+  readonly uniforms: ReturnType<typeof compositeUniforms>;
+  readonly surfaceMaterial: ShaderMaterial;
   readonly mesh: Mesh;
 
-  constructor(smoke: SmokeDraw, geometry: PlaneGeometry, parent: Group) {
+  constructor(
+    smoke: SmokeDraw,
+    geometry: PlaneGeometry,
+    parent: Group,
+    readonly target: WebGLRenderTarget,
+  ) {
+    this.uniforms = compositeUniforms(target);
+    this.surfaceMaterial = compositeMaterial(this.uniforms);
     this.from = upload((this.previous = smoke.previous));
     this.to = upload((this.current = smoke.current));
     this.mesh = new Mesh(geometry, this.surfaceMaterial);
@@ -116,10 +132,10 @@ class Surface {
     }
   }
 
+  /** The pass keeps the march target for the next cloud. */
   dispose() {
     this.mesh.removeFromParent();
     this.surfaceMaterial.dispose();
-    this.target.dispose();
     this.from.dispose();
     this.to.dispose();
   }
@@ -175,6 +191,13 @@ function screenBounds(
   if (width > 0 && height > 0) return { x, y, width, height };
 }
 
+const MAX_SPARE_TARGETS = 8;
+
+function marchExtent(required: number, current: number, limit: number) {
+  const block = (value: number) => Math.ceil(value / 32) * 32;
+  return Math.max(current, block(required), Math.min(block(limit), block(current * 1.5)));
+}
+
 function smokeDepthExtent(required: number, current: number, limit: number) {
   if (required <= current) return Math.min(current, limit);
   return Math.min(limit, Math.max(Math.ceil(required / 32) * 32, current * 2));
@@ -183,6 +206,10 @@ function smokeDepthExtent(required: number, current: number, limit: number) {
 export class SmokeVolumePass {
   private readonly geometry = new PlaneGeometry();
   private readonly surfaces = new Map<string, Surface>();
+  // March targets outlive their clouds so a later smoke needs no new
+  // allocation or completeness check.
+  private readonly spareTargets: WebGLRenderTarget[] = [];
+  private warmed = false;
   private readonly sunlight = new Map<string, number>();
   private reserveDepthStorage = true;
   private targetStatus = new WeakMap<
@@ -251,6 +278,8 @@ export class SmokeVolumePass {
     blending: NoBlending,
     toneMapped: false,
   });
+  private readonly keeperTarget = marchTarget();
+  private readonly keeper = compositeMaterial(compositeUniforms(this.keeperTarget));
 
   constructor(
     private readonly group: Group,
@@ -277,7 +306,7 @@ export class SmokeVolumePass {
     const keys = new Set(smoke.map(({ key }) => key));
     for (const [key, surface] of this.surfaces) {
       if (!keys.has(key)) {
-        surface.dispose();
+        this.release(surface);
         this.surfaces.delete(key);
         this.sunlight.delete(key);
       }
@@ -407,6 +436,29 @@ export class SmokeVolumePass {
     for (const surface of this.surfaces.values()) surface.mesh.visible = false;
   }
 
+  private release(surface: Surface) {
+    surface.dispose();
+    if (this.spareTargets.length < MAX_SPARE_TARGETS) this.spareTargets.push(surface.target);
+    else surface.target.dispose();
+  }
+
+  /** Link both smoke programs before the first cloud. A retained composite
+   * material keeps its program alive between rounds without smoke. */
+  warm(gl: WebGLRenderer) {
+    if (this.warmed) return;
+    this.warmed = true;
+    const scene = new Scene();
+    scene.add(new Mesh(this.geometry, this.marchMaterial), new Mesh(this.geometry, this.keeper));
+    const previous = gl.getRenderTarget();
+    try {
+      // Both passes draw into render targets: linear output without tone mapping.
+      gl.setRenderTarget(this.depth);
+      gl.compile(scene, this.quadCamera);
+    } finally {
+      gl.setRenderTarget(previous);
+    }
+  }
+
   revalidateTargets() {
     this.reserveDepthStorage = true;
     this.targetStatus = new WeakMap();
@@ -473,7 +525,12 @@ export class SmokeVolumePass {
   ) {
     let surface = this.surfaces.get(cloud.key);
     if (!surface) {
-      surface = new Surface(cloud, this.geometry, this.group);
+      surface = new Surface(
+        cloud,
+        this.geometry,
+        this.group,
+        this.spareTargets.pop() ?? marchTarget(),
+      );
       this.surfaces.set(cloud.key, surface);
     }
     surface.update(cloud);
@@ -481,11 +538,12 @@ export class SmokeVolumePass {
     const width = Math.ceil(rect.width * scale),
       height = Math.ceil(rect.height * scale);
     const { target } = surface;
-    // Grow in blocks to avoid allocating a new texture on every camera move.
+    // Grow geometrically in blocks: an approaching cloud reallocates (and
+    // rechecks completeness) a few times, not on every camera move.
     if (width > target.width || height > target.height)
       target.setSize(
-        Math.max(target.width, Math.ceil(width / 32) * 32),
-        Math.max(target.height, Math.ceil(height / 32) * 32),
+        marchExtent(width, target.width, Math.ceil(this.size.x * scale)),
+        marchExtent(height, target.height, Math.ceil(this.size.y * scale)),
       );
     target.viewport.set(0, 0, width, height);
 
@@ -543,8 +601,16 @@ export class SmokeVolumePass {
   }
 
   dispose() {
-    for (const surface of this.surfaces.values()) surface.dispose();
+    for (const surface of this.surfaces.values()) {
+      surface.dispose();
+      surface.target.dispose();
+    }
     this.surfaces.clear();
+    for (const target of this.spareTargets) target.dispose();
+    this.spareTargets.length = 0;
+    this.keeper.dispose();
+    this.keeperTarget.dispose();
+    this.warmed = false;
     this.sunlight.clear();
     this.depth.dispose();
     this.revalidateTargets();

@@ -61,6 +61,7 @@ function VolumePass({
       pass.revalidateTargets();
       invalidate();
     };
+    if (!gl.getContext().isContextLost()) pass.warm(gl);
     canvas.addEventListener('webglcontextlost', lose);
     canvas.addEventListener('webglcontextrestored', restore);
     if (gl.getContext().isContextLost()) lose();
@@ -209,7 +210,8 @@ export default function Smoke({
     cloud.holes = activeSmokeHoles(blasts, cloud, start, tick, rate);
     draws.push(cloud);
   }
-  return draws.length ? (
+  // The pass stays mounted between smokes so its programs and targets survive.
+  return (
     <VolumePass
       draws={draws}
       sun={direction}
@@ -220,5 +222,5 @@ export default function Smoke({
       labelSmoke={labelSmoke}
       onUnavailable={onUnavailable}
     />
-  ) : null;
+  );
 }

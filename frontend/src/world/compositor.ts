@@ -11,6 +11,7 @@ import {
   WebGLRenderTarget,
   type Material,
   type Mesh,
+  type Object3D,
   type Scene,
   type WebGLRenderer,
 } from 'three';
@@ -28,6 +29,9 @@ export interface FramePasses {
 // fills the space around the map instead of the sky cube's lower hemisphere.
 const tacticalBackground = [0.003, 0.003, 0.003] as const;
 
+type LinkedProgram = { usedTimes: number };
+const retainedPrograms = new WeakMap<WebGLRenderer, Set<LinkedProgram>>();
+
 export function compositor(renderer: WebGLRenderer, native: NativeRenderer) {
   const gl = renderer.getContext() as WebGL2RenderingContext;
   // Actor x-ray shells test the stencil mask written by their own bodies.
@@ -41,6 +45,60 @@ export function compositor(renderer: WebGLRenderer, native: NativeRenderer) {
   });
   const lighting = actorLighting(renderer, native);
   const sourceEye = new Vector3();
+  const originals: Color[] = [];
+  // Link the programs of newly mounted meshes in the composed pass state, even
+  // while they are culled, so a player or weapon entering view mid-playback
+  // reuses a program instead of compiling and linking it inside that frame.
+  const prepared = new WeakSet<Material>();
+  const retained = retainedPrograms.get(renderer) ?? new Set<LinkedProgram>();
+  retainedPrograms.set(renderer, retained);
+  const fresh: Object3D[] = [];
+  const freshScene = {
+    traverse: (visit: (object: Object3D) => void) => fresh.forEach(visit),
+    traverseVisible: () => {},
+  } as unknown as Object3D;
+  // X-ray shells are display overlays and keep their unlit shader.
+  const xray = (material: Material) => material.depthFunc === GreaterDepth && 'color' in material;
+  const custom = (material: Material) =>
+    Boolean((material as Material & { isShaderMaterial?: boolean }).isShaderMaterial);
+  function prepare(scene: Scene, camera: PerspectiveCamera) {
+    scene.traverse((object) => {
+      const material = (object as Mesh).material;
+      if (!material) return;
+      let added = false;
+      for (const entry of Array.isArray(material) ? material : [material]) {
+        // Custom shader effects warm their own programs in the state they draw in.
+        if (prepared.has(entry) || custom(entry)) continue;
+        prepared.add(entry);
+        if (!xray(entry)) lighting.bind(entry);
+        added = true;
+      }
+      if (added) fresh.push(object);
+    });
+    if (!fresh.length) return;
+    try {
+      renderer.compile(freshScene, camera, scene);
+      // Keep each linked built-in material variant for the renderer's lifetime
+      // (a bounded set). A corpse's instance-owned materials are disposed at the
+      // round's end; without this lease the next round's first death would link
+      // the same program again mid-playback. (Custom shader programs are keyed by
+      // shader-cache entries that are renumbered once released.)
+      for (const object of fresh) {
+        const material = (object as Mesh).material;
+        for (const entry of Array.isArray(material) ? material : [material]) {
+          if (custom(entry)) continue;
+          const program = (renderer.properties.get(entry) as { currentProgram?: LinkedProgram })
+            .currentProgram;
+          if (program && !retained.has(program)) {
+            retained.add(program);
+            program.usedTimes++;
+          }
+        }
+      }
+    } finally {
+      fresh.length = 0;
+    }
+  }
   function frame(
     scene: Scene,
     camera: PerspectiveCamera,
@@ -60,7 +118,10 @@ export function compositor(renderer: WebGLRenderer, native: NativeRenderer) {
       renderer.autoClear = false;
     }
     const hidden: Material[] = [];
-    const scaled: [Color, Color][] = [];
+    const scaled: Color[] = [];
+    // Nothing moves between the opaque and transparent passes, so the scene
+    // graph's world matrices are updated once per frame.
+    let placed = false;
     function objects(transparent: boolean) {
       bindTarget();
       scene.traverseVisible((object) => {
@@ -71,19 +132,24 @@ export function compositor(renderer: WebGLRenderer, native: NativeRenderer) {
           if (entry.transparent !== transparent) {
             entry.visible = false;
             hidden.push(entry);
-          } else if (entry.depthFunc === GreaterDepth && 'color' in entry) {
+          } else if (xray(entry)) {
             // X-ray shells are display overlays: undo the grade's fixed scale for their tint.
             const color = (entry as Material & { color: Color }).color;
-            scaled.push([color, color.clone()]);
+            (originals[scaled.length] ??= new Color()).copy(color);
+            scaled.push(color);
             color.multiplyScalar(native.displayScale);
           } else lighting.bind(entry);
         }
       });
+      const autoUpdate = scene.matrixWorldAutoUpdate;
+      if (placed) scene.matrixWorldAutoUpdate = false;
       try {
         renderer.render(scene, camera);
       } finally {
+        scene.matrixWorldAutoUpdate = autoUpdate;
+        placed = true;
         for (const entry of hidden) entry.visible = true;
-        for (const [color, original] of scaled) color.copy(original);
+        scaled.forEach((color, index) => color.copy(originals[index]));
         hidden.length = 0;
         scaled.length = 0;
       }
@@ -92,6 +158,7 @@ export function compositor(renderer: WebGLRenderer, native: NativeRenderer) {
       renderer.toneMapping = NoToneMapping;
       scene.background = null;
       bindTarget();
+      prepare(scene, camera);
       const framebuffer = gl.getParameter(gl.DRAW_FRAMEBUFFER_BINDING) as WebGLFramebuffer;
       const texture = (renderer.properties.get(hdr.texture) as { __webglTexture: WebGLTexture })
         .__webglTexture;
@@ -118,6 +185,7 @@ export function compositor(renderer: WebGLRenderer, native: NativeRenderer) {
           equipment: () =>
             passes.equipment?.((equipment, eye) => {
               bindTarget();
+              prepare(equipment, eye);
               renderer.clearDepth();
               equipment.traverseVisible((object) => {
                 const material = (object as Mesh).material;

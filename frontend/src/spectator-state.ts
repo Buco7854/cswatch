@@ -1,5 +1,5 @@
 import type { Frame, GameEvent, Playback, Position } from './types';
-import { frameAt } from './playback';
+import { frameAt, poseTimingAt } from './playback';
 import { eventPlayer } from './review-events';
 import { playerPose, shortestAngle } from './player-pose';
 import { firstPersonView, recordedEyePosition } from './pov-camera';
@@ -53,21 +53,14 @@ export function killfeedAt(index: SpectatorEvents, tick: number, rate: number) {
 }
 function at(data: Playback, id: string, tick: number) {
   if (!data.frames.length || tick < data.frames[0].tick || tick > data.frames.at(-1)!.tick) return;
-  const { frame, next, alpha } = frameAt(data, tick);
-  const player = frame.players.find((value) => value.id === id);
+  const span = frameAt(data, tick);
+  const player = span.frame.players.find((value) => value.id === id);
   if (!player) return;
   return playerPose(
     player,
-    next.players.find((value) => value.id === id),
-    alpha,
-    {
-      fromTick: frame.tick,
-      nextTick: next.tick,
-      tickRate: data.tickRate,
-      roundBoundary: data.rounds.some(
-        (round) => round.tick > frame.tick && round.tick <= next.tick,
-      ),
-    },
+    span.next.players.find((value) => value.id === id),
+    span.alpha,
+    poseTimingAt(data, span, id),
   );
 }
 function recordedAmount(event: GameEvent) {

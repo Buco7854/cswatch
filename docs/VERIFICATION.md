@@ -1,5 +1,41 @@
 # Verification record
 
+## Playback frame cost and motion, 2026-11-25
+
+A copied normal-install instance served the native Mirage desktop pack to production Chromium with SwiftShader (DPR 1, default settings, adaptive resolution active). All ten players used the accepted CT agent model: no accepted T bank exists on this host, so the private copy served the CT model for both teams. `main` (85104a9) used its glTF Mirage instance with the same model bank. SwiftShader timings are relative only. Every native frame waits 0.4–2 s for the software GPU in `Commit`, so most long tasks are GPU waits. Script long tasks count only JavaScript longer than 50 ms. Other agents shared the 3 CPUs. The one-minute load average is listed for each run.
+
+| 20 s at 1×, interleaved          | Load     | rAF ms p50 / p95 | Script ms/frame p50 / p95 | Script ms/s | Script / all long tasks | GC ms | React commits/s | Frames/s |
+| -------------------------------- | -------- | ---------------: | ------------------------: | ----------: | ----------------------: | ----: | --------------: | -------: |
+| POV 18600, 960×540, base         | 1.4, 5.2 |       8.0 / 33.0 |               11.9 / 44.6 |        19.0 |                  2 / 47 |  11.5 |             1.5 |      1.2 |
+| POV 18600, 960×540, branch       | 2.7, 5.1 |       5.7 / 80.2 |                7.6 / 80.2 |        14.4 |                  3 / 23 |  20.0 |             0.9 |      1.0 |
+| POV 18600, 960×540, `main`       | 5.6, 5.0 |       0.2 / 26.9 |                2.8 / 30.7 |        55.6 |                 4 / 117 |  26.0 |             4.7 |      5.7 |
+| POV 18600, 1600×900, base        | 4.8, 5.8 |      5.3 / 136.9 |              12.2 / 136.9 |        13.3 |                  4 / 14 |  19.0 |             0.4 |      0.5 |
+| POV 18600, 1600×900, branch      | 4.4, 5.1 |      4.0 / 114.2 |               8.8 / 114.2 |         9.3 |                  4 / 14 |  13.0 |             0.3 |      0.5 |
+| POV 18600, 1600×900, `main`      | 6.4, 5.6 |       1.2 / 41.8 |                5.4 / 50.3 |        42.3 |                  5 / 58 |  42.0 |             2.4 |      2.8 |
+| Follow 18600, 960×540, base      | 4.0      |       5.0 / 19.7 |                7.8 / 21.3 |        19.6 |                  1 / 36 |    11 |             2.3 |      1.8 |
+| Follow 18600, 960×540, branch    | 5.0      |       4.3 / 19.2 |                6.4 / 28.3 |        19.4 |                  0 / 36 |     9 |             2.3 |      1.8 |
+| Follow 18600, 960×540, `main`    | 5.0      |       1.8 / 40.2 |                6.0 / 44.8 |        68.5 |                  3 / 56 |    36 |             3.1 |      5.2 |
+| Overhead 18600, 960×540, base    | 6.9, 3.2 |       8.7 / 24.3 |               12.7 / 31.4 |        28.2 |                  2 / 74 |   6.5 |             2.2 |      1.8 |
+| Overhead 18600, 960×540, branch  | 8.1, 3.4 |       6.8 / 20.9 |                9.3 / 24.0 |        29.2 |                 1 / 104 |   5.5 |             3.1 |      2.6 |
+| Overhead 18600, 960×540, `main`  | 6.7, 3.5 |       0.6 / 40.8 |                4.0 / 44.2 |        70.7 |                 5 / 109 |  12.5 |             3.3 |      5.2 |
+| POV 43000 fight, 960×540, base   | 5.5, 5.0 |       7.7 / 35.4 |               10.4 / 37.9 |        16.6 |                  2 / 42 |   1.5 |             1.2 |      1.1 |
+| POV 43000 fight, 960×540, branch | 5.0, 5.2 |       6.0 / 32.5 |                9.8 / 37.5 |        18.8 |                  0 / 52 |   4.0 |             1.9 |      1.5 |
+| POV 43000 fight, 960×540, `main` | 5.8, 4.3 |       0.1 / 20.0 |                2.3 / 25.5 |        70.8 |                 5 / 170 |  30.0 |             8.4 |      9.7 |
+
+Base is `0f50c0e`, and the branch includes every change through the playback-motion commits. Each figure is the median of the listed runs. `main` drives empty animation frames between its rendered frames, so its per-frame figures are not comparable; compare script ms per wall-clock second. The window from tick 18600 has all ten players alive, five smokes, a chunk boundary at 18884 and the round's first death at 19429.
+
+**Hotspots.** In a matched CPU profile (POV 18600, 960×540, load 7.3 and 6.1), JavaScript fell from 19.4 to 13.3 ms per rendered frame. Within that, shader links at first use fell from 2.3 to 1.3 ms, smoke framebuffer completeness checks from 3.0 to 1.0, three.js actor rendering from 3.3 to 1.9 and React from 2.3 to 1.6. World culling and submission, actor pose sampling and label rays are each under 1.4 ms. Before the change, players entering view, each round's first death and the first smoke of each round linked shader programs inside a playback frame, taking 44–81 ms of script. Seeks re-linked 24 programs every 20 seeks. With the change, 20 seeks across chunks re-link none of the actor programs and give 4 script long tasks (58–84 ms) instead of 8 (54–120 ms). Corpses and players with x-ray off previously drew the cloth materials without the `PHYSICAL` define, and x-ray masks drew without the packed-texture patch. That gave a separate program variant, which the first death of a session linked inside a frame. Every instance now keeps the physical defines and the source's shader patches. Captures with x-ray off at POV and Follow 12400 (a corpse 4 m away and a living player) and Follow 19440, plus POV 12400 and 19440 with x-ray on, are pixel-identical before and after. With the default IOR of 1.5 the physical path gives the standard 0.04 reflectance, and the packed patch reads the same texels. A 24 s window across the first death links no actor programs and has no script long tasks. The remaining in-frame links are an effect type's first appearance.
+
+**Memory.** The JavaScript heap after a forced GC was measured after each 20-seek round. On the branch it stayed at 53.8, 53.7, 54.0 and 54.3 MB over rounds 2–5. Base grew from 44.2 to 51.5 MB, because the actor-lighting registry kept every disposed material. Live GL programs stayed at 41.
+
+**Motion.** The POV eye path was sampled at 60 Hz from the recorded chunks, with jerk in m/s³ given as RMS / p95 / max. Dog 18600–19240 fell from 1727 / 2579 / 22136 to 987 / 1495 / 10375. NIGHTSOUL 43000–43640 fell from 1887 / 3226 / 13068 to 1360 / 2416 / 13104. miu miu 21000–21240 fell from 1521 / 3618 / 8635 to 769 / 1684 / 4312. Trahun 33400–34000 fell from 1610 / 3532 / 8270 to 893 / 1902 / 4693. View angles already used the per-tick aim track.
+
+**Pixels.** Paused frames at POV 18600, 18900 and 43200, Follow 18600 and 21241, Overhead 18600 and Free 43200 were compared at 960×540. With the position curve replaced by linear interpolation, the final tree matched base exactly in six views. Free 43200 differed in 32 pixels by one level, the same as base against itself. With the curve, recorded sample ticks change at most 1,102 pixels (MAE 0.004) on bodies. Follow 21241 lies between samples, so the curved positions move it (20.8% of pixels, MAE 0.18).
+
+## Player markers and x-ray outlines, 2026-11-25
+
+Player labels are head markers (outlined name, 2 px health bar, team chevron) and x-ray draws a 2 px team outline around only the hidden part of a body. A copied normal-install instance served the native Mirage pack to production Chromium with SwiftShader. The asset worker's agent preparation had failed in that run, and the only complete agent bank on the host lacks the directional clips, so T players used capsules and CT players used a staged CT model. Ticks 21241, 43193, 18142 and 12000 were captured before and after the change in POV, Follow, Free, Overhead and 2D at 1600×900, 1280×720, 1024×768, 390×844 and 844×390, in both themes and in English and French (30 frames each). All of them were inspected. The public Playwright suite passed 360 with three configuration skips. Formatting and English/French locale coverage passed. Physical devices and a GPU renderer were not measured.
+
 ## Native worlds
 
 Evidence from 2026-11-25 on the 3-CPU, 9 GB Linux host without a GPU. Chromium used ANGLE/SwiftShader, which exposes BPTC, RGTC, S3TC and ASTC. SwiftShader results are correctness and counts only, never frame rate.

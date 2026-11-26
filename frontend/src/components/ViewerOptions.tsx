@@ -232,7 +232,7 @@ export default function ViewerOptions({
                 {toggle(
                   'xray',
                   t('X-ray silhouettes'),
-                  t('Show player shapes through map geometry.'),
+                  t('Outline players hidden behind map geometry.'),
                 )}
                 {toggle(
                   'playerLabels',

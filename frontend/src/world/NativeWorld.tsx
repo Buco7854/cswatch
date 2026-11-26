@@ -1,7 +1,15 @@
 import { worldQueries, type WorldQueries } from './queries';
 import { useEffect, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import { Box3, Color, DirectionalLight, Object3D, PerspectiveCamera, Vector3 } from 'three';
+import {
+  Box3,
+  Color,
+  DirectionalLight,
+  Matrix4,
+  Object3D,
+  PerspectiveCamera,
+  Vector3,
+} from 'three';
 import { compositor, type FramePasses } from './compositor';
 import { createRenderer, type NativeRenderer } from './renderer';
 import { loadManifest, type Manifest } from './format';
@@ -103,6 +111,7 @@ export function NativeWorld({
       controller.abort();
     };
   }, [url, renderer, scene, passes, loaded, register, invalidate]);
+  const shadowProjection = useRef({ matrix: new Matrix4(), elements: new Float32Array(16) });
   useFrame(({ camera }) => {
     if (!current.current || !(camera instanceof PerspectiveCamera)) return;
     const depth = shadows.depth;
@@ -114,9 +123,13 @@ export function NativeWorld({
     const shadow = texture
       ? {
           texture,
-          projection: new Float32Array(
-            depth.cswatchPlayerProjection.value.clone().multiply(sourceToViewer).elements,
-          ),
+          projection: (() => {
+            const { matrix, elements } = shadowProjection.current;
+            elements.set(
+              matrix.multiplyMatrices(depth.cswatchPlayerProjection.value, sourceToViewer).elements,
+            );
+            return elements;
+          })(),
           bias: depth.cswatchPlayerBias.value,
         }
       : undefined;

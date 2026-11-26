@@ -308,7 +308,9 @@ test.describe('compact recap with captions', () => {
                 card.x + card.width <= size.width &&
                 card.y + card.height <= caption.y &&
                 caption.y + caption.height <= deck.y &&
-                card.height <= 192
+                card.height <= 192 &&
+                // Short landscape keeps the card off the centre of the view.
+                (size.width < size.height || card.x >= size.width / 2)
               );
             })
             .toBe(true);

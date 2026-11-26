@@ -1,7 +1,7 @@
 import { Bone, MathUtils, Quaternion, Vector3, type Object3D } from 'three';
 import { strideDisplacement } from '../../shared/stride-distance.mjs';
-import { frameAt } from './playback';
-import { shortestAngle } from './player-pose';
+import { frameAt, poseTimingAt } from './playback';
+import { curvedPosition, shortestAngle } from './player-pose';
 import type { Playback } from './types';
 import type { FollowCamera } from './follow-camera';
 
@@ -16,7 +16,8 @@ export function recordedFootPose(
   return (id, tick) => {
     const first = data.frames[0]?.tick;
     if (first === undefined || tick < first || tick > data.frames.at(-1)!.tick) return;
-    const { frame, next, alpha } = frameAt(data, tick);
+    const span = frameAt(data, tick);
+    const { frame, next, alpha } = span;
     const from = frame.players.find((player) => player.id === id);
     const to = next.players.find((player) => player.id === id);
     if (
@@ -26,10 +27,12 @@ export function recordedFootPose(
       data.rounds.some((round) => round.tick > frame.tick && round.tick <= next.tick)
     )
       return;
+    // The same recorded curve as the posed body, so planted feet match its root.
+    const position = curvedPosition(from, to, alpha, poseTimingAt(data, span, id));
     return {
-      x: MathUtils.lerp(from.x, to.x, alpha) * 0.0254,
-      y: MathUtils.lerp(from.z, to.z, alpha) * 0.0254,
-      z: -MathUtils.lerp(from.y, to.y, alpha) * 0.0254,
+      x: position.x * 0.0254,
+      y: position.z * 0.0254,
+      z: -position.y * 0.0254,
       yaw: MathUtils.degToRad(from.yaw + shortestAngle(from.yaw, to.yaw) * alpha),
       weapon: from.weapon,
     };

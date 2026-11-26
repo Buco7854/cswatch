@@ -40,6 +40,7 @@ import ActorOverlays, {
   type ActorOverlay,
 } from './ActorOverlays';
 import type { ActorOverlayLayout } from '../actor-overlay';
+import { setXrayViewportHeight } from '../agent-xray';
 import * as THREE from 'three';
 import type { Playback, Position } from '../types';
 import TacticalPlot from './TacticalPlot';
@@ -65,6 +66,7 @@ export type SceneFocus = {
 };
 import {
   frameAt,
+  poseTimingAt,
   playbackBounds,
   defaultSettings,
   shotTracersEnabled,
@@ -352,16 +354,9 @@ function Agent({
     const current = frameAt(data, replayFrames?.tick ?? tick);
     const from = current.frame.players.find((p) => p.id === position.id) ?? position;
     const to = current.next.players.find((p) => p.id === position.id);
-    const pose = playerPose(from, to, current.alpha, {
-      fromTick: current.frame.tick,
-      nextTick: current.next.tick,
-      tickRate: data.tickRate,
-      roundBoundary: data.rounds.some(
-        (r) => r.tick > current.frame.tick && r.tick <= current.next.tick,
-      ),
-    });
+    const pose = playerPose(from, to, current.alpha, poseTimingAt(data, current, position.id));
     if (overlays) {
-      overlayAnchor.height = 2.08 - (pose.duck ?? 0) * 0.65;
+      overlayAnchor.height = 1.94 - (pose.duck ?? 0) * 0.6;
       overlayAnchor.yaw = pose.yaw;
     }
     ref.current.position.set(pose.x * UNIT, pose.z * UNIT, -pose.y * UNIT);
@@ -492,11 +487,13 @@ function World({
     [nativeWorld, data.mapBreakables, data.mapDoors, data.mapVisibility],
   );
   useFrame(() => seekNative?.(replayFrames?.tick ?? tick), -90);
+  useFrame(({ size }) => setXrayViewportHeight(size.height), -90);
   useActorOverlayFrame(
     overlays,
     overlayLayout,
     selected,
     settings.xray,
+    mode === 'pov',
     labelSmoke,
     nativeWorld?.queries,
   );
@@ -790,7 +787,6 @@ function World({
       };
     };
   }, [mode, bounds, camera, focus?.id, focusTrace, invalidate]);
-  const currentBoundary = poseTiming.roundBoundary;
   const overheadTarget = useMemo(() => new THREE.Vector3(), []);
   useFrame(({ size }, delta) => {
     if (mode === 'orbit') {
@@ -859,17 +855,9 @@ function World({
     }
     const current = frameAt(data, replayFrames?.tick ?? tick);
     const alpha = current.alpha;
-    const poseTiming = {
-      fromTick: current.frame.tick,
-      nextTick: current.next.tick,
-      tickRate: data.tickRate,
-      roundBoundary:
-        current.frame.tick !== frame.tick
-          ? data.rounds.some((r) => r.tick > current.frame.tick && r.tick <= current.next.tick)
-          : currentBoundary,
-    };
     const p = current.frame.players.find((p) => p.id === selected);
     if (!p) return;
+    const poseTiming = poseTimingAt(data, current, selected);
     const n = current.next.players.find((next) => next.id === p.id);
     if (mode === 'follow') {
       const follow = thirdPersonFollow(p, n, alpha, poseTiming);
@@ -1536,6 +1524,13 @@ export default function Scene({
     rendererFailed: rendererFailure === data.map && rendererAttempt.failed,
     textureSupport: data.sample || textureTier !== null,
   });
+  // The plot unmounts the canvas and native world; the next 3D mount loads the
+  // world again. A ready load must not report the new world as drawn before it
+  // reports itself. Errors persist so the plot fallback cannot retry in a loop.
+  useEffect(() => {
+    if (surface === 'plot')
+      setModelLoad((previous) => (previous?.status === 'ready' ? undefined : previous));
+  }, [surface]);
   const equipmentActive = surface === '3d';
   const equipmentPending =
     equipmentAssets.status === 'pending'

@@ -8,7 +8,10 @@ import type { Playback } from '../../shared/playback';
 const fr = JSON.parse(
   readFileSync(new URL('../src/locales/fr.json', import.meta.url), 'utf8'),
 ) as Record<string, string>;
-const message = (language: 'en' | 'fr', key: string) => (language === 'fr' ? fr[key] || key : key);
+const en = JSON.parse(
+  readFileSync(new URL('../src/locales/en.json', import.meta.url), 'utf8'),
+) as Record<string, string>;
+const message = (language: 'en' | 'fr', key: string) => (language === 'fr' ? fr : en)[key] || key;
 function reviewData(): Playback {
   return {
     ...recordedReplay(),
@@ -256,7 +259,7 @@ for (const language of ['en', 'fr'] as const)
         });
         await expect(dialog).toBeVisible();
         await dialog
-          .getByRole('tab', { name: new RegExp('^' + message(language, 'Utility')) })
+          .getByRole('tab', { name: new RegExp('^' + message(language, 'review_tab_utility')) })
           .click();
         await expect(dialog.locator('.review-feed-row')).toHaveCount(1);
         expect(

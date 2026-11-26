@@ -11,7 +11,11 @@ type Theme = 'light' | 'dark';
 const french = JSON.parse(
   readFileSync(new URL('../src/locales/fr.json', import.meta.url), 'utf8'),
 ) as Record<string, string>;
-const message = (language: Language, key: string) => (language === 'fr' ? french[key] || key : key);
+const english = JSON.parse(
+  readFileSync(new URL('../src/locales/en.json', import.meta.url), 'utf8'),
+) as Record<string, string>;
+const message = (language: Language, key: string) =>
+  (language === 'fr' ? french : english)[key] || key;
 const sizes = [
   { width: 320, height: 740 },
   { width: 390, height: 844 },
@@ -610,6 +614,14 @@ for (const language of ['en', 'fr'] as const)
         });
       // Include the actual optional radar once, without running WebGL at every size.
       await setCamera(page, language, 'Free camera');
+      // Free camera mounts the 3D map lazily. Its opening screen ignores viewer
+      // keys and takes focus, so keyboard checks wait until that load is done.
+      // The scene is an image only once the 3D surface (not the plot) is shown.
+      await expect(page.locator('.scene[role="img"]')).toHaveAttribute(
+        'data-map-model-state',
+        'ready',
+      );
+      await expect(page.locator('.viewer-map-loading')).toHaveCount(0);
       await expect(page.locator('.position-radar')).toBeVisible();
       expect((await page.locator('.position-radar').boundingBox())!.width).toBeGreaterThanOrEqual(
         80,
@@ -802,7 +814,7 @@ for (const language of ['en', 'fr'] as const)
           'Replay perspective action must remain touch sized and unobscured',
         ).toBe(true);
         await feed
-          .getByRole('tab', { name: new RegExp('^' + message(language, 'Utility')) })
+          .getByRole('tab', { name: new RegExp('^' + message(language, 'review_tab_utility')) })
           .click();
         if (modal) {
           const bounds = (await page.locator('.review-feed-dialog[open]').boundingBox())!;

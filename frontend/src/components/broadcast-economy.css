@@ -215,16 +215,22 @@
   width: var(--lineup-weapon-width);
   height: 17px;
 }
+/* A recorded name stands in for missing artwork. Block layout lets a long
+ * name end in an ellipsis instead of being cut through a glyph. */
 .equipment-glyph.equipment-text-fallback {
-  display: flex;
-  align-items: center;
+  display: block;
+  align-self: center;
+  height: auto;
   overflow: hidden;
   white-space: nowrap;
   font: inherit;
   font-size: 11px;
   font-weight: 600;
-  line-height: 1;
+  line-height: 1.2;
   text-overflow: ellipsis;
+}
+.broadcast-player-select .equipment-glyph.equipment-text-fallback {
+  height: auto;
 }
 .broadcast-ammo {
   flex-shrink: 0;

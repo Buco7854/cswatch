@@ -60,7 +60,8 @@ async function fixture(
       {
         ...data.frames[0].players[1],
         x: 200,
-        y: 0,
+        // A head-height label straight ahead would sit on the reticle area.
+        y: options.native === 'head' ? 80 : 0,
         health: 37,
         duck: options.native === 'head' && index >= 2 ? 1 : 0,
       },
@@ -148,6 +149,20 @@ async function fixture(
   }
   return data;
 }
+/** Visible label footprints: a reduced label occupies only its chevron. */
+function paintedLabels(page: Page) {
+  return page.locator('.scene .actor-label').evaluateAll((nodes) =>
+    nodes
+      .filter((node) => getComputedStyle(node).visibility === 'visible')
+      .map((node) =>
+        ((node as HTMLElement).dataset.compact
+          ? node.querySelector('.actor-label-marker')!
+          : node
+        ).getBoundingClientRect(),
+      )
+      .map(({ left, top, right, bottom }) => ({ left, top, right, bottom })),
+  );
+}
 async function camera(page: Page, name: string) {
   await chooseCameraControl(page, name);
 }
@@ -173,19 +188,27 @@ test('actor labels avoid each other and HUD panels, and Overhead keeps a selecte
   const scene = page.locator('.scene');
   await expect(scene).toHaveAttribute('data-map-model-state', 'ready');
   const labels = scene.locator('.actor-label:visible');
-  await expect(labels).toHaveCount(2);
-  const pair = await labels.evaluateAll((nodes) =>
-    nodes.map((node) => node.getBoundingClientRect().toJSON()),
+  // The nearer player keeps the full label; the farther one, standing just
+  // behind, cannot fit without covering it and is reduced or hidden.
+  await expect(labels).not.toHaveCount(0);
+  await expect(scene.locator(`.actor-label[data-player="${opponent}"]`)).toBeVisible();
+  await expect(scene.locator(`.actor-label[data-player="${opponent}"]`)).not.toHaveAttribute(
+    'data-compact',
   );
-  expect(pair[0].x).toBeCloseTo(pair[1].x, -2);
-  expect(Math.min(pair[0].bottom, pair[1].bottom)).toBeLessThanOrEqual(
-    Math.max(pair[0].top, pair[1].top) - 3,
-  );
+  const painted = await paintedLabels(page);
+  for (const [index, box] of painted.entries())
+    for (const other of painted.slice(index + 1))
+      expect(
+        box.right <= other.left ||
+          box.left >= other.right ||
+          box.bottom <= other.top ||
+          box.top >= other.bottom,
+      ).toBe(true);
   const crosshair = await page.locator('.viewer-crosshair > g').boundingBox();
   expect(crosshair).not.toBeNull();
-  for (const label of pair)
+  for (const label of painted)
     expect(
-      label.bottom <= crosshair!.y - 3 || label.top >= crosshair!.y + crosshair!.height + 3,
+      label.bottom <= crosshair!.y - 2 || label.top >= crosshair!.y + crosshair!.height + 2,
     ).toBe(true);
   await expect(scene.locator('.overhead-player-marker')).toHaveCount(0);
 
@@ -210,26 +233,21 @@ test('actor labels avoid each other and HUD panels, and Overhead keeps a selecte
     stage.append(svg);
   });
   await expect
-    .poll(() =>
-      labels.evaluateAll((nodes) => {
-        const reticle = document.querySelector('#qa-reticle > g')!.getBoundingClientRect();
-        return (
-          nodes.length > 0 &&
-          nodes.every((node) => {
-            const label = node.getBoundingClientRect();
-            return (
-              label.right <= reticle.left ||
-              label.left >= reticle.right ||
-              label.bottom <= reticle.top ||
-              label.top >= reticle.bottom
-            );
-          })
-        );
-      }),
-    )
+    .poll(async () => {
+      const reticle = await page.locator('#qa-reticle > g').boundingBox();
+      return (await paintedLabels(page)).every(
+        (label) =>
+          label.right <= reticle!.x ||
+          label.left >= reticle!.x + reticle!.width ||
+          label.bottom <= reticle!.y ||
+          label.top >= reticle!.y + reticle!.height,
+      );
+    })
     .toBe(true);
   await page.locator('#qa-reticle').evaluate((reticle) => reticle.remove());
-  await expect(labels).toHaveCount(2);
+  await expect(scene.locator(`.actor-label[data-player="${opponent}"]`)).not.toHaveAttribute(
+    'data-compact',
+  );
 
   await page.locator('.viewer-frame').evaluate((frame) => {
     const panel = document.createElement('div');
@@ -246,7 +264,7 @@ test('actor labels avoid each other and HUD panels, and Overhead keeps a selecte
   });
   await expect(labels).toHaveCount(0);
   await page.locator('#qa-hud-blocker').evaluate((panel) => panel.remove());
-  await expect(labels).toHaveCount(2);
+  await expect(scene.locator(`.actor-label[data-player="${opponent}"]`)).toBeVisible();
 
   await page.locator('.timeline-slider').fill('640');
   await option(page, 'Visuals', 'X-ray silhouettes', false);
@@ -275,6 +293,9 @@ test('player names and real health render through an actual wall, obey X-ray and
   const label = page.locator(`.actor-label[data-player="${opponent}"]`);
   await expect(label).toBeVisible();
   await expect(label).toHaveAccessibleName('Original QA opponent, 37 health');
+  // Through-wall labels stay readable but fainter than visible players.
+  await expect(label).toHaveAttribute('data-occluded', 'true');
+  expect(Number(await label.evaluate((node) => getComputedStyle(node).opacity))).toBeLessThan(0.8);
   await expect(label.locator('.actor-label-track > span')).toHaveAttribute('style', 'width: 37%;');
   const throughWall = await page.locator('.scene canvas').screenshot();
   await option(page, 'Visuals', 'X-ray silhouettes', false);
@@ -357,9 +378,10 @@ test('native labels project the posed head and restore the same placement on bac
   const offset = async () => {
     const bounds = (await label.boundingBox())!;
     const canvas = (await scene.locator('canvas').boundingBox())!;
-    return bounds.y + bounds.height / 2 - (canvas.y + canvas.height / 2);
+    return bounds.y + bounds.height - (canvas.y + canvas.height / 2);
   };
-  // The fixture's posed head plus the label gap lies below the viewer's fixed eye height.
+  // The label's bottom (its chevron) marks the posed head plus a small gap,
+  // which lies below the viewer's fixed eye height.
   // The generic standing-height label would be above it.
   // Convert the original pixel thresholds to the wider default projection.
   const projectionScale = Math.tan((48 * Math.PI) / 360) / Math.tan((73.74 * Math.PI) / 360);
