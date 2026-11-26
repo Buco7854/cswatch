@@ -267,10 +267,14 @@ export async function prepareOverview({
     .png({ compressionLevel: 9 })
     .toBuffer();
   if (png.length > MAX_IMAGE) throw new Error('Prepared overview exceeds the 8 MiB image limit.');
+  // An overview text's scale is world units per pixel of its own radar image. Valve's radars
+  // are 1024 pixels; RadGen radars shipped in community addons (de_debris, de_eldorado) are
+  // 2048, so their scale is expressed at the 1024 reference the viewer uses.
   const metadata = {
     schemaVersion: 1,
     map,
     ...geometry,
+    ...(parsedOverview ? { scale: +((geometry.scale * info.width) / 1024).toPrecision(9) } : {}),
     referenceSize: 1024,
     assetVersion: version.trim(),
     imageSha256: hash(png),

@@ -27,7 +27,7 @@ const overview = Buffer.from(`
  "bombA_x" "0.3" "bombA_y" "0.2" "bombB_x" "0.8" "bombB_y" "0.5"
  "inset_left" "0" "inset_top" "0" "inset_right" "0" "inset_bottom" "0"
 }`);
-const image = (width = 32, height = width) =>
+const image = (width = 1024, height = width) =>
   sharp({ create: { width, height, channels: 4, background: '#283e49' } })
     .png()
     .toBuffer();
@@ -117,9 +117,12 @@ test('Valve display rotate 0 and 1 preserve the same north-up calibration and as
   try {
     const expected = { origin: { x: -2500, y: 3000 }, scale: 5 };
     const pixels = Buffer.from([255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 0, 255]);
+    // A 1024-pixel raster: overview scale is world units per radar pixel.
     const png = await sharp(pixels, { raw: { width: 2, height: 2, channels: 4 } })
+      .resize(1024, 1024, { kernel: 'nearest' })
       .png()
       .toBuffer();
+    const raster = await sharp(png).raw().toBuffer();
     await writeFile(s.options.image, png);
     for (const flag of [0, 1]) {
       const text = Buffer.from(overview.toString().replace('"rotate" "0"', `"rotate" "${flag}"`));
@@ -135,7 +138,7 @@ test('Valve display rotate 0 and 1 preserve the same north-up calibration and as
       assert.equal(metadata.scale, expected.scale);
       assert.equal(metadata.referenceSize, 1024);
       assert.equal(provenance.sourceDisplayRotate, flag);
-      assert.deepEqual(await sharp(join(result.output, 'overview.png')).raw().toBuffer(), pixels);
+      assert.deepEqual(await sharp(join(result.output, 'overview.png')).raw().toBuffer(), raster);
       // Independent Source anchors remain in their authored top-left/bottom-right
       // quadrants. Rotating either the raster or its calibration breaks this pair.
       for (const [point, normalized] of [
@@ -152,6 +155,26 @@ test('Valve display rotate 0 and 1 preserve the same north-up calibration and as
         assert.equal((metadata.origin.y - point.y) / (metadata.scale * 1024), normalized.v);
       }
     }
+  } finally {
+    await rm(s.root, { recursive: true, force: true });
+  }
+});
+
+test('an overview scale is per pixel of its own radar, so a 2048 radar is rescaled to the 1024 reference', async () => {
+  const s = await fixture();
+  try {
+    // RadGen writes community radars at 2048 pixels with scale in world units per image pixel.
+    await writeFile(
+      s.options.image,
+      await sharp({ create: { width: 2048, height: 2048, channels: 4, background: '#406080' } })
+        .png()
+        .toBuffer(),
+    );
+    const result = await prepareOverview({ ...s.options, output: join(s.root, 'radgen') });
+    const metadata = JSON.parse(await readFile(join(result.output, 'overview.json')));
+    assert.deepEqual(metadata.origin, { x: -2500, y: 3000 });
+    assert.equal(metadata.scale, 10);
+    assert.equal(metadata.referenceSize, 1024);
   } finally {
     await rm(s.root, { recursive: true, force: true });
   }
