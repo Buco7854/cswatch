@@ -5,15 +5,19 @@ import { readVpkDirectory, resourcePath, source2References } from './source2-dep
 import { staticModelDependency } from './equipment-source-model.mjs';
 import { viewmodelClips } from './viewmodel-sources.mjs';
 import { directionalAgentRegistry } from './agent-animation-registry.mjs';
+import { agentActionRegistry } from './agent-action-registry.mjs';
+const agentClipCount =
+  Object.keys(directionalAgentRegistry).length + Object.keys(agentActionRegistry).length;
 const fixedAnimationResources = new Set([
   ...Object.values(directionalAgentRegistry),
+  ...Object.values(agentActionRegistry),
   ...viewmodelClips,
 ]);
 export async function scanEquipmentDependencies({ game, seeds, index = readVpkDirectory }) {
   if (
     !Array.isArray(seeds) ||
     !seeds.length ||
-    seeds.length > 96 + Object.keys(directionalAgentRegistry).length ||
+    seeds.length > 96 + agentClipCount ||
     seeds.filter((resource) => !fixedAnimationResources.has(resource)).length > 96 ||
     seeds.some(
       (x) =>

@@ -14,6 +14,8 @@ import { viewmodelSources } from './viewmodel-sources.mjs';
 import { inspectNativeEject, inspectNativeMuzzle } from './native-weapon-muzzle.mjs';
 import { scanEquipmentDependencies } from './equipment-dependencies.mjs';
 import { directionalAgentRegistry } from './agent-animation-registry.mjs';
+import { agentActionRegistry } from './agent-action-registry.mjs';
+import { agentActionRoles } from '../../shared/agent-actions.mjs';
 import { directionalRoles } from '../../shared/agent-animation-contract.mjs';
 import { readVpkDirectory } from './source2-dependencies.mjs';
 import { preflightMaterialShaders } from './shader-preflight.mjs';
@@ -32,6 +34,7 @@ import { agentSourceRegistry } from './prepare-agent-model.mjs';
 import { markSteamRateLimit } from './official-map-inventory.mjs';
 const MiB = 1024 ** 2;
 const agentScript = fileURLToPath(new URL('./prepare-agent-model.mjs', import.meta.url));
+const actionScript = fileURLToPath(new URL('./prepare-agent-actions.mjs', import.meta.url));
 const prepareScript = fileURLToPath(new URL('./prepare-equipment-model.mjs', import.meta.url));
 export async function installEquipmentModels(options, adapters = {}) {
   const rigId = options.viewmodel;
@@ -267,6 +270,7 @@ export async function installEquipmentModels(options, adapters = {}) {
     const closureSeeds = [
       ...resources,
       ...(agents.length ? Object.values(directionalAgentRegistry) : []),
+      ...(agents.length ? Object.values(agentActionRegistry) : []),
       ...(rig ? Object.values(rig).filter((resource) => resource.endsWith('.vnmclip_c')) : []),
     ];
     const missingSeeds = [];
@@ -499,6 +503,37 @@ export async function installEquipmentModels(options, adapters = {}) {
         }
         animations[role] = path;
       }
+      // The shared action bank: one export per role, named after the role.
+      const actionRoot = join(conversion, 'agent-actions');
+      await mkdir(actionRoot);
+      for (const role of agentActionRoles) {
+        const path = join(actionRoot, role.replaceAll(':', '_') + '.gltf');
+        const result = await execute(
+          tools.s2v,
+          [
+            '-i',
+            join(game, 'game/csgo/pak01_dir.vpk'),
+            '--game',
+            join(game, 'game/csgo'),
+            '--vpk_filepath',
+            agentActionRegistry[role],
+            '--output',
+            path,
+            '--gltf_export_format',
+            'gltf',
+            '--gltf_compose_additive',
+            '--gltf_keep_all_keyframes',
+          ],
+          `agent-action-${role.replaceAll(':', '-')}-export`,
+          { allowFailure: true, timeoutMs: 120000 },
+        );
+        if (
+          result.code !== 0 ||
+          !(await exists(path)) ||
+          /(?:Failed to|Could not|Unable to|Exception|Error:)/i.test(result.stdout + result.stderr)
+        )
+          throw Error(`The selected native action could not be exported: ${role}.`);
+      }
       for (const team of agents) {
         const resource = agentSourceRegistry[team],
           selection = modelSelections.get(resource),
@@ -547,10 +582,28 @@ export async function installEquipmentModels(options, adapters = {}) {
           ],
           `agent-${team}-pack`,
         );
+        // Every agent shares one skeleton; the first prepared agent anchors the action bank.
+        if (!installedAgents.length)
+          await execute(
+            process.execPath,
+            [
+              actionScript,
+              '--skeleton',
+              input,
+              '--clips',
+              actionRoot,
+              '--output',
+              agentOutput,
+              '--asset-version',
+              assetVersion,
+            ],
+            'agent-actions-pack',
+          );
         installedAgents.push(team);
         await rm(exportRoot, { recursive: true, force: true });
       }
       await rm(animationRoot, { recursive: true, force: true });
+      await rm(actionRoot, { recursive: true, force: true });
     }
     const report = {
       schemaVersion: 1,
@@ -558,7 +611,9 @@ export async function installEquipmentModels(options, adapters = {}) {
       items: ids,
       agents,
       unsupported,
-      ...(agents.length ? { exportedClips: directionalRoles.length } : {}),
+      ...(agents.length
+        ? { exportedClips: directionalRoles.length, exportedActions: agentActionRoles.length }
+        : {}),
       modelSelections: Object.fromEntries(modelSelections),
       closure,
       shaders,
@@ -595,7 +650,9 @@ export async function installEquipmentModels(options, adapters = {}) {
       agents,
       assetVersion,
       unsupported,
-      ...(agents.length ? { exportedClips: directionalRoles.length } : {}),
+      ...(agents.length
+        ? { exportedClips: directionalRoles.length, exportedActions: agentActionRoles.length }
+        : {}),
       report: join(root, 'installation.json'),
     };
   } catch (error) {

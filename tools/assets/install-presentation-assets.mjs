@@ -27,6 +27,7 @@ import {
   directionalDeclarations,
   validDirectionalRoles,
 } from '../../shared/agent-animation-contract.mjs';
+import { agentActionDeclarations, agentActionContract } from '../../shared/agent-actions.mjs';
 import { verifyPreparedGlb } from './prepared-glb.mjs';
 import { validPng } from '../../backend/dist/png.js';
 import {
@@ -123,6 +124,22 @@ async function validateBank(root, kind, manifest, write = false) {
   if (kind === 'agents') {
     for (const team of ['ct', 't'])
       await verifyModel(join(root, `${team}.glb`), join(root, `${team}.manifest.json`), team);
+    // The shared action bank: skeleton and curves only, with the complete role set.
+    const bank = join(root, 'actions.glb'),
+      bankMetadata = join(root, 'actions.manifest.json');
+    await regular(bank, 16 * 1024 ** 2, 24);
+    await regular(bankMetadata, 65536, 2);
+    const metadata = JSON.parse(await readFile(bankMetadata, 'utf8'));
+    const { json } = await inspectEquipmentGltf(bank);
+    const verified = await verifyPreparedGlb(bank, { animationOnly: true });
+    if (
+      !agentActionDeclarations(json.animations) ||
+      metadata.schemaVersion !== agentActionContract.schemaVersion ||
+      metadata.assetVersion !== `steam-2347770-${manifest}` ||
+      metadata.sha256 !== verified.sha256 ||
+      metadata.bytes !== verified.bytes
+    )
+      throw Error('Prepared action bank does not match its fixed identity.');
   } else if (kind === 'viewmodels' || kind === 'equipment-models') {
     let count = 0;
     for (const entry of await readdir(root, { withFileTypes: true })) {

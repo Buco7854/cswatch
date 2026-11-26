@@ -186,6 +186,10 @@ export async function mapAssetRoutes(
     return {
       ct: (await hasGlb(defaultLocation, parts, 'ct.glb')) ? '/map-assets/agents/ct.glb' : null,
       t: (await hasGlb(defaultLocation, parts, 't.glb')) ? '/map-assets/agents/t.glb' : null,
+      // The shared action bank drives every agent model; agents work without it.
+      actions: (await hasGlb(defaultLocation, parts, 'actions.glb'))
+        ? '/map-assets/agents/actions.glb'
+        : null,
     };
   });
   return { describe, loadOverview, defaultLocation };

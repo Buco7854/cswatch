@@ -315,7 +315,15 @@ test('native world discovery advertises only a validated manifest of the request
     assert.deepEqual((await s.get('/api/assets/agents')).json(), {
       ct: '/map-assets/agents/ct.glb',
       t: null,
+      actions: null,
     });
+    writeFileSync(join(maps, 'agents', 'actions.glb'), glb());
+    assert.equal(
+      (await s.get('/api/assets/agents')).json().actions,
+      '/map-assets/agents/actions.glb',
+    );
+    assert.equal((await s.get('/map-assets/agents/actions.glb')).statusCode, 200);
+    assert.equal((await s.get('/map-assets/agents/other.glb')).statusCode, 404);
     for (const path of ['map.json', 'map.json.br', vertexFile])
       assert.equal((await s.get('/map-assets/de_fixture/' + path)).statusCode, 404);
     const file = join(maps, 'de_fixture', 'map.json');

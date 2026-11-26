@@ -39,6 +39,7 @@ import {
   cleanupPresentationRetryTemps,
 } from '../../backend/dist/presentation-assets.js';
 import { prepareMapJobs } from '../../backend/dist/map-jobs.js';
+import { agentActionRoles, agentActionKind } from '../../shared/agent-actions.mjs';
 import { runMapWorker } from './map-worker.mjs';
 
 let boundaryRoot, boundary;
@@ -130,6 +131,60 @@ async function triangle(agent, roles = directionalRoles) {
   return Buffer.from(await new NodeIO().writeBinary(document));
 }
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
+/** The shared action bank: one skeleton node, every declared role, no mesh. */
+async function preparedActions(output) {
+  const directory = join(output, 'agents');
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  const document = new Document(),
+    buffer = document.createBuffer(),
+    node = document.createNode('pelvis');
+  document.createScene().addChild(node);
+  const input = document
+    .createAccessor()
+    .setType('SCALAR')
+    .setArray(new Float32Array([0, 1]))
+    .setBuffer(buffer);
+  const values = document
+    .createAccessor()
+    .setType('VEC4')
+    .setArray(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1]))
+    .setBuffer(buffer);
+  for (const role of agentActionRoles) {
+    const sampler = document.createAnimationSampler().setInput(input).setOutput(values);
+    document
+      .createAnimation('cswatch:' + role)
+      .addSampler(sampler)
+      .addChannel(
+        document
+          .createAnimationChannel()
+          .setTargetNode(node)
+          .setTargetPath('rotation')
+          .setSampler(sampler),
+      )
+      .setExtras({
+        cswatch: {
+          kind: 'native-agent-action',
+          schemaVersion: 1,
+          role,
+          blend: agentActionKind(role),
+          ...(role.startsWith('ladder') ? { climbMeters: 1 } : {}),
+        },
+      });
+  }
+  const bytes = Buffer.from(await new NodeIO().writeBinary(document));
+  await writeFile(join(directory, 'actions.glb'), bytes, { flag: 'wx', mode: 0o600 });
+  await writeFile(
+    join(directory, 'actions.manifest.json'),
+    JSON.stringify({
+      schemaVersion: 1,
+      assetVersion: 'steam-2347770-1',
+      roles: agentActionRoles,
+      sha256: digest(bytes),
+      bytes: bytes.length,
+    }),
+    { flag: 'wx', mode: 0o600 },
+  );
+}
 async function preparedModel(output, id, agent = false) {
   const directory = agent ? join(output, 'agents') : join(output, 'equipment-models', id);
   await mkdir(directory, { recursive: true, mode: 0o700 });
@@ -169,6 +224,7 @@ test('presentation banks publish both original agent fixtures atomically and reu
       );
       await preparedModel(settings.output, 'ct', true);
       await preparedModel(settings.output, 't', true);
+      await preparedActions(settings.output);
       assert.deepEqual((await readPresentationStatus(options.jobs)).categories.agents.attempts, 1);
     },
   };
@@ -200,6 +256,7 @@ test('interrupted agent validation leaves no published bank and retains the retr
         installModels: async (settings) => {
           await preparedModel(settings.output, 'ct', true);
           await preparedModel(settings.output, 't', true);
+          await preparedActions(settings.output);
         },
       },
     ),
@@ -346,6 +403,7 @@ test('explicit native retry retains source A through inventory B and restart bef
               assert.equal(settings.cache, options.cache);
               await preparedModel(settings.output, 'ct', true);
               await preparedModel(settings.output, 't', true);
+              await preparedActions(settings.output);
             },
           },
         );
@@ -781,6 +839,7 @@ test('unknown native status is replaced and the agent bank automatically rebuild
       acquisitions++;
       await preparedModel(settings.output, 'ct', true);
       await preparedModel(settings.output, 't', true);
+      await preparedActions(settings.output);
     },
   };
   assert.equal(

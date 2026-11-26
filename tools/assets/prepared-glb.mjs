@@ -155,7 +155,8 @@ async function readFully(file, length, position) {
   return result;
 }
 
-export async function verifyPreparedGlb(path) {
+/** `animationOnly` accepts a skeleton-and-curves bank, which has no meshes. */
+export async function verifyPreparedGlb(path, { animationOnly = false } = {}) {
   const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   try {
     const info = await file.stat({ bigint: true });
@@ -192,9 +193,10 @@ export async function verifyPreparedGlb(path) {
       throw new Error('Prepared GLB requires one complete embedded binary chunk.');
     if (
       data.asset?.version !== '2.0' ||
-      ![data.scenes, data.nodes, data.meshes].every(
+      ![data.scenes, data.nodes, animationOnly ? data.animations : data.meshes].every(
         (items) => Array.isArray(items) && items.length > 0 && items.length <= 200000,
       ) ||
+      (animationOnly && data.meshes !== undefined) ||
       !Array.isArray(data.bufferViews)
     )
       throw new Error(

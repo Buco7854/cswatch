@@ -185,7 +185,7 @@ export function retiredPresentationFiles(kind, item) {
     return new Set([
       ...shared,
       'installation.json',
-      ...['ct', 't'].flatMap((team) =>
+      ...['ct', 't', 'actions'].flatMap((team) =>
         ['glb', 'manifest.json', 'provenance.json'].map((suffix) => team + '.' + suffix),
       ),
     ]);

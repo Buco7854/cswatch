@@ -56,7 +56,7 @@ export async function openMapModel(
 }
 
 function modelPath(value: string) {
-  const agent = /^agents\/(ct|t)\.glb$/.exec(value);
+  const agent = /^agents\/(ct|t|actions)\.glb$/.exec(value);
   if (agent) return { parts: ['agents'], filename: `${agent[1]}.glb` };
 }
 function singleRange(
