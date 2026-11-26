@@ -459,9 +459,8 @@ export function geometry(
       }
     }
     // Every entity with a model draws it, as in VRF's entity system (an unimplemented class is a
-    // GenericModelEntity that draws its model): brush entities such as func_conveyor and
-    // func_movelinear carry world geometry. Trigger and clip volumes use tool materials, which are
-    // not drawn.
+    // GenericModelEntity that draws its model). Trigger and clip volumes use tool materials, which
+    // are not drawn.
     for (const e of world.entities.filter((e) => e.model)) {
       const visible = !e.startdisabled && Number(e.rendermode ?? 0) !== 10;
       const id = entities.push({ ...e, world: worldName, initialVisibility: visible }) - 1;

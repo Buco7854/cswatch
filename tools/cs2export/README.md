@@ -29,7 +29,7 @@ ASTCENC=/path/to/astcenc node export.mjs --game "$GAME_ROOT" --map de_mirage --m
 node lab-server.mjs "$NEW_MAP_DIR" 4198
 ```
 
-Models start from their lowest set LOD level, as VRF draws them. Every entity with a model is drawn, as in VRF's entity system (an unimplemented class draws its model): brush entities such as `func_conveyor` carry world geometry (rush_001's train floors), and trigger and clip volumes use tool materials, which are not drawn.
+Models start from their lowest set LOD level, as VRF draws them. Every entity with a model is drawn, as in VRF's entity system (an unimplemented class draws its model); trigger and clip volumes use tool materials, which are not drawn.
 
 The stages are the ones the assets worker runs as separate confined, networkless children (the lightmap encoder runs inside the extract child):
 
