@@ -118,8 +118,10 @@ import {
   recordedDeath,
   recordedFlinch,
   recordedLadder,
+  recordedRagdoll,
   recordedTwist,
 } from '../agent-evidence';
+import type { RagdollSimulation } from '../agent-ragdoll';
 import BodyHits from './BodyHits';
 import RenderAgent, {
   GenericAgentBody,
@@ -801,6 +803,13 @@ function World({
   const followBoom = useMemo(createFollowBoom, []);
   const followSide = useRef(1);
   useLayoutEffect(() => captureRegister({ queries: nativeWorld?.queries }), [nativeWorld]);
+  // Ragdolls are simulated once per recorded death and replayed from this cache on any seek.
+  const ragdollCache = useMemo(() => new Map<string, RagdollSimulation>(), [data, nativeWorld]);
+  const ragdollFor = (id: string) => {
+    const queries = nativeWorld?.queries;
+    const request = queries && !reduceAgentMotion ? recordedRagdoll(data, id, tick) : undefined;
+    return request && queries ? { request, world: queries, cache: ragdollCache } : undefined;
+  };
   const freeView = useRef<{ position: THREE.Vector3; target: THREE.Vector3 }>(undefined);
   useLayoutEffect(() => {
     if (mode !== 'orbit') return;
@@ -1082,6 +1091,7 @@ function World({
                 key={body.position.id + ':' + body.variant}
                 body={body}
                 death={recordedDeath(data, body.position.id, tick, body.position.yaw)}
+                ragdoll={ragdollFor(body.position.id)}
                 url={body.position.team === 3 ? agents.ct : agents.t}
                 tick={tick}
                 rate={data.tickRate}

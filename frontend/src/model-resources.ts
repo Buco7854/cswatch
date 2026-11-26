@@ -37,6 +37,8 @@ export function retainEquipmentModel({ scene, scenes, animations, parser }: GLTF
       json: {
         materials: parser.json.materials,
         animations: parser.json.animations,
+        // Root extras carry prepared metadata such as the agent ragdoll.
+        extras: parser.json.extras,
       },
     },
   };

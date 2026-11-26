@@ -25,6 +25,8 @@ import {
   nativeChannels,
 } from './native-animation-samples.mjs';
 import { agentActionRegistry } from './agent-action-registry.mjs';
+import { parseKv3Text, convertRagdoll } from './agent-ragdoll.mjs';
+import { readFile } from 'node:fs/promises';
 import {
   agentActionRoles,
   agentActionKind,
@@ -48,6 +50,27 @@ const limits = agentActionLimits;
 /** Joints whose authored translation is motion rather than bone length. */
 export const travellingJoints = new Set(['root_motion', 'pelvis', 'wpnPivot', 'wpn']);
 const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
+/** Inverse of a column-major affine bind matrix. */
+function invertBind(m) {
+  const [a, b, c, d, e, f, g, h, k] = [m[0], m[4], m[8], m[1], m[5], m[9], m[2], m[6], m[10]];
+  const det = a * (e * k - f * h) - b * (d * k - f * g) + c * (d * h - e * g);
+  if (!Number.isFinite(det) || Math.abs(det) < 1e-12) throw Error('Singular skeleton bind pose.');
+  const r = [
+    (e * k - f * h) / det,
+    (c * h - b * k) / det,
+    (b * f - c * e) / det,
+    (f * g - d * k) / det,
+    (a * k - c * g) / det,
+    (c * d - a * f) / det,
+    (d * h - e * g) / det,
+    (b * g - a * h) / det,
+    (a * e - b * d) / det,
+  ];
+  const out = [r[0], r[3], r[6], 0, r[1], r[4], r[7], 0, r[2], r[5], r[8], 0, 0, 0, 0, 1];
+  for (let row = 0; row < 3; row++)
+    out[12 + row] = -(out[row] * m[12] + out[4 + row] * m[13] + out[8 + row] * m[14]);
+  return out;
+}
 
 /** Joints that an `upper` role owns: the torso chain from spine_0 and the weapon pivot. */
 function upperJoints(joints) {
@@ -247,7 +270,7 @@ function skeletonOnly(document) {
     for (const item of list) item.dispose();
 }
 
-export async function prepareAgentActions({ skeleton, clips, output, assetVersion }) {
+export async function prepareAgentActions({ skeleton, clips, output, assetVersion, ragdoll }) {
   if (typeof assetVersion !== 'string' || !assetVersion.trim() || assetVersion.length > 100)
     throw Error('Provide a bounded source version.');
   output = resolve(output);
@@ -279,8 +302,24 @@ export async function prepareAgentActions({ skeleton, clips, output, assetVersio
   const document = await io.read(resolve(skeleton));
   const documents = {};
   for (const role of agentActionRoles) documents[role] = await io.read(resolve(clips[role]));
+  // The agent's own ragdoll, in the skeleton's bone space, read before the skin is dropped.
+  let ragdollData;
+  if (ragdoll) {
+    const text = await readFile(resolve(ragdoll), 'utf8');
+    const skin = document.getRoot().listSkins()[0];
+    const inverse = skin?.getInverseBindMatrices();
+    if (!skin || !inverse) throw Error('The agent skeleton has no bind pose.');
+    const bind = new Map(
+      skin.listJoints().map((joint, i) => [joint.getName(), invertBind(inverse.getElement(i, []))]),
+    );
+    ragdollData = convertRagdoll(parseKv3Text(text), bind);
+  }
   const report = retargetAgentActions(document, documents);
   skeletonOnly(document);
+  if (ragdollData)
+    document
+      .getRoot()
+      .setExtras({ cswatch: { kind: 'native-agent-ragdoll', ragdoll: ragdollData } });
   await document.transform(prune());
   for (const accessor of document.getRoot().listAccessors()) accessor.setSparse(false);
   document
@@ -357,6 +396,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       clips: { type: 'string' },
       output: { type: 'string' },
       'asset-version': { type: 'string' },
+      ragdoll: { type: 'string' },
       help: { type: 'boolean' },
     },
   });
@@ -368,7 +408,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     !values['asset-version']
   ) {
     console.log(
-      'Usage: node prepare-agent-actions.mjs --skeleton NATIVE_AGENT.gltf --clips DIR --output DATA_DIR/maps/agents --asset-version BUILD\n' +
+      'Usage: node prepare-agent-actions.mjs --skeleton NATIVE_AGENT.gltf --clips DIR --output DATA_DIR/maps/agents --asset-version BUILD [--ragdoll PHYS.kv3]\n' +
         'DIR holds one S2V export per role, named after the role with ":" replaced by "_" (e.g. weapon_ak47_idle.gltf).',
     );
     process.exit(values.help ? 0 : 1);
@@ -381,6 +421,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     clips,
     output: values.output,
     assetVersion: values['asset-version'],
+    ragdoll: values.ragdoll,
   });
   console.log(JSON.stringify({ path: result.path, manifest: result.manifest }));
 }

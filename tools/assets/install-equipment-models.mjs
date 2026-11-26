@@ -582,7 +582,22 @@ export async function installEquipmentModels(options, adapters = {}) {
           ],
           `agent-${team}-pack`,
         );
-        // Every agent shares one skeleton; the first prepared agent anchors the action bank.
+        // Every agent shares one skeleton; the first prepared agent anchors the action bank
+        // and supplies its own ragdoll (the model's PHYS block).
+        const ragdoll = join(exportRoot, 'ragdoll.kv3');
+        if (!installedAgents.length) {
+          const phys = await execute(
+            tools.s2v,
+            [
+              '-i',
+              join(conversion, `model-${resources.indexOf(resource)}.vmdl_c`),
+              '--block',
+              'PHYS',
+            ],
+            `agent-${team}-physics`,
+          );
+          await writeFile(ragdoll, phys.stdout, { flag: 'wx', mode: 0o600 });
+        }
         if (!installedAgents.length)
           await execute(
             process.execPath,
@@ -596,6 +611,8 @@ export async function installEquipmentModels(options, adapters = {}) {
               agentOutput,
               '--asset-version',
               assetVersion,
+              '--ragdoll',
+              ragdoll,
             ],
             'agent-actions-pack',
           );

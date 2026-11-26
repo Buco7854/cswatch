@@ -12,7 +12,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import { Bone, MathUtils, AlwaysStencilFunc, ReplaceStencilOp } from 'three';
+import { Bone, MathUtils, Matrix4, AlwaysStencilFunc, ReplaceStencilOp } from 'three';
 import { useEquipmentGLTF, useEquipmentScope } from '../equipment-loader';
 import type { ModelScope } from '../model-cache';
 import { prepareAgentModel } from '../agent-model';
@@ -31,6 +31,15 @@ import type { AgentDeathSample } from '../agent-replay';
 import { weaponAnchor, type WeaponAnchor } from '../agent-attachment';
 import { agentXray, xrayHiddenMaterial, xrayOutlineMaterial } from '../agent-xray';
 import { agentActionBank, bindAgentActions, type ActionBank } from '../agent-actions';
+import {
+  agentRagdoll,
+  applyRagdollPose,
+  createRagdollSimulation,
+  type RagdollData,
+  type RagdollSimulation,
+  type RagdollWorld,
+} from '../agent-ragdoll';
+import type { RagdollRequest } from '../agent-evidence';
 import { createAgentFootLock, type FootPoseAt } from '../agent-feet';
 import { createCorpseFloor } from '../agent-corpse-floor';
 import type { SceneTrace } from '../world/queries';
@@ -153,6 +162,8 @@ type AgentProps = {
   footPoseAt?: FootPoseAt;
   floor?: ReturnType<SceneTrace['fork']>;
   airborne?: number;
+  /** A recorded death simulated as the model's own ragdoll against the world. */
+  ragdoll?: { request: RagdollRequest; world: RagdollWorld; cache: Map<string, RagdollSimulation> };
   /** Recorded airborne, ladder and hit evidence at a fractional replay tick. */
   evidence?: (tick: number) => Pick<DirectionalSample, 'air' | 'ladder' | 'flinch' | 'twist'>;
 };
@@ -177,7 +188,14 @@ function LoadedAgent({
   airborne,
   evidence,
   bank,
-}: AgentProps & { scope: ModelScope; ready: () => void; bank?: ActionBank }) {
+  ragdollData,
+  ragdoll,
+}: AgentProps & {
+  scope: ModelScope;
+  ready: () => void;
+  bank?: ActionBank;
+  ragdollData?: RagdollData;
+}) {
   const gltf = useEquipmentGLTF(url),
     { invalidate } = useThree();
   useLayoutEffect(() => scope.acquire(), [scope]);
@@ -261,6 +279,47 @@ function LoadedAgent({
   }, [prepared, registerHeadAnchor]);
   const replayTime = useContext(ReplayFrameContext);
   const frameTick = tick;
+  const ragdollBones = useMemo(
+    () => ragdollData?.bodies.map((body) => prepared.instance.getObjectByName(body.bone)) ?? [],
+    [ragdollData, prepared],
+  );
+  const ragdollWorlds = useMemo(() => ragdollBones.map(() => new Matrix4()), [ragdollBones]);
+  /** The model's own ragdoll for a recorded death, built once from the last living stance. */
+  function ragdollFor(death: NonNullable<DirectionalSample['death']>) {
+    if (!ragdoll || !ragdollData || ragdollBones.some((bone) => !(bone instanceof Bone))) return;
+    let simulation = ragdoll.cache.get(ragdoll.request.key);
+    if (!simulation) {
+      pose.sample(tick / rate - death.age, 0, ragdoll.request.duck, undefined, {
+        ...directional,
+        weapon: ragdoll.request.weapon,
+        death: undefined,
+      });
+      prepared.root.updateWorldMatrix(true, true);
+      const bones = new Map(
+        ragdollData.bodies.map((body, index) => [
+          body.bone,
+          ragdollBones[index]!.matrixWorld.clone(),
+        ]),
+      );
+      simulation = createRagdollSimulation(
+        ragdollData,
+        {
+          bones,
+          velocity: ragdoll.request.velocity,
+          impulse: {
+            body: ragdollData.bodies.findIndex((body) => body.bone === ragdoll.request.bone),
+            direction: ragdoll.request.direction,
+            speed: ragdoll.request.speed,
+          },
+        },
+        ragdoll.world,
+      );
+      // Bounded: the oldest simulations leave first.
+      if (ragdoll.cache.size >= 32) ragdoll.cache.delete(ragdoll.cache.keys().next().value!);
+      ragdoll.cache.set(ragdoll.request.key, simulation);
+    }
+    return simulation;
+  }
   useFrame(({ camera }) => {
     const tick = directional.death ? frameTick : (replayTime?.tick ?? frameTick);
     if (!poseVisible(camera, prepared.root, xrayEnabled || Boolean(shadowPose))) return;
@@ -295,6 +354,19 @@ function LoadedAgent({
         floor,
         airborne,
       );
+    const simulation = directional.death ? ragdollFor(directional.death) : undefined;
+    if (simulation && directional.death) {
+      // The React tick lags the frame clock during playback; advance with the replay tick.
+      const age = Math.max(
+        0,
+        directional.death.age + ((replayTime?.tick ?? frameTick) - frameTick) / rate,
+      );
+      simulation.advanceTo(age);
+      simulation.sample(age, ragdollWorlds);
+      applyRagdollPose(prepared.instance, ragdollBones as Bone[], ragdollWorlds);
+      xray?.sample(xrayColor);
+      return;
+    }
     const recorded = !directional.death && bank ? evidence?.(tick) : undefined;
     // The feet keep their own yaw while standing; the spine carries the rest of the aim.
     prepared.root.rotation.y = Math.PI / 2 - MathUtils.degToRad(recorded?.twist ?? 0);
@@ -331,9 +403,10 @@ function WithActionBank({
   children,
 }: {
   url: string;
-  children: (bank: ActionBank | undefined) => ReactNode;
+  children: (bank: ActionBank | undefined, ragdoll: RagdollData | undefined) => ReactNode;
 }) {
-  return children(agentActionBank(useEquipmentGLTF(url)));
+  const gltf = useEquipmentGLTF(url);
+  return children(agentActionBank(gltf), agentRagdoll(gltf));
 }
 function PendingAgent({ id, children }: { id: string; children: ReactNode }) {
   const context = useContext(AgentModels)!;
@@ -370,8 +443,14 @@ export default function RenderAgent(props: AgentProps & { fallback: ReactNode })
             fallback={<LoadedAgent {...props} scope={scope} ready={callbacks.ready} />}
           >
             <WithActionBank url={context.actions}>
-              {(bank) => (
-                <LoadedAgent {...props} scope={scope} ready={callbacks.ready} bank={bank} />
+              {(bank, ragdollData) => (
+                <LoadedAgent
+                  {...props}
+                  scope={scope}
+                  ready={callbacks.ready}
+                  bank={bank}
+                  ragdollData={ragdollData}
+                />
               )}
             </WithActionBank>
           </ActionBankBoundary>
@@ -386,6 +465,7 @@ export default function RenderAgent(props: AgentProps & { fallback: ReactNode })
 export function RecordedAgentBody({
   body: { position, variant, age },
   death,
+  ragdoll,
   url,
   tick,
   rate,
@@ -396,6 +476,7 @@ export function RecordedAgentBody({
   body: AgentDeathSample;
   /** Valve's death clip for the recorded kill and the yaw that sends the fall along the shot. */
   death?: { role: string; yaw: number };
+  ragdoll?: AgentProps['ragdoll'];
   url: string | null;
   tick: number;
   rate: number;
@@ -412,7 +493,8 @@ export function RecordedAgentBody({
         position.z * inchesToMeters,
         -position.y * inchesToMeters,
       ]}
-      rotation={[0, MathUtils.degToRad(death?.yaw ?? position.yaw), 0]}
+      // A ragdoll falls along the recorded shot by itself; an authored clip is turned instead.
+      rotation={[0, MathUtils.degToRad(ragdoll ? position.yaw : (death?.yaw ?? position.yaw)), 0]}
     >
       <RenderAgent
         url={url}
@@ -424,6 +506,7 @@ export function RecordedAgentBody({
         fallback={null}
         shadowPose={shadowPose}
         floor={floor}
+        ragdoll={ragdoll}
         directional={{
           yaw: position.yaw,
           pitch: 0,

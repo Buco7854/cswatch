@@ -1,11 +1,17 @@
-import { MathUtils } from 'three';
+import { MathUtils, Vector3 } from 'three';
 import { frameAt } from './playback';
 import type { Frame, GameEvent, Playback, Position } from './types';
 
 /** Recorded per-player evidence for the action layers. Every value is a pure function of
  * the replay and the tick, so seeking either way gives the same pose. */
 
-type Hit = { tick: number; hitgroup: string; attacker?: string; headshot?: boolean };
+type Hit = {
+  tick: number;
+  hitgroup: string;
+  attacker?: string;
+  headshot?: boolean;
+  damage?: number;
+};
 const hits = new WeakMap<GameEvent[], Map<string, Hit[]>>();
 const deaths = new WeakMap<GameEvent[], Map<string, Hit[]>>();
 
@@ -22,6 +28,7 @@ function indexHits(events: GameEvent[], type: 'player_hurt' | 'player_death') {
       hitgroup: typeof event.hitgroup === 'string' ? event.hitgroup : 'generic',
       attacker: typeof event.attacker_steamid === 'string' ? event.attacker_steamid : undefined,
       headshot: event.headshot === true,
+      damage: Number.isFinite(Number(event.dmg_health)) ? Number(event.dmg_health) : undefined,
     });
     index.set(event.user_steamid, list);
   }
@@ -206,4 +213,75 @@ export function recordedTwist(data: Playback, id: string, tick: number, aimYaw: 
   for (let i = start + 1; i <= index; i++) step(state(i)!.yaw, frames[i].tick);
   step(aimYaw, Math.max(time, tick));
   return angleBetween(body, aimYaw);
+}
+
+/** Ragdoll bodies the recorded hitgroup lands on (skeleton bone names). */
+const hitBodies: Record<string, string> = {
+  head: 'head_0',
+  neck: 'head_0',
+  chest: 'spine_2',
+  stomach: 'pelvis',
+  left_arm: 'arm_upper_L',
+  right_arm: 'arm_upper_R',
+  left_leg: 'leg_upper_L',
+  right_leg: 'leg_upper_R',
+};
+export type RagdollRequest = {
+  key: string;
+  velocity: Vector3;
+  bone: string;
+  direction: Vector3;
+  speed: number;
+  weapon: string;
+  duck: number;
+};
+/** The recorded death that seeds a ragdoll: the pawn's last velocity, and the killing shot's
+ * body part, direction (attacker to victim) and damage. */
+export function recordedRagdoll(
+  data: Playback,
+  id: string,
+  tick: number,
+): RagdollRequest | undefined {
+  const death = latest(indexHits(data.events, 'player_death').get(id), tick);
+  if (!death) return;
+  const span = frameAt(data, death.tick);
+  const frames = data.frames;
+  // The last living sample at or before the death, and the one before it for velocity.
+  let index = span.index;
+  const living = (i: number) => frames[i]?.players.find((p) => p.id === id && p.alive);
+  while (index > 0 && !living(index)) index--;
+  const last = living(index),
+    before = living(index - 1);
+  if (!last) return;
+  const velocity = new Vector3();
+  if (before) {
+    const seconds = (frames[index].tick - frames[index - 1].tick) / data.tickRate;
+    if (seconds > 0 && seconds <= 0.25)
+      velocity
+        .set(last.x - before.x, last.z - before.z, -(last.y - before.y))
+        .multiplyScalar(0.0254 / seconds);
+    if (velocity.length() > 8) velocity.setLength(8);
+  }
+  const direction = new Vector3(
+    Math.cos(MathUtils.degToRad(last.yaw)),
+    0,
+    -Math.sin(MathUtils.degToRad(last.yaw)),
+  ).negate();
+  if (death.attacker && death.attacker !== id) {
+    const from = span.frame.players.find((p) => p.id === death.attacker);
+    if (from) direction.set(last.x - from.x, last.z - from.z, -(last.y - from.y));
+  }
+  if (direction.lengthSq() < 1e-6) direction.set(1, 0, 0);
+  direction.normalize();
+  const damage = Math.min(150, Math.max(10, death.damage ?? 60));
+  return {
+    key: `${id}:${death.tick}`,
+    velocity,
+    bone: hitBodies[death.hitgroup] ?? 'spine_2',
+    direction,
+    // A killing shot throws the hit body at 1.5-4 m/s by its recorded damage.
+    speed: Math.min(4, 1.5 + (damage / 100) * 2) * (death.headshot ? 1.15 : 1),
+    weapon: last.weapon,
+    duck: last.duck ?? 0,
+  };
 }
