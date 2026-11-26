@@ -3,9 +3,12 @@ on:
   push:
     branches: [main]
     tags: ['v*']
+    # Documentation-only changes skip the workflow (path filters do not apply to tag pushes).
+    paths-ignore: ['docs/**', '**/*.md', 'LICENSE']
   pull_request:
+    paths-ignore: ['docs/**', '**/*.md', 'LICENSE']
   schedule:
-    - cron: '23 4 * * 1'
+    - cron: '23 4 1 * *'
   workflow_dispatch:
 permissions:
   contents: read
@@ -75,6 +78,9 @@ jobs:
           tags: cswatch:verify
           load: true
           pull: true
+          # Layers are cached per target across runs and reused by the publish job.
+          cache-from: type=gha,scope=runtime
+          cache-to: type=gha,mode=max,scope=runtime
           build-args: |
             CSWATCH_REVISION=${{ github.sha }}
             CSWATCH_BUILD_TIMESTAMP=${{ steps.build-identity.outputs.created }}
@@ -108,6 +114,8 @@ jobs:
           tags: cswatch:verify-assets
           load: true
           pull: true
+          cache-from: type=gha,scope=assets
+          cache-to: type=gha,mode=max,scope=assets
           build-args: |
             CSWATCH_REVISION=${{ github.sha }}
             CSWATCH_BUILD_TIMESTAMP=${{ steps.build-identity.outputs.created }}
@@ -148,6 +156,7 @@ jobs:
           tags: cswatch:verify-bootstrap
           load: true
           pull: true
+          cache-from: type=gha,scope=assets
           build-args: |
             CSWATCH_REVISION=${{ github.sha }}
             CSWATCH_BUILD_TIMESTAMP=${{ steps.build-identity.outputs.created }}
@@ -183,7 +192,7 @@ jobs:
           context: .
           push: true
           pull: true
-          no-cache: true
+          cache-from: type=gha,scope=runtime
           build-args: |
             CSWATCH_REVISION=${{ github.sha }}
             CSWATCH_BUILD_TIMESTAMP=${{ steps.image.outputs.created }}
@@ -199,7 +208,7 @@ jobs:
           target: assets
           push: true
           pull: true
-          no-cache: true
+          cache-from: type=gha,scope=assets
           build-args: |
             CSWATCH_REVISION=${{ github.sha }}
             CSWATCH_BUILD_TIMESTAMP=${{ steps.image.outputs.created }}

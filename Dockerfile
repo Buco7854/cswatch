@@ -8,13 +8,14 @@ COPY shared/ /build/shared/
 RUN npm run build
 
 FROM node:24-bookworm-slim AS backend
-ARG CSWATCH_REVISION=
-ARG CSWATCH_BUILD_TIMESTAMP=
 WORKDIR /build/backend
 ENV ONNXRUNTIME_NODE_INSTALL=skip
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev && rm -rf /var/lib/apt/lists/*
 COPY backend/package*.json ./
 RUN npm ci
+# Declared after the dependency layers so a new revision only rebuilds the application.
+ARG CSWATCH_REVISION=
+ARG CSWATCH_BUILD_TIMESTAMP=
 COPY backend/ ./
 COPY shared/ /build/shared/
 RUN npm run build && npm prune --omit=dev
@@ -66,11 +67,6 @@ RUN node tools/assets/build-network-deny.mjs --output tools/assets/bin/asset-net
     && node -e "const fs=require('node:fs'); for (const name of fs.readdirSync('tools/assets')) if (name.endsWith('.test.mjs')) fs.unlinkSync('tools/assets/'+name)"
 
 FROM node:24-bookworm-slim AS assets
-ARG CSWATCH_REVISION=
-ARG CSWATCH_BUILD_TIMESTAMP=
-LABEL org.opencontainers.image.source="https://github.com/Buco7854/cswatch" \
-      org.opencontainers.image.revision="${CSWATCH_REVISION}" \
-      org.opencontainers.image.created="${CSWATCH_BUILD_TIMESTAMP}"
 ENV NODE_ENV=production MAP_ASSETS_DIR=/map-assets MAP_JOBS_DIR=/map-jobs MAP_CACHE_DIR=/map-cache MAP_CATALOG_FILE=/map-catalog/catalog.json
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libicu72 util-linux unzip tar gzip && rm -rf /var/lib/apt/lists/*
@@ -100,15 +96,16 @@ RUN mkdir -p /map-assets /map-jobs /map-cache /map-catalog \
     && chown -R node:node /map-assets /map-jobs /map-cache /map-catalog
 USER node
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s CMD node --input-type=module -e "import {mapWorkerAvailable} from './backend/dist/map-jobs.js'; process.exit(await mapWorkerAvailable(process.env.MAP_JOBS_DIR)?0:1)"
-CMD ["node", "tools/assets/map-worker.mjs"]
-
-# Keep the application runtime last: an ordinary docker build remains the web image.
-FROM node:24-bookworm-slim AS runtime
+# Per-build identity last, so a new revision reuses every cached layer above.
 ARG CSWATCH_REVISION=
 ARG CSWATCH_BUILD_TIMESTAMP=
 LABEL org.opencontainers.image.source="https://github.com/Buco7854/cswatch" \
       org.opencontainers.image.revision="${CSWATCH_REVISION}" \
       org.opencontainers.image.created="${CSWATCH_BUILD_TIMESTAMP}"
+CMD ["node", "tools/assets/map-worker.mjs"]
+
+# Keep the application runtime last: an ordinary docker build remains the web image.
+FROM node:24-bookworm-slim AS runtime
 ENV NODE_ENV=production DATA_DIR=/data FRONTEND_DIR=/app/frontend PORT=8000
 WORKDIR /app
 COPY --from=backend --chown=node:node /build/backend/dist ./dist
@@ -121,4 +118,10 @@ RUN mkdir -p /data /map-assets /map-jobs /map-cache /map-catalog \
 USER node
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s CMD node -e "fetch('http://127.0.0.1:8000/api/health',{headers:{host:new URL(process.env.APP_URL).host}}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+# Per-build identity last, so a new revision reuses every cached layer above.
+ARG CSWATCH_REVISION=
+ARG CSWATCH_BUILD_TIMESTAMP=
+LABEL org.opencontainers.image.source="https://github.com/Buco7854/cswatch" \
+      org.opencontainers.image.revision="${CSWATCH_REVISION}" \
+      org.opencontainers.image.created="${CSWATCH_BUILD_TIMESTAMP}"
 CMD ["node", "dist/server.js"]
