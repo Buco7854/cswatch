@@ -93,7 +93,8 @@ test('Auto reduces the actual 3D drawing buffer in response to slow continuous p
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   for (let frame = 0; frame < 65; frame++) await page.clock.fastForward(50);
   await expect.poll(() => canvas.evaluate((element) => element.width)).toBeLessThan(before);
-  for (let frame = 0; frame < 28; frame++) await page.clock.fastForward(200);
+  // Each level is held for eight seconds before the next resize.
+  for (let frame = 0; frame < 70; frame++) await page.clock.fastForward(200);
   await expect(scene).toHaveAttribute('data-render-resolution', '50');
   const floor = await canvas.evaluate((element) => element.width);
   expect(floor).toBeLessThan(before);

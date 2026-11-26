@@ -1490,6 +1490,8 @@ export default function Scene({
     [assetScope, data.map, settings.quality, settings.renderResolution],
   );
   const adaptive = auto && !preview;
+  // The learned level holds through buffering and seeks (a canvas resize makes the GPU finish
+  // all queued work); an explicit pause shows full detail for review, resuming returns to it.
   const resolution =
     adaptive && playing
       ? Math.min(adaptiveQuality.resolution, settings.renderResolution)

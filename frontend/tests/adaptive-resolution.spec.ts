@@ -1,32 +1,62 @@
 import { expect, test } from '@playwright/test';
 import { AdaptiveResolution, adaptiveDetailDpr } from '../src/adaptive-resolution';
 
-test('adaptive resolution reacts to sustained load within its floor and user ceiling', () => {
+function playback(ceiling: number, start = { resolution: ceiling, shadows: true }) {
   const monitor = new AdaptiveResolution();
   let now = 0;
-  let quality = { resolution: 85, shadows: true };
-  const advance = (frames: number, duration: number) => {
-    for (let index = 0; index < frames; index++) {
-      now += duration;
-      quality = monitor.sample(now, quality, 85);
-    }
+  let quality = start;
+  const changes: number[] = [];
+  return {
+    monitor,
+    get quality() {
+      return quality;
+    },
+    changes,
+    advance(frames: number, duration: number) {
+      for (let index = 0; index < frames; index++) {
+        now += duration;
+        const next = monitor.sample(now, quality, ceiling);
+        if (next.resolution !== quality.resolution) changes.push(now);
+        quality = next;
+      }
+    },
   };
-  advance(100, 16);
-  advance(1, 300);
-  advance(30, 16);
-  expect(quality.resolution).toBe(85);
-  advance(50, 35);
-  expect(quality.resolution).toBe(75);
-  advance(300, 40);
-  expect(quality).toEqual({ resolution: 50, shadows: false });
-  monitor.reset();
-  advance(47, 16);
-  advance(119, 16);
-  expect(quality.resolution).toBe(50);
-  advance(10, 16);
-  expect(quality.resolution).toBe(60);
-  advance(900, 16);
-  expect(quality).toEqual({ resolution: 85, shadows: true });
+}
+
+test('adaptive resolution reacts to sustained load within its floor and user ceiling', () => {
+  const run = playback(85);
+  run.advance(100, 16);
+  run.advance(1, 300);
+  run.advance(30, 16);
+  expect(run.quality).toEqual({ resolution: 85, shadows: true });
+  // A sustained 35 ms load steps straight to the level its frame time calls for.
+  run.advance(50, 35);
+  expect(run.quality).toEqual({ resolution: 60, shadows: true });
+  // Below 80% live shadows go before any further resize, then the floor.
+  run.advance(300, 40);
+  expect(run.quality).toEqual({ resolution: 50, shadows: false });
+  expect(run.changes.length).toBe(2);
+  // Each level is held: no two resizes within eight seconds.
+  for (let i = 1; i < run.changes.length; i++)
+    expect(run.changes[i] - run.changes[i - 1]).toBeGreaterThanOrEqual(8000);
+});
+
+test('Auto raises resolution only after fifteen seconds of uninterrupted fast frames', () => {
+  const run = playback(85, { resolution: 50, shadows: false });
+  run.advance(800, 16);
+  expect(run.quality.resolution).toBe(50);
+  run.advance(300, 16);
+  expect(run.quality.resolution).toBe(60);
+  // One slow window restarts the fast streak.
+  run.advance(100, 16);
+  run.advance(40, 30);
+  run.advance(900, 16);
+  expect(run.quality.resolution).toBe(60);
+  // Sustained fast playback returns to the ceiling, then restores live shadows.
+  run.advance(8000, 16);
+  expect(run.quality).toEqual({ resolution: 85, shadows: true });
+  for (let i = 1; i < run.changes.length; i++)
+    expect(run.changes[i] - run.changes[i - 1]).toBeGreaterThanOrEqual(15000);
 });
 
 test('idle time and samples from a previous playback interval do not trigger a downgrade', () => {

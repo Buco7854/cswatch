@@ -5,12 +5,16 @@ const MIN_WINDOW_FRAMES = 8;
 const WINDOW_MS = 1500;
 const SLOW_FRAME_MS = 25;
 const FAST_FRAME_MS = 19;
+const TARGET_FRAME_MS = 20;
 const STALL_MS = 100;
-const STALL_STEP = 25;
-const FAST_WINDOWS_TO_UPGRADE = 4;
 const SHADOW_RESOLUTION_THRESHOLD = 80;
 const SETTLE_MS = 750;
 const RESOLUTION_STEP = 10;
+/** A resolution change reallocates the canvas and every target sized from it, and makes
+ * the GPU finish its queued work. Each level is held at least this long. */
+const HOLD_MS = 8000;
+/** Raising the resolution needs this long of uninterrupted fast frames. */
+const UPGRADE_AFTER_MS = 15000;
 
 export type RenderQuality = { resolution: number; shadows: boolean };
 
@@ -50,13 +54,16 @@ export class AdaptiveResolution {
   private fast = 0;
   private stalls = 0;
   private stalledMs = 0;
-  private fastWindows = 0;
+  private elapsedMs = 0;
+  private fastSince?: number;
+  private resizedAt = -Infinity;
 
   reset() {
-    this.stalls = this.stalledMs = 0;
+    this.stalls = this.stalledMs = this.elapsedMs = 0;
     this.previous = undefined;
     this.windowStarted = undefined;
-    this.frames = this.slow = this.fast = this.fastWindows = 0;
+    this.fastSince = undefined;
+    this.frames = this.slow = this.fast = 0;
   }
 
   sample(now: number, current: RenderQuality, ceiling: number, allowShadows = true): RenderQuality {
@@ -71,6 +78,7 @@ export class AdaptiveResolution {
     if (elapsed <= 0) return current;
     this.windowStarted ??= previous;
     this.frames++;
+    this.elapsedMs += elapsed;
     if (elapsed > SLOW_FRAME_MS) this.slow++;
     if (elapsed <= FAST_FRAME_MS) this.fast++;
     if (elapsed >= STALL_MS) {
@@ -88,34 +96,52 @@ export class AdaptiveResolution {
       (this.frames < MIN_WINDOW_FRAMES || now - this.windowStarted < WINDOW_MS)
     )
       return current;
-
-    this.fastWindows = this.fast >= this.frames * 0.9 ? this.fastWindows + 1 : 0;
+    const fastWindow = this.fast >= this.frames * 0.9;
     const slowWindow = stalling || this.slow >= this.frames * 0.7;
+    const meanFrame = this.elapsedMs / this.frames;
+    this.frames = this.slow = this.fast = this.stalls = this.stalledMs = this.elapsedMs = 0;
+    this.windowStarted = undefined;
+    if (!fastWindow) this.fastSince = undefined;
+    else this.fastSince ??= now - windowMs;
+
     let shadows = current.shadows && allowShadows;
-    // Try dropping live shadows before spending another step of image detail.
-    // Further slow windows can still reach the existing emergency pixel floor.
-    const suspendShadows =
-      slowWindow && shadows && (current.resolution <= SHADOW_RESOLUTION_THRESHOLD || stalling);
-    if (suspendShadows) shadows = false;
     let next = current.resolution;
-    if (slowWindow && !suspendShadows) {
-      next = Math.max(
-        RENDER_RESOLUTION_MIN,
-        current.resolution - (stalling ? STALL_STEP : RESOLUTION_STEP),
-      );
-    } else if (this.fastWindows >= FAST_WINDOWS_TO_UPGRADE) {
+    const holding = now - this.resizedAt < HOLD_MS;
+    if (slowWindow) {
+      // Live shadows go first: dropping them changes no buffer size.
+      if (shadows && (current.resolution <= SHADOW_RESOLUTION_THRESHOLD || stalling))
+        shadows = false;
+      else if (!holding) {
+        // Pixel work scales with the square of the resolution. Step straight to the level
+        // the measured frame time calls for instead of resizing again and again.
+        const needed = current.resolution * Math.sqrt(TARGET_FRAME_MS / Math.max(meanFrame, 1));
+        next = Math.max(
+          RENDER_RESOLUTION_MIN,
+          Math.min(
+            current.resolution - RESOLUTION_STEP,
+            Math.floor(needed / RESOLUTION_STEP) * RESOLUTION_STEP,
+          ),
+        );
+      }
+    } else if (
+      !holding &&
+      this.fastSince !== undefined &&
+      now - this.fastSince >= UPGRADE_AFTER_MS &&
+      current.resolution < ceiling
+    ) {
       next = Math.min(ceiling, current.resolution + RESOLUTION_STEP);
+      this.fastSince = now;
     }
     if (
       allowShadows &&
+      !shadows &&
       current.resolution === ceiling &&
-      this.fastWindows >= FAST_WINDOWS_TO_UPGRADE
+      this.fastSince !== undefined &&
+      now - this.fastSince >= UPGRADE_AFTER_MS
     )
       shadows = true;
-    this.frames = this.slow = this.fast = this.stalls = this.stalledMs = 0;
-    this.windowStarted = undefined;
     if (next !== current.resolution || shadows !== current.shadows) {
-      this.fastWindows = 0;
+      if (next !== current.resolution) this.resizedAt = now;
       this.settledAt = now + SETTLE_MS;
       return { resolution: next, shadows };
     }
