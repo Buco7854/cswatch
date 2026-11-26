@@ -1397,5 +1397,18 @@
   "Client IP address": "Client IP address",
   "Connection address": "Connection address",
   "This device lacks the texture support needed for 3D": "This device lacks the texture support needed for 3D",
-  "Building the phone map": "Building the phone map"
+  "Building the phone map": "Building the phone map",
+  "Performance overlay": "Performance overlay",
+  "Show frame rate, frame times, draw calls, triangles, estimated GPU memory, render scale and map tier over the 3D view.": "Show frame rate, frame times, draw calls, triangles, estimated GPU memory, render scale and map tier over the 3D view.",
+  "Frames per second": "Frames per second",
+  "Frame time p50 / p95 / worst": "Frame time p50 / p95 / worst",
+  "Long frames (3 s)": "Long frames (3 s)",
+  "Draw calls per frame": "Draw calls per frame",
+  "Triangles per frame": "Triangles per frame",
+  "Estimated GPU memory": "Estimated GPU memory",
+  "Render scale": "Render scale",
+  "Map tier": "Map tier",
+  "Idle": "Idle",
+  "Phone": "Phone",
+  "Desktop": "Desktop"
 }

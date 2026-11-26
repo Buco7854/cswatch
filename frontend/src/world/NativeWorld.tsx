@@ -1,3 +1,4 @@
+import { performanceMonitor } from '../performance-monitor';
 import { worldQueries, type WorldQueries } from './queries';
 import { useEffect, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
@@ -138,7 +139,8 @@ export function NativeWorld({
           bias: depth.cswatchPlayerBias.value,
         }
       : undefined;
-    current.current.frame(scene, camera, tactical, passes, shadow, nearFade);
+    const stats = current.current.frame(scene, camera, tactical, passes, shadow, nearFade);
+    if (performanceMonitor.enabled && stats) performanceMonitor.world = stats;
   }, 3);
   return null;
 }

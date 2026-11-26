@@ -105,6 +105,8 @@ export type ViewerSettings = {
   flashFeedback: 'off' | 'indicator' | 'reduced' | 'strong';
   damageFeedback: boolean;
   shotEffects: boolean;
+  /** Frame-time, draw and memory readout for comparing hardware. */
+  performanceOverlay: boolean;
   shotTracers?: boolean;
   autoFollowDeath: boolean;
   crosshair: boolean;
@@ -187,6 +189,7 @@ export const defaultSettings: ViewerSettings = {
   killReplay: true,
   killLeadIn: 3,
   utilityLeadIn: 1.5,
+  performanceOverlay: false,
   renderResolution: RENDER_RESOLUTION_MAX,
   economy: true,
   inputLayout: 'zqsd',

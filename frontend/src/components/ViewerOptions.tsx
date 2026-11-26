@@ -685,6 +685,13 @@ export default function ViewerOptions({
               {settings.quality === 'auto' && shadowsPaused && (
                 <p className="viewer-option-note">{t('Auto has paused live shadows.')}</p>
               )}
+              {toggle(
+                'performanceOverlay',
+                t('Performance overlay'),
+                t(
+                  'Show frame rate, frame times, draw calls, triangles, estimated GPU memory, render scale and map tier over the 3D view.',
+                ),
+              )}
               <p className="viewer-option-note">
                 {t(
                   'Recorded grenades remain visible at every quality level. Paths and analytical zones have separate controls.',

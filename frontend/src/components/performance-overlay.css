@@ -1,0 +1,61 @@
+/* Measurement readout: compact, legible in both themes, never interactive. */
+.performance-overlay {
+  /* Under the score: clear of the rosters, radar, feed and playback dock at every size. */
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 76px;
+  margin: 0 auto;
+  width: max-content;
+  max-width: calc(100% - 16px);
+  box-sizing: border-box;
+  z-index: 4;
+  pointer-events: none;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  color: var(--text);
+  font:
+    12px/1.35 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace;
+  font-variant-numeric: tabular-nums;
+}
+.performance-overlay dl {
+  display: grid;
+  grid-template-columns: minmax(0, auto) auto;
+  column-gap: 12px;
+  row-gap: 2px;
+  margin: 0;
+}
+.performance-overlay dl > div {
+  display: contents;
+}
+.performance-overlay dt {
+  color: var(--muted);
+}
+.performance-overlay dd {
+  margin: 0;
+  text-align: right;
+  white-space: nowrap;
+}
+/* Without split rosters (ReviewHud's split viewport) both teams sit on the right, so the
+   column under the radar is free at tablet and phone sizes. */
+@media (max-width: 899px), (max-height: 649px) {
+  .performance-overlay {
+    left: var(--viewer-edge, 16px);
+    right: auto;
+    margin: 0;
+    top: calc(var(--viewer-radar-top, 64px) + var(--viewer-radar-size, 174px) + 12px);
+    max-width: calc(100% - 2 * var(--viewer-edge, 16px));
+  }
+}
+@media (max-width: 520px) {
+  .performance-overlay {
+    font-size: 11px;
+    padding: 6px 8px;
+  }
+}

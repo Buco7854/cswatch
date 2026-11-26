@@ -123,6 +123,7 @@ import {
 } from '../agent-evidence';
 import type { RagdollSimulation } from '../agent-ragdoll';
 import BodyHits from './BodyHits';
+import { PerformanceOverlay, PerformanceProbe } from './PerformanceOverlay';
 import RenderAgent, {
   GenericAgentBody,
   RecordedAgentBody,
@@ -1872,6 +1873,7 @@ export default function Scene({
                   onChange={setAdaptiveQuality}
                 />
               )}
+              {settings.performanceOverlay && !preview && <PerformanceProbe />}
               {!probingGpu && (
                 <EquipmentFire
                   data={data}
@@ -1914,6 +1916,13 @@ export default function Scene({
                 </EquipmentFire>
               )}
             </Canvas>
+            {settings.performanceOverlay && !preview && (
+              <PerformanceOverlay
+                resolution={resolution}
+                pixelRatio={renderDpr}
+                tier={probingGpu || !model ? undefined : (textureTier ?? undefined)}
+              />
+            )}
             {projectActors && (data.sample || modelStatus === 'ready') && (
               <ActorOverlays
                 overlay={actorOverlay}

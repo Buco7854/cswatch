@@ -217,6 +217,7 @@ export async function createRenderer(
     const vertices = decodeVertices(manifest, vertexPayload, indices);
     gl.bindBuffer(gl.ARRAY_BUFFER, resources.buffer());
     gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+    const bufferBytes = indices.byteLength + vertices.byteLength;
     for (const [index, count, type, offset, norm, integer] of [
       [0, 3, gl.FLOAT, 0, 0, 0],
       [1, 3, gl.BYTE, 12, 1, 0],
@@ -908,6 +909,7 @@ export async function createRenderer(
         draws: draws + 1,
         triangles: triangles + 1,
         textureBytes: textureBytes + 8 * width * height,
+        bufferBytes,
         submissionMs: performance.now() - start,
         multiDraw: Boolean(ext),
       };

@@ -99,6 +99,12 @@ export class ModelCache<T> {
       },
     };
   }
+  /** Estimated GPU and CPU storage of every loaded asset, counted once per shared resource. */
+  ownedBytes() {
+    let bytes = 0;
+    for (const { resource } of this.owners.values()) bytes += resource.bytes;
+    return bytes;
+  }
   /** Read an already-loaded asset without requesting or extending its lifetime. */
   peek(url: string) {
     const entry = this.current.get(url);
