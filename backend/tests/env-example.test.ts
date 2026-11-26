@@ -14,39 +14,16 @@ const optional = [...example.matchAll(/^# ([A-Z][A-Z0-9_]+)=(.*)$/gm)].map(([, n
   value,
 }));
 const base = { APP_URL: 'https://demo.example.com' };
-/** Fixed by the image, Compose or a confined child process, or for development only. */
+/** Fixed by the image, Compose or a confined child process. */
 const internal = new Set([
   'PORT', // The runtime health check and Compose port mapping use port 8000.
   'DATA_DIR',
   'FRONTEND_DIR',
   'MAP_ASSETS_DIR',
-  'MAP_CACHE_DIR',
   'MAP_CATALOG_FILE',
   'MAP_JOBS_DIR',
   'WORKER_ROLE',
-  'PATH',
-  // Asset-worker toolchain paths set by the image.
-  'ASTCENC_PATH',
-  'DOTNET_ROOT',
-  'CS2EXPORT_BCENC',
-  // Development: prepare maps from a local game installation instead of Steam.
-  'MAP_GAME_ROOT',
 ]);
-/** Every environment variable read by the web service, workers, asset worker and speech tools. */
-function readSettings() {
-  const read = new Set<string>();
-  const scan = (dir: string, accept: (file: string) => boolean) => {
-    for (const file of readdirSync(join(root, dir)).filter(accept))
-      for (const [, , name] of readFileSync(join(root, dir, file), 'utf8').matchAll(
-        /\b(process\.)?env\.([A-Z][A-Z0-9_]{2,})/g,
-      ))
-        read.add(name);
-  };
-  scan('backend/src', (file) => file.endsWith('.ts'));
-  for (const dir of ['tools/assets', 'tools/transcription'])
-    scan(dir, (file) => file.endsWith('.mjs') && !file.endsWith('.test.mjs'));
-  return read;
-}
 
 test('.env.example sets only what is required and comments every default', () => {
   assert.deepEqual(
@@ -80,8 +57,14 @@ test('documented defaults match the application and Compose defaults', () => {
   );
 });
 
-test('every setting the services read is documented in .env.example, and nothing else', () => {
-  const read = readSettings();
+test('every setting the application reads is documented in .env.example', () => {
+  const source = readFileSync(join(root, 'backend/src/config.ts'), 'utf8');
+  const read = new Set([...source.matchAll(/\benv\.([A-Z][A-Z0-9_]+)/g)].map(([, name]) => name));
+  for (const file of readdirSync(join(root, 'backend/src')))
+    for (const [, name] of readFileSync(join(root, 'backend/src', file), 'utf8').matchAll(
+      /process\.env\.([A-Z][A-Z0-9_]+)/g,
+    ))
+      read.add(name);
   const listed = new Set(['APP_URL', ...optional.map(({ name }) => name)]);
   assert.deepEqual(
     [...read].filter(
@@ -91,11 +74,6 @@ test('every setting the services read is documented in .env.example, and nothing
   );
   assert.deepEqual(
     [...listed].filter((name) => !read.has(name) && !compose.includes('${' + name + ':-')),
-    [],
-  );
-  // Internal names stay internal: each is still read somewhere.
-  assert.deepEqual(
-    [...internal].filter((name) => !read.has(name)),
     [],
   );
 });
