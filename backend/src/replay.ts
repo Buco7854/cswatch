@@ -27,6 +27,7 @@ import { validMapBreakables, validMapDoors, validMapVisibility } from './map-bre
 import { validInfernoBank } from './inferno-state-wire.js';
 import type { InfernoBank } from '../../shared/inferno-state.mjs';
 import { replayStride } from './replay-stride.js';
+import { agentModelLimits, recordedAgentModels } from './agent-model-requests.js';
 import { aimBoundary, decodeAimChunk } from './aim-track-wire.js';
 import type { AimSlices } from './aim-track.js';
 import { recordedReloadTickLimit } from './parser-fields.js';
@@ -488,6 +489,11 @@ export const manifestSchema = z
       .strict(),
     agentDeaths: z.custom<AgentDeathAnchor[]>(validAgentDeaths).optional(),
     gaitHistory: z.custom<GaitHistory>().optional(),
+    agentModels: z
+      .array(z.string().regex(/^[1-9]\d{0,19}$/))
+      .max(agentModelLimits.perDemo)
+      .refine((handles) => new Set(handles).size === handles.length)
+      .optional(),
     firstTick: tick,
     lastTick: tick,
     chunks: z.array(descriptor).min(1).max(replayLimits.chunks),
@@ -724,6 +730,7 @@ async function writeReplayCore(
     chunks: [],
     agentDeaths: replayAgentDeaths(data),
     gaitHistory: encodeGaitHistory(data),
+    agentModels: recordedAgentModels(frames),
   };
 
   mkdirSync(join(folder, 'chunks'), { recursive: true, mode: 0o700 });

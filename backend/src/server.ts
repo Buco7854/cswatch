@@ -94,6 +94,7 @@ import { mapManagementRoutes } from './map-management.js';
 import { demoMapAssetRoutes } from './demo-map-assets.js';
 import { cleanupMapRequestTemps } from './map-jobs.js';
 import { cleanupPresentationRetryTemps } from './presentation-assets.js';
+import { cleanupAgentModelRequestTemps, syncAgentModelRequests } from './agent-model-requests.js';
 import {
   confirmGuestDelivery,
   currentGuest,
@@ -135,6 +136,7 @@ export async function createApp(
   // orphan temporary files before any HTTP request can begin a live write.
   await cleanupMapRequestTemps(c.mapJobsDir);
   await cleanupPresentationRetryTemps(c.mapJobsDir);
+  await cleanupAgentModelRequestTemps(c.mapJobsDir);
   const app = Fastify({
     logger: requestLogger(),
     bodyLimit: 65536,
@@ -449,8 +451,13 @@ export async function createApp(
     autoImports.cancel(userId),
   );
   const autoImports = new SteamAutoImporter(db, c, sync, imports.importAutomatic);
+  let stopAgentModelRequests: (() => void) | undefined;
   app.addHook('onReady', async () => {
     autoImports.start(() => app.log.error('Steam automatic import queue could not be checked'));
+    // Official agents recorded by ready demos, for the asset worker to prepare.
+    stopAgentModelRequests = syncAgentModelRequests(db, c.mapJobsDir, () =>
+      app.log.error('Agent model requests could not be published'),
+    );
   });
   await equipmentAssetRoutes(app, db.root, c.mapAssetsDir, c.mapJobsDir);
   await gameplaySoundAssetRoutes(app, db.root, c.mapAssetsDir);
@@ -893,6 +900,7 @@ export async function createApp(
     return sendAppShell(reply);
   });
   app.addHook('onClose', async () => {
+    stopAgentModelRequests?.();
     await autoImports.close();
     await coordinator.close();
     await mail.close();

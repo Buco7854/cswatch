@@ -164,7 +164,9 @@ export function auditAdmin(
           /^[a-f0-9]{64}$/.test(params.packId)
         ? params.packId
         : params?.kind &&
-            ['agents', 'equipment', 'equipment-models', 'viewmodels'].includes(params.kind)
+            ['agents', 'equipment', 'equipment-models', 'viewmodels', 'agent-models'].includes(
+              params.kind,
+            )
           ? params.kind
           : null;
   const trusted = outcome !== 'denied' || firstPartyRequest(request, c);

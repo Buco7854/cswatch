@@ -96,7 +96,14 @@ import type { AssetStatus } from '../map-assets';
 import { useEquipmentAssets, type EquipmentRenderState } from '../equipment-assets';
 import { equipmentIconKey } from '../equipment-icons';
 import { projectileEquipment } from '../projectile-equipment';
-import { useAgentAssets } from '../agent-assets';
+import {
+  agentModelChoice,
+  agentVariantUrl,
+  recordedAgentHandle,
+  recordedAgentVariants,
+  useAgentAssets,
+} from '../agent-assets';
+import { useLoadedAgentModels } from '../agent-variants';
 import { useModelLeases } from '../equipment-loader';
 import { playerPose, type PoseTiming } from '../player-pose';
 import {
@@ -313,6 +320,7 @@ function Agent({
   shadowPose,
   sample,
   model,
+  clips,
   tick,
   timing,
   previous,
@@ -335,6 +343,8 @@ function Agent({
   shadowPose: boolean;
   sample: boolean;
   model: string | null;
+  /** Team model clips for a recorded agent's skin. */
+  clips?: string;
   tick: number;
   timing: PoseTiming;
   previous?: PreviousPose;
@@ -414,6 +424,7 @@ function Agent({
       {model ? (
         <RenderAgent
           url={model}
+          clips={clips}
           id={position.id}
           tick={tick}
           rate={timing.tickRate}
@@ -498,7 +509,7 @@ function World({
   preview: boolean;
   settings: ViewerSettings;
   tracers: boolean;
-  agents: { ct: string | null; t: string | null };
+  agents: { ct: string | null; t: string | null; models: Readonly<Record<string, string>> };
   focus?: SceneFocus;
   utilityState: UtilityPresentation;
   items: PresentItem[];
@@ -708,6 +719,15 @@ function World({
     };
   }, [mode, preview, gl, invalidate]);
   const { index, previous, frame, next, alpha } = frameAt(data, tick);
+  // Recorded official agents in view, held until resident; the team model shows meanwhile.
+  const handleOf = (p: Position) =>
+    p.agentModel ?? (preview ? undefined : recordedAgentHandle(data, p.id, p.team));
+  const variantUrls = preview
+    ? []
+    : frame.players.flatMap((p) => agentVariantUrl(p.team, handleOf(p), agents.models) ?? []);
+  const loadedVariants = useLoadedAgentModels(variantUrls);
+  const agentModelFor = (p: Position) =>
+    preview ? null : agentModelChoice(p.team, handleOf(p), agents, agents.models, loadedVariants);
   const airWeights = useMemo(() => {
     const weights = new Map<string, [number, number]>();
     if (!preview && !data.sample)
@@ -1069,7 +1089,8 @@ function World({
                   airborne={airAt(p.id)}
                   shadowPose={shadows && Boolean(sun)}
                   sample={Boolean(data.sample)}
-                  model={!preview ? (p.team === 3 ? agents.ct : agents.t) : null}
+                  model={agentModelFor(p)?.url ?? null}
+                  clips={agentModelFor(p)?.clips}
                   tick={tick}
                   timing={poseTiming}
                   previous={previousPlayers?.get(p.id)}
@@ -1093,7 +1114,8 @@ function World({
                 body={body}
                 death={recordedDeath(data, body.position.id, tick, body.position.yaw)}
                 ragdoll={ragdollFor(body.position.id)}
-                url={body.position.team === 3 ? agents.ct : agents.t}
+                url={agentModelFor(body.position)?.url ?? null}
+                clips={agentModelFor(body.position)?.clips}
                 tick={tick}
                 rate={data.tickRate}
                 reducedMotion={reduceAgentMotion}
@@ -1417,7 +1439,15 @@ export default function Scene({
   );
   const equipmentIdentity = useMemo(() => ({}), [data.map, assetScope]);
   const equipmentAssets = useEquipmentAssets(`${assetScope}:${data.map}`, !preview && !data.sample);
-  const agentAssets = useAgentAssets(`${assetScope}:${data.map}`, !preview && !data.sample);
+  const recordedVariants = useMemo(
+    () => recordedAgentVariants(data.agentModels),
+    [data.agentModels],
+  );
+  const agentAssets = useAgentAssets(
+    `${assetScope}:${data.map}`,
+    !preview && !data.sample,
+    recordedVariants,
+  );
   const agents = agentAssets.assets;
   useModelLeases(
     [agents.ct, agents.t, agents.actions].filter((url): url is string => !!url),

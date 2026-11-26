@@ -1,3 +1,4 @@
+import { modelResourceId } from '../../shared/model-resource-id.mjs';
 import { fixtureCookie, insertFixtureSession } from './fixtures/member-session.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -300,6 +301,31 @@ test('overview descriptor opens reject links, special files and changed cached a
   }
 });
 
+test('recorded official agents are listed and served only by catalogue handle', async () => {
+  const s = await setup();
+  try {
+    const maps = join(s.root, 'maps');
+    const handle = modelResourceId('characters/models/ctm_fbi/ctm_fbi_varianta.vmdl');
+    const sas = modelResourceId('characters/models/ctm_sas/ctm_sas.vmdl');
+    for (const name of [handle, sas, 'ctm_fbi_varianta', '12345'])
+      mkdirSync(join(maps, 'agent-models', name), { recursive: true });
+    writeFileSync(join(maps, 'agent-models', handle, 'model.glb'), glb());
+    // The team default and unknown names are never advertised or served.
+    writeFileSync(join(maps, 'agent-models', sas, 'model.glb'), glb());
+    writeFileSync(join(maps, 'agent-models', '12345', 'model.glb'), glb());
+    assert.deepEqual((await s.get('/api/assets/agents')).json().models, {
+      [handle]: `/map-assets/agent-models/${handle}.glb`,
+    });
+    assert.equal((await s.get(`/map-assets/agent-models/${handle}.glb`)).statusCode, 200);
+    for (const name of [sas, '12345', 'ctm_fbi_varianta', `${handle}/model`])
+      assert.equal((await s.get(`/map-assets/agent-models/${name}.glb`)).statusCode, 404);
+    writeFileSync(join(maps, 'agent-models', handle, 'model.glb'), Buffer.from('Not a GLB'));
+    assert.deepEqual((await s.get('/api/assets/agents')).json().models, {});
+  } finally {
+    await s.close();
+  }
+});
+
 test('native world discovery advertises only a validated manifest of the requested map', async () => {
   const s = await setup();
   try {
@@ -316,6 +342,7 @@ test('native world discovery advertises only a validated manifest of the request
       ct: '/map-assets/agents/ct.glb',
       t: null,
       actions: null,
+      models: {},
     });
     writeFileSync(join(maps, 'agents', 'actions.glb'), glb());
     assert.equal(

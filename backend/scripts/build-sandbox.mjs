@@ -14,6 +14,7 @@ for (const name of [
   'map-previews',
   'gameplay-sounds',
   'effect-textures',
+  'agent-models',
 ])
   copyFileSync(resolve(root, `../shared/${name}.json`), resolve(root, `dist/${name}.json`));
 for (const name of [
@@ -32,6 +33,8 @@ for (const name of [
   'equipment-key',
   'map-breakables',
   'native-world-format',
+  'agent-models',
+  'model-resource-id',
 ])
   copyFileSync(resolve(root, `../shared/${name}.mjs`), resolve(root, `dist/${name}.mjs`));
 if (process.platform !== 'linux') {

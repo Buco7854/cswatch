@@ -5,7 +5,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Document, NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
-import { prepareAgentModel } from './prepare-agent-model.mjs';
+import {
+  prepareAgentModel,
+  prepareRecordedAgentModel,
+  sharedAgentBones,
+} from './prepare-agent-model.mjs';
+import { modelResourceId } from '../../shared/model-resource-id.mjs';
 import { MeshoptDecoder } from './meshopt-glb.mjs';
 import contract from '../../shared/agent-animation.json' with { type: 'json' };
 import {
@@ -145,6 +150,144 @@ test('native animation preparation retains every bounded clip through lossless p
     await assert.rejects(
       () => prepareAgentModel({ input, animations, output, team: 't', assetVersion: 'overwrite' }),
       /overwrite/,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+async function skinFixture(path, { drop } = {}) {
+  const doc = new Document(),
+    buffer = doc.createBuffer(),
+    scene = doc.createScene();
+  const names = [...sharedAgentBones, 'jiggle_variant_gear'].filter((name) => name !== drop);
+  const joints = names.map((name, i) =>
+    doc.createNode(name).setTranslation(i ? [0, 0.05, 0] : [0, 0, 0]),
+  );
+  joints.forEach((joint, i) => (i ? joints[i - 1].addChild(joint) : scene.addChild(joint)));
+  const create = (type, array) =>
+    doc.createAccessor().setType(type).setArray(array).setBuffer(buffer);
+  const primitive = doc
+    .createPrimitive()
+    .setAttribute('POSITION', create('VEC3', new Float32Array([0, 0, 0, 0.2, 0, 0, 0, 1.8, 0])))
+    .setAttribute('JOINTS_0', create('VEC4', new Uint8Array(12)))
+    .setAttribute(
+      'WEIGHTS_0',
+      create('VEC4', new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0])),
+    );
+  const matrices = joints.flatMap((_, i) => [
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    -i * 0.05,
+    0,
+    1,
+  ]);
+  const skin = doc.createSkin().setInverseBindMatrices(create('MAT4', new Float32Array(matrices)));
+  for (const joint of joints) skin.addJoint(joint);
+  scene.addChild(
+    doc.createNode('native_mesh').setMesh(doc.createMesh().addPrimitive(primitive)).setSkin(skin),
+  );
+  // A native export may carry its own clip; the prepared skin never does.
+  const sampler = doc
+    .createAnimationSampler()
+    .setInput(create('SCALAR', new Float32Array([0, 1])))
+    .setOutput(create('VEC3', new Float32Array([0, 0, 0, 0, 0.1, 0])));
+  doc
+    .createAnimation('native_idle')
+    .addSampler(sampler)
+    .addChannel(
+      doc
+        .createAnimationChannel()
+        .setSampler(sampler)
+        .setTargetNode(joints[1])
+        .setTargetPath('translation'),
+    );
+  await new NodeIO().write(path, doc);
+}
+
+test('a recorded official agent is prepared as a bounded skin on the shared skeleton', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'cswatch-agent-skin-'));
+  try {
+    const handle = modelResourceId('characters/models/tm_leet/tm_leet_varianta.vmdl');
+    const input = join(root, 'agent.glb'),
+      output = join(root, 'agent-models', handle);
+    await skinFixture(input);
+    const result = await prepareRecordedAgentModel({
+      input,
+      output,
+      handle,
+      assetVersion: 'steam-2347770-5924479096069937098',
+    });
+    assert.deepEqual(
+      {
+        schemaVersion: result.manifest.schemaVersion,
+        id: result.manifest.id,
+        team: result.manifest.team,
+        entry: result.manifest.entry,
+        pose: result.manifest.pose,
+      },
+      {
+        schemaVersion: 2,
+        id: handle,
+        team: 't',
+        entry: 'tm_leet/tm_leet_varianta',
+        pose: 'shared-team-clips',
+      },
+    );
+    assert.equal(result.provenance.sourceResource, 'agents/models/tm_leet/tm_leet_varianta.vmdl_c');
+    const manifest = JSON.parse(await readFile(join(output, 'manifest.json'), 'utf8'));
+    assert.equal(manifest.sha256, result.manifest.sha256);
+    await MeshoptDecoder.ready;
+    const document = await new NodeIO()
+      .registerExtensions(ALL_EXTENSIONS)
+      .registerDependencies({ 'meshopt.decoder': MeshoptDecoder })
+      .read(join(output, 'model.glb'));
+    assert.equal(document.getRoot().listAnimations().length, 0);
+    const joints = new Set(
+      document
+        .getRoot()
+        .listSkins()
+        .flatMap((skin) => skin.listJoints())
+        .map((node) => node.getName()),
+    );
+    for (const bone of [...sharedAgentBones, 'jiggle_variant_gear']) assert.ok(joints.has(bone));
+    await assert.rejects(
+      prepareRecordedAgentModel({ input, output, handle, assetVersion: 'v' }),
+      /Refusing to overwrite/,
+    );
+    // The team default and unknown handles are not catalogued agents.
+    for (const other of [modelResourceId('characters/models/tm_phoenix/tm_phoenix.vmdl'), '12345'])
+      await assert.rejects(
+        prepareRecordedAgentModel({
+          input,
+          output: join(root, other),
+          handle: other,
+          assetVersion: 'v',
+        }),
+        /catalogued agent/,
+      );
+    // A skin that cannot share the team clips keeps the team model.
+    const partial = join(root, 'partial.glb');
+    await skinFixture(partial, { drop: 'hand_R' });
+    await assert.rejects(
+      prepareRecordedAgentModel({
+        input: partial,
+        output: join(root, 'partial'),
+        handle,
+        assetVersion: 'v',
+      }),
+      /shared skeleton: hand_R/,
     );
   } finally {
     await rm(root, { recursive: true, force: true });

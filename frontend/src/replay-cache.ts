@@ -48,6 +48,17 @@ export function validateManifest(value: PlaybackManifest): PlaybackManifest {
   value.gameplaySounds = validateGameplaySoundInfo(value.gameplaySounds);
   if (!validAgentDeaths(value.agentDeaths)) delete value.agentDeaths;
   if (
+    value.agentModels !== undefined &&
+    !(
+      Array.isArray(value.agentModels) &&
+      value.agentModels.length <= 64 &&
+      value.agentModels.every(
+        (handle) => typeof handle === 'string' && /^[1-9]\d{0,19}$/.test(handle),
+      )
+    )
+  )
+    delete value.agentModels;
+  if (
     value.gaitHistory !== undefined &&
     !validGaitHistory(
       value.gaitHistory,

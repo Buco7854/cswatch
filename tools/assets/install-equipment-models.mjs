@@ -31,6 +31,7 @@ import {
 import { prepareToolchain } from './prepare-toolchain.mjs';
 import { localDirectory } from './toolchain-security.mjs';
 import { agentSourceRegistry } from './prepare-agent-model.mjs';
+import { officialAgentModels } from '../../shared/agent-models.mjs';
 import { markSteamRateLimit } from './official-map-inventory.mjs';
 const MiB = 1024 ** 2;
 const agentScript = fileURLToPath(new URL('./prepare-agent-model.mjs', import.meta.url));
@@ -55,8 +56,16 @@ export async function installEquipmentModels(options, adapters = {}) {
     agents.some((team) => !Object.hasOwn(agentSourceRegistry, team))
   )
     throw Error('Select agent teams ct,t explicitly.');
+  // One recorded official agent: skin and skeleton only, animated by the team bank.
+  const recorded =
+    options.agentModel === undefined ? undefined : officialAgentModels.get(options.agentModel);
+  if (
+    options.agentModel !== undefined &&
+    (!recorded || !options.networkDeny || options.agents || options.items || rigId !== undefined)
+  )
+    throw Error('Select one catalogued agent model under required conversion confinement.');
   let ids = options.items === undefined ? [] : selectedEquipmentModels(options.items);
-  if (!ids.length && !agents.length && !rig)
+  if (!ids.length && !agents.length && !rig && !recorded)
     throw Error('Select explicit equipment items and/or agent teams.');
   if (
     !options.output ||
@@ -87,6 +96,12 @@ export async function installEquipmentModels(options, adapters = {}) {
   if (await exists(target)) await localDirectory(target);
   const rigOutput = rig && join(output, 'viewmodels', rigId);
   if (rigOutput) await readableDirectory(rigOutput);
+  const recordedOutput = recorded && join(output, 'agent-models', recorded.handle);
+  if (recordedOutput) {
+    if (await exists(recordedOutput))
+      throw Error('The agent model is already installed; use a new output root.');
+    await readableDirectory(recordedOutput);
+  }
   const agentOutput = join(output, 'agents');
   if (await exists(agentOutput)) await localDirectory(agentOutput);
   for (const team of agents)
@@ -250,7 +265,13 @@ export async function installEquipmentModels(options, adapters = {}) {
       return { installed: [], unsupported: [rigId], unsupportedCode: 'missing_official_resource' };
     const unsupported = ids.filter((id) => !csgo.entries.has(equipmentModelRegistry[id].resource));
     if (options.allowMissing) ids = ids.filter((id) => !unsupported.includes(id));
-    if (!ids.length && !agents.length && !rig) {
+    if (recorded && !csgo.entries.has(recorded.resource))
+      return {
+        installed: [],
+        unsupported: [recorded.handle],
+        unsupportedCode: 'missing_official_resource',
+      };
+    if (!ids.length && !agents.length && !rig && !recorded) {
       if (options.allowMissing)
         return {
           installed: [],
@@ -265,6 +286,7 @@ export async function installEquipmentModels(options, adapters = {}) {
         ...ids.map((id) => equipmentModelRegistry[id].resource),
         ...agents.map((team) => agentSourceRegistry[team]),
         ...(rig ? [rig.arms, rig.weapon] : []),
+        ...(recorded ? [recorded.resource] : []),
       ]),
     ];
     const closureSeeds = [
@@ -469,6 +491,55 @@ export async function installEquipmentModels(options, adapters = {}) {
       installed.push(id);
       await rm(exportRoot, { recursive: true, force: true });
     }
+    if (recorded) {
+      const selected = modelSelections.get(recorded.resource),
+        exportRoot = join(conversion, 'agent-model-export');
+      await mkdir(exportRoot);
+      const input = join(exportRoot, 'agent.gltf');
+      const result = await execute(
+        tools.s2v,
+        [
+          '-i',
+          join(game, 'game/csgo/pak01_dir.vpk'),
+          '--game',
+          join(game, 'game/csgo'),
+          '--vpk_filepath',
+          recorded.resource,
+          '--output',
+          input,
+          '--gltf_export_format',
+          'gltf',
+          '--gltf_textures_adapt',
+          '--gltf_mesh_list',
+          selected.meshes.join(','),
+        ],
+        'agent-model-export',
+        { allowFailure: true },
+      );
+      if (
+        result.code !== 0 ||
+        !(await exists(input)) ||
+        /(?:Failed to|Could not|Unable to|Exception|Error:)/i.test(result.stdout + result.stderr)
+      )
+        throw Error('The selected native agent model could not be exported.');
+      await execute(
+        process.execPath,
+        [
+          agentScript,
+          '--input',
+          input,
+          '--output',
+          recordedOutput,
+          '--agent-model',
+          recorded.handle,
+          '--asset-version',
+          assetVersion,
+        ],
+        'agent-model-pack',
+      );
+      installed.push(recorded.handle);
+      await rm(exportRoot, { recursive: true, force: true });
+    }
     if (agents.length) {
       const animationRoot = join(conversion, 'agent-animations');
       await mkdir(animationRoot);
@@ -627,6 +698,7 @@ export async function installEquipmentModels(options, adapters = {}) {
       assetVersion,
       items: ids,
       agents,
+      ...(recorded ? { agentModel: recorded } : {}),
       unsupported,
       ...(agents.length
         ? { exportedClips: directionalRoles.length, exportedActions: agentActionRoles.length }
@@ -652,17 +724,19 @@ export async function installEquipmentModels(options, adapters = {}) {
     });
     if (options.cleanup)
       await writeFile(
-        join(
-          output,
-          rig ? 'viewmodels' : agents.length ? 'agents' : 'equipment-models',
-          ...(rig ? [rigId] : options.firstItemOnly && ids.length ? [ids[0]] : []),
-          'installation.json',
-        ),
+        recordedOutput
+          ? join(recordedOutput, 'installation.json')
+          : join(
+              output,
+              rig ? 'viewmodels' : agents.length ? 'agents' : 'equipment-models',
+              ...(rig ? [rigId] : options.firstItemOnly && ids.length ? [ids[0]] : []),
+              'installation.json',
+            ),
         reportBytes,
         { flag: 'wx', mode: 0o644 },
       );
     return {
-      output: target,
+      output: recordedOutput ?? target,
       installed,
       agents,
       assetVersion,

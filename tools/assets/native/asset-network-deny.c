@@ -248,6 +248,14 @@ static int equipment_name(const char *name) {
     for(size_t i=0;i<sizeof(names)/sizeof(names[0]);i++) if(!strcmp(name,names[i])) return 1;
     return 0;
 }
+#ifndef CSWATCH_AGENT_NAMES
+#error Build the asset boundary with the fixed shared agent catalogue.
+#endif
+static int agent_name(const char *name) {
+    static const char *names[] = { CSWATCH_AGENT_NAMES };
+    for(size_t i=0;i<sizeof(names)/sizeof(names[0]);i++) if(!strcmp(name,names[i])) return 1;
+    return 0;
+}
 static void publish(const char *source,const char *target,int kind) {
     char from[PATH_MAX],to[PATH_MAX];
     if(!source || !target || strlen(source) >= sizeof(from) || strlen(target) >= sizeof(to)) {
@@ -274,19 +282,19 @@ static void publish(const char *source,const char *target,int kind) {
         }
         suffix_start=9;
     } else if(kind==3) {
-        if(strcmp(from,to) || (strcmp(to_name,"agents") && strcmp(to_name,"equipment") && strcmp(to_name,"equipment-models") && strcmp(to_name,"viewmodels")) ||
+        if(strcmp(from,to) || (strcmp(to_name,"agents") && strcmp(to_name,"equipment") && strcmp(to_name,"equipment-models") && strcmp(to_name,"viewmodels") && strcmp(to_name,"agent-models")) ||
             strlen(from_name)!=20 || strncmp(from_name,".presentation-",14)) {
             errno=EINVAL;fail("approved same-parent presentation bank names required");
         }
         suffix_start=14;
     } else if(kind==4) {
-        if(strcmp(from,to) || !equipment_name(to_name) || strlen(from_name)!=17 || strncmp(from_name,".equipment-",11)) {
+        if(strcmp(from,to) || (!equipment_name(to_name) && !agent_name(to_name)) || strlen(from_name)!=17 || strncmp(from_name,".equipment-",11)) {
             errno=EINVAL;fail("approved same-parent equipment model names required");
         }
         suffix_start=11;
     } else if(kind==6) {
         const size_t n=strlen(from_name);
-        if(strcmp(from,to) || (!equipment_name(from_name) && strcmp(from_name,"agents") && strcmp(from_name,"equipment")) ||
+        if(strcmp(from,to) || (!equipment_name(from_name) && !agent_name(from_name) && strcmp(from_name,"agents") && strcmp(from_name,"equipment")) ||
             strlen(to_name)!=10+n+24 || strncmp(to_name,".retired-",9) || strncmp(to_name+9,from_name,n) ||
             to_name[9+n]!='-') { errno=EINVAL;fail("approved same-parent presentation retirement required"); }
         for(size_t i=10+n;i<10+n+24;i++)

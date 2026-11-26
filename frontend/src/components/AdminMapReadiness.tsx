@@ -169,6 +169,7 @@ export default function AdminMapReadiness({
                 ['equipment', 'Weapon icons'],
                 ['equipment-models', 'Weapon models'],
                 ['viewmodels', 'First-person rigs'],
+                ['agent-models', 'Recorded agent models'],
               ] as [PresentationKind, string][]
             ).map(([kind, label]) => {
               const category = presentation?.categories[kind];

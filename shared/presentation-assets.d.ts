@@ -5,7 +5,8 @@ type PreparationFailureCode =
   | 'source_mismatch'
   | 'steam_rate_limited'
   | 'preparation_failed';
-export type PresentationKind = 'agents' | 'equipment' | 'equipment-models' | 'viewmodels';
+export type PresentationKind =
+  'agents' | 'equipment' | 'equipment-models' | 'viewmodels' | 'agent-models';
 export type PresentationRetry = { kind: PresentationKind; manifest: string; generation: string };
 export type PresentationStatus = {
   schemaVersion: 4;

@@ -41,6 +41,8 @@ import {
 import { prepareMapJobs } from '../../backend/dist/map-jobs.js';
 import { agentActionRoles, agentActionKind } from '../../shared/agent-actions.mjs';
 import { runMapWorker } from './map-worker.mjs';
+import { writeAgentModelRequests } from '../../backend/dist/agent-model-requests.js';
+import { modelResourceId } from '../../shared/model-resource-id.mjs';
 
 let boundaryRoot, boundary;
 before(async () => {
@@ -305,6 +307,68 @@ test('native model preparation yields after one fixed item and extends only immu
       .manifest,
     '1',
   );
+});
+
+test('recorded official agents are prepared only when requested, one handle at a time', async (t) => {
+  const { options, output } = await fixture(t);
+  const fbi = modelResourceId('characters/models/ctm_fbi/ctm_fbi_varianta.vmdl'),
+    leet = modelResourceId('characters/models/tm_leet/tm_leet_varianta.vmdl');
+  const prepared = [];
+  const fake = {
+    ...adapters,
+    installModels: async (settings) => {
+      assert.equal(settings.manifest, '1');
+      assert.equal(settings.items, undefined);
+      const handle = settings.agentModel;
+      prepared.push(handle);
+      if (handle === leet) return { installed: [], unsupported: [handle] };
+      const directory = join(settings.output, 'agent-models', handle);
+      await mkdir(directory, { recursive: true, mode: 0o700 });
+      const bytes = await triangle(false);
+      await writeFile(join(directory, 'model.glb'), bytes, { flag: 'wx', mode: 0o600 });
+      await writeFile(
+        join(directory, 'manifest.json'),
+        JSON.stringify({
+          schemaVersion: 2,
+          id: handle,
+          team: 'ct',
+          assetVersion: 'steam-2347770-1',
+          sha256: digest(bytes),
+          bytes: bytes.length,
+        }),
+        { flag: 'wx', mode: 0o600 },
+      );
+      return { installed: [handle], unsupported: [] };
+    },
+  };
+  // No ready demo has recorded an official agent: nothing is acquired.
+  assert.equal(
+    (await installPresentationAssets(options, '1', 'agent-models', fake)).status,
+    'installed',
+  );
+  assert.deepEqual(prepared, []);
+  assert.deepEqual((await readPresentationStatus(options.jobs)).categories['agent-models'].counts, {
+    ready: 0,
+    unavailable: 0,
+    total: 0,
+  });
+  await writeAgentModelRequests(options.jobs, [leet, fbi]);
+  const first = await installPresentationAssets(options, '1', 'agent-models', fake);
+  assert.equal(first.remaining, true);
+  const second = await installPresentationAssets(options, '1', 'agent-models', fake);
+  assert.equal(second.remaining, false);
+  assert.deepEqual(prepared, [fbi, leet].sort());
+  const bytes = await readFile(join(output, 'agent-models', fbi, 'model.glb'));
+  assert.equal(
+    (await installPresentationAssets(options, '1', 'agent-models', fake)).status,
+    'installed',
+  );
+  assert.equal(prepared.length, 2);
+  assert.deepEqual(await readFile(join(output, 'agent-models', fbi, 'model.glb')), bytes);
+  const category = (await readPresentationStatus(options.jobs)).categories['agent-models'];
+  assert.equal(category.status, 'ready');
+  assert.deepEqual(category.counts, { ready: 1, unavailable: 1, total: 2 });
+  assert.deepEqual(category.unsupported, [leet]);
 });
 
 test('one unavailable item waits for its own retry without blocking later fixed equipment', async (t) => {

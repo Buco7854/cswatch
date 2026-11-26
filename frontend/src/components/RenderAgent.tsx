@@ -147,6 +147,8 @@ function clipsForModel(gltf: ReturnType<typeof useEquipmentGLTF>) {
 
 type AgentProps = {
   url: string;
+  /** The team model whose directional clips animate a recorded agent's skin. */
+  clips?: string;
   id: string;
   tick: number;
   rate: number;
@@ -169,6 +171,7 @@ type AgentProps = {
 };
 function LoadedAgent({
   url,
+  clips: clipsUrl,
   id,
   gaitHistory,
   travelMeters,
@@ -197,10 +200,11 @@ function LoadedAgent({
   ragdollData?: RagdollData;
 }) {
   const gltf = useEquipmentGLTF(url),
+    clipSource = useEquipmentGLTF(clipsUrl ?? url),
     { invalidate } = useThree();
   useLayoutEffect(() => scope.acquire(), [scope]);
   const { prepared, pose, strideProfile, footLock, corpseFloor } = useMemo(() => {
-    const clips = clipsForModel(gltf);
+    const clips = clipsForModel(clipSource);
     const prepared = prepareAgentModel(gltf.scene);
     try {
       assertBaseColorTextures({ scene: gltf.scene, parser: gltf.parser });
@@ -222,7 +226,7 @@ function LoadedAgent({
       prepared.disposeMaterials();
       throw error;
     }
-  }, [gltf, bank]);
+  }, [gltf, clipSource, bank]);
   const xrayEnabled = xrayColor !== undefined;
   const xray = useMemo(
     () => (xrayEnabled ? agentXray(prepared.instance) : undefined),
@@ -467,6 +471,7 @@ export function RecordedAgentBody({
   death,
   ragdoll,
   url,
+  clips,
   tick,
   rate,
   reducedMotion,
@@ -478,6 +483,7 @@ export function RecordedAgentBody({
   death?: { role: string; yaw: number };
   ragdoll?: AgentProps['ragdoll'];
   url: string | null;
+  clips?: string;
   tick: number;
   rate: number;
   reducedMotion: boolean;
@@ -498,6 +504,7 @@ export function RecordedAgentBody({
     >
       <RenderAgent
         url={url}
+        clips={clips}
         id={'death:' + position.id}
         tick={tick}
         rate={rate}

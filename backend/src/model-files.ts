@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import { pipeline } from 'node:stream';
 import { createGzip, type Gzip } from 'node:zlib';
 import { presentationParts } from './presentation-assets.js';
+import { officialAgentModels } from './agent-model-requests.js';
 import type { FastifyInstance } from 'fastify';
 import type { FileHandle } from 'node:fs/promises';
 import type { ReadStream } from 'node:fs';
@@ -58,6 +59,10 @@ export async function openMapModel(
 function modelPath(value: string) {
   const agent = /^agents\/(ct|t|actions)\.glb$/.exec(value);
   if (agent) return { parts: ['agents'], filename: `${agent[1]}.glb` };
+  // A recorded official agent: only catalogue handles name a directory.
+  const recorded = /^agent-models\/([1-9]\d{0,19})\.glb$/.exec(value);
+  if (recorded && officialAgentModels.has(recorded[1]))
+    return { parts: ['agent-models', recorded[1]], filename: 'model.glb' };
 }
 function singleRange(
   value: string | undefined,
@@ -159,7 +164,15 @@ export async function mapModelFileRoutes(
         const parts =
           path.parts[0] === 'agents' && location.key === 'manual'
             ? await presentationParts(join(location.root, ...location.parts), 'agents')
-            : path.parts;
+            : path.parts[0] === 'agent-models' && location.key === 'manual'
+              ? [
+                  ...(await presentationParts(
+                    join(location.root, ...location.parts),
+                    'agent-models',
+                  )),
+                  ...path.parts.slice(1),
+                ]
+              : path.parts;
         model = await openMapModel(location.root, parts, path.filename, location.parts);
         if (!model) throw new HttpError(404, 'Map model not found.');
         connected();

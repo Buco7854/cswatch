@@ -62,7 +62,7 @@ COPY tools/assets/package*.json ./tools/assets/
 RUN npm ci --prefix tools/assets --omit=dev
 COPY tools/assets/*.mjs ./tools/assets/
 COPY tools/assets/native/asset-network-deny.c ./tools/assets/native/
-COPY shared/map-previews.json shared/equipment-models.json shared/map-breakables.mjs ./shared/
+COPY shared/map-previews.json shared/equipment-models.json shared/map-breakables.mjs shared/agent-models.json shared/agent-models.mjs shared/model-resource-id.mjs ./shared/
 RUN node tools/assets/build-network-deny.mjs --output tools/assets/bin/asset-network-deny \
     && node -e "const fs=require('node:fs'); for (const name of fs.readdirSync('tools/assets')) if (name.endsWith('.test.mjs') || name === 'update-body-sounds.mjs') fs.unlinkSync('tools/assets/'+name)"
 
@@ -88,9 +88,9 @@ COPY --from=asset-build /build/tools/assets/package*.json ./tools/assets/
 COPY --from=asset-build /build/tools/assets/node_modules ./tools/assets/node_modules
 COPY --from=asset-build /build/tools/assets/*.mjs ./tools/assets/
 COPY --from=asset-build /build/tools/assets/bin/asset-network-deny ./tools/assets/bin/asset-network-deny
-COPY --from=backend /build/backend/dist/map-catalog.js /build/backend/dist/map-identity.js /build/backend/dist/map-jobs.js /build/backend/dist/map-asset-files.js /build/backend/dist/asset-content.js /build/backend/dist/map-removals.js /build/backend/dist/presentation-assets.js /build/backend/dist/png.js /build/backend/dist/asset-preparer.js ./backend/dist/
+COPY --from=backend /build/backend/dist/map-catalog.js /build/backend/dist/map-identity.js /build/backend/dist/map-jobs.js /build/backend/dist/map-asset-files.js /build/backend/dist/asset-content.js /build/backend/dist/map-removals.js /build/backend/dist/presentation-assets.js /build/backend/dist/png.js /build/backend/dist/asset-preparer.js /build/backend/dist/agent-model-requests.js /build/backend/dist/agent-models.mjs /build/backend/dist/agent-models.json /build/backend/dist/model-resource-id.mjs ./backend/dist/
 COPY --from=backend /build/backend/node_modules/zod ./backend/node_modules/zod
-COPY shared/equipment-icons.json shared/equipment-models.json shared/agent-animation.json shared/agent-animation-contract.mjs shared/map-previews.json shared/gameplay-sounds.json shared/gameplay-sound-files.mjs shared/gameplay-sound-bank.mjs shared/effect-textures.json shared/effect-texture-bank.mjs shared/map-breakables.mjs shared/agent-actions.json shared/agent-actions.mjs ./shared/
+COPY shared/equipment-icons.json shared/equipment-models.json shared/agent-animation.json shared/agent-animation-contract.mjs shared/map-previews.json shared/gameplay-sounds.json shared/gameplay-sound-files.mjs shared/gameplay-sound-bank.mjs shared/effect-textures.json shared/effect-texture-bank.mjs shared/map-breakables.mjs shared/agent-actions.json shared/agent-actions.mjs shared/agent-models.json shared/agent-models.mjs ./shared/
 RUN mkdir -p /map-assets /map-jobs /map-cache /map-catalog \
     && node -e "const fs=require('node:fs'); fs.writeFileSync('backend/package.json', JSON.stringify({type:'module',private:true})); fs.writeFileSync('/map-catalog/catalog.json',JSON.stringify({schemaVersion:1,entries:[]})+'\n',{mode:0o640})" \
     && chown -R node:node /map-assets /map-jobs /map-cache /map-catalog

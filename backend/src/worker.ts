@@ -87,6 +87,8 @@ export async function processOne(db: Store, c: Config) {
       replayVersion: m.version,
       communications: m.communications,
       capabilities: m.capabilities,
+      // Recorded agent handles; the web publishes the official ones for the asset worker.
+      agentModels: m.agentModels ?? [],
     };
     stage = 'publication';
     pending = mkdtempSync(join(folder, '.prepared-'));

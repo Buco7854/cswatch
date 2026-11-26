@@ -11,7 +11,13 @@ import type {
   PresentationRetry,
 } from '../../shared/presentation-assets.js';
 
-export const presentationKinds = ['agents', 'equipment', 'equipment-models', 'viewmodels'] as const;
+export const presentationKinds = [
+  'agents',
+  'equipment',
+  'equipment-models',
+  'viewmodels',
+  'agent-models',
+] as const;
 const itemId = z.string().regex(/^[a-z0-9]{1,40}$/);
 const failureCode = z.enum([
   'interrupted',
@@ -90,6 +96,7 @@ export const presentationStatusSchema = z
         equipment: category.optional(),
         'equipment-models': category.optional(),
         viewmodels: category.optional(),
+        'agent-models': category.optional(),
       })
       .strict(),
   })

@@ -142,6 +142,9 @@ if (inContainer) {
       'Application credentials must not enter this container.',
     );
   assert.deepEqual((await readdir(join(root, 'backend/dist'))).sort(), [
+    'agent-model-requests.js',
+    'agent-models.json',
+    'agent-models.mjs',
     'asset-content.js',
     'asset-preparer.js',
     'map-asset-files.js',
@@ -149,6 +152,7 @@ if (inContainer) {
     'map-identity.js',
     'map-jobs.js',
     'map-removals.js',
+    'model-resource-id.mjs',
     'native-map-files.js',
     'native-world-format.mjs',
     'png.js',

@@ -29,6 +29,8 @@ import {
 } from '../../shared/agent-animation-contract.mjs';
 import { agentActionDeclarations, agentActionContract } from '../../shared/agent-actions.mjs';
 import { verifyPreparedGlb } from './prepared-glb.mjs';
+import { readAgentModelRequests } from '../../backend/dist/agent-model-requests.js';
+import { officialAgentModels } from '../../shared/agent-models.mjs';
 import { validPng } from '../../backend/dist/png.js';
 import {
   cleanPresentationStages,
@@ -140,11 +142,15 @@ async function validateBank(root, kind, manifest, write = false) {
       metadata.bytes !== verified.bytes
     )
       throw Error('Prepared action bank does not match its fixed identity.');
-  } else if (kind === 'viewmodels' || kind === 'equipment-models') {
+  } else if (kind === 'viewmodels' || kind === 'equipment-models' || kind === 'agent-models') {
     let count = 0;
     for (const entry of await readdir(root, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
-      if (!Object.hasOwn(equipmentModelRegistry, entry.name))
+      if (
+        kind === 'agent-models'
+          ? !officialAgentModels.has(entry.name)
+          : !Object.hasOwn(equipmentModelRegistry, entry.name)
+      )
         throw Error('Unknown prepared native model identity.');
       await validateItem(join(root, entry.name), kind, manifest, entry.name, verifyModel);
       count++;
@@ -192,8 +198,13 @@ async function validateItem(root, kind, manifest, id, verifyModel) {
   const verified = await verifyPreparedGlb(modelPath);
   if (verified.bytes !== metadata.bytes || verified.sha256 !== metadata.sha256)
     throw Error('Prepared item differs from its manifest.');
-  if (kind === 'equipment-models') {
-    if (metadata.id !== id || metadata.assetVersion !== `steam-2347770-${manifest}`)
+  if (kind === 'equipment-models' || kind === 'agent-models') {
+    if (
+      metadata.id !== id ||
+      metadata.assetVersion !== `steam-2347770-${manifest}` ||
+      (kind === 'agent-models' &&
+        (metadata.schemaVersion !== 2 || metadata.team !== officialAgentModels.get(id)?.team))
+    )
       throw Error('Prepared equipment differs from its selected source.');
     return;
   }
@@ -232,8 +243,14 @@ export async function installPresentationAssets(options, manifest, kind, adapter
   const assets = resolve(options.assets),
     output = join(assets, presentationDirectory),
     target = join(output, kind);
-  const itemBank = kind === 'equipment-models' || kind === 'viewmodels';
-  const ids = itemBank ? presentationItems(kind) : [];
+  const itemBank = kind === 'equipment-models' || kind === 'viewmodels' || kind === 'agent-models';
+  // Recorded official agents are prepared only once a ready demo has recorded them.
+  const ids =
+    kind === 'agent-models'
+      ? (await readAgentModelRequests(options.jobs)).filter((id) => officialAgentModels.has(id))
+      : itemBank
+        ? presentationItems(kind)
+        : [];
   const operatorPresent =
     kind !== 'viewmodels' &&
     (await exists(join(assets, kind))) &&
@@ -539,7 +556,9 @@ export async function installPresentationAssets(options, manifest, kind, adapter
             ? { agents: ['ct', 't'] }
             : kind === 'viewmodels'
               ? { viewmodel: item }
-              : { items: [item], allowMissing: true, firstItemOnly: true }),
+              : kind === 'agent-models'
+                ? { agentModel: item }
+                : { items: [item], allowMissing: true, firstItemOnly: true }),
           cleanup: true,
         },
         installerAdapters,

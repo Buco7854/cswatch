@@ -1,7 +1,8 @@
 import { join } from 'node:path';
 import { presentationParts } from './presentation-assets.js';
+import { officialAgentModels } from './agent-model-requests.js';
 import type { FastifyInstance } from 'fastify';
-import type { FileHandle } from 'node:fs/promises';
+import { opendir, type FileHandle } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import type { MapAssets, MapOverview } from '../../shared/map-assets.js';
@@ -52,6 +53,27 @@ async function hasGlb(location: MapAssetLocation, parts: string[], filename: str
   if (!model) return false;
   await model.file.close();
   return true;
+}
+
+/** Prepared official agents by recorded handle. Only catalogue names are ever opened. */
+async function preparedAgentModels(location: MapAssetLocation) {
+  const base = join(location.root, ...location.parts),
+    parts = await presentationParts(base, 'agent-models');
+  const names =
+    (await withDirectory(base, parts, async (directory) => {
+      const found: string[] = [];
+      let scanned = 0;
+      for await (const entry of await opendir(`/proc/self/fd/${directory.fd}`)) {
+        if (++scanned > 256) break;
+        if (entry.isDirectory() && officialAgentModels.has(entry.name)) found.push(entry.name);
+      }
+      return found;
+    })) ?? [];
+  const models: Record<string, string> = {};
+  for (const handle of names.sort())
+    if (await hasGlb(location, [...parts, handle], 'model.glb'))
+      models[handle] = `/map-assets/agent-models/${handle}.glb`;
+  return models;
 }
 
 export async function mapAssetRoutes(
@@ -190,6 +212,7 @@ export async function mapAssetRoutes(
       actions: (await hasGlb(defaultLocation, parts, 'actions.glb'))
         ? '/map-assets/agents/actions.glb'
         : null,
+      models: await preparedAgentModels(defaultLocation),
     };
   });
   return { describe, loadOverview, defaultLocation };

@@ -155,6 +155,8 @@ export type Playback = {
   agentDeaths?: AgentDeathAnchor[];
   /** Pack-independent movement intervals for deterministic directional gait. */
   gaitHistory?: GaitHistory;
+  /** Distinct recorded agent model handles of living players. */
+  agentModels?: string[];
   /** Global Source-coordinate bounds keep cameras and plots stable while time slices change. */
   worldBounds?: {
     minX: number;

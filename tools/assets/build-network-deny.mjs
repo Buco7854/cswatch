@@ -30,6 +30,15 @@ if (
   equipmentNames.some((name) => !/^[a-z0-9]{1,40}$/.test(name))
 )
   throw Error('Invalid fixed equipment publication registry.');
+// Recorded official agents publish under their decimal model handle.
+const { officialAgentModels } = await import('../../shared/agent-models.mjs');
+const agentNames = [...officialAgentModels.keys()];
+if (
+  !agentNames.length ||
+  agentNames.length > 128 ||
+  agentNames.some((name) => !/^[1-9][0-9]{0,19}$/.test(name))
+)
+  throw Error('Invalid fixed agent publication catalogue.');
 const source = fileURLToPath(new URL('./native/asset-network-deny.c', import.meta.url));
 export function buildNetworkDeny(output) {
   if (process.platform !== 'linux' || process.arch !== 'x64')
@@ -45,6 +54,7 @@ export function buildNetworkDeny(output) {
         '-std=c11',
         `-DCSWATCH_PREVIEW_NAMES=${previewNames}`,
         `-DCSWATCH_EQUIPMENT_NAMES=${equipmentNames.map((name) => JSON.stringify(name)).join(',')}`,
+        `-DCSWATCH_AGENT_NAMES=${agentNames.map((name) => JSON.stringify(name)).join(',')}`,
         '-O2',
         '-Wall',
         '-Wextra',

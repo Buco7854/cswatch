@@ -1410,5 +1410,6 @@
   "Map tier": "Niveau de carte",
   "Idle": "Inactif",
   "Phone": "Téléphone",
-  "Desktop": "Ordinateur"
+  "Desktop": "Ordinateur",
+  "Recorded agent models": "Modèles d’agents enregistrés"
 }

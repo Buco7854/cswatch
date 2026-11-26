@@ -95,6 +95,29 @@ export const loadedEquipmentModel = (url: string) => world.cache.peek(url);
 /** Storage held by loaded agents, equipment and first-person rigs. */
 export const loadedModelBytes = () => world.cache.ownedBytes() + pov.cache.ownedBytes();
 export const useEquipmentGLTF = (url: string) => useLoader(world.Loader, url);
+/** Hold and load a world model ahead of use. `loaded` runs once the model is resident and
+ * mounting it no longer suspends; the returned release ends the hold. */
+export function holdEquipmentModel(url: string, loaded: () => void, failed: () => void) {
+  const release = world.cache.scope(url).acquire();
+  let active = true,
+    timer: ReturnType<typeof setTimeout> | undefined;
+  world.cache.request(url, {
+    loaded: () => {
+      if (!active) return;
+      useLoader.preload(world.Loader, url);
+      // The loader's own promise settles in a microtask; report after it.
+      timer = setTimeout(() => active && loaded(), 0);
+    },
+    failed: () => {
+      if (active) failed();
+    },
+  });
+  return () => {
+    active = false;
+    clearTimeout(timer);
+    release();
+  };
+}
 export const usePovGLTF = (url: string) => useLoader(pov.Loader, url);
 function useNativeScope(cache: ModelCache<EquipmentGLTF>, url: string, identity: object) {
   const scope = useMemo(() => cache.scope(url), [cache, url, identity]);

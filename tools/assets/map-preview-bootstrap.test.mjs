@@ -42,7 +42,7 @@ test('actors, HUD icons, artwork and sounds precede alternating static and first
       refreshInventory: async () => ({ manifest: '1', maps: [{}] }),
       processRequest: async () => {
         sequence.push('map');
-        if (++maps === 9) controller.abort();
+        if (++maps === 10) controller.abort();
         return false;
       },
       preparePresentation: async (_options, manifest, kind) => {
@@ -83,6 +83,9 @@ test('actors, HUD icons, artwork and sounds precede alternating static and first
     'model1',
     'map',
     'rig1',
+    'map',
+    // Recorded official agents take their turn after the first rig.
+    'agent-models',
     'map',
     'model2',
     'map',
@@ -129,6 +132,7 @@ test('a transient native failure preserves its retry backoff while other present
     ['equipment', 1000],
     ['equipment-models', 1002],
     ['viewmodels', 1002],
+    ['agent-models', 1002],
     ['agents', 1300],
   ]);
   assert.ok(maps >= 150);
