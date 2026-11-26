@@ -197,6 +197,8 @@ export function recordedStance(
   const state = (i: number) => frames[i].players.find((player) => player.id === id);
   const rate = data.tickRate;
   const moving = (i: number) => {
+    // The first frame has no earlier sample to show the player standing.
+    if (i <= 0) return true;
     const a = state(i - 1),
       b = state(i);
     if (!a?.alive || !b?.alive) return true;

@@ -183,6 +183,8 @@ test('a standing turn reports its side, the angle turned and the settle after th
   expect(recordedStance(left, 'p', 24, 90)).toEqual(later);
   const right = standing([90, 0, 0, 0, 0, 0]);
   expect(recordedStance(right, 'p', 12, 0).turn!.side).toBe('right');
+  // The first recorded frame has no earlier sample and counts as moving.
+  expect(recordedStance(left, 'p', 0, 0)).toEqual({ twist: 0 });
   // A moving player takes no standing step.
   expect(
     recordedStance(

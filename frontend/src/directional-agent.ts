@@ -562,8 +562,9 @@ export function createDirectionalAgent(root: Object3D, clips: ClipSet, actions?:
             actions.delta(`jump-start:${kind}`, jumpAge, 1 - smooth(jumpAge / 0.6));
           if (landAge !== undefined && landAge < actions.duration(`jump-land:${kind}`)!)
             actions.delta(`jump-land:${kind}`, landAge, 1 - smooth((landAge - 0.3) / 0.33));
-        } else if (input.turn && actions && speed < 0.6) {
-          // Valve's 45 degree step: its root yaw is the turn itself, which the recorded feet
+        } else if (input.turn && actions) {
+          // The recorded stance already requires standing. Valve's 45 degree step: its root yaw
+          // is the turn itself, which the recorded feet
           // already make, so only the legs play. The rotating half is driven by the angle turned
           // (through the clip's own ease) so the planted foot stays put; the settle plays on.
           const { side, turned, restAge } = input.turn;
