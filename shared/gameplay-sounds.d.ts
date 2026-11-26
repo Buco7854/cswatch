@@ -8,7 +8,8 @@ export type GameplaySoundCue = {
   endTick?: number;
   soundId: string;
   category: GameplaySoundCategory;
-  evidence: 'game-event' | 'network-sound';
+  /** recorded-state: scheduled in the viewer from recorded state, such as the planted C4's beep. */
+  evidence: 'game-event' | 'network-sound' | 'recorded-state';
   /** A representative native sample is not the exact Source sound mix or surface selection. */
   selection: 'representative' | 'recorded';
   /** Exact recorded native event name when token/hash resolution succeeded. */

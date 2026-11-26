@@ -876,6 +876,94 @@
     "footstep-land-metal-railing-01": {
       "source": "sounds/player/footsteps/land_metal_railing_01.vsnd_c",
       "category": "footstep"
+    },
+    "utility-024f27865b76": {
+      "source": "sounds/weapons/smokegrenade/grenade_hit1.vsnd_c",
+      "category": "utility"
+    },
+    "utility-b2761bde8c7a": {
+      "source": "sounds/weapons/smokegrenade/smoke_grenade_throw_04.vsnd_c",
+      "category": "utility"
+    },
+    "utility-2aa4576c51ca": {
+      "source": "sounds/weapons/smokegrenade/smoke_emit.vsnd_c",
+      "category": "utility"
+    },
+    "utility-2e0711dcea5e": {
+      "source": "sounds/items/weapon_hegrenade_throw.vsnd_c",
+      "category": "utility"
+    },
+    "utility-bfed47d5b289": {
+      "source": "sounds/weapons/molotov/fire_loop_1.vsnd_c",
+      "category": "utility"
+    },
+    "utility-f2639e4216be": {
+      "source": "sounds/weapons/molotov/fire_idle_loop_1.vsnd_c",
+      "category": "utility"
+    },
+    "utility-de2873340512": {
+      "source": "sounds/weapons/molotov/molotov_detonate_1.vsnd_c",
+      "category": "utility"
+    },
+    "utility-c7209cefff49": {
+      "source": "sounds/weapons/molotov/fire_loop_fadeout_01.vsnd_c",
+      "category": "utility"
+    },
+    "utility-726a057af527": {
+      "source": "sounds/physics/weapons/weapon_incendiary_impact_01.vsnd_c",
+      "category": "utility"
+    },
+    "utility-1bbf844817ac": {
+      "source": "sounds/weapons/incgrenade/inc_grenade_throw_fire_01.vsnd_c",
+      "category": "utility"
+    },
+    "utility-1dcb80e44f49": {
+      "source": "sounds/weapons/incgrenade/inc_grenade_detonate_1.vsnd_c",
+      "category": "utility"
+    },
+    "utility-7743e6024e15": {
+      "source": "sounds/weapons/decoy/decoy_throw_06.vsnd_c",
+      "category": "utility"
+    },
+    "weapon-98015b4bb190": {
+      "source": "sounds/weapons/awp/zoom.vsnd_c",
+      "category": "weapon"
+    },
+    "weapon-c76388c739c5": {
+      "source": "sounds/weapons/ssg08/ssg08_zoom_in.vsnd_c",
+      "category": "weapon"
+    },
+    "weapon-c8a34d0011be": {
+      "source": "sounds/physics/weapons/weapon_rifle_impact_02.vsnd_c",
+      "category": "weapon"
+    },
+    "weapon-a2b0c78d89a3": {
+      "source": "sounds/physics/weapons/weapon_pistol_impact_01.vsnd_c",
+      "category": "weapon"
+    },
+    "weapon-c9d49d77feb0": {
+      "source": "sounds/physics/weapons/weapon_sniper_impact_01.vsnd_c",
+      "category": "weapon"
+    },
+    "weapon-dfd871322bde": {
+      "source": "sounds/physics/weapons/weapon_flashbang_impact_01.vsnd_c",
+      "category": "weapon"
+    },
+    "weapon-e91f14ce50d3": {
+      "source": "sounds/physics/weapons/weapon_hegrenade_impact_03.vsnd_c",
+      "category": "weapon"
+    },
+    "weapon-1c0c4f283e4d": {
+      "source": "sounds/items/pickup_weapon_02.vsnd_c",
+      "category": "weapon"
+    },
+    "objective-2e6defdb9669": {
+      "source": "sounds/physics/weapons/defuser_impact_01.vsnd_c",
+      "category": "objective"
+    },
+    "objective-9ec82865cd0f": {
+      "source": "sounds/weapons/c4/c4_beep2.vsnd_c",
+      "category": "objective"
     }
   },
   "events": {
@@ -1570,7 +1658,7 @@
       "soundId": "knife-hit-gear",
       "channel": "weapon-sound",
       "volume": 0.07,
-      "pitch": 1.0
+      "pitch": 1
     },
     "Weapon_Knife.Hit.Heavy": {
       "soundId": "knife-hit-heavy",
@@ -1581,37 +1669,37 @@
       "soundId": "knife-hit-light-backstab",
       "channel": "weapon-sound",
       "volume": 0.55,
-      "pitch": 1.0
+      "pitch": 1
     },
     "Weapon_Knife.Hit.Slice": {
       "soundId": "knife-hit-slice",
       "channel": "weapon-sound",
       "volume": 0.1,
-      "pitch": 1.0
+      "pitch": 1
     },
     "Weapon_Knife.Swish.Gear": {
       "soundId": "knife-swish-gear",
       "channel": "weapon-sound",
       "volume": 0.04,
-      "pitch": 1.0
+      "pitch": 1
     },
     "Weapon_Knife.Swish.Gear.Quiet": {
       "soundId": "knife-swish-gear",
       "channel": "weapon-sound",
       "volume": 0.01,
-      "pitch": 1.0
+      "pitch": 1
     },
     "Weapon_Knife.Swish.Heavy": {
       "soundId": "knife-swish-heavy",
       "channel": "weapon-sound",
       "volume": 0.04,
-      "pitch": 1.0
+      "pitch": 1
     },
     "Weapon_Knife.Swish.Light": {
       "soundId": "knife-swish-light",
       "channel": "weapon-sound",
       "volume": 0.03,
-      "pitch": 1.0
+      "pitch": 1
     },
     "Player.DamageBodyArmor.Onlooker": {
       "soundId": "hit-kevlar-01",
@@ -2636,6 +2724,209 @@
       "channel": "sos",
       "hash": 2162652424,
       "volume": 1
+    },
+    "SmokeGrenade.Bounce": {
+      "soundId": "utility-024f27865b76",
+      "channel": "sos",
+      "hash": 3921206064,
+      "volume": 0.6,
+      "pitch": 1
+    },
+    "SmokeGrenade.Throw": {
+      "soundId": "utility-b2761bde8c7a",
+      "channel": "sos",
+      "hash": 3944444000,
+      "volume": 1,
+      "pitch": 1.1
+    },
+    "BaseSmokeEffect.Sound": {
+      "soundId": "utility-2aa4576c51ca",
+      "channel": "sos",
+      "hash": 1665511289,
+      "volume": 1,
+      "pitch": 1
+    },
+    "HEGrenade.Throw": {
+      "soundId": "utility-2e0711dcea5e",
+      "channel": "sos",
+      "hash": 4123539907,
+      "volume": 1,
+      "pitch": 1
+    },
+    "BaseGrenade.Explode": {
+      "soundId": "he-explode",
+      "channel": "sos",
+      "hash": 962330345,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Flashbang.Explode": {
+      "soundId": "flash-explode",
+      "channel": "sos",
+      "hash": 1058408389,
+      "volume": 0.4,
+      "pitch": 1
+    },
+    "Molotov.Loop": {
+      "soundId": "utility-bfed47d5b289",
+      "channel": "sos",
+      "hash": 751222356,
+      "volume": 0.3,
+      "pitch": 1
+    },
+    "Molotov.IdleLoop": {
+      "soundId": "utility-f2639e4216be",
+      "channel": "sos",
+      "hash": 3092480954,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Molotov.Start": {
+      "soundId": "utility-de2873340512",
+      "channel": "sos",
+      "hash": 1816034375,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Inferno.Loop": {
+      "soundId": "utility-bfed47d5b289",
+      "channel": "sos",
+      "hash": 3153301409,
+      "volume": 0.3,
+      "pitch": 1
+    },
+    "Inferno.FadeOut": {
+      "soundId": "utility-c7209cefff49",
+      "channel": "sos",
+      "hash": 453270950,
+      "volume": 0.7,
+      "pitch": 1
+    },
+    "IncGrenade.Bounce": {
+      "soundId": "utility-726a057af527",
+      "channel": "sos",
+      "hash": 4101891102,
+      "volume": 0.5,
+      "pitch": 1
+    },
+    "IncGrenade.Throw": {
+      "soundId": "utility-1bbf844817ac",
+      "channel": "sos",
+      "hash": 1353557426,
+      "volume": 0.5,
+      "pitch": 1
+    },
+    "IncGrenade.Start": {
+      "soundId": "utility-1dcb80e44f49",
+      "channel": "sos",
+      "hash": 2209372535,
+      "volume": 1,
+      "pitch": 1
+    },
+    "Decoy.Throw": {
+      "soundId": "utility-7743e6024e15",
+      "channel": "sos",
+      "hash": 175973277,
+      "volume": 0.7,
+      "pitch": 1.1
+    },
+    "Weapon_AWP.Zoom": {
+      "soundId": "weapon-98015b4bb190",
+      "channel": "sos",
+      "hash": 3800583830,
+      "volume": 0.1,
+      "pitch": 1
+    },
+    "Weapon_SSG08.Zoom": {
+      "soundId": "weapon-c76388c739c5",
+      "channel": "sos",
+      "hash": 2766872738,
+      "volume": 0.1,
+      "pitch": 1.1
+    },
+    "Weapon_Revolver.Prepare": {
+      "soundId": "reload-8c58ace439f2",
+      "channel": "sos",
+      "hash": 2149843356,
+      "volume": 0.94989,
+      "pitch": 1
+    },
+    "weapon.Rifle.Impact": {
+      "soundId": "weapon-c8a34d0011be",
+      "channel": "sos",
+      "hash": 449069384,
+      "volume": 1,
+      "pitch": 1
+    },
+    "weapon.Pistol.Impact": {
+      "soundId": "weapon-a2b0c78d89a3",
+      "channel": "sos",
+      "hash": 1842263658,
+      "volume": 1,
+      "pitch": 1
+    },
+    "weapon.Sniper.Impact": {
+      "soundId": "weapon-c9d49d77feb0",
+      "channel": "sos",
+      "hash": 2125410722,
+      "volume": 1,
+      "pitch": 1
+    },
+    "weapon.SMG.Impact": {
+      "soundId": "footstep-weapon-smg-impact-07",
+      "channel": "sos",
+      "hash": 3003881917,
+      "volume": 1,
+      "pitch": 1
+    },
+    "weapon.Flashbang.Impact": {
+      "soundId": "weapon-dfd871322bde",
+      "channel": "sos",
+      "hash": 95362054,
+      "volume": 0.3,
+      "pitch": 1
+    },
+    "weapon.HEGrenade.Impact": {
+      "soundId": "weapon-e91f14ce50d3",
+      "channel": "sos",
+      "hash": 1252397774,
+      "volume": 0.5,
+      "pitch": 1
+    },
+    "weapon.Incendiary.Impact": {
+      "soundId": "utility-726a057af527",
+      "channel": "sos",
+      "hash": 910752207,
+      "volume": 0.3,
+      "pitch": 1.2
+    },
+    "Player.PickupWeaponAudible": {
+      "soundId": "weapon-1c0c4f283e4d",
+      "channel": "sos",
+      "hash": 1412313471,
+      "volume": 1,
+      "pitch": 1
+    },
+    "weapon.C4.Impact": {
+      "soundId": "weapon-c8a34d0011be",
+      "channel": "sos",
+      "hash": 1346129716,
+      "volume": 1,
+      "pitch": 1.2
+    },
+    "defuser.Impact": {
+      "soundId": "objective-2e6defdb9669",
+      "channel": "sos",
+      "hash": 4266331105,
+      "volume": 0.2,
+      "pitch": 1
+    },
+    "Player.PickupC4": {
+      "soundId": "weapon-1c0c4f283e4d",
+      "channel": "sos",
+      "hash": 2381346641,
+      "volume": 1,
+      "pitch": 1
     }
   }
 }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import { c4BeepCues } from './c4-beeps';
 import type { GameplaySoundInfo, SharedGameplaySoundCatalog } from '../../shared/gameplay-sounds';
 import type { Playback } from './types';
 import { frameAt, type ViewerSettings } from './playback';
@@ -61,9 +62,22 @@ export function useGameplayAudio({
   const [failure, setFailure] = useState({ identity, message: '' });
   const engine = useRef<GameplayPlayback | null>(null);
   const [retry, setRetry] = useState(0);
+  // Recorded cues plus the C4 beeps derived from the recorded plant and timer.
+  const cues = useMemo(() => {
+    if (!data) return undefined;
+    const beeps = c4BeepCues(data.objectives, data.tickRate, (actor, tick) => {
+      const at = frameAt(data, tick).frame;
+      if (Math.abs(at.tick - tick) > data.tickRate / 4) return undefined;
+      const player = at.players.find((candidate) => candidate.id === actor);
+      return player ? { x: player.x, y: player.y, z: player.z } : undefined;
+    });
+    return beeps.length
+      ? [...(data.sounds || []), ...beeps].sort((a, b) => a.tick - b.tick)
+      : data.sounds;
+  }, [data]);
   const neededKey = useMemo(
-    () => [...new Set((data?.sounds || []).map((cue) => cue.soundId))].sort().join(','),
-    [data?.sounds],
+    () => [...new Set((cues || []).map((cue) => cue.soundId))].sort().join(','),
+    [cues],
   );
   const enabled = Boolean(
     data?.gameplaySounds &&
@@ -215,7 +229,7 @@ export function useGameplayAudio({
       }
     }
     engine.current?.sync(
-      data.sounds || silent,
+      cues || silent,
       tick,
       data.tickRate,
       speed,
@@ -235,6 +249,7 @@ export function useGameplayAudio({
   }, [
     active,
     data,
+    cues,
     tick,
     speed,
     selected,
@@ -249,11 +264,9 @@ export function useGameplayAudio({
   const missing = useMemo(
     () =>
       new Set(
-        (data?.sounds || [])
-          .filter((cue) => !current.catalog.items[cue.soundId])
-          .map((cue) => cue.soundId),
+        (cues || []).filter((cue) => !current.catalog.items[cue.soundId]).map((cue) => cue.soundId),
       ).size,
-    [data?.sounds, current.catalog],
+    [cues, current.catalog],
   );
   return {
     status: enabled ? current.status : 'unavailable',

@@ -1,6 +1,12 @@
 import type { GameplaySoundCue } from '../../shared/gameplay-sounds';
 
 type PlannedSound = { cue: GameplaySoundCue; delay: number };
+
+/** A native loop (fire, a lit molotov) repeats until its recorded stop. Without
+ * a recorded stop it plays once, like any other cue. */
+export function sustainedCue(cue: GameplaySoundCue) {
+  return cue.endTick !== undefined && /\.(?:idle)?loop$/i.test(cue.eventName ?? '');
+}
 /** Bounded look-ahead on recorded time, independent of render-frame cadence.
  * Resets establish a new floor so seeking never replays earlier sound cues. */
 export class GameplayAudioTimeline {
@@ -51,6 +57,7 @@ export class GameplayAudioTimeline {
       this.input = cues;
       this.ordered = [...cues].sort((a, b) => a.tick - b.tick || a.id.localeCompare(b.id));
     }
+    // Loops stay marked until their recorded stop, other cues for one second.
     for (const [id, at] of this.seen) if (at < tick - rate) this.seen.delete(id);
     const start = Math.max(this.floor, tick - rate * 0.025),
       end = tick + rate * speed * Math.min(1, Math.max(0.18, this.cadence * 1.5 + 0.05)),
@@ -64,6 +71,15 @@ export class GameplayAudioTimeline {
     }
     const sounds: PlannedSound[] = [];
     const prefetch = new Set<string>();
+    // A seek lands inside recorded loops: resume them at their current offset.
+    if (reset)
+      for (let i = 0; i < low && sounds.length < 32; i++) {
+        const cue = this.ordered[i];
+        if (!sustainedCue(cue) || cue.endTick! <= tick || !playable(cue) || this.seen.has(cue.id))
+          continue;
+        this.seen.set(cue.id, cue.endTick! + rate);
+        sounds.push({ cue, delay: (cue.tick - tick) / rate / speed });
+      }
     for (let i = low; i < this.ordered.length && this.ordered[i].tick <= horizon; i++) {
       const cue = this.ordered[i];
       if (!playable(cue)) continue;
@@ -75,7 +91,7 @@ export class GameplayAudioTimeline {
       // horizon, even when the next visual frame arrives late.
       if (cue.category !== 'round' && cue.tick > end) continue;
       if (this.seen.has(cue.id) || sounds.length >= 128 || this.seen.size >= 4096) continue;
-      this.seen.set(cue.id, cue.tick);
+      this.seen.set(cue.id, sustainedCue(cue) ? cue.endTick! + rate : cue.tick);
       sounds.push({ cue, delay: (cue.tick - tick) / rate / speed });
     }
     return { reset, sounds, prefetch };

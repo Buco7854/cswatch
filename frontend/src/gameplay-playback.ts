@@ -3,7 +3,7 @@ import type {
   GameplaySoundCue,
   SharedGameplaySoundCatalog,
 } from '../../shared/gameplay-sounds';
-import { GameplayAudioTimeline } from './gameplay-audio-timeline';
+import { GameplayAudioTimeline, sustainedCue } from './gameplay-audio-timeline';
 import { GameplaySoundBuffers } from './gameplay-sound-assets';
 import { ViewerAudio } from './viewer-audio';
 import { nearWallContact, wallImpactSample, type WallTrace } from './shot-wall-audio';
@@ -142,8 +142,9 @@ export class GameplayPlayback {
             return;
           const bytes = buffer.length * buffer.numberOfChannels * 4;
           if (end !== undefined && end <= context.currentTime) return;
+          const loop = sustainedCue(cue) && end !== undefined;
           if (
-            context.currentTime - start > 0.1 ||
+            (!loop && context.currentTime - start > 0.1) ||
             this.sources.size >= 128 ||
             this.activeBytes + bytes > 16 * 1024 ** 2
           ) {
@@ -190,7 +191,9 @@ export class GameplayPlayback {
           }
           this.sources.set(source, stop);
           this.activeBytes += bytes;
-          const offset = Math.max(0, context.currentTime - start) * source.playbackRate.value;
+          source.loop = loop;
+          const elapsed = Math.max(0, context.currentTime - start) * source.playbackRate.value;
+          const offset = loop ? elapsed % buffer.duration : elapsed;
           if (offset >= buffer.duration) {
             stop();
             return;
