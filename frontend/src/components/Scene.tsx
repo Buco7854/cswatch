@@ -52,9 +52,9 @@ import {
   type ProjectileState,
   type UtilityZone,
 } from '../utility-state';
-/** Radius of the follow camera's collision sphere (metres): wider than the near plane's
- * footprint at the default lens, so walls never fill the view. */
-const followRadius = 0.3;
+/** Radius of the follow camera's collision sphere (metres). At the default lens a wall
+ * closer than about half a metre fills half the view. */
+const followRadius = 0.55;
 type UtilityPresentation = {
   projectiles: ProjectileState[];
   zones: UtilityZone[];
@@ -799,6 +799,8 @@ function World({
     [followTrace, nativeWorld],
   );
   const followBoom = useMemo(createFollowBoom, []);
+  const followSide = useRef(1);
+  useLayoutEffect(() => captureRegister({ queries: nativeWorld?.queries }), [nativeWorld]);
   const freeView = useRef<{ position: THREE.Vector3; target: THREE.Vector3 }>(undefined);
   useLayoutEffect(() => {
     if (mode !== 'orbit') return;
@@ -926,22 +928,34 @@ function World({
       // A sphere swept from the head keeps the lens out of walls; a ray alone grazes them.
       const reach = (segment: Pick<typeof follow, 'position' | 'target'>) =>
         followSweep?.(segment, followRadius) ?? followTrace?.(segment) ?? segment.position;
-      let position = reach(follow);
       const [x, y, z] = follow.target;
-      if (followTrace && Math.hypot(position[0] - x, position[2] - z) < 1.05) {
-        const yaw = THREE.MathUtils.degToRad(playerPose(p, n, alpha, poseTiming).yaw);
-        const across: [number, number, number] = [
-          follow.position[0] - Math.sin(yaw) * 3.2,
-          follow.position[1],
-          follow.position[2] - Math.cos(yaw) * 3.2,
-        ];
-        const alternate = reach({ position: across, target: follow.target });
-        if (
-          Math.hypot(alternate[0] - x, alternate[2] - z) >
-          Math.hypot(position[0] - x, position[2] - z)
-        )
-          position = alternate;
-      }
+      // The right shoulder, the left shoulder, straight behind, then above. The current side is kept
+      // unless another reaches clearly further, so the view does not flip between them.
+      const yaw = THREE.MathUtils.degToRad(playerPose(p, n, alpha, poseTiming).yaw);
+      const shoulder = 1.6;
+      // A doorway can block every shoulder; above and behind the head usually stays open.
+      const sides = [1, -1, 0, 2].map((sign) => {
+        const shift = (sign - 1) * shoulder;
+        const desired: [number, number, number] =
+          sign === 2
+            ? [x - Math.cos(yaw) * 1.3, y + 1.0, z + Math.sin(yaw) * 1.3]
+            : [
+                follow.position[0] + Math.sin(yaw) * shift,
+                follow.position[1],
+                follow.position[2] + Math.cos(yaw) * shift,
+              ];
+        const reached = followTrace ? reach({ position: desired, target: follow.target }) : desired;
+        return {
+          sign,
+          reached,
+          length: Math.hypot(reached[0] - x, reached[1] - y, reached[2] - z),
+        };
+      });
+      const current = sides.find((side) => side.sign === followSide.current) ?? sides[0];
+      const best = sides.reduce((a, b) => (b.length > a.length ? b : a));
+      const chosen = best.length > current.length + 0.5 ? best : current;
+      followSide.current = chosen.sign;
+      let position = chosen.reached;
       const allowed = Math.hypot(position[0] - x, position[1] - y, position[2] - z);
       const length = followBoom.update(selected, performance.now() / 1000, allowed);
       if (allowed > 1e-6 && length < allowed) {

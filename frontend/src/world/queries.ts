@@ -289,8 +289,10 @@ export function worldQueries(
     return !blocked;
   }
   /** Sweep a sphere from `segment.target` toward `segment.position` and return the
-   * furthest centre that keeps it out of the world: the nearest of a centre ray and eight
-   * rays on the sphere's rim, then an exact clearance check against nearby triangles. */
+   * furthest centre that keeps it out of the world: the nearest hit of a centre ray and of
+   * the eight rim rays whose start is not already behind geometry, then an exact clearance
+   * check that retreats toward the start. If no point keeps the full radius clear, the
+   * furthest point with a third of it is used rather than collapsing onto the start. */
   function sweep(segment: Segment, radius: number): Point {
     const from = new Vector3(...segment.target),
       to = new Vector3(...segment.position);
@@ -302,32 +304,35 @@ export function worldQueries(
     if (side.lengthSq() < 1e-6) side.set(1, 0, 0);
     side.normalize();
     const up = direction.clone().cross(side).normalize();
-    let free = length;
-    const offset = new Vector3();
-    for (let ray = 0; ray < 9; ray++) {
-      if (ray) {
-        const angle = ((ray - 1) * Math.PI) / 4;
-        offset
-          .copy(side)
-          .multiplyScalar(Math.cos(angle) * radius)
-          .addScaledVector(up, Math.sin(angle) * radius);
-      } else offset.set(0, 0, 0);
+    let free = hit(segment)?.distance ?? length;
+    const offset = new Vector3(),
+      start = new Vector3();
+    for (let ray = 0; ray < 8; ray++) {
+      const angle = (ray * Math.PI) / 4;
+      offset
+        .copy(side)
+        .multiplyScalar(Math.cos(angle) * radius)
+        .addScaledVector(up, Math.sin(angle) * radius);
+      start.copy(from).add(offset);
+      // A wall beside the head blocks this rim ray at its start; it says nothing about the boom.
+      if (hit({ target: segment.target, position: start.toArray() as Point })) continue;
       const found = hit({
-        target: from.clone().add(offset).toArray() as Point,
+        target: start.toArray() as Point,
         position: to.clone().add(offset).toArray() as Point,
       });
       if (found) free = Math.min(free, found.distance);
     }
-    // The rays bound the sphere's travel; back off its radius and confirm the final
-    // sphere is clear, retreating toward the start if a corner reaches into it.
-    // Without a hit the camera keeps its full boom.
-    let distance = free < length ? Math.max(0, free - radius) : length;
     const point = new Vector3();
-    for (let step = 0; step < 6 && distance > 0; step++) {
-      point.copy(from).addScaledVector(direction, distance);
-      if (clear(point, radius)) break;
-      distance *= 0.75;
-    }
+    const furthest = (clearance: number) => {
+      let distance = free < length ? Math.max(0, free - clearance) : length;
+      for (let step = 0; step < 8 && distance > 0.05; step++) {
+        point.copy(from).addScaledVector(direction, distance);
+        if (clear(point, clearance)) return distance;
+        distance *= 0.8;
+      }
+      return undefined;
+    };
+    const distance = furthest(radius) ?? furthest(radius / 3) ?? 0;
     return point.copy(from).addScaledVector(direction, distance).toArray() as Point;
   }
   return {
