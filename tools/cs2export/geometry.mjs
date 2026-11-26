@@ -152,7 +152,9 @@ export function geometry(
       lighting: world.lighting,
       entities: world.entities.filter((e) => !e.model || e.postprocessing),
     });
-    function submit(name, transform, tint, binding, fragment, entityIndex = -1) {
+    // `extra` holds a scene object's per-draw vertex streams (WorldNodeLoader.ExtraVertexStreams in
+    // VRF): each binds one buffer of its world node to one draw, replacing same-named fields.
+    function submit(name, transform, tint, binding, fragment, entityIndex = -1, extra = []) {
       if (!name) return;
       const model = scene.models[name];
       if (!model && scene.missingResources?.includes(name)) return;
@@ -162,8 +164,8 @@ export function geometry(
       const meshes =
         fragment === null && coarse.has(name) && model.coarse ? model.coarse : model.meshes;
       for (const mesh of meshes) {
-        const draws = fragment === null ? mesh.draws : [mesh.draws[fragment]];
-        for (const draw of draws) {
+        const draws = fragment === null ? mesh.draws.entries() : [[fragment, mesh.draws[fragment]]];
+        for (const [drawIndex, draw] of draws) {
           if (!draw) throw Error('Unknown fragment draw in ' + name);
           const matName = draw.m_material || draw.m_pMaterial;
           const mat = scene.materials[matName];
@@ -180,6 +182,24 @@ export function geometry(
                 stride: vb.stride,
                 bytes,
                 offset: f.offset + handle.m_nBindOffsetBytes,
+              });
+          }
+          for (const stream of extra) {
+            // A stream painted on another version of the model no longer matches its draw.
+            if (
+              stream.mesh !== mesh.index ||
+              stream.draw !== drawIndex ||
+              stream.buffer.count !== draw.m_nVertexCount
+            )
+              continue;
+            const bytes = read(stream.buffer.file);
+            // Its elements follow the draw's own vertices, before the base vertex.
+            for (const f of stream.buffer.fields)
+              fields.set(f.name + f.index, {
+                ...f,
+                stride: stream.buffer.stride,
+                bytes,
+                offset: f.offset - draw.m_nBaseVertex * stream.buffer.stride,
               });
           }
           const pos = fields.get('POSITION0'),
@@ -400,14 +420,29 @@ export function geometry(
       }
     }
     for (const node of world.nodes) {
-      for (const o of node.objects)
+      // Vertex paint streams by scene object. Baked vertex lighting streams are not drawn.
+      const streams = new Map();
+      for (const binding of node.extraBindings ?? []) {
+        if (binding.IsVertexLighting) continue;
+        const list = streams.get(binding.SceneObjectIndex) ?? [];
+        streams.set(binding.SceneObjectIndex, list);
+        list.push({
+          mesh: binding.SubSceneObject,
+          draw: binding.DrawCallIndex,
+          buffer: node.extraStreams[binding.BufferIndex],
+        });
+      }
+      node.objects.forEach((o, index) =>
         submit(
           o.m_renderableModel,
           root.clone().multiply(matrix(o.m_vTransform)),
           o.m_vTintColor?.[3] ? o.m_vTintColor : [1, 1, 1, 1],
           o,
           null,
-        );
+          -1,
+          streams.get(index),
+        ),
+      );
       for (const a of node.aggregates) {
         let t = 0;
         for (const f of a.m_aggregateMeshes) {

@@ -478,6 +478,9 @@ if (defaultGrade) {
 for (const [name, p] of Object.entries(scene.post))
   if (name !== 'default' || !defaultGrade) keep(p.lut);
 if (scene.visibility) keep(scene.visibility.file);
+const vertexLightingStreams = Object.values(scene.worlds)
+  .flatMap((world) => world.nodes)
+  .reduce((n, node) => n + (node.extraBindings ?? []).filter((b) => b.IsVertexLighting).length, 0);
 const batches = new Map();
 for (const r of records) {
   const bankIds = Object.keys(roles).map((role) => mats[r.mat].bindings[role]?.[0] ?? -1);
@@ -628,6 +631,11 @@ const manifest = {
     ...(simplified
       ? [
           `${Math.round(simplified)} triangles were simplified away (within ${simplifyError} inches of the source) to fit the download budget.`,
+        ]
+      : []),
+    ...(vertexLightingStreams
+      ? [
+          `${vertexLightingStreams} baked vertex-lighting streams are not drawn; those draws use probe lighting.`,
         ]
       : []),
     'Tool occluder materials are excluded from color draws. Static highest-detail model pose. F_VERTEX_ANIMATION, wind and entity I/O are not evaluated.',
