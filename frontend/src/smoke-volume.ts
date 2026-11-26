@@ -32,6 +32,7 @@ import {
   GRID,
   HALF_GRID,
   MAX_HOLES,
+  MAX_TUNNELS,
   SMOKE_STEP,
   type SmokeField,
   type SmokeSample,
@@ -288,6 +289,9 @@ export class SmokeVolumePass {
     age: { value: 0 },
     stepSize: { value: SMOKE_STEP },
     blasts: { value: Array.from({ length: MAX_HOLES }, () => new Vector4(0, 0, 0, -1)) },
+    tunnelFrom: { value: Array.from({ length: MAX_TUNNELS }, () => new Vector4()) },
+    tunnelTo: { value: Array.from({ length: MAX_TUNNELS }, () => new Vector4()) },
+    tunnelCount: { value: 0 },
   };
   private readonly marchMaterial = new ShaderMaterial({
     vertexShader: quadVertex,
@@ -640,6 +644,12 @@ export class SmokeVolumePass {
       if (hole) blast.set(...hole.position, hole.since);
       else blast.set(0, 0, 0, -1);
     });
+    const tunnels = (cloud.tunnels ?? []).slice(0, MAX_TUNNELS);
+    tunnels.forEach(({ from, to, age }, i) => {
+      u.tunnelFrom.value[i].set(...from, age);
+      u.tunnelTo.value[i].set(...to, 1);
+    });
+    u.tunnelCount.value = tunnels.length;
     u.lightVolume.value = this.bakeLight(gl, surface, cloud, lighting);
     if (!this.bindTarget(gl, target)) return;
     gl.render(this.quadScene, this.quadCamera);

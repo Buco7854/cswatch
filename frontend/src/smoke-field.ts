@@ -6,6 +6,8 @@ type SmokeBounds = { min: XYZ; max: XYZ };
 export type SmokeField = { texels: Uint8Array; bounds: SmokeBounds | null };
 /** A recorded HE detonation near a cloud and the seconds since it. */
 type SmokeHole = { position: XYZ; since: number };
+/** A recorded shot segment through the cloud and its age as a fraction of the tunnel's life. */
+export type SmokeTunnel = { from: XYZ; to: XYZ; age: number };
 export type SmokeSample = {
   origin: XYZ;
   scale: number;
@@ -18,6 +20,8 @@ export type SmokeSample = {
   /** Seconds since detonation; drives the noise drift and the reveal. */
   age: number;
   holes: SmokeHole[];
+  /** Recorded bullet paths through the cloud; none when absent. */
+  tunnels?: SmokeTunnel[];
 };
 
 // The recorded journal's 32-cell Source-space grid uses 20-inch voxels.
@@ -27,6 +31,11 @@ export const CELL = 20 * INCH;
 export const HALF_GRID = (GRID * CELL) / 2;
 export const HIGH_SUN: XYZ = [0.36, 0.86, -0.36];
 export const MAX_HOLES = 4;
+// The shader clears smoke within 20 inches of recent bullet paths (its
+// recorded-shot segments) and lets it close as the segment ages. The game
+// sets that age's duration outside the shaders; 1.5 s is an approximation.
+export const MAX_TUNNELS = 8;
+export const TUNNEL_SECONDS = 1.5;
 // The CS2 smoke shader (smoke_volume.vfx) samples every four inches and
 // treats each sample's opacity as a per-step alpha.
 export const SMOKE_STEP = 4 * INCH;
@@ -190,6 +199,24 @@ export function smokeBlastKeep(
   return keep;
 }
 
+/** How strongly recorded bullet paths push smoke aside at a point (0-1). */
+export function smokeTunnelPush(tunnels: readonly SmokeTunnel[], x: number, y: number, z: number) {
+  let push = 0;
+  for (const { from, to, age } of tunnels) {
+    const ab = [to[0] - from[0], to[1] - from[1], to[2] - from[2]];
+    const ap = [x - from[0], y - from[1], z - from[2]];
+    const along = clamp01(
+      (ap[0] * ab[0] + ap[1] * ab[1] + ap[2] * ab[2]) / (ab[0] ** 2 + ab[1] ** 2 + ab[2] ** 2 || 1),
+    );
+    const off = Math.hypot(ap[0] - ab[0] * along, ap[1] - ab[1] * along, ap[2] - ab[2] * along);
+    const reach = clamp01((off / INCH) * 0.05);
+    if (reach >= 1) continue;
+    const end = 1 - clamp01((Math.hypot(x - to[0], y - to[1], z - to[2]) / INCH) * 0.01);
+    push = Math.max(push, smoothstep(0, 1, 1 - clamp01(age + clamp01(reach + end))));
+  }
+  return push;
+}
+
 /** Density after the shader's reveal, ripple, lifetime and blast terms. */
 export function smokeSampleDensity(
   smoke: SmokeSample,
@@ -199,7 +226,10 @@ export function smokeSampleDensity(
   fromEye: number,
   toSurface: number,
 ) {
-  const density = smokeShaderDensity(smokeDensityAt(smoke, x, y, z));
+  const push = smoke.tunnels?.length ? smokeTunnelPush(smoke.tunnels, x, y, z) : 0;
+  const density = clamp01(
+    smokeShaderDensity(smokeDensityAt(smoke, x, y, z)) * (1 - push) - 0.05 * push,
+  );
   if (density <= 0.01) return 0;
   const span = GRID * CELL * smoke.scale;
   // Grid coordinates in Source axes.

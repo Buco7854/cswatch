@@ -1,6 +1,5 @@
 /** Bullet impacts on the world at the point a recorded shot meets the prepared map. */
 export const impactLifetime = 0.7;
-export const impactReach = 80;
 export const maxImpacts = 16;
 export const spritesPerImpact = 7;
 

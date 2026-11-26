@@ -56,6 +56,35 @@ test('a quarter-percentile cell of a grown cloud blocks a 2 m sightline and the 
   assert.ok(smokeShaderDensity(0.86) < 0.65);
 });
 
+test('a recorded bullet path tunnels through the cloud and closes as it ages', () => {
+  const field = densityField(new Uint8Array(GRID ** 3).fill(255));
+  const base = {
+    previous: field,
+    current: field,
+    origin: [0, 0, 0],
+    scale: 1,
+    mix: 1,
+    bounds: field.bounds,
+    amount: 1,
+    age: 7,
+    holes: [],
+  };
+  const from = [-10, 0.4, 0.1],
+    to = [10, 0.4, 0.1];
+  const along = (age: number) =>
+    smokeTransmittance({ ...base, tunnels: [{ from, to, age }] }, [-2, 0.4, 0.1], [2, 0.4, 0.1]);
+  assert.ok(along(0) > 0.9);
+  assert.ok(along(0.95) < 0.02);
+  // One metre to the side of the path the cloud is untouched.
+  assert.ok(
+    smokeTransmittance(
+      { ...base, tunnels: [{ from, to, age: 0 }] },
+      [-2, 1.4, 0.1],
+      [2, 1.4, 0.1],
+    ) < 0.02,
+  );
+});
+
 test('cellular noise is deterministic in world space and rises with the cloud age', () => {
   const at = (age) => smokeNoiseAt(1.3, 0.4, -2.2, age);
   assert.equal(at(2), at(2));

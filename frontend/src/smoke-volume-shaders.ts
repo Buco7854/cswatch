@@ -4,6 +4,7 @@ import {
   CELL,
   INCH,
   MAX_HOLES,
+  MAX_TUNNELS,
   MAX_SMOKE_STEPS,
   REVEAL_SECONDS,
   SMOKE_DENSITY_GAIN,
@@ -46,6 +47,9 @@ export const marchFragment = /* glsl */ `
   uniform vec3 origin, boxMin, boxMax, sunDirection, sunColor;
   uniform float fieldMix, amount, fieldScale, age, stepSize;
   uniform vec4 blasts[${MAX_HOLES}];
+  // Recorded bullet segments: start and age (0-1), end.
+  uniform vec4 tunnelFrom[${MAX_TUNNELS}], tunnelTo[${MAX_TUNNELS}];
+  uniform int tunnelCount;
   varying vec2 localUv;
   ${depthFunctions}
 
@@ -87,6 +91,18 @@ export const marchFragment = /* glsl */ `
       vec3 cell = relative / span3 + 0.5;
       float density = ${glslFloat(SMOKE_DENSITY_GAIN)} *
         sqrt(max(mix(texture(previousField, cell).r, texture(currentField, cell).r, fieldMix), 0.0));
+      float push = 0.0;
+      for (int j = 0; j < ${MAX_TUNNELS}; ++j) {
+        if (j >= tunnelCount) break;
+        vec3 ab = tunnelTo[j].xyz - tunnelFrom[j].xyz, ap = position - tunnelFrom[j].xyz;
+        float along = clamp(dot(ap, ab) / max(dot(ab, ab), 1e-6), 0.0, 1.0);
+        float reach = clamp(length(ap - ab * along) / inch * 0.05, 0.0, 1.0);
+        if (reach >= 1.0) continue;
+        float nearEnd = 1.0 - clamp(distance(position, tunnelTo[j].xyz) / inch * 0.01, 0.0, 1.0);
+        push = max(push, smoothstep(0.0, 1.0,
+          1.0 - clamp(tunnelFrom[j].w + clamp(reach + nearEnd, 0.0, 1.0), 0.0, 1.0)));
+      }
+      density = clamp(density * (1.0 - push) - 0.05 * push, 0.0, 1.0);
       if (density <= 0.01) continue;
       // Grid coordinates in Source axes (x, -z, y).
       vec3 grid = vec3(cell.x, 1.0 - cell.z, cell.y);
@@ -128,7 +144,7 @@ export const marchFragment = /* glsl */ `
       light.rgb *= 3.14159265;
       float facing = pow(clamp(dot(normalize(relative + vec3(0.0, 0.0001, 0.0)), sunDirection) * 0.8 + 0.2,
                                0.0, 1.0), 2.0) * light.a;
-      vec3 color = (light.rgb * (1.0 - value) * 0.5 + sunColor * facing) * noise;
+      vec3 color = (light.rgb * (1.0 - value) * 0.5 + sunColor * facing * (1.0 - push)) * noise;
       // The material's g_vSmokeColor is white: its luminance-preserving tint
       // pulls the probe light halfway to grey.
       color = mix(color, vec3(dot(color, vec3(0.2125, 0.7154, 0.0721))), 0.5);

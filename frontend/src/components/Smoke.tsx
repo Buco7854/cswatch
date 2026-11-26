@@ -10,6 +10,9 @@ import { useReducedMotion } from '../reduced-motion';
 import { useSmokeDensity } from '../smoke-render-state';
 import {
   HIGH_SUN,
+  INCH,
+  MAX_TUNNELS,
+  TUNNEL_SECONDS,
   activeSmokeHoles,
   analyticSmokeField,
   indexSmokeBlasts,
@@ -18,8 +21,31 @@ import {
   unionSmokeBounds,
   type SmokeField,
   type SmokeSample,
+  type SmokeTunnel,
 } from '../smoke-field';
 import { SmokeVolumePass, type SmokeDraw, type SmokeLighting } from '../smoke-volume';
+import { indexWeaponFire } from '../weapon-fire';
+import { createShotRayCache } from '../shot-tracer';
+import { recordedShotRay, type ShotRay } from '../shot-ray';
+import type { WorldQueries } from '../world/queries';
+
+/** Whether a segment passes through an axis-aligned box (slab test). */
+function crosses(from: readonly number[], to: readonly number[], min: number[], max: number[]) {
+  let enter = 0,
+    exit = 1;
+  for (let axis = 0; axis < 3; axis++) {
+    const d = to[axis] - from[axis];
+    if (Math.abs(d) < 1e-9) {
+      if (from[axis] < min[axis] || from[axis] > max[axis]) return false;
+      continue;
+    }
+    const a = (min[axis] - from[axis]) / d,
+      b = (max[axis] - from[axis]) / d;
+    enter = Math.max(enter, Math.min(a, b));
+    exit = Math.min(exit, Math.max(a, b));
+  }
+  return enter <= exit;
+}
 
 function VolumePass({
   draws,
@@ -105,8 +131,10 @@ export default function Smoke({
   xray,
   labelSmoke,
   sun,
+  queries,
   onUnavailable,
 }: {
+  queries?: Pick<WorldQueries, 'hit'> | null;
   data: Playback;
   zones: UtilityZone[];
   tick: number;
@@ -162,6 +190,36 @@ export default function Smoke({
     })),
   ];
   const blasts = useMemo(() => indexSmokeBlasts(data.events), [data.events]);
+  const shots = useMemo(() => indexWeaponFire(data), [data.events, data.players, data.sample]);
+  const rays = useMemo(() => createShotRayCache<ShotRay | null>(256), [queries, shots]);
+  // Recorded bullet paths of the last 1.5 s that cross a cloud, youngest first.
+  const tunnelsFor = (cloud: SmokeDraw): SmokeTunnel[] => {
+    if (!queries) return [];
+    const pad = 20 * INCH;
+    const min = cloud.bounds.min.map((v, i) => cloud.origin[i] + v * cloud.scale - pad);
+    const max = cloud.bounds.max.map((v, i) => cloud.origin[i] + v * cloud.scale + pad);
+    const found: SmokeTunnel[] = [];
+    for (const [id, list] of shots) {
+      let low = 0,
+        high = list.length;
+      while (low < high) {
+        const middle = (low + high) >>> 1;
+        if (list[middle].tick <= tick) low = middle + 1;
+        else high = middle;
+      }
+      for (let i = low - 1; i >= 0; i--) {
+        const since = (tick - list[i].tick) / rate;
+        if (since >= TUNNEL_SECONDS) break;
+        if (list[i].weapon === 'taser') continue;
+        const ray = rays.resolve(id, list[i].tick, () =>
+          recordedShotRay(data, id, list[i].tick, queries),
+        );
+        if (ray && crosses(ray.from, ray.to, min, max))
+          found.push({ from: ray.from, to: ray.to, age: since / TUNNEL_SECONDS });
+      }
+    }
+    return found.sort((a, b) => a.age - b.age).slice(0, MAX_TUNNELS);
+  };
   const analytic = useMemo(() => {
     let cached: SmokeField | undefined;
     return () => (cached ??= analyticSmokeField());
@@ -201,8 +259,10 @@ export default function Smoke({
       // Reduced motion holds the noise still; the recorded density still evolves.
       age: reducedMotion ? Math.min(age, 1) : age,
       holes: [],
+      tunnels: [],
     };
     cloud.holes = activeSmokeHoles(blasts, cloud, start, tick, rate);
+    cloud.tunnels = tunnelsFor(cloud);
     draws.push(cloud);
   }
   // The pass stays mounted between smokes so its programs and targets survive.

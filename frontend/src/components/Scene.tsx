@@ -1061,6 +1061,7 @@ function World({
               xray={settings.xray}
               sun={sun}
               labelSmoke={labelSmoke}
+              queries={nativeWorld?.queries ?? null}
             />
           )}
           {!preview && (

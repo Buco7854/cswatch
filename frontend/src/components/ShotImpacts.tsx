@@ -7,13 +7,10 @@ import {
   PlaneGeometry,
   ShaderMaterial,
 } from 'three';
-import { frameAt, poseTimingAt } from '../playback';
-import { playerPose } from '../player-pose';
-import { firstPersonView } from '../pov-camera';
+import { recordedShotRay } from '../shot-ray';
 import { createShotRayCache } from '../shot-tracer';
 import {
   impactLifetime,
-  impactReach,
   impactSprites,
   impactSurface,
   maxImpacts,
@@ -81,20 +78,6 @@ const fragmentShader = /* glsl */ `
     gl_FragColor = vec4(vColor * displayScale * alpha, alpha);
   }
 `;
-
-function viewAt(data: Playback, id: string, at: number) {
-  const span = frameAt(data, at);
-  const from = span.frame.players.find((player) => player.id === id);
-  if (!from?.alive) return;
-  return firstPersonView(
-    playerPose(
-      from,
-      span.next.players.find((player) => player.id === id),
-      span.alpha,
-      poseTimingAt(data, span, id),
-    ),
-  );
-}
 
 type Contact = {
   point: [number, number, number];
@@ -179,23 +162,12 @@ export default function ShotImpacts({
         if (age >= impactLifetime) break;
         if (shot.weapon === 'taser' || shot.tick < data.frames[0].tick) continue;
         const contact = contacts.resolve(id, shot.tick, () => {
-          const view = viewAt(data, id, shot.tick);
-          if (!view) return null;
-          const d = view.target.map((value, axis) => value - view.position[axis]);
-          const length = Math.hypot(...d);
-          if (!length) return null;
-          const direction = d.map((value) => value / length) as [number, number, number];
-          const end = view.position.map((value, axis) => value + direction[axis] * impactReach) as [
-            number,
-            number,
-            number,
-          ];
-          const found = queries.hit({ target: view.position, position: end });
-          if (!found) return null;
+          const ray = recordedShotRay(data, id, shot.tick, queries);
+          if (!ray || ray.material === undefined) return null;
           return {
-            point: found.point.toArray() as [number, number, number],
-            direction,
-            surface: impactSurface(materials[found.material]?.name),
+            point: ray.to,
+            direction: ray.direction,
+            surface: impactSurface(materials[ray.material]?.name),
           };
         });
         if (contact)
