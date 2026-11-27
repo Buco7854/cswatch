@@ -7,7 +7,14 @@ import type { Playback } from './types';
 type Point = [number, number, number];
 /** A recorded shot as it leaves the recorded eye along the recorded aim, ending
  * where it meets the prepared map (scene metres). */
-export type ShotRay = { from: Point; to: Point; direction: Point; material?: number };
+export type ShotRay = {
+  from: Point;
+  to: Point;
+  direction: Point;
+  material?: number;
+  /** World-space normal of the surface hit. */
+  normal?: Point;
+};
 export const shotReach = 80;
 
 export function recordedShotRay(
@@ -38,5 +45,6 @@ export function recordedShotRay(
     to: found ? (found.point.toArray() as Point) : far,
     direction,
     ...(found ? { material: found.material } : {}),
+    ...(found?.normal ? { normal: found.normal.toArray() as Point } : {}),
   };
 }

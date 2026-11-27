@@ -30,10 +30,20 @@ export function useEffectTextures(enabled: boolean, wanted: readonly string[]) {
       for (const id of key.split(',')) {
         const item = catalog.items[id];
         if (!item || item.url !== `/api/effect-assets/${id}.png`) continue;
-        const payload = await fetch(item.url, {
+        // The service serves two atlases at a time; a busy reply names when to retry.
+        let payload = await fetch(item.url, {
           credentials: 'same-origin',
           signal: controller.signal,
         });
+        for (let attempt = 0; payload.status === 429 && attempt < 5; attempt++) {
+          const wait = Math.min(5, Math.max(1, Number(payload.headers.get('retry-after')) || 2));
+          await new Promise((done) => setTimeout(done, wait * 1000));
+          if (!active) return;
+          payload = await fetch(item.url, {
+            credentials: 'same-origin',
+            signal: controller.signal,
+          });
+        }
         if (!payload.ok) continue;
         const bytes = await payload.arrayBuffer();
         if (bytes.byteLength !== item.bytes || !crypto?.subtle) continue;

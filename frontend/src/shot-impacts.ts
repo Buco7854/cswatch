@@ -118,3 +118,23 @@ export function impactSprites(
   }
   return sprites.slice(0, spritesPerImpact);
 }
+
+/** The official surface property a material name most likely carries, with its bullet impact
+ * sound (surfaceproperties.vsurf) and impact decal group (surfaceproperties_impact_effects.txt).
+ * The exported pack has no surface properties, so the name decides, defaulting to concrete. */
+export function impactSurfaceProperty(name: string | undefined) {
+  const value = (name ?? '').toLowerCase();
+  const row = (sound: string, decal: string) => ({ sound, decal });
+  if (/grate|chainlink|fence/.test(value)) return row('MetalGrate.BulletImpact', 'Impact.Metal');
+  if (/vent/.test(value)) return row('MetalVehicle.BulletImpact', 'Impact.Vent');
+  if (impactSurface(name) === 'metal') return row('SolidMetal.BulletImpact', 'Impact.Metal');
+  if (impactSurface(name) === 'glass') return row('Glass.BulletImpact', 'Impact.Glass');
+  if (impactSurface(name) === 'wood') return row('Wood.BulletImpact', 'Impact.Wood');
+  if (/sand/.test(value)) return row('Sand.BulletImpact', 'Impact.Dirt');
+  if (/grass/.test(value)) return row('Grass.BulletImpact', 'Impact.Dirt');
+  if (impactSurface(name) === 'soil') return row('Dirt.BulletImpact', 'Impact.Dirt');
+  if (/tile/.test(value)) return row('Tile.BulletImpact', 'Impact.Tile');
+  if (/plaster|stucco|drywall/.test(value)) return row('Concrete.BulletImpact', 'Impact.Plaster');
+  if (/rock|stone|cliff/.test(value)) return row('Concrete.BulletImpact', 'Impact.Rock');
+  return row('Concrete.BulletImpact', 'Impact.Concrete');
+}

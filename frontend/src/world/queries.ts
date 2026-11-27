@@ -173,8 +173,14 @@ export function worldQueries(
     if (!length) return null;
     ray.direction.divideScalar(length);
     let nearest = length + margin;
-    let result: { point: Vector3; distance: number; entity: number; material: number } | null =
-      null;
+    let result: {
+      point: Vector3;
+      distance: number;
+      entity: number;
+      material: number;
+      /** World-space unit normal of the hit triangle. */
+      normal?: Vector3;
+    } | null = null;
     const testPoint = new Vector3(),
       local = new Ray();
     function visit(node: Node) {
@@ -202,6 +208,7 @@ export function worldQueries(
           distance,
           entity: leaf.entity,
           material: leaf.materials[contact.faceIndex!],
+          normal: contact.face?.normal.clone().transformDirection(leaf.transform).normalize(),
         };
       } else if (node.left) {
         visit(node.left);
@@ -209,7 +216,13 @@ export function worldQueries(
       }
     }
     visit(root);
-    return result as { point: Vector3; distance: number; entity: number; material: number } | null;
+    return result as {
+      point: Vector3;
+      distance: number;
+      entity: number;
+      material: number;
+      normal?: Vector3;
+    } | null;
   }
   function fork(clearance = 0.24) {
     let cachedRevision = -1;

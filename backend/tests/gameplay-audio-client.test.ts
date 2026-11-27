@@ -71,6 +71,10 @@ test('only nearby rendered triangles produce a spatial contact from a recorded s
       Math.abs(hit.x) < 0.001 &&
       Math.abs(hit.z) < 0.001,
   );
+  assert.equal(hit.material, undefined);
+  // A trace that names the contact's material passes it on for the surface's impact sound.
+  const named = Object.assign(query.trace.fork(0), { surface: () => 'metal/metal_grate_02' });
+  assert.equal(nearWallContact(cue, named)?.material, 'metal/metal_grate_02');
   assert.equal(nearWallContact({ ...cue, shotAngles: { pitch: 0, yaw: 0 } }, trace), undefined);
   assert.equal(nearWallContact({ ...cue, position: { x: 0, y: -1000, z: 0 } }, trace), undefined);
   assert.throws(() =>

@@ -3,6 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import {
   AdditiveBlending,
   CustomBlending,
+  DoubleSide,
   DstColorFactor,
   Group,
   InstancedBufferAttribute,
@@ -25,7 +26,7 @@ export type SpriteLayer = {
   blend: 'add' | 'alpha' | 'mod2x';
   /** Camera-facing, flat on the ground, upright about world up, or stretched along motion
    * (C_OP_RenderTrails). */
-  orientation: 'camera' | 'ground' | 'upright' | 'stretch';
+  orientation: 'camera' | 'ground' | 'upright' | 'stretch' | 'surface';
   /** Authored overbright factor. Lit (alpha) layers also take the display scale. */
   gain: number;
   /** Most particles this layer draws. */
@@ -63,7 +64,7 @@ const vertexShader = /* glsl */ `
   attribute vec3 aCenter, aColor;
   attribute vec4 aParams; // size, rotation, alpha, frame
   attribute vec4 aAxis; // stretch direction and length
-  uniform int orientation; // 0 ground, 1 camera, 2 upright, 3 stretch
+  uniform int orientation; // 0 ground, 1 camera, 2 upright, 3 stretch, 4 surface
   uniform vec3 sheet; // columns, cell / width, cell / height
   varying vec2 vUv;
   varying vec4 vColor;
@@ -87,6 +88,13 @@ const vertexShader = /* glsl */ `
       vec3 side = normalize(vec3(toCamera.z, 0.0, -toCamera.x) + vec3(1e-5, 0.0, 0.0));
       gl_Position = projectionMatrix * viewMatrix *
         vec4(aCenter + side * turned.x + vec3(0.0, 1.0, 0.0) * turned.y, 1.0);
+    } else if (orientation == 4) {
+      // Flat on the surface whose normal is aAxis (decals).
+      vec3 normal = normalize(aAxis.xyz);
+      vec3 tangent = normalize(cross(abs(normal.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0), normal));
+      vec3 bitangent = cross(normal, tangent);
+      gl_Position = projectionMatrix * viewMatrix *
+        vec4(aCenter + tangent * turned.x + bitangent * turned.y, 1.0);
     } else {
       // The texture's vertical runs back along the screen-space direction of travel.
       vec4 center = viewMatrix * vec4(aCenter, 1.0);
@@ -184,7 +192,7 @@ function pool(layer: SpriteLayer, textures: EffectTextures, quad: PlaneGeometry,
     uniforms: {
       map: { value: entry.texture },
       orientation: {
-        value: { ground: 0, camera: 1, upright: 2, stretch: 3 }[layer.orientation],
+        value: { ground: 0, camera: 1, upright: 2, stretch: 3, surface: 4 }[layer.orientation],
       },
       sheet: { value: [sheet.columns, sheet.cell / sheet.width, sheet.cell / sheet.height] },
       mode: { value: { add: 0, mod2x: 1, alpha: 2 }[layer.blend] },
@@ -201,6 +209,8 @@ function pool(layer: SpriteLayer, textures: EffectTextures, quad: PlaneGeometry,
       },
     },
     transparent: true,
+    // Flat sprites are seen from either side (decals, ground fire).
+    side: DoubleSide,
     depthWrite: false,
     depthTest: !layer.overlay,
     premultipliedAlpha: layer.blend !== 'mod2x',
@@ -211,7 +221,7 @@ function pool(layer: SpriteLayer, textures: EffectTextures, quad: PlaneGeometry,
           ? CustomBlending
           : NormalBlending,
     ...(layer.blend === 'mod2x' ? { blendSrc: DstColorFactor, blendDst: SrcColorFactor } : {}),
-    polygonOffset: layer.orientation === 'ground',
+    polygonOffset: layer.orientation === 'ground' || layer.orientation === 'surface',
     polygonOffsetFactor: -2,
     polygonOffsetUnits: -2,
     toneMapped: false,

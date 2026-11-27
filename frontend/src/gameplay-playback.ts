@@ -25,7 +25,12 @@ export function distanceGain(curve: readonly (readonly number[])[], inches: numb
 }
 import { GameplaySoundBuffers } from './gameplay-sound-assets';
 import { ViewerAudio } from './viewer-audio';
-import { nearWallContact, wallImpactSample, type WallTrace } from './shot-wall-audio';
+import {
+  nearWallContact,
+  wallImpactSample,
+  wallImpactSampleFor,
+  type WallTrace,
+} from './shot-wall-audio';
 
 /** Recorded gameplay and optional nearby wall contacts share the playback clock and source limits. */
 export class GameplayPlayback {
@@ -129,20 +134,23 @@ export class GameplayPlayback {
       for (const { cue, delay } of plan.sounds) {
         if (!cue.shotAngles) continue;
         if (++queries > 4 || performance.now() > deadline) break;
-        const position = nearWallContact(cue, wallTrace);
-        if (position)
+        const contact = nearWallContact(cue, wallTrace);
+        if (contact) {
+          const { material, ...position } = contact;
+          const surface = wallImpactSampleFor(material);
           contacts.push({
             cue: {
               id: cue.id + '-wall',
               tick: cue.tick,
               category: cue.category,
-              soundId: wallImpactSample,
+              soundId: this.catalog.items[surface] ? surface : wallImpactSample,
               selection: cue.selection,
               evidence: cue.evidence,
               position,
             },
             delay,
           });
+        }
       }
       plan.sounds.push(...contacts);
     }

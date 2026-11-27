@@ -1,8 +1,17 @@
 import type { GameplaySoundCue } from '../../shared/gameplay-sounds';
 import registry from '../../shared/gameplay-sounds.json';
 import type { CameraView } from './pov-camera';
+import { impactSurfaceProperty } from './shot-impacts';
 
-export type WallTrace = (segment: CameraView) => CameraView['position'];
+const events = registry.events as Record<string, { soundId: string } | undefined>;
+/** The surface's official bullet impact sample, or the default one. */
+export const wallImpactSampleFor = (material: string | undefined) =>
+  events[impactSurfaceProperty(material).sound]?.soundId ?? wallImpactSample;
+
+export type WallTrace = ((segment: CameraView) => CameraView['position']) & {
+  /** The authored material name of the first world triangle along the segment. */
+  surface?: (segment: CameraView) => string | undefined;
+};
 export const wallImpactSample = registry.events['Default.BulletImpact'].soundId;
 const metresPerInch = 0.0254;
 const reach = 12;
@@ -23,5 +32,10 @@ export function nearWallContact(cue: GameplaySoundCue, trace: WallTrace) {
   ];
   const hit = trace({ target: origin, position: end });
   if (hit === end) return;
-  return { x: hit[0] / metresPerInch, y: -hit[2] / metresPerInch, z: hit[1] / metresPerInch };
+  return {
+    x: hit[0] / metresPerInch,
+    y: -hit[2] / metresPerInch,
+    z: hit[1] / metresPerInch,
+    material: trace.surface?.({ target: origin, position: end }),
+  };
 }

@@ -133,6 +133,7 @@ import { type MapSun } from '../actor-sun';
 import { indexBombShockwaves, type BombShockwaveSample } from '../bomb-shockwave';
 import GrenadeBurst from './GrenadeBurst';
 import SpentBrass from './SpentBrass';
+import BulletDecals from './BulletDecals';
 import DetonationEffects, { detonationTextures } from './DetonationEffects';
 import { fireTextures } from './InfernoEffects';
 import { useEffectTextures } from '../effect-textures';
@@ -537,10 +538,19 @@ function World({
     () => (traceMap && nativeWorld?.queries.trace) || null,
     [traceMap, nativeWorld],
   );
-  const wallAudioTrace = useMemo(
-    () => (traceWallAudio ? followTrace?.fork(0) : undefined),
-    [followTrace, traceWallAudio],
-  );
+  const wallAudioTrace = useMemo(() => {
+    const trace = traceWallAudio ? followTrace?.fork(0) : undefined;
+    const queries = nativeWorld?.queries,
+      materials = nativeWorld?.manifest.materials;
+    if (!trace || !queries || !materials) return trace;
+    // The contact's material picks the surface's official bullet impact sound.
+    return Object.assign(trace, {
+      surface: (segment: Parameters<typeof trace>[0]) => {
+        const hit = queries.hit(segment);
+        return hit ? materials[hit.material]?.name : undefined;
+      },
+    });
+  }, [followTrace, traceWallAudio, nativeWorld]);
   const tracerTrace = useMemo(
     () => (tracers ? followTrace?.fork() : undefined),
     [followTrace, tracers],
@@ -1043,6 +1053,15 @@ function World({
               tick={tick}
               pov={mode === 'pov' ? selected : undefined}
               trace={tracerTrace}
+            />
+          )}
+          {!preview && nativeWorld && settings.shotEffects && (
+            <BulletDecals
+              data={data}
+              tick={tick}
+              queries={nativeWorld.queries}
+              materials={nativeWorld.manifest.materials}
+              displayScale={nativeWorld.native.displayScale}
             />
           )}
           {!preview && nativeWorld && (

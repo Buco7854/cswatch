@@ -60,6 +60,42 @@
     "flash-flare": {
       "source": "materials/particle/particle_flares/aircraft_white.vtex_c",
       "use": "explosion_flashbang (its aircraft_blue sheet is absent from the depot; tinted to the system colour)"
+    },
+    "decal-concrete": {
+      "source": "materials/decals/concrete/bullethole_concrete_1_color_psd_5d8baebd.vtex_c",
+      "use": "Impact.Concrete: bullet hole decal (the group's first material colour)"
+    },
+    "decal-metal": {
+      "source": "materials/decals/metal/bullethole_metal_1_color_psd_dd6383dc.vtex_c",
+      "use": "Impact.Metal: bullet hole decal (the group's first material colour)"
+    },
+    "decal-wood": {
+      "source": "materials/decals/wood/wood_1_decal_color_tga_4f3e1229.vtex_c",
+      "use": "Impact.Wood: bullet hole decal (the group's first material colour)"
+    },
+    "decal-glass": {
+      "source": "materials/decals/glass/shot1_color_psd_b0f6b784.vtex_c",
+      "use": "Impact.Glass: bullet hole decal (the group's first material colour)"
+    },
+    "decal-tile": {
+      "source": "materials/decals/tile/tile1_color_psd_f629dbe2.vtex_c",
+      "use": "Impact.Tile: bullet hole decal (the group's first material colour)"
+    },
+    "decal-dirt": {
+      "source": "materials/decals/dirt/dirt_dark1_color_psd_ec087559.vtex_c",
+      "use": "Impact.Dirt: bullet hole decal (the group's first material colour)"
+    },
+    "decal-plaster": {
+      "source": "materials/decals/plaster/plaster1_bullet_color_psd_ff7647c0.vtex_c",
+      "use": "Impact.Plaster: bullet hole decal (the group's first material colour)"
+    },
+    "decal-rock": {
+      "source": "materials/decals/rock/rock1_color_psd_4536ec56.vtex_c",
+      "use": "Impact.Rock: bullet hole decal (the group's first material colour)"
+    },
+    "decal-vent": {
+      "source": "materials/decals/metal/metal1_thin_bullet_color_psd_d9cbfde6.vtex_c",
+      "use": "Impact.Vent: bullet hole decal (the group's first material colour)"
     }
   }
 }
