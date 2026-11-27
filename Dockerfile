@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:24-bookworm-slim AS frontend
+FROM node:26-bookworm-slim AS frontend
 WORKDIR /build/frontend
 COPY frontend/package*.json ./
 RUN npm ci
@@ -7,7 +7,7 @@ COPY frontend/ ./
 COPY shared/ /build/shared/
 RUN npm run build
 
-FROM node:24-bookworm-slim AS backend
+FROM node:26-bookworm-slim AS backend
 WORKDIR /build/backend
 ENV ONNXRUNTIME_NODE_INSTALL=skip
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev && rm -rf /var/lib/apt/lists/*
@@ -22,7 +22,7 @@ RUN npm run build && npm prune --omit=dev
 
 # Optional operator asset tooling. This target never contains the app's native
 # parser, database/auth/provider dependencies or proprietary game resources.
-FROM node:24-bookworm-slim AS native-export
+FROM node:26-bookworm-slim AS native-export
 WORKDIR /build/tools/cs2export
 ENV DOTNET_ROOT=/opt/dotnet DOTNET_CLI_TELEMETRY_OPTOUT=1 PATH=/opt/dotnet:$PATH
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates libicu72 && rm -rf /var/lib/apt/lists/* \
@@ -37,7 +37,7 @@ COPY tools/cs2export/*.cs tools/cs2export/*.csproj tools/cs2export/global.json .
 RUN dotnet publish -c Release -r linux-x64 --self-contained false -o /export
 
 # Phone texture encoder: Arm astc-encoder 5.7.1 (Apache-2.0), built from a checksum-pinned tag.
-FROM node:24-bookworm-slim AS astcenc
+FROM node:26-bookworm-slim AS astcenc
 WORKDIR /build
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates cmake make g++ && rm -rf /var/lib/apt/lists/* \
     && curl -fsSL https://codeload.github.com/ARM-software/astc-encoder/tar.gz/refs/tags/5.7.1 -o astc.tgz \
@@ -55,7 +55,7 @@ RUN curl -fsSL https://codeload.github.com/elasota/ConvectionKernels/tar.gz/3504
        -o /opt/cs2bcenc/libcs2bcenc.so ConvectionKernels-350416daa4e98f1c17ffc273b134d0120a2ef230/ConvectionKernels_SingleFile.cpp bcenc.cpp \
     && cp ConvectionKernels-350416daa4e98f1c17ffc273b134d0120a2ef230/LICENSE.txt /opt/cs2bcenc/LICENSE.txt
 
-FROM node:24-bookworm-slim AS asset-build
+FROM node:26-bookworm-slim AS asset-build
 WORKDIR /build
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev && rm -rf /var/lib/apt/lists/*
 COPY tools/assets/package*.json ./tools/assets/
@@ -66,7 +66,7 @@ COPY shared/map-previews.json shared/equipment-models.json shared/map-breakables
 RUN node tools/assets/build-network-deny.mjs --output tools/assets/bin/asset-network-deny \
     && node -e "const fs=require('node:fs'); for (const name of fs.readdirSync('tools/assets')) if (name.endsWith('.test.mjs') || name === 'update-body-sounds.mjs') fs.unlinkSync('tools/assets/'+name)"
 
-FROM node:24-bookworm-slim AS assets
+FROM node:26-bookworm-slim AS assets
 ENV NODE_ENV=production MAP_ASSETS_DIR=/map-assets MAP_JOBS_DIR=/map-jobs MAP_CACHE_DIR=/map-cache MAP_CATALOG_FILE=/map-catalog/catalog.json
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libicu72 util-linux unzip tar gzip && rm -rf /var/lib/apt/lists/*
@@ -105,7 +105,7 @@ LABEL org.opencontainers.image.source="https://github.com/Buco7854/cswatch" \
 CMD ["node", "tools/assets/map-worker.mjs"]
 
 # Keep the application runtime last: an ordinary docker build remains the web image.
-FROM node:24-bookworm-slim AS runtime
+FROM node:26-bookworm-slim AS runtime
 ENV NODE_ENV=production DATA_DIR=/data FRONTEND_DIR=/app/frontend PORT=8000
 WORKDIR /app
 COPY --from=backend --chown=node:node /build/backend/dist ./dist
