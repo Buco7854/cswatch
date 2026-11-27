@@ -66,6 +66,24 @@ uniform bool hasActorShadow;
 uniform highp sampler2DShadow actorShadow;
 uniform mat4 actorProjection;
 uniform float actorBias;
+// Transient particle lights (Source inches and radius, then linear colour), unshadowed as
+// C_OP_RenderStandardLight draws them.
+uniform vec4 effectLights[8];
+uniform int effectLightCount;
+
+vec3 effectLighting(vec3 normal) {
+  vec3 sum = vec3(0);
+  for (int i = 0; i < 4; i++) {
+    if (i >= effectLightCount) break;
+    vec4 light = effectLights[2 * i];
+    vec3 toLight = light.xyz - worldPosition;
+    float distanceSquared = max(dot(toLight, toLight), 1.);
+    float falloff = clamp(1. - distanceSquared / (light.w * light.w), 0., 1.);
+    sum += effectLights[2 * i + 1].rgb * falloff * falloff *
+           max(0., dot(normal, toLight * inversesqrt(distanceSquared)));
+  }
+  return sum;
+}
 
 float actorVisibility() {
   if (!hasActorShadow) return 1.0;
@@ -381,7 +399,8 @@ void main() {
   fresnel += fresnel * averageSpecular * (1. - lut.y) / (1. - averageSpecular * (1. - lut.y));
   if (materialRow(16).x == 0.)
     fresnel = vec3(0);
-  vec3 lit = albedo.rgb * (1. - metalness) * (light * occlusion + direct) +
+  vec3 effect = effectLightCount > 0 ? effectLighting(normal) : vec3(0);
+  vec3 lit = albedo.rgb * (1. - metalness) * (light * occlusion + direct + effect) +
              environmentLight * fresnel * occlusion;
   if (materialRow(16).y > 0.) {
     vec3 halfVector = normalize(sunDir + viewDirection);

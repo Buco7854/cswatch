@@ -279,3 +279,54 @@ export function fireParticles(layerId: FireLayerId, points: readonly FirePoint[]
   }
   return out;
 }
+
+const fireLightColor = [242, 211, 147].map((c) => {
+  const v = c / 255;
+  return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+});
+
+/** molotov_groundfire_lighting: one warm, flickering, unshadowed light per burning area. Its
+ * radius is twice the snapshot point's; here the area's extent plus a margin stands in for it.
+ * Points within 300 inches of an area's first point share its light. */
+export function fireLights(points: readonly FirePoint[], time: number) {
+  const areas: { first: FirePoint; members: FirePoint[] }[] = [];
+  for (const point of points) {
+    if (point.from > time || point.until <= time) continue;
+    const area = areas.find(
+      ({ first }) =>
+        Math.hypot(
+          first.position[0] - point.position[0],
+          first.position[1] - point.position[1],
+          first.position[2] - point.position[2],
+        ) <
+        300 * INCH,
+    );
+    if (area) area.members.push(point);
+    else areas.push({ first: point, members: [point] });
+  }
+  return areas.slice(0, 4).map(({ first, members }) => {
+    const center = [0, 1, 2].map(
+      (axis) => members.reduce((sum, point) => sum + point.position[axis], 0) / members.length,
+    );
+    const extent = Math.max(
+      ...members.map((point) =>
+        Math.hypot(point.position[0] - center[0], point.position[2] - center[2]),
+      ),
+    );
+    const ignition = Math.min(...members.map((point) => point.from));
+    const seed = first.seed * 7.31;
+    const flicker =
+      0.8 + 0.1 * Math.sin(time * 25.1 + seed) + 0.1 * Math.sin(time * 14.4 + seed * 1.7);
+    const strength =
+      Math.min(1, (time - ignition) / 0.5) * Math.min(1, members.length / 3) * flicker;
+    return {
+      position: [center[0], center[1] + 24 * INCH, center[2]] as const,
+      radius: Math.min(480, 2 * (extent / INCH + 60)),
+      color: fireLightColor.map((c) => c * strength) as unknown as readonly [
+        number,
+        number,
+        number,
+      ],
+    };
+  });
+}

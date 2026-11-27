@@ -132,6 +132,9 @@ import { indexPovEvidence, povEvidenceAt } from '../pov-actions';
 import { type MapSun } from '../actor-sun';
 import { indexBombShockwaves, type BombShockwaveSample } from '../bomb-shockwave';
 import GrenadeBurst from './GrenadeBurst';
+import DetonationEffects, { detonationTextures } from './DetonationEffects';
+import { fireTextures } from './InfernoEffects';
+import { useEffectTextures } from '../effect-textures';
 import InfernoEffects from './InfernoEffects';
 import BombShockwave from './BombShockwave';
 import { useReducedMotion } from '../reduced-motion';
@@ -1111,6 +1114,7 @@ function World({
     </NativePasses.Provider>
   );
 }
+const effectTextureIds = [...fireTextures, ...detonationTextures];
 function UtilityLayer({
   data,
   tick,
@@ -1134,6 +1138,16 @@ function UtilityLayer({
 }) {
   const { zones: utility, projectiles, bombWave } = utilityState;
   const reducedMotion = useReducedMotion();
+  // Official particle atlases need the native world's grade; they load once per viewer.
+  const textures = useEffectTextures(
+    displayScale !== undefined && settings.utilities,
+    effectTextureIds,
+  );
+  const officialDetonations = detonationTextures.every((id) => textures[id]);
+  const burstZones = useMemo(
+    () => (officialDetonations ? utility.filter((zone) => zone.kind === 'decoy') : utility),
+    [officialDetonations, utility],
+  );
   const trail = useMemo(() => {
     if (!settings.trails) return [];
     const frames = data.frames.filter((f) => f.tick <= tick && f.tick > tick - data.tickRate * 5);
@@ -1147,8 +1161,19 @@ function UtilityLayer({
       {bombWave && <BombShockwave wave={bombWave} />}
       {settings.utilities && (
         <>
+          {officialDetonations && (
+            <DetonationEffects
+              queries={staticMap && 'nearby' in staticMap ? staticMap : null}
+              events={data.events}
+              tick={tick}
+              rate={data.tickRate}
+              textures={textures}
+              displayScale={displayScale ?? 1}
+              reducedMotion={reducedMotion}
+            />
+          )}
           <GrenadeBurst
-            zones={utility}
+            zones={burstZones}
             staticMap={staticMap}
             lighting={lightBursts}
             warm={nativeVolume || data.sample}
@@ -1159,6 +1184,7 @@ function UtilityLayer({
           <InfernoEffects
             infernos={data.infernos}
             displayScale={displayScale}
+            textures={textures}
             warm={nativeVolume || data.sample}
             lighting={lightBursts}
             events={data.events}

@@ -1,7 +1,8 @@
 import InfernoParticles from './InfernoParticles';
-import { useEffectTextures } from '../effect-textures';
-import type { FirePoint } from '../inferno-particles';
-import { useMemo } from 'react';
+import type { EffectTextures } from '../effect-textures';
+import { fireLights, type FirePoint } from '../inferno-particles';
+import { useContext, useEffect, useMemo } from 'react';
+import { NativePasses } from '../world/frame-context';
 import type { InfernoBank } from '../../../shared/inferno-state.mjs';
 import type { GameEvent } from '../types';
 import { indexFireEffects, maxFireSprites } from '../utility-effects';
@@ -92,7 +93,7 @@ const scorchFragment = `
   }
 `;
 
-const officialLayers = [
+export const fireTextures = [
   'fire-ground',
   'fire-flame',
   'fire-glow',
@@ -112,6 +113,7 @@ export default function InfernoEffects({
   rate,
   reducedMotion,
   displayScale,
+  textures,
 }: {
   infernos?: InfernoBank;
   warm: boolean;
@@ -122,10 +124,10 @@ export default function InfernoEffects({
   reducedMotion: boolean;
   /** The native grade's display scale; official particles need the native world. */
   displayScale?: number;
+  textures: EffectTextures;
 }) {
   const at = useMemo(() => indexFireEffects(infernos, events, rate), [infernos, events, rate]);
-  const textures = useEffectTextures(displayScale !== undefined, officialLayers);
-  const official = officialLayers.every((id) => textures[id]);
+  const official = displayScale !== undefined && fireTextures.every((id) => textures[id]);
   const points = useMemo<FirePoint[]>(
     () =>
       official
@@ -138,6 +140,18 @@ export default function InfernoEffects({
         : [],
     [official, at, tick, rate],
   );
+  const time = reducedMotion ? Math.floor(tick / rate) : tick / rate;
+  const native = useContext(NativePasses);
+  const lights = useMemo(
+    () => (official && lighting ? fireLights(points, time) : []),
+    [official, lighting, points, time],
+  );
+  useEffect(() => {
+    if (!native) return;
+    native.lights ??= new Map();
+    native.lights.set('fire', lights);
+  }, [native, lights]);
+  useEffect(() => () => void native?.lights?.delete('fire'), [native]);
   const sprites = useMemo(
     () => (official ? [] : at(tick, reducedMotion)),
     [official, at, tick, reducedMotion],
@@ -147,7 +161,7 @@ export default function InfernoEffects({
       <InfernoParticles
         points={points}
         // Reduced motion holds the flames on one sampled moment.
-        time={reducedMotion ? Math.floor(tick / rate) : tick / rate}
+        time={time}
         textures={textures}
         displayScale={displayScale ?? 1}
       />

@@ -1,6 +1,7 @@
 import {
   Color,
   DepthStencilFormat,
+  ExternalTexture,
   GreaterDepth,
   DepthTexture,
   HalfFloatType,
@@ -19,12 +20,24 @@ import type { NativeRenderer } from './renderer';
 import { viewerToSource } from './space';
 import { actorLighting } from './actor-lighting';
 import type { SmokeLighting } from '../smoke-volume';
+import { maxEffectLights, packEffectLights, type EffectLightSet } from '../effect-lights';
 
 export interface FramePasses {
   sun?: import('three').DirectionalLight;
   smoke?: (framebuffer: WebGLFramebuffer, lighting: SmokeLighting) => void;
   equipment?: (render: (scene: Scene, camera: PerspectiveCamera) => void) => void;
+  lights?: EffectLightSet;
+  /** A copy of the opaque depth for soft particles, made only on frames that ask for it. */
+  depth?: SceneDepth;
 }
+
+export type SceneDepth = {
+  texture: ExternalTexture;
+  width: number;
+  height: number;
+  /** Set by a visible soft effect before the frame renders; cleared after it. */
+  wanted: boolean;
+};
 
 // Tactical views hide the sky; a neutral dark grey (display-referred, independent of the theme)
 // fills the space around the map instead of the sky cube's lower hemisphere.
@@ -53,6 +66,47 @@ export function compositor(renderer: WebGLRenderer, native: NativeRenderer) {
     sunColor: new Color(sr, sg, sb),
   };
   const sourceEye = new Vector3();
+  const sceneEye = new Vector3();
+  // Opaque depth for soft particles: a depth-only copy, since the HDR target's own depth
+  // cannot be sampled while it is bound.
+  const depthCopy = {
+    framebuffer: gl.createFramebuffer(),
+    texture: null as WebGLTexture | null,
+  };
+  const sceneDepth: SceneDepth = {
+    texture: new ExternalTexture(null),
+    width: 0,
+    height: 0,
+    wanted: false,
+  };
+  function copyDepth(source: WebGLFramebuffer) {
+    const width = gl.drawingBufferWidth,
+      height = gl.drawingBufferHeight;
+    if (!depthCopy.texture || sceneDepth.width !== width || sceneDepth.height !== height) {
+      if (depthCopy.texture) gl.deleteTexture(depthCopy.texture);
+      depthCopy.texture = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, depthCopy.texture);
+      gl.texStorage2D(gl.TEXTURE_2D, 1, gl.DEPTH24_STENCIL8, width, height);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, depthCopy.framebuffer);
+      gl.framebufferTexture2D(
+        gl.FRAMEBUFFER,
+        gl.DEPTH_STENCIL_ATTACHMENT,
+        gl.TEXTURE_2D,
+        depthCopy.texture,
+        0,
+      );
+      sceneDepth.width = width;
+      sceneDepth.height = height;
+      sceneDepth.texture.sourceTexture = depthCopy.texture;
+    }
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, source);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, depthCopy.framebuffer);
+    gl.blitFramebuffer(0, 0, width, height, 0, 0, width, height, gl.DEPTH_BUFFER_BIT, gl.NEAREST);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, source);
+  }
+  const lights = { data: new Float32Array(maxEffectLights * 8), count: 0 };
   const originals: Color[] = [];
   // Link the programs of newly mounted meshes in the composed pass state, even
   // while they are culled, so a player or weapon entering view mid-playback
@@ -174,7 +228,14 @@ export function compositor(renderer: WebGLRenderer, native: NativeRenderer) {
         .setFromMatrixPosition(camera.matrixWorld)
         .applyMatrix4(viewerToSource)
         .toArray();
+      passes.depth = sceneDepth;
+      lights.count = packEffectLights(
+        passes.lights,
+        sceneEye.setFromMatrixPosition(camera.matrixWorld).toArray(),
+        lights.data,
+      );
       return native.render({ pos, ang: [0, 0], fov: camera.fov }, 0, {
+        lights,
         skybox3D: !tactical,
         fog: !tactical,
         background: tactical ? tacticalBackground : undefined,
@@ -186,6 +247,7 @@ export function compositor(renderer: WebGLRenderer, native: NativeRenderer) {
           hdr: texture,
           opaque: () => objects(false),
           transparent: () => {
+            if (sceneDepth.wanted) copyDepth(framebuffer);
             bindTarget();
             passes.smoke?.(framebuffer, smokeLighting);
             objects(true);
@@ -206,6 +268,7 @@ export function compositor(renderer: WebGLRenderer, native: NativeRenderer) {
         },
       });
     } finally {
+      sceneDepth.wanted = false;
       scene.background = background;
       renderer.resetState();
       renderer.setRenderTarget(previousTarget);
@@ -216,6 +279,8 @@ export function compositor(renderer: WebGLRenderer, native: NativeRenderer) {
   return {
     frame,
     dispose() {
+      if (depthCopy.texture) gl.deleteTexture(depthCopy.texture);
+      gl.deleteFramebuffer(depthCopy.framebuffer);
       hdr.dispose();
       lighting.dispose();
     },

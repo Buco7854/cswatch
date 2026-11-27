@@ -31,6 +31,9 @@ export interface ViewOptions {
   nearFade?: number;
   /** Display-referred linear colour drawn instead of the sky, e.g. behind a tactical view. */
   background?: readonly [number, number, number];
+  /** Up to four transient effect lights: Source position and radius (inches), then scene-linear
+   * colour and an unused slot, eight floats each. */
+  lights?: { data: Float32Array; count: number };
 }
 export interface Pose {
   pos: number[];
@@ -603,6 +606,9 @@ export async function createRenderer(
       uniform('uniformMatrix4fv', 'viewProjection', false, viewProjection.elements);
       uniform('uniform3fv', 'eye', pose.pos);
       uniform('uniform1i', 'mode', mode);
+      const lights = options.lights?.count ? options.lights : undefined;
+      uniform('uniform1i', 'effectLightCount', Math.min(4, lights?.count ?? 0));
+      if (lights) uniform('uniform4fv', 'effectLights', lights.data);
       bind(unit.brdf, arrayTarget, special.get('vrf/brdf_lut')!);
       uniform('uniform1i', 'hasActorShadow', Number(!!options.shadow));
       // A shadow sampler must never see an ordinary colour texture left on its unit.

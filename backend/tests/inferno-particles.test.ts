@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { fireLayers, fireParticles } from '../../frontend/src/inferno-particles.js';
+import { fireLayers, fireLights, fireParticles } from '../../frontend/src/inferno-particles.js';
 
 const points = [
   { position: [1, 0, 2] as const, seed: 3.2, from: 10, until: 17 },
@@ -25,4 +25,14 @@ test('fire particles are a pure function of demo time and recorded points', () =
     assert.ok(
       particle.alpha >= 0 && particle.alpha <= 1 && particle.life >= 0 && particle.life < 1,
     );
+});
+
+test('a burning area casts one flickering light that follows its recorded points', () => {
+  assert.deepEqual(fireLights(points, 9), []);
+  const [light] = fireLights(points, 12);
+  assert.equal(fireLights(points, 12).length, 1);
+  assert.deepEqual(fireLights(points, 12), fireLights(points, 12));
+  assert.ok(light.radius > 120 && light.radius <= 480);
+  assert.ok(light.color.every((channel) => channel > 0 && channel <= 1.2));
+  assert.deepEqual(fireLights(points, 17), []);
 });
