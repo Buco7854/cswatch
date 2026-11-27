@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /** Optional official-asset worker. Mount jobs, catalog, assets and disposable
  * cache only. This process never receives application data or credentials. */
+import { safePresentationLabel } from './presentation-diagnostics.mjs';
 import { constants } from 'node:fs';
 import {
   open,
@@ -988,10 +989,16 @@ export async function runMapWorker(options, adapters = {}) {
               nextPresentation.set(kind, retained?.retryAt || clock() + 300);
               pendingPresentation.push(kind);
             }
+            // Fixed labels only: the reason and native logs stay in the private cache.
+            const step = safePresentationLabel(error?.presentationStep),
+              detail = safePresentationLabel(error?.presentationDetail);
             options.log?.({
               event: 'presentation.failed',
               kind,
               code: mapFailureCode(error, options.signal),
+              ...(step ? { step } : {}),
+              ...(detail ? { detail } : {}),
+              ...(step ? { diagnostics: `diagnostics/presentation-${kind}` } : {}),
             });
             // Recheck the queue after an acquisition attempt, successful or otherwise.
             published = true;

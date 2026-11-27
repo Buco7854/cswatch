@@ -41,6 +41,11 @@ import {
 import { prepareMapJobs } from '../../backend/dist/map-jobs.js';
 import { agentActionRoles, agentActionKind } from '../../shared/agent-actions.mjs';
 import { runMapWorker } from './map-worker.mjs';
+import {
+  presentationDiagnosticLimits,
+  presentationDiagnosticsPath,
+  retainStageLogs,
+} from './presentation-diagnostics.mjs';
 import { equipmentAccessorLimit } from './equipment-model-input.mjs';
 import { writeAgentModelRequests } from '../../backend/dist/agent-model-requests.js';
 import { modelResourceId } from '../../shared/model-resource-id.mjs';
@@ -296,6 +301,142 @@ test('the agent bank publishes an action bank declaring more samplers than one m
   assert.equal(result.status, 'prepared');
   assert.equal((await readPresentationStatus(options.jobs)).categories.agents.status, 'ready');
   assert.ok((await lstat(join(output, 'agents/actions.glb'))).isFile());
+});
+test('a failed presentation stage keeps its step, reason and newest bounded logs until the next success', async (t) => {
+  const { options } = await fixture(t);
+  const kept = presentationDiagnosticsPath(options.cacheRoot, 'agents'),
+    step = 'agent-action-weapon-ak47-fire-export',
+    logs = presentationDiagnosticLimits.logs + 8;
+  const failing = {
+    ...adapters,
+    installModels: async (settings) => {
+      assert.equal(settings.keepLogs, true);
+      const stage = await mkdtemp(join(settings.cache, 'equipment-install-'));
+      await settings.registerStage(stage);
+      for (let i = 1; i <= logs; i++)
+        await writeFile(
+          join(stage, `${String(i).padStart(3, '0')}-step-${i}.log`),
+          i === logs ? 'x'.repeat(presentationDiagnosticLimits.logBytes) + 'native tail' : 'ok',
+          { mode: 0o600 },
+        );
+      await mkdir(join(stage, 'conversion'));
+      throw Object.assign(
+        Error(`Equipment installation stopped at ${step}.`, {
+          cause: Error('A native clip source exceeds 8 MiB.'),
+        }),
+        { step },
+      );
+    },
+  };
+  const error = await installPresentationAssets(options, '1', 'agents', failing).catch((e) => e);
+  assert.equal(error.presentationStep, step);
+  assert.equal(error.presentationDetail, 'bound_exceeded');
+  const record = JSON.parse(await readFile(join(kept, 'failure.json'), 'utf8'));
+  assert.equal(record.kind, 'agents');
+  assert.equal(record.step, step);
+  assert.equal(record.code, 'preparation_failed');
+  assert.equal(record.detail, 'bound_exceeded');
+  assert.equal(record.attempt, 1);
+  assert.match(record.reason, /stopped at agent-action-weapon-ak47-fire-export\.\nA native clip/);
+  assert.equal(record.logs.length, presentationDiagnosticLimits.logs);
+  assert.equal(record.logs.at(-1), `${String(logs).padStart(3, '0')}-step-${logs}.log`);
+  assert.equal(
+    record.logs[0],
+    `${String(logs - presentationDiagnosticLimits.logs + 1).padStart(3, '0')}-step-${logs - presentationDiagnosticLimits.logs + 1}.log`,
+  );
+  const last = await readFile(join(kept, record.logs.at(-1)), 'utf8');
+  assert.equal(Buffer.byteLength(last), presentationDiagnosticLimits.logBytes);
+  assert.ok(last.endsWith('native tail'));
+  assert.equal((await lstat(kept)).mode & 0o777, 0o700);
+  assert.equal((await lstat(join(kept, 'failure.json'))).mode & 0o777, 0o600);
+  // The journal removed the private stage itself.
+  assert.deepEqual(
+    (await readdir(options.cache)).filter((name) => name.startsWith('equipment-install-')),
+    [],
+  );
+  // A failure before any installer step names the phase; a later success removes the record.
+  const status = await readPresentationStatus(options.jobs);
+  status.categories.agents.retryAt = status.categories.agents.updatedAt - 1;
+  await writePresentationStatus(options.jobs, status);
+  const validation = await installPresentationAssets(options, '1', 'agents', {
+    ...adapters,
+    installModels: async (settings) => {
+      await preparedModel(settings.output, 'ct', true);
+      await preparedModel(settings.output, 't', true);
+    },
+  }).catch((e) => e);
+  assert.equal(validation.presentationStep, 'validate');
+  assert.equal(JSON.parse(await readFile(join(kept, 'failure.json'), 'utf8')).step, 'validate');
+  const retry = await readPresentationStatus(options.jobs);
+  retry.categories.agents.retryAt = retry.categories.agents.updatedAt - 1;
+  await writePresentationStatus(options.jobs, retry);
+  const result = await installPresentationAssets(options, '1', 'agents', {
+    ...adapters,
+    installModels: async (settings) => {
+      await preparedModel(settings.output, 'ct', true);
+      await preparedModel(settings.output, 't', true);
+      await preparedActions(settings.output);
+    },
+  });
+  assert.equal(result.status, 'prepared');
+  await assert.rejects(lstat(kept), { code: 'ENOENT' });
+});
+test('a retained stage keeps only its own private logs for the journal to remove', async (t) => {
+  const { options, stageOptions } = await fixture(t);
+  const stage = await mkdtemp(join(options.cache, 'equipment-install-'));
+  await registerPresentationStage(stageOptions, stage, {
+    manifest: '1',
+    kind: 'agents',
+    location: 'source',
+  });
+  await writeFile(join(stage, '001-model-0-data.log'), 'kept', { mode: 0o600 });
+  await writeFile(join(stage, '002-open.log'), 'shared', { mode: 0o600 });
+  spawnSync('chmod', ['0666', join(stage, '002-open.log')]);
+  await symlink('/etc/hostname', join(stage, '003-linked.log'));
+  await writeFile(join(stage, 'files.json'), '{}', { mode: 0o666 });
+  await mkdir(join(stage, 'conversion/home'), { recursive: true });
+  await writeFile(join(stage, 'conversion/home/tool.cache'), 'x', { mode: 0o666 });
+  await retainStageLogs(stage);
+  assert.deepEqual(await readdir(stage), ['001-model-0-data.log']);
+  assert.equal(await cleanPresentationStages(stageOptions), 0);
+  await assert.rejects(lstat(stage), { code: 'ENOENT' });
+});
+test('the worker failure event names the fixed step and reason class, never native text', async (t) => {
+  const { options } = await fixture(t);
+  const controller = new AbortController(),
+    events = [];
+  let turns = 0;
+  await runMapWorker(
+    { ...options, cache: options.cacheRoot, signal: controller.signal, log: (e) => events.push(e) },
+    {
+      refreshInventory: async () => ({ manifest: '1', maps: [{}] }),
+      processRequest: async () => false,
+      preparePresentation: async (_worker, _manifest, kind) => {
+        if (++turns === 2) controller.abort();
+        throw Object.assign(Error('native output: secret-looking text'), {
+          presentationStep: turns === 1 ? 'validate' : 'Native Output!',
+          presentationDetail: 'bound_exceeded',
+          kind,
+        });
+      },
+      preparePreview: async () => ({}),
+      prepareEffects: async () => ({}),
+      prepareSounds: async () => ({}),
+      delay: async () => {},
+    },
+  );
+  const failed = events.filter((event) => event.event === 'presentation.failed');
+  assert.deepEqual(failed[0], {
+    event: 'presentation.failed',
+    kind: failed[0].kind,
+    code: 'preparation_failed',
+    step: 'validate',
+    detail: 'bound_exceeded',
+    diagnostics: `diagnostics/presentation-${failed[0].kind}`,
+  });
+  assert.equal(failed[1].step, undefined);
+  assert.equal(failed[1].diagnostics, undefined);
+  assert.ok(!JSON.stringify(failed).includes('secret-looking'));
 });
 test('native model preparation yields after one fixed item and extends only immutable registry identities', async (t) => {
   const { options, output } = await fixture(t);

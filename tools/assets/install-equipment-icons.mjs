@@ -1,6 +1,7 @@
 /** Fixed official weapon/HUD SVG resources, rasterized only inside conversion confinement. */
 import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { retainStageLogs } from './presentation-diagnostics.mjs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -87,8 +88,10 @@ export async function installEquipmentIcons(options, adapters = {}) {
   for (const path of [game, home, tmp, pins, conversion, decoded, nativeHome, nativeTmp, svg])
     await localDirectory(path, true);
   let sequence = 0,
+    step = 'start',
     conversionStarted = false;
   const run = async (command, args, label, native = false) => {
+    step = label;
     if (native && !conversionStarted) {
       conversionStarted = true;
       await options.onConverting?.();
@@ -230,7 +233,11 @@ export async function installEquipmentIcons(options, adapters = {}) {
       { flag: 'wx', mode: 0o644 },
     );
     return { count: ready.length, unsupported: provenance.unsupported };
+  } catch (error) {
+    throw Object.assign(error instanceof Error ? error : Error(String(error)), { step });
   } finally {
-    await rm(root, { recursive: true, force: true });
+    // A journaled caller removes the stage itself, after keeping a failure's logs.
+    if (options.keepLogs) await retainStageLogs(root);
+    else await rm(root, { recursive: true, force: true });
   }
 }

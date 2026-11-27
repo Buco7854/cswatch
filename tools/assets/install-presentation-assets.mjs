@@ -39,6 +39,11 @@ import {
   presentationStageIdentity,
 } from './presentation-stages.mjs';
 import {
+  clearPresentationFailure,
+  keepPresentationFailure,
+  presentationFailureDetail,
+} from './presentation-diagnostics.mjs';
+import {
   readPresentationStatus,
   writePresentationStatus,
   presentationKinds,
@@ -522,6 +527,9 @@ export async function installPresentationAssets(options, manifest, kind, adapter
   };
   await update({ status: 'preparing', stage: 'acquiring' });
   let stage, publishing;
+  // The failing step for the operator: a phase here, or the installer's own stage label.
+  let step = 'source';
+  const sourceStages = [];
   try {
     await options.prepareSource?.(manifest, options.cache);
     await (adapters.storage || checkStorage)(options.cache, output);
@@ -535,8 +543,11 @@ export async function installPresentationAssets(options, manifest, kind, adapter
       networkDeny: options.networkDeny,
       signal: controller,
       onConverting: () => update({ status: 'preparing', stage: 'converting' }),
-      registerStage: (path) =>
-        registerPresentationStage(stageOptions, path, { manifest, kind, location: 'source' }),
+      registerStage: async (path) => {
+        await registerPresentationStage(stageOptions, path, { manifest, kind, location: 'source' });
+        sourceStages.push(path);
+      },
+      keepLogs: true,
     };
     const installerAdapters = {
       ...adapters.installAdapters,
@@ -544,6 +555,7 @@ export async function installPresentationAssets(options, manifest, kind, adapter
       ...(options.pinnedIndexes ? { pinnedIndexes: options.pinnedIndexes } : {}),
     };
     options.log?.({ event: 'presentation.preparing', kind, manifest, attempt: attempts });
+    step = 'convert';
     let installation;
     if (kind === 'equipment')
       installation = await (adapters.installIcons || installEquipmentIcons)(
@@ -566,6 +578,7 @@ export async function installPresentationAssets(options, manifest, kind, adapter
         installerAdapters,
       );
     controller.throwIfAborted();
+    step = 'validate';
     if (
       kind === 'equipment' &&
       (!Number.isSafeInteger(installation?.count) ||
@@ -605,6 +618,7 @@ export async function installPresentationAssets(options, manifest, kind, adapter
           item,
           code: 'missing_official_resource',
         });
+        await clearPresentationFailure(cacheRoot, kind);
         return { status: 'checked', remaining };
       }
     }
@@ -622,6 +636,7 @@ export async function installPresentationAssets(options, manifest, kind, adapter
           mode: 0o600,
         },
       );
+    step = 'publish';
     await options.beforePublish?.();
     await (adapters.reserve || checkFreeReserve)(options.cache, output);
     controller.throwIfAborted();
@@ -682,9 +697,23 @@ export async function installPresentationAssets(options, manifest, kind, adapter
       manifest,
       ...(modelId ? { item: modelId } : {}),
     });
+    await clearPresentationFailure(cacheRoot, kind);
     return { status: 'prepared', remaining };
   } catch (error) {
     const code = failureCode(error, controller);
+    const failedStep = step === 'convert' && typeof error?.step === 'string' ? error.step : step,
+      detail = presentationFailureDetail(error);
+    await keepPresentationFailure(cacheRoot, kind, sourceStages, {
+      manifest,
+      attempt: attempts,
+      ...(itemBank ? { item } : {}),
+      step: failedStep,
+      code,
+      detail,
+      error,
+    });
+    if (error && typeof error === 'object')
+      Object.assign(error, { presentationStep: failedStep, presentationDetail: detail });
     await update({
       status: 'failed',
       code,

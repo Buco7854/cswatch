@@ -2,6 +2,7 @@
 /** Trusted operator-only acquisition of explicit native static equipment. Never an app route. */
 import { access, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
+import { retainStageLogs } from './presentation-diagnostics.mjs';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
@@ -153,7 +154,8 @@ export async function installEquipmentModels(options, adapters = {}) {
     `Content Manifest for Depot ${STEAM_DEPOT}\n\nManifest ID / date     : ${options.manifest} / explicit equipment selection\n`,
     { flag: 'wx', mode: 0o600 },
   );
-  let sequence = 0;
+  let sequence = 0,
+    step = 'start';
   let conversionStarted = false;
   const selection = new Map(),
     downloads = [],
@@ -162,6 +164,7 @@ export async function installEquipmentModels(options, adapters = {}) {
   const progress = (stage, details = {}) => options.onProgress?.({ stage, ...details });
   const execute = async (command, args, stage, extra = {}) => {
     progress(stage);
+    step = stage;
     const native = command !== tools.downloader && Boolean(options.networkDeny);
     if (native && !conversionStarted) {
       conversionStarted = true;
@@ -750,13 +753,16 @@ export async function installEquipmentModels(options, adapters = {}) {
     // Individual completed IDs remain valid immutable assets; never remove a pre-existing pack.
     throw Object.assign(
       new Error(
-        `Equipment installation stopped. Completed ${installed.length} equipment models and ${installedAgents.length} agents; private logs: ${root}`,
+        `Equipment installation stopped at ${step}. Completed ${installed.length} equipment models and ${installedAgents.length} agents; private logs: ${root}`,
         { cause: error },
       ),
+      { step },
       ['STEAM_RATE_LIMIT', 'SOURCE_MAP_MISMATCH'].includes(error?.code) ? { code: error.code } : {},
     );
   } finally {
-    if (options.cleanup) await rm(root, { recursive: true, force: true });
+    // A journaled caller removes the stage itself, after keeping a failure's logs.
+    if (options.cleanup && options.keepLogs) await retainStageLogs(root);
+    else if (options.cleanup) await rm(root, { recursive: true, force: true });
   }
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

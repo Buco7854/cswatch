@@ -71,7 +71,9 @@ export async function runAssetProcess(
       if (!ended) kill();
     };
     const timer = setTimeout(() => {
-      failure ||= new Error('Operator asset stage timed out.');
+      failure ||= Object.assign(new Error('Operator asset stage timed out.'), {
+        code: 'ASSET_STAGE_TIMEOUT',
+      });
       onOutputAbort?.();
       if (!ended) kill();
     }, timeoutMs);
@@ -90,7 +92,9 @@ export async function runAssetProcess(
                   },
                 );
                 if (Number(/^VmRSS:\s+(\d+)/m.exec(status)?.[1] ?? 0) * 1024 > maxRss)
-                  throw Error('Asset stage RSS limit exceeded.');
+                  throw Object.assign(Error('Asset stage RSS limit exceeded.'), {
+                    code: 'ASSET_RSS_LIMIT',
+                  });
               }
               await storageGuard();
             })
