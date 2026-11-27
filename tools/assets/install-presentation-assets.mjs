@@ -132,7 +132,9 @@ async function validateBank(root, kind, manifest, write = false) {
     await regular(bank, 16 * 1024 ** 2, 24);
     await regular(bankMetadata, 65536, 2);
     const metadata = JSON.parse(await readFile(bankMetadata, 'utf8'));
-    const { json } = await inspectEquipmentGltf(bank);
+    const { json } = await inspectEquipmentGltf(bank, {
+      maxAccessors: agentActionContract.limits.maxAccessors,
+    });
     const verified = await verifyPreparedGlb(bank, { animationOnly: true });
     if (
       !agentActionDeclarations(json.animations) ||

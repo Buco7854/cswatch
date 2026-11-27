@@ -5,7 +5,12 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
-import { inspectEquipmentGltf } from './equipment-model-input.mjs';
+import {
+  equipmentAccessorLimit,
+  inspectEquipmentGltf,
+  validateEquipmentGeometryMetadata,
+} from './equipment-model-input.mjs';
+import { agentActionContract } from '../../shared/agent-actions.mjs';
 import { prepareEquipmentModel } from './prepare-equipment-model.mjs';
 import { MeshoptDecoder } from './meshopt-glb.mjs';
 function fixture() {
@@ -123,4 +128,41 @@ test('sparse payload rejects duplicate, decreasing and out-of-range indices befo
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test('the shared action bank has its own explicit declaration bound above the per-model one', () => {
+  // One sampler per animated bone of every role, like the official 222-role bank.
+  const declared = (count) => ({
+    buffers: [{ byteLength: 8 }],
+    bufferViews: [{ buffer: 0, byteLength: 8 }],
+    accessors: Array.from({ length: count }, () => ({
+      componentType: 5126,
+      type: 'SCALAR',
+      count: 2,
+      bufferView: 0,
+    })),
+  });
+  const bank = agentActionContract.limits.maxAccessors;
+  assert.ok(bank > equipmentAccessorLimit && 13800 * 2 <= bank);
+  validateEquipmentGeometryMetadata(declared(equipmentAccessorLimit));
+  assert.throws(
+    () => validateEquipmentGeometryMetadata(declared(equipmentAccessorLimit + 1)),
+    /bounded structure/,
+  );
+  validateEquipmentGeometryMetadata(declared(13800), { maxAccessors: bank });
+  validateEquipmentGeometryMetadata(declared(bank), { maxAccessors: bank });
+  assert.throws(
+    () => validateEquipmentGeometryMetadata(declared(bank + 1), { maxAccessors: bank }),
+    /bounded structure/,
+  );
+  // Buffer views keep the per-model bound.
+  const views = declared(1);
+  views.bufferViews = Array.from({ length: equipmentAccessorLimit + 1 }, () => ({
+    buffer: 0,
+    byteLength: 8,
+  }));
+  assert.throws(
+    () => validateEquipmentGeometryMetadata(views, { maxAccessors: bank }),
+    /bounded structure/,
+  );
 });

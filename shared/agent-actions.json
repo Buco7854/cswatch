@@ -55,5 +55,5 @@
     "leg-right"
   ],
   "deaths": ["chest-a", "chest-b", "gut-a", "gut-b", "rknee-a", "rknee-b", "rshoulder"],
-  "limits": { "seconds": 30, "maxChannels": 1024, "maxRoles": 320 }
+  "limits": { "seconds": 30, "maxChannels": 1024, "maxRoles": 320, "maxAccessors": 32768 }
 }

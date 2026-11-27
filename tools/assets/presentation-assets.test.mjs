@@ -41,6 +41,7 @@ import {
 import { prepareMapJobs } from '../../backend/dist/map-jobs.js';
 import { agentActionRoles, agentActionKind } from '../../shared/agent-actions.mjs';
 import { runMapWorker } from './map-worker.mjs';
+import { equipmentAccessorLimit } from './equipment-model-input.mjs';
 import { writeAgentModelRequests } from '../../backend/dist/agent-model-requests.js';
 import { modelResourceId } from '../../shared/model-resource-id.mjs';
 
@@ -133,45 +134,51 @@ async function triangle(agent, roles = directionalRoles) {
   return Buffer.from(await new NodeIO().writeBinary(document));
 }
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
-/** The shared action bank: one skeleton node, every declared role, no mesh. */
-async function preparedActions(output) {
+/** The shared action bank: every declared role, no mesh. By default one skeleton node with
+ * shared samples; `bones` gives each role its own timeline and one sampler per bone. */
+async function preparedActions(output, { bones } = {}) {
   const directory = join(output, 'agents');
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const document = new Document(),
     buffer = document.createBuffer(),
     node = document.createNode('pelvis');
   document.createScene().addChild(node);
-  const input = document
-    .createAccessor()
-    .setType('SCALAR')
-    .setArray(new Float32Array([0, 1]))
-    .setBuffer(buffer);
-  const values = document
-    .createAccessor()
-    .setType('VEC4')
-    .setArray(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1]))
-    .setBuffer(buffer);
+  const skeleton = [node];
+  for (let i = 1; i < (bones ?? 1); i++) {
+    skeleton.push(document.createNode('bone_' + i));
+    node.addChild(skeleton[i]);
+  }
+  const accessor = (type, values) =>
+    document.createAccessor().setType(type).setArray(new Float32Array(values)).setBuffer(buffer);
+  const input = accessor('SCALAR', [0, 1]);
+  const values = accessor('VEC4', [0, 0, 0, 1, 0, 0, 0, 1]);
   for (const role of agentActionRoles) {
-    const sampler = document.createAnimationSampler().setInput(input).setOutput(values);
-    document
-      .createAnimation('cswatch:' + role)
-      .addSampler(sampler)
-      .addChannel(
-        document
-          .createAnimationChannel()
-          .setTargetNode(node)
-          .setTargetPath('rotation')
-          .setSampler(sampler),
-      )
-      .setExtras({
-        cswatch: {
-          kind: 'native-agent-action',
-          schemaVersion: 1,
-          role,
-          blend: agentActionKind(role),
-          ...(role.startsWith('ladder') ? { climbMeters: 1 } : {}),
-        },
-      });
+    const animation = document.createAnimation('cswatch:' + role),
+      timeline = bones ? accessor('SCALAR', [0, 1]) : input;
+    for (const target of skeleton) {
+      const sampler = document
+        .createAnimationSampler()
+        .setInput(timeline)
+        .setOutput(bones ? accessor('VEC4', [0, 0, 0, 1, 0, 0, 0, 1]) : values);
+      animation
+        .addSampler(sampler)
+        .addChannel(
+          document
+            .createAnimationChannel()
+            .setTargetNode(target)
+            .setTargetPath('rotation')
+            .setSampler(sampler),
+        );
+    }
+    animation.setExtras({
+      cswatch: {
+        kind: 'native-agent-action',
+        schemaVersion: 1,
+        role,
+        blend: agentActionKind(role),
+        ...(role.startsWith('ladder') ? { climbMeters: 1 } : {}),
+      },
+    });
   }
   const bytes = Buffer.from(await new NodeIO().writeBinary(document));
   await writeFile(join(directory, 'actions.glb'), bytes, { flag: 'wx', mode: 0o600 });
@@ -186,6 +193,7 @@ async function preparedActions(output) {
     }),
     { flag: 'wx', mode: 0o600 },
   );
+  return JSON.parse(bytes.subarray(20, 20 + bytes.readUInt32LE(12)).toString('utf8'));
 }
 async function preparedModel(output, id, agent = false) {
   const directory = agent ? join(output, 'agents') : join(output, 'equipment-models', id);
@@ -272,6 +280,23 @@ test('interrupted agent validation leaves no published bank and retains the retr
   assert.ok([299, 300].includes(status.retryAt - status.updatedAt));
 });
 
+test('the agent bank publishes an action bank declaring more samplers than one model may', async (t) => {
+  const { options, output } = await fixture(t);
+  let declared;
+  const result = await installPresentationAssets(options, '1', 'agents', {
+    ...adapters,
+    installModels: async (settings) => {
+      await preparedModel(settings.output, 'ct', true);
+      await preparedModel(settings.output, 't', true);
+      // 222 roles with 61 animated bones each, as the official build prepares (13,800).
+      declared = (await preparedActions(settings.output, { bones: 61 })).accessors.length;
+    },
+  });
+  assert.ok(declared > equipmentAccessorLimit, String(declared));
+  assert.equal(result.status, 'prepared');
+  assert.equal((await readPresentationStatus(options.jobs)).categories.agents.status, 'ready');
+  assert.ok((await lstat(join(output, 'agents/actions.glb'))).isFile());
+});
 test('native model preparation yields after one fixed item and extends only immutable registry identities', async (t) => {
   const { options, output } = await fixture(t);
   const items = [];

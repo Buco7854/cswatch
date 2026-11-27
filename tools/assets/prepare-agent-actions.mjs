@@ -39,6 +39,9 @@ export const agentActionLimits = Object.freeze({
   totalSamples: 32768,
   jointSamples: 3_000_000,
   channels: contract.limits.maxChannels,
+  // One sampler per animated bone of every role: 13,800 for the 222 roles prepared from
+  // the 2026-11 official build, so the bank keeps its own bound above the per-model one.
+  accessors: contract.limits.maxAccessors,
   sourceBytes: 8 * 1024 ** 2,
   totalSourceBytes: 256 * 1024 ** 2,
   outputBytes: 12 * 1024 ** 2,
@@ -371,6 +374,8 @@ export async function prepareAgentActions({ skeleton, clips, output, assetVersio
       await writeFile(join(stage, name), bytes, { flag: 'wx', mode: 0o644 });
     }
     const verified = await verifyPreparedGlb(join(stage, names[0]), { animationOnly: true });
+    // The same structural check the worker applies before publishing the bank.
+    await inspectEquipmentGltf(join(stage, names[0]), { maxAccessors: limits.accessors });
     if (verified.sha256 !== manifest.sha256)
       throw Error('Prepared action bank failed embedded-GLB verification.');
     for (const name of names) {

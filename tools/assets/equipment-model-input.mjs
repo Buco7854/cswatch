@@ -26,17 +26,23 @@ async function safeFile(path, max) {
     throw error;
   }
 }
+/** Declaration count for one model or clip. The shared action bank declares one sampler
+ * per animated bone of every role and passes its own explicit bound instead. */
+export const equipmentAccessorLimit = 8192;
 /** Reject declarations that could allocate excessive arrays before NodeIO decodes them. */
-export function validateEquipmentGeometryMetadata(json) {
+export function validateEquipmentGeometryMetadata(
+  json,
+  { maxAccessors = equipmentAccessorLimit } = {},
+) {
   const sizes = { 5120: 1, 5121: 1, 5122: 2, 5123: 2, 5125: 4, 5126: 4 },
     parts = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT2: 4, MAT3: 9, MAT4: 16 };
   const integer = (value, min = 0) => Number.isSafeInteger(value) && value >= min;
   if (
     !Array.isArray(json.accessors) ||
     !json.accessors.length ||
-    json.accessors.length > 8192 ||
+    json.accessors.length > maxAccessors ||
     !Array.isArray(json.bufferViews) ||
-    json.bufferViews.length > 8192 ||
+    json.bufferViews.length > equipmentAccessorLimit ||
     !Array.isArray(json.buffers) ||
     !json.buffers.length ||
     json.buffers.length > 512
@@ -160,7 +166,7 @@ async function bounded(path, max) {
   }
 }
 /** Validate ALL resources before NodeIO can resolve a path. Never follow a URI or symlink. */
-export async function inspectEquipmentGltf(path) {
+export async function inspectEquipmentGltf(path, { maxAccessors } = {}) {
   path = resolve(path);
   const source = await bounded(path, limits.sourceFileBytes);
   let json;
@@ -181,7 +187,7 @@ export async function inspectEquipmentGltf(path) {
     json = JSON.parse(source.subarray(20, 20 + source.readUInt32LE(12)).toString('utf8'));
   } else throw Error('Equipment input must be a local S2V .gltf or .glb.');
   if (json.asset?.version !== '2.0') throw Error('Equipment requires glTF2.');
-  const sparseEntries = validateEquipmentGeometryMetadata(json);
+  const sparseEntries = validateEquipmentGeometryMetadata(json, { maxAccessors });
   const paths = new Set([path]);
   for (const rows of [json.buffers ?? [], json.images ?? []]) {
     if (!Array.isArray(rows) || rows.length > limits.sourceFiles)

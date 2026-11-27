@@ -4,7 +4,7 @@ Maps are native world packs exported from Valve's compiled resources (ValveResou
 
 The viewer shows the current worker phase while an official map is being prepared, and an intact, manifest-verified source cache can skip the initial Steam transfer.
 
-Players hold each firearm with Valve's own carry, fire, reload and draw for that weapon, with both hands on its authored grip, from a shared bank of 210 official clips prepared by the assets worker. The recorded ground flag, ladder state, hits and deaths add Valve's airborne, ladder, flinch and death clips, standing feet stay planted while the spine follows the aim, and recorded bullet hits show blood on the posed body. [Player audit](product/PLAYER-AUDIT.md)
+Players hold each firearm with Valve's own carry, fire, reload and draw for that weapon, with both hands on its authored grip, from a shared bank of 222 official clips prepared by the assets worker. The recorded ground flag, ladder state, hits and deaths add Valve's airborne, ladder, flinch and death clips, standing feet stay planted while the spine follows the aim, and recorded bullet hits show blood on the posed body. [Player audit](product/PLAYER-AUDIT.md)
 
 Recorded body, head and armor hits, named bullet impacts, surface footsteps, jump takeoffs and landings use the native sound bank. Each recorded footstep, landing, body hit and death plays the variation chosen by its recorded seed and fades along Valve's authored distance curve. The 3D viewer can also position a representative impact where a recorded shot meets nearby opaque map geometry. [Player hits and steps](VERIFICATION.md#recorded-hits-and-steps) · [Wall impacts](VERIFICATION.md#nearby-wall-impacts)
 
