@@ -53,6 +53,7 @@ Library rows show native map emblems, local map previews or a map-name fallback.
 
 - The separate assets service handles pinned official preparation, pending jobs and operator-authorized removal. Automatic acquisition defaults off. Latest snapshots are disclosed; manual map-name assets remain version-unverified.
 - Every map job runs the native exporter, desktop packer, phone ASTC encoder and publication as separate networkless children with CPU, memory, time, output and scratch limits. Packs are immutable and hash-bound, and served only to viewers of a demo using that map.
+- Fire, HE and flashbang detonations draw the official particle layers from a prepared effect atlas bank (`/api/effect-assets`, hash-checked per read); fire and HE light nearby world surfaces. Spent brass flies from each weapon's authored ejection port, bullet holes and impact sounds follow the hit surface, and the silencer clips play from the recorded state. Surface properties are inferred from material names.
 - Smoke ports the CS2 smoke volume shader over the journal or analytic density: four-inch samples, cellular-noise erosion, per-cloud probe light and baked sun visibility, and recorded HE blasts that clear it and let it refill over five seconds. Native animation graphs, dynamic local lights, vertex animation and wind remain outside the renderer; each pack lists its limits in `unsupported`.
 
 See [verification](VERIFICATION.md), [active work](product/WORK.md), [acceptance](product/ACCEPTANCE.md) and [security](../SECURITY.md).
