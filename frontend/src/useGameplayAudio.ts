@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { c4BeepCues } from './c4-beeps';
+import { brassCues } from './brass';
+import { indexWeaponFire } from './weapon-fire';
 import type { GameplaySoundInfo, SharedGameplaySoundCatalog } from '../../shared/gameplay-sounds';
 import type { Playback } from './types';
 import { frameAt, type ViewerSettings } from './playback';
@@ -62,7 +64,7 @@ export function useGameplayAudio({
   const [failure, setFailure] = useState({ identity, message: '' });
   const engine = useRef<GameplayPlayback | null>(null);
   const [retry, setRetry] = useState(0);
-  // Recorded cues plus the C4 beeps derived from the recorded plant and timer.
+  // Recorded cues plus the C4 beeps derived from the recorded plant and timer, and brass.
   const cues = useMemo(() => {
     if (!data) return undefined;
     const beeps = c4BeepCues(data.objectives, data.tickRate, (actor, tick) => {
@@ -71,8 +73,17 @@ export function useGameplayAudio({
       const player = at.players.find((candidate) => candidate.id === actor);
       return player ? { x: player.x, y: player.y, z: player.z } : undefined;
     });
-    return beeps.length
-      ? [...(data.sounds || []), ...beeps].sort((a, b) => a.tick - b.tick)
+    // Casings landing after recorded shots (Bounce.Shell is client-side in CS2, too).
+    const shots = [...indexWeaponFire(data)].flatMap(([actor, list]) =>
+      list.map((shot) => ({ ...shot, actor, seed: Math.imul(shot.tick | 0, 7919) })),
+    );
+    const brass = brassCues(shots, data.tickRate, (actor, tick) => {
+      const at = frameAt(data, tick).frame;
+      if (Math.abs(at.tick - tick) > data.tickRate / 4) return undefined;
+      return at.players.find((candidate) => candidate.id === actor && candidate.alive);
+    });
+    return beeps.length || brass.length
+      ? [...(data.sounds || []), ...beeps, ...brass].sort((a, b) => a.tick - b.tick)
       : data.sounds;
   }, [data]);
   const neededKey = useMemo(

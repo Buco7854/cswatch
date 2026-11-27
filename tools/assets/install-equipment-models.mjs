@@ -11,7 +11,7 @@ import { runAssetProcess } from './install-steam-assets.mjs';
 import { equipmentModelRegistry, selectedEquipmentModels } from './equipment-model-registry.mjs';
 import { inspectEquipmentSourceModel } from './equipment-source-model.mjs';
 import { viewmodelSources } from './viewmodel-sources.mjs';
-import { inspectNativeMuzzle } from './native-weapon-muzzle.mjs';
+import { inspectNativeEject, inspectNativeMuzzle } from './native-weapon-muzzle.mjs';
 import { scanEquipmentDependencies } from './equipment-dependencies.mjs';
 import { directionalAgentRegistry } from './agent-animation-registry.mjs';
 import { directionalRoles } from '../../shared/agent-animation-contract.mjs';
@@ -304,6 +304,7 @@ export async function installEquipmentModels(options, adapters = {}) {
       modelSelections.set(resource, {
         ...inspectEquipmentSourceModel({ data: data.stdout, control: control.stdout }),
         nativeMuzzle: mesh ? inspectNativeMuzzle(mesh.stdout) : undefined,
+        nativeEject: mesh ? inspectNativeEject(mesh.stdout) : undefined,
         sourceSha256: createHash('sha256').update(bytes).digest('hex'),
         sourceBytes: bytes.length,
       });
@@ -382,7 +383,7 @@ export async function installEquipmentModels(options, adapters = {}) {
           throw Error('The fixed native first-person export failed: ' + role);
         paths.push('--' + role, path);
       }
-      const muzzle = modelSelections.get(rig.weapon).nativeMuzzle;
+      const { nativeMuzzle: muzzle, nativeEject: eject } = modelSelections.get(rig.weapon);
       await execute(
         process.execPath,
         [
@@ -394,6 +395,7 @@ export async function installEquipmentModels(options, adapters = {}) {
           '--output',
           join(rigOutput, 'model.glb'),
           ...(muzzle ? ['--muzzle', JSON.stringify(muzzle)] : []),
+          ...(eject ? ['--eject', JSON.stringify(eject)] : []),
           ...paths,
         ],
         'viewmodel-pack',
@@ -455,6 +457,7 @@ export async function installEquipmentModels(options, adapters = {}) {
           ...(selected.nativeMuzzle
             ? ['--native-muzzle', JSON.stringify(selected.nativeMuzzle)]
             : []),
+          ...(selected.nativeEject ? ['--native-eject', JSON.stringify(selected.nativeEject)] : []),
           ...(options.networkDeny ? ['--confined'] : []),
         ],
         `equipment-${i}-pack`,

@@ -25,14 +25,14 @@ export {
   validateEquipmentGeometryMetadata,
 } from './equipment-model-input.mjs';
 import { staticModelBounds } from './static-model-bounds.mjs';
-import { addNativeMuzzle } from './native-weapon-muzzle.mjs';
+import { addNativeEject, addNativeMuzzle } from './native-weapon-muzzle.mjs';
 // Source local (X forward, Z up) to viewer local (X forward, Y up).
 const sourceToViewer = [1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1];
 
 function reframeEquipment(document, id) {
   const nodes = document.getRoot().listNodes();
-  // The standalone dropped kit is static scenery with an authored model origin.
-  const rigidKit = id === 'defuser';
+  // The standalone dropped kit and spent casings are rigid props with an authored model origin.
+  const rigidKit = id === 'defuser' || equipmentModelRegistry[id]?.kind === 'casing';
   const joints = nodes.filter((node) => node.getName() === 'weapon');
   if (!rigidKit && joints.length !== 1)
     throw Error('Equipment export requires one authored weapon root.');
@@ -81,6 +81,7 @@ export async function prepareEquipmentModel({
   assetVersion,
   source = {},
   nativeMuzzle,
+  nativeEject,
   confined = false,
 }) {
   if (
@@ -107,6 +108,7 @@ export async function prepareEquipmentModel({
   await document.transform(dedup(), prune({ keepLeaves: true }));
   // Empty authored anchors are inserted after prune so they survive packing.
   const muzzle = addNativeMuzzle(document, nativeMuzzle);
+  const eject = addNativeEject(document, nativeEject);
   const decodedGeometry = geometryBytes(document),
     bounds = staticModelBounds(document);
   assertEquipmentWeaponBounds(bounds);
@@ -141,6 +143,7 @@ export async function prepareEquipmentModel({
     sourceResource: equipmentModelRegistry[id].resource,
     source,
     ...(muzzle ? { nativeMuzzle: muzzle } : {}),
+    ...(eject ? { nativeEject: eject } : {}),
     sourceFiles: inspection.resources,
     sourceSha256: inspection.sourceSha256,
     sourceBytes: inspection.bytes,
@@ -198,6 +201,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       'native-bytes': { type: 'string' },
       'native-meshes': { type: 'string' },
       'native-muzzle': { type: 'string' },
+      'native-eject': { type: 'string' },
       manifest: { type: 'string' },
       confined: { type: 'boolean' },
       help: { type: 'boolean' },
@@ -229,10 +233,17 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       throw Error('Native muzzle metadata exceeds its bound.');
     nativeMuzzle = JSON.parse(values['native-muzzle']);
   }
+  let nativeEject;
+  if (values['native-eject'] !== undefined) {
+    if (values['native-eject'].length > 1024)
+      throw Error('Native eject metadata exceeds its bound.');
+    nativeEject = JSON.parse(values['native-eject']);
+  }
   const result = await prepareEquipmentModel({
     ...values,
     assetVersion: values['asset-version'],
     nativeMuzzle,
+    nativeEject,
     source: hasNative
       ? {
           depot: '2347770',

@@ -2,8 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Document, NodeIO } from '@gltf-transform/core';
 import {
+  addNativeEject,
   addNativeMuzzle,
+  inspectNativeEject,
   inspectNativeMuzzle,
+  nativeEjectNode,
   nativeMuzzleNode,
   validateNativeMuzzle,
 } from './native-weapon-muzzle.mjs';
@@ -117,4 +120,34 @@ test('missing/ambiguous bones never become fabricated authored anchors, and meta
     { ...authored, bone: 'x'.repeat(101) },
   ])
     assert.throws(() => validateNativeMuzzle(bad), /attachment/);
+});
+
+test('the shell ejection port follows the same exact-evidence rules as the muzzle', async () => {
+  const eject = { bone: 'weapon_offset', position: [3.3, -0.38, -0.07], rotation: [0, 0, 0, 1] };
+  const port = mesh({ bone: eject.bone, position: eject.position }).replaceAll(
+    'muzzle_flash',
+    'shell_eject',
+  );
+  assert.deepEqual(inspectNativeEject(port), eject);
+  // Each name is read only from its own attachment.
+  assert.equal(inspectNativeMuzzle(port), undefined);
+  assert.equal(inspectNativeEject(mesh()), undefined);
+  assert.equal(
+    inspectNativeEject(port + '\n' + port.replace('3.3', '3.4')),
+    undefined,
+    'variants must agree',
+  );
+  const document = new Document();
+  document.createScene().addChild(document.createNode(eject.bone));
+  const provenance = addNativeEject(document, eject);
+  assert.equal(provenance.node, nativeEjectNode);
+  const decoded = await new NodeIO().readBinary(await new NodeIO().writeBinary(document)),
+    published = decoded
+      .getRoot()
+      .listNodes()
+      .find((node) => node.getName() === nativeEjectNode);
+  assert.deepEqual(published.getExtras(), { cswatchNativeAttachment: 'shell_eject' });
+  assert.equal(addNativeEject(document, eject), undefined);
+  // Both anchors can coexist on one weapon.
+  assert.ok(addNativeMuzzle(document, { ...eject, position: [20, 0, 1] }));
 });

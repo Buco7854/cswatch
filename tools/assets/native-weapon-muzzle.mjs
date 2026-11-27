@@ -1,6 +1,7 @@
 /** Bounded, optional authored muzzle evidence from S2V's native mesh metadata.
  * This is a bone-local attachment, not a guessed tip of the render bounds. */
 export const nativeMuzzleNode = 'cswatch_native_muzzle';
+export const nativeEjectNode = 'cswatch_native_eject';
 const maximum = 4 * 1024 ** 2;
 class UnsupportedNativeMuzzle extends Error {}
 const tuple = (value, count, bound) =>
@@ -99,12 +100,16 @@ export function validateNativeMuzzle(value) {
   return { bone: value.bone, position: [...value.position], rotation: [...value.rotation] };
 }
 
-export function inspectNativeMuzzle(text) {
+export const inspectNativeMuzzle = (text) => inspectNativeAttachment(text, 'muzzle_flash');
+/** The authored brass ejection port (`shell_eject`), with the muzzle's evidence rules. */
+export const inspectNativeEject = (text) => inspectNativeAttachment(text, 'shell_eject');
+
+function inspectNativeAttachment(text, name) {
   if (typeof text !== 'string' || Buffer.byteLength(text) > maximum || text.includes('\0'))
     throw Error('Expected bounded native mesh block MDAT.');
   if (!text.includes('--- Data for block "MDAT" ---')) return undefined;
   try {
-    return inspectSupportedMuzzle(text);
+    return inspectSupportedAttachment(text, name);
   } catch (error) {
     // Optional attachment syntax can change independently of a valid native
     // model. Only classified unsupported evidence becomes unavailable. Bounds
@@ -115,7 +120,7 @@ export function inspectNativeMuzzle(text) {
   }
 }
 
-function inspectSupportedMuzzle(text) {
+function inspectSupportedAttachment(text, name) {
   const found = [];
   let arrays = 0;
   for (const match of text.matchAll(/^[ \t]*m_attachments[ \t]*=[ \t\r\n]*(?=\[)/gm)) {
@@ -123,12 +128,12 @@ function inspectSupportedMuzzle(text) {
     const rows = attachmentArray(text, match.index + match[0].length);
     let seen = false;
     for (const row of rows) {
-      if (row?.key !== 'muzzle_flash') continue;
+      if (row?.key !== name) continue;
       if (seen) return undefined;
       seen = true;
       const attachment = row.value;
       if (
-        attachment?.m_name !== 'muzzle_flash' ||
+        attachment?.m_name !== name ||
         attachment.m_nInfluences !== 1 ||
         attachment.m_bIgnoreRotation !== false ||
         !Array.isArray(attachment.m_influenceNames) ||
@@ -161,18 +166,23 @@ function inspectSupportedMuzzle(text) {
 
 /** S2V child-bone frames retain native local axes; only lengths change to meters.
  * The existing S2V rig root and single offline +90° correction own world axes. */
-export function addNativeMuzzle(document, raw) {
+export const addNativeMuzzle = (document, raw) =>
+  addNativeAttachment(document, raw, nativeMuzzleNode, 'muzzle_flash');
+export const addNativeEject = (document, raw) =>
+  addNativeAttachment(document, raw, nativeEjectNode, 'shell_eject');
+
+function addNativeAttachment(document, raw, nodeName, tag) {
   if (raw === undefined) return undefined;
   const attachment = validateNativeMuzzle(raw),
     nodes = document.getRoot().listNodes(),
     candidates = nodes.filter((node) => node.getName() === attachment.bone);
-  if (candidates.length !== 1 || nodes.some((node) => node.getName() === nativeMuzzleNode))
+  if (candidates.length !== 1 || nodes.some((node) => node.getName() === nodeName))
     return undefined;
   const marker = document
-    .createNode(nativeMuzzleNode)
+    .createNode(nodeName)
     .setTranslation(attachment.position.map((value) => value * 0.0254))
     .setRotation(attachment.rotation)
-    .setExtras({ cswatchNativeAttachment: 'muzzle_flash' });
+    .setExtras({ cswatchNativeAttachment: tag });
   candidates[0].addChild(marker);
-  return { ...attachment, units: 'source-inches', node: nativeMuzzleNode };
+  return { ...attachment, units: 'source-inches', node: nodeName };
 }

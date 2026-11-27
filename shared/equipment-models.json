@@ -269,6 +269,38 @@
     "defuser": {
       "resource": "weapons/models/defuser/defuser.vmdl_c",
       "kind": "tool"
+    },
+    "casingrifle": {
+      "resource": "weapons/models/shared/shells/ak47/ak47_casing.vmdl_c",
+      "kind": "casing"
+    },
+    "casing9mm": {
+      "resource": "weapons/models/shared/shells/glock/glock_casing.vmdl_c",
+      "kind": "casing"
+    },
+    "casingawp": {
+      "resource": "weapons/models/shared/shells/awp/awp_casing.vmdl_c",
+      "kind": "casing"
+    },
+    "casingdeagle": {
+      "resource": "weapons/models/shared/shells/deagle/deagle_casing.vmdl_c",
+      "kind": "casing"
+    },
+    "casing57": {
+      "resource": "weapons/models/shared/shells/p90/p90_casing.vmdl_c",
+      "kind": "casing"
+    },
+    "casingxm1014": {
+      "resource": "weapons/models/shared/shells/shotgun/xm1014_casing.vmdl_c",
+      "kind": "casing"
+    },
+    "casingmag7": {
+      "resource": "weapons/models/shared/shells/shotgun/mag7_casing.vmdl_c",
+      "kind": "casing"
+    },
+    "casingnova": {
+      "resource": "weapons/models/shared/shells/shotgun/nova_casing.vmdl_c",
+      "kind": "casing"
     }
   }
 }

@@ -1577,6 +1577,60 @@
         [2354.29, 0.3368],
         [2868.57, 0.0956]
       ]
+    },
+    "weapon-4e38c04754d4": {
+      "source": "sounds/player/pl_shell1.vsnd_c",
+      "category": "weapon",
+      "distance": [
+        [40, 1],
+        [219.428574, 0.332226],
+        [600, 0]
+      ]
+    },
+    "weapon-85714eca4cf9": {
+      "source": "sounds/player/pl_shell2.vsnd_c",
+      "category": "weapon",
+      "distance": [
+        [40, 1],
+        [219.428574, 0.332226],
+        [600, 0]
+      ]
+    },
+    "weapon-67f2b4cc0ecb": {
+      "source": "sounds/player/pl_shell3.vsnd_c",
+      "category": "weapon",
+      "distance": [
+        [40, 1],
+        [219.428574, 0.332226],
+        [600, 0]
+      ]
+    },
+    "weapon-4319ff920b59": {
+      "source": "sounds/weapons/fx/tink/shotgun_shell1.vsnd_c",
+      "category": "weapon",
+      "distance": [
+        [40, 1],
+        [219.428574, 0.332226],
+        [600, 0]
+      ]
+    },
+    "weapon-3789a60a7a99": {
+      "source": "sounds/weapons/fx/tink/shotgun_shell2.vsnd_c",
+      "category": "weapon",
+      "distance": [
+        [40, 1],
+        [219.428574, 0.332226],
+        [600, 0]
+      ]
+    },
+    "weapon-714c0acb6326": {
+      "source": "sounds/weapons/fx/tink/shotgun_shell3.vsnd_c",
+      "category": "weapon",
+      "distance": [
+        [40, 1],
+        [219.428574, 0.332226],
+        [600, 0]
+      ]
     }
   },
   "events": {

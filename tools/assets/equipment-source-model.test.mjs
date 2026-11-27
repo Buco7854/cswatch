@@ -34,6 +34,24 @@ test('native uint64 default groups and first actual LOD select only authored mes
   const duplicate = metadata();
   duplicate.control = duplicate.control.replace('m_nMeshIndex = 1', 'm_nMeshIndex = 0');
   assert.throws(() => inspectEquipmentSourceModel(duplicate), /inconsistent/);
+  // Small props list their embedded meshes as empty references and use the newer key names.
+  const casing = {
+    data: metadata().data.replace(
+      'm_refMeshes = [ ]',
+      'm_refMeshes = [\n\t\tresource:"",\n\t\tresource:"",\n\t]',
+    ),
+    control:
+      '--- Data for block "CTRL" ---\nembedded_meshes = [ { name = "high"\n mesh_index = 0 }, { name = "low"\n mesh_index = 1 } ]\n',
+  };
+  assert.deepEqual(inspectEquipmentSourceModel(casing).meshes, ['low']);
+  const mixed = {
+    ...casing,
+    data: casing.data.replace(
+      'resource:"",\n\t\tresource:""',
+      'resource:"",\n\t\tresource:"outside.vmesh"',
+    ),
+  };
+  assert.throws(() => inspectEquipmentSourceModel(mixed), /embedded/);
 });
 test('locomotion closure accepts only the fixed clips and their skeleton, never other clips or animation graphs', async () => {
   const seeds = Object.values(directionalAgentRegistry),

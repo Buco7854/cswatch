@@ -22,8 +22,11 @@ import { createMuzzleResources } from '../muzzle-resources';
 import { useReducedMotion } from '../reduced-motion';
 
 type Muzzle = { read: (out: Vector3) => boolean };
+/** The authored brass ejection port's current world frame, per shooter. */
+export type EjectPort = { read: (out: Matrix4) => boolean };
 type FireContext = {
   muzzles: Map<string, Muzzle> | undefined;
+  ejects: Map<string, EjectPort> | undefined;
   index: WeaponFireIndex;
   tick: number;
   rate: number;
@@ -54,9 +57,13 @@ export default function EquipmentFire({
     () => (tracers && !reducedMotion ? new Map<string, Muzzle>() : undefined),
     [tracers, reducedMotion],
   );
+  const ejects = useMemo(
+    () => (enabled && !reducedMotion ? new Map<string, EjectPort>() : undefined),
+    [enabled, reducedMotion],
+  );
   const value = useMemo(
-    () => ({ index, tick, rate: data.tickRate, low, enabled, reducedMotion, muzzles }),
-    [index, tick, data.tickRate, low, enabled, reducedMotion, muzzles],
+    () => ({ index, tick, rate: data.tickRate, low, enabled, reducedMotion, muzzles, ejects }),
+    [index, tick, data.tickRate, low, enabled, reducedMotion, muzzles, ejects],
   );
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
@@ -141,6 +148,25 @@ export function EquipmentMuzzle({
       if (muzzles.get(position.id) === muzzle) muzzles.delete(position.id);
     };
   }, [marker, matrix, model, muzzles, origin, position.id]);
+  const ejects = context?.ejects;
+  const port = useMemo(() => {
+    const node = model.getObjectByName('cswatch_native_eject');
+    return node?.userData.cswatchNativeAttachment === 'shell_eject' ? node : undefined;
+  }, [model]);
+  useLayoutEffect(() => {
+    if (!ejects || !port) return;
+    const eject: EjectPort = {
+      read: (out) => {
+        if (!nativeMuzzleFrame(out, model, port)) return false;
+        out.premultiply(model.matrixWorld);
+        return out.elements.every(Number.isFinite);
+      },
+    };
+    ejects.set(position.id, eject);
+    return () => {
+      if (ejects.get(position.id) === eject) ejects.delete(position.id);
+    };
+  }, [ejects, model, port, position.id]);
   const resources = useMemo(createMuzzleResources, []);
   useEffect(() => resources.acquire(), [resources]);
   useLayoutEffect(() => {

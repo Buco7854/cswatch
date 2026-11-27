@@ -132,6 +132,7 @@ import { indexPovEvidence, povEvidenceAt } from '../pov-actions';
 import { type MapSun } from '../actor-sun';
 import { indexBombShockwaves, type BombShockwaveSample } from '../bomb-shockwave';
 import GrenadeBurst from './GrenadeBurst';
+import SpentBrass from './SpentBrass';
 import DetonationEffects, { detonationTextures } from './DetonationEffects';
 import { fireTextures } from './InfernoEffects';
 import { useEffectTextures } from '../effect-textures';
@@ -1035,6 +1036,7 @@ function World({
               />
             </PovEquipmentPass>
           )}
+          {!preview && settings.shotEffects && <SpentBrass data={data} tick={tick} />}
           {!preview && tracers && tracerTrace && (
             <ShotTracers
               data={data}

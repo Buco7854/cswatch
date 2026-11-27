@@ -33,10 +33,14 @@ export function inspectEquipmentSourceModel({ data, control }) {
     groups = integers(data, 'm_refMeshGroupMasks'),
     lod = integers(data, 'm_refLODGroupMasks');
   const refs = [...data.matchAll(/^\s*m_refMeshes\s*=\s*\[([^\]]*)\]/gm)];
-  if (refs.length !== 1 || refs[0][1].trim())
+  // Embedded meshes appear as an empty list or as empty references (small props such as casings).
+  if (refs.length !== 1 || !/^(?:\s*resource:""\s*,?)*\s*$/.test(refs[0][1]))
     throw Error('Only proven embedded native equipment meshes are currently supported.');
   const embedded = [
-    ...control.matchAll(/\bm_Name\s*=\s*"([a-zA-Z0-9_-]{1,100})"\s+m_nMeshIndex\s*=\s*(\d+)/g),
+    // Both spellings of the control block's embedded mesh entries occur in the depot.
+    ...control.matchAll(
+      /\b(?:m_Name|name)\s*=\s*"([a-zA-Z0-9_-]{1,100})"\s+(?:m_nMeshIndex|mesh_index)\s*=\s*(\d+)/g,
+    ),
   ].map((match) => ({ name: match[1], index: Number(match[2]) }));
   if (
     !embedded.length ||

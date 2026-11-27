@@ -38,13 +38,17 @@ export function disposeEquipmentInstance(scene: Object3D) {
   for (const skeleton of skeletons) skeleton.dispose();
 }
 
-/** Only the offline preparer's exact native attachment marker is accepted.
+/** Only the offline preparer's exact native attachment markers (muzzle or eject) are accepted.
  * Keep the effect in the instance's own frame, including any authored bones. */
 export function nativeMuzzleFrame(target: Matrix4, model: Object3D, marker: Object3D | undefined) {
   if (
     !marker ||
-    marker.name !== 'cswatch_native_muzzle' ||
-    marker.userData.cswatchNativeAttachment !== 'muzzle_flash'
+    !(
+      (marker.name === 'cswatch_native_muzzle' &&
+        marker.userData.cswatchNativeAttachment === 'muzzle_flash') ||
+      (marker.name === 'cswatch_native_eject' &&
+        marker.userData.cswatchNativeAttachment === 'shell_eject')
+    )
   )
     return false;
   let ancestor: Object3D | null = marker,

@@ -23,7 +23,7 @@ import { applyTextureBudget } from './texture-budget.mjs';
 import { compressGlbGeometry } from './meshopt-glb.mjs';
 import { viewmodelSources } from './viewmodel-sources.mjs';
 
-import { addNativeMuzzle } from './native-weapon-muzzle.mjs';
+import { addNativeEject, addNativeMuzzle } from './native-weapon-muzzle.mjs';
 import { preparerRevision, viewmodelActionSeconds } from '../../backend/dist/asset-preparer.js';
 
 const limits = { idleSeconds: 12, samples: 361, channels: 384 };
@@ -233,7 +233,7 @@ function addAction({
 }
 
 /** Pack bounded exports in the conversion child, retaining the native camera frame. */
-async function prepareViewmodel({ equipment, input, output, manifest, muzzle }) {
+async function prepareViewmodel({ equipment, input, output, manifest, muzzle, eject }) {
   if (!Object.hasOwn(viewmodelSources, equipment))
     throw Error('Unsupported first-person equipment.');
   output = resolve(output);
@@ -307,6 +307,7 @@ async function prepareViewmodel({ equipment, input, output, manifest, muzzle }) 
   for (const accessor of arms.getRoot().listAccessors()) accessor.setSparse(false);
   await arms.transform(dedup(), prune(), unpartition());
   addNativeMuzzle(arms, muzzle);
+  addNativeEject(arms, eject);
   const decodedGeometryBytes = arms
     .getRoot()
     .listAccessors()
@@ -335,13 +336,13 @@ async function prepareViewmodel({ equipment, input, output, manifest, muzzle }) 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const { values } = parseArgs({
     options: Object.fromEntries(
-      ['equipment', 'output', 'manifest', 'muzzle', ...roles].map((name) => [
+      ['equipment', 'output', 'manifest', 'muzzle', 'eject', ...roles].map((name) => [
         name,
         { type: 'string' },
       ]),
     ),
   });
-  const { equipment, output, manifest, muzzle } = values;
+  const { equipment, output, manifest, muzzle, eject } = values;
   const source = Object.hasOwn(viewmodelSources, equipment)
     ? viewmodelSources[equipment]
     : undefined;
@@ -358,6 +359,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     output,
     manifest,
     muzzle: muzzle ? JSON.parse(muzzle) : undefined,
+    eject: eject ? JSON.parse(eject) : undefined,
   });
   await writeFile(resolve(dirname(output), 'manifest.json'), JSON.stringify(metadata) + '\n', {
     flag: 'wx',
