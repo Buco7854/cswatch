@@ -20,6 +20,9 @@ export const viewmodelActionSeconds = {
   heavy: 3,
   pullpin: 3,
   plant: 6,
+  // The recorded silencer state of an M4A1-S or USP-S changing (the official clips last 4.83 s).
+  silencerOn: 5,
+  silencerOff: 5,
 } as const;
 const action = (maximum: number) =>
   z
@@ -65,6 +68,8 @@ export const viewmodelManifest = z
         heavy: action(viewmodelActionSeconds.heavy).optional(),
         pullpin: action(viewmodelActionSeconds.pullpin).optional(),
         plant: action(viewmodelActionSeconds.plant).optional(),
+        silencerOn: action(viewmodelActionSeconds.silencerOn).optional(),
+        silencerOff: action(viewmodelActionSeconds.silencerOff).optional(),
       })
       .strict(),
   })

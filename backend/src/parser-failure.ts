@@ -80,7 +80,7 @@ const validationFields = new Set(
   (
     'version map tickRate firstTick lastTick worldBounds chunks index startTick endTick firstFrameTick frames bytes ' +
     'players id name team x y z yaw pitch health alive weapon armor money ammo duck flash helmet defuser ' +
-    'scoped defusing equipmentValue startMoney spentThisRound inventory input source buttons pressedButtons releasedButtons mouseDx mouseDy ' +
+    'scoped silencer burst defusing equipmentValue startMoney spentThisRound inventory input source buttons pressedButtons releasedButtons mouseDx mouseDy ' +
     'stats kills deaths assists headshotKills damage events type tick rounds number liveTick winner deadTimes start end kind ' +
     'objectives matchState samples complete throwInputs eventIndex actorId sampleTick provenance clock phase ctScore tScore ' +
     'grenades points voice chat captions speaker text language opus sampleRate channels durationMs crosshairs actor code'

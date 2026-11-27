@@ -77,7 +77,15 @@ const clips = {
   ],
   m4a1silencer: [
     'rifle/_default_rifle',
-    { idle: 'idle_rifle', draw: 'draw_rifle', fire: 'shoot1_rifle', reload: 'reload_rifle' },
+    {
+      idle: 'idle_rifle',
+      draw: 'draw_rifle',
+      fire: 'shoot1_rifle',
+      reload: 'reload_rifle',
+      // Played when the recorded silencer state of the held weapon changes.
+      silencerOn: 'silencer_attach_rifle',
+      silencerOff: 'silencer_detach_rifle',
+    },
   ],
   mac10: [
     'rifle/rifle_mac10',
@@ -156,7 +164,14 @@ const clips = {
   ],
   uspsilencer: [
     'pistol/_default_pistol',
-    { idle: 'idle_pistol', draw: 'draw_pistol', fire: 'shoot1_pistol', reload: 'reload_pistol' },
+    {
+      idle: 'idle_pistol',
+      draw: 'draw_pistol',
+      fire: 'shoot1_pistol',
+      reload: 'reload_pistol',
+      silencerOn: 'silencer_attach_pistol',
+      silencerOff: 'silencer_detach_pistol',
+    },
   ],
   xm1014: [
     'rifle/rifle_xm1014',

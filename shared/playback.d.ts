@@ -74,6 +74,10 @@ export type Position = {
   helmet?: boolean;
   defuser?: boolean;
   scoped?: boolean;
+  /** M4A1-S and USP-S: whether the recorded silencer is attached. */
+  silencer?: boolean;
+  /** FAMAS and Glock-18: whether the recorded burst mode is on. */
+  burst?: boolean;
   /** Narrow field of view reported by the recorded player camera service. */
   scopeFov?: number;
   /** Recorded eye offset in Source inches. The short form has zero XY. */

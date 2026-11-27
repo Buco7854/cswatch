@@ -185,6 +185,8 @@ const position = z
     helmet: z.boolean().optional(),
     defuser: z.boolean().optional(),
     scoped: z.boolean().optional(),
+    silencer: z.boolean().optional(),
+    burst: z.boolean().optional(),
     scopeFov: z.number().int().min(5).max(89).optional(),
     eyeOffset: z
       .union([

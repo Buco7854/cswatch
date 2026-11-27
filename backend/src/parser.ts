@@ -95,6 +95,8 @@ function readFrames(source: string, sampled: number[]) {
         'has_defuser',
         'is_scoped',
         'is_defusing',
+        'is_silencer_on',
+        'is_burst_mode',
         'current_equip_value',
         'start_balance',
         'cash_spent_this_round',

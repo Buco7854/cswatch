@@ -1631,6 +1631,22 @@
         [219.428574, 0.332226],
         [600, 0]
       ]
+    },
+    "reload-7a47a9b4a21b": {
+      "source": "sounds/weapons/m4a1/m4a1_silencer_on.vsnd_c",
+      "category": "reload"
+    },
+    "reload-ce22e8e46d33": {
+      "source": "sounds/weapons/m4a1/m4a1_silencer_off.vsnd_c",
+      "category": "reload"
+    },
+    "reload-f71294bd2697": {
+      "source": "sounds/weapons/usp/usp_silencer_on.vsnd_c",
+      "category": "reload"
+    },
+    "reload-ccd7ef3fabda": {
+      "source": "sounds/weapons/usp/usp_silencer_off.vsnd_c",
+      "category": "reload"
     }
   },
   "events": {
@@ -3593,6 +3609,30 @@
       "channel": "sos",
       "hash": 2381346641,
       "volume": 1,
+      "pitch": 1
+    },
+    "Weapon_M4A1.Silencer_On": {
+      "soundId": "reload-7a47a9b4a21b",
+      "channel": "weapon-sound",
+      "volume": 0.3,
+      "pitch": 1
+    },
+    "Weapon_M4A1.Silencer_Off": {
+      "soundId": "reload-ce22e8e46d33",
+      "channel": "weapon-sound",
+      "volume": 0.3,
+      "pitch": 1
+    },
+    "Weapon_USP.AttachSilencer": {
+      "soundId": "reload-f71294bd2697",
+      "channel": "weapon-sound",
+      "volume": 0.3,
+      "pitch": 1
+    },
+    "Weapon_USP.DetachSilencer": {
+      "soundId": "reload-ccd7ef3fabda",
+      "channel": "weapon-sound",
+      "volume": 0.3,
       "pitch": 1
     }
   }

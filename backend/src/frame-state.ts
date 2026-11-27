@@ -158,6 +158,11 @@ function collectOrderedFrameState(
       ['is_defusing', 'defusing'],
     ] as const)
       if (typeof row[field] === 'boolean') player[property] = row[field];
+    // The held weapon's recorded silencer and burst state, only where the weapon has one.
+    if (/^(?:M4A1-S|USP-S)$/.test(player.weapon) && typeof row.is_silencer_on === 'boolean')
+      player.silencer = row.is_silencer_on;
+    if (/^(?:FAMAS|Glock-18)$/.test(player.weapon) && typeof row.is_burst_mode === 'boolean')
+      player.burst = row.is_burst_mode;
     const scope = row[recordedCameraFov];
     if (
       player.alive &&

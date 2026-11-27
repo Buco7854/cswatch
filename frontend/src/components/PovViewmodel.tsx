@@ -213,12 +213,11 @@ function AuthoredViewmodel({
         ]),
       ),
       // Optional clips driven by recorded evidence (inspect key, knife secondary
-      // attack, grenade pin, C4 arming).
+      // attack, grenade pin, C4 arming, silencer changes).
       recorded: Object.fromEntries(
-        (['inspect', 'heavy', 'pullpin', 'plant'] as const).map((kind) => [
-          kind,
-          action(gltf.animations.find((clip) => clip.name === id + '-' + kind)),
-        ]),
+        (['inspect', 'heavy', 'pullpin', 'plant', 'silencerOn', 'silencerOff'] as const).map(
+          (kind) => [kind, action(gltf.animations.find((clip) => clip.name === id + '-' + kind))],
+        ),
       ),
       disposeMaterials,
       mixer,
@@ -279,7 +278,13 @@ function AuthoredViewmodel({
     if (rig.draw) sampleAction(rig.draw, draw);
     for (const clip of [...Object.values(rig.utility), rig.recorded.heavy])
       sampleAction(clip, clip && clip === action ? { age, weight: actionWeight } : undefined);
-    for (const clip of [rig.recorded.inspect, rig.recorded.pullpin, rig.recorded.plant])
+    for (const clip of [
+      rig.recorded.inspect,
+      rig.recorded.pullpin,
+      rig.recorded.plant,
+      rig.recorded.silencerOn,
+      rig.recorded.silencerOff,
+    ])
       sampleAction(
         clip,
         clip && clip === extra && extraWeight > 0

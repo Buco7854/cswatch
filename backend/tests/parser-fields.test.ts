@@ -175,3 +175,25 @@ test('scope projection requires explicit recorded FOV and a living scoped player
     [40, 10, undefined, undefined, undefined, undefined],
   );
 });
+
+test('silencer and burst states are kept only for the weapons that have them', () => {
+  const data = columnsOf([
+    row(4, alice, { active_weapon_name: 'M4A1-S', is_silencer_on: true, is_burst_mode: false }),
+    row(8, alice, { active_weapon_name: 'M4A1-S', is_silencer_on: false }),
+    row(12, alice, { active_weapon_name: 'Glock-18', is_silencer_on: false, is_burst_mode: true }),
+    row(16, alice, { active_weapon_name: 'AK-47', is_silencer_on: false, is_burst_mode: false }),
+    row(20, alice, { active_weapon_name: 'USP-S' }),
+  ]);
+  const players = collectColumnFrameState(data).frames.map(({ players }) => players[0]);
+  assert.deepEqual(
+    players.map(({ silencer, burst }) => [silencer, burst]),
+    [
+      [true, undefined],
+      [false, undefined],
+      [undefined, true],
+      [undefined, undefined],
+      // Missing evidence stays unknown.
+      [undefined, undefined],
+    ],
+  );
+});

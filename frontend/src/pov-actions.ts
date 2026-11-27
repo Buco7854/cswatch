@@ -7,8 +7,12 @@ import type { Playback, Position } from './types';
  *   cancelled by a recorded shot, reload or weapon change;
  * - heavy: a recorded knife attack while the secondary attack alone was held;
  * - pullpin: the recorded attack press on a held grenade, until its recorded throw;
- * - plant: the recorded C4 arming of the viewed player. */
-export type PovEvidenceAction = { kind: 'inspect' | 'heavy' | 'pullpin' | 'plant'; age: number };
+ * - plant: the recorded C4 arming of the viewed player;
+ * - silencerOn / silencerOff: a change of the held M4A1-S or USP-S's recorded silencer state. */
+export type PovEvidenceAction = {
+  kind: 'inspect' | 'heavy' | 'pullpin' | 'plant' | 'silencerOn' | 'silencerOff';
+  age: number;
+};
 
 const LOOK_AT_WEAPON = 1n << 35n,
   ATTACK = 1n,
@@ -114,6 +118,20 @@ export function povEvidenceAt(
       return { kind: 'pullpin', age: age(pulled.tick) };
     return;
   }
+
+  // The latest recorded change of the silencer on the same held weapon.
+  if (weapon === 'm4a1silencer' || weapon === 'uspsilencer')
+    for (let i = current; i > 0; i--) {
+      if (frames[i].tick < roundStart || age(frames[i].tick) > 4) break;
+      const now = sampleOf(i),
+        before = sampleOf(i - 1);
+      if (!now?.alive || !before || !sameWeapon(now) || !sameWeapon(before)) break;
+      if (typeof now.silencer === 'boolean' && typeof before.silencer === 'boolean')
+        if (now.silencer !== before.silencer) {
+          if (lastFire && lastFire.tick >= frames[i].tick) break;
+          return { kind: now.silencer ? 'silencerOn' : 'silencerOff', age: age(frames[i].tick) };
+        }
+    }
 
   const inspected = press(LOOK_AT_WEAPON, sameWeapon);
   if (inspected && !inspected.reloaded && !(lastFire && lastFire.tick >= inspected.tick))

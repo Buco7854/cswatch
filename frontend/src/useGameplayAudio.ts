@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { c4BeepCues } from './c4-beeps';
 import { brassCues } from './brass';
+import { silencerCues } from './silencer-cues';
 import { indexWeaponFire } from './weapon-fire';
 import type { GameplaySoundInfo, SharedGameplaySoundCatalog } from '../../shared/gameplay-sounds';
 import type { Playback } from './types';
@@ -82,8 +83,9 @@ export function useGameplayAudio({
       if (Math.abs(at.tick - tick) > data.tickRate / 4) return undefined;
       return at.players.find((candidate) => candidate.id === actor && candidate.alive);
     });
-    return beeps.length || brass.length
-      ? [...(data.sounds || []), ...beeps, ...brass].sort((a, b) => a.tick - b.tick)
+    const silencer = silencerCues(data);
+    return beeps.length || brass.length || silencer.length
+      ? [...(data.sounds || []), ...beeps, ...brass, ...silencer].sort((a, b) => a.tick - b.tick)
       : data.sounds;
   }, [data]);
   const neededKey = useMemo(
