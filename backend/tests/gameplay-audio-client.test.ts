@@ -16,6 +16,7 @@ import {
   originalSoundDescriptor,
 } from '../../frontend/tests/fixtures/game-sound.js';
 import type { GameplaySoundCue } from '../../shared/gameplay-sounds.js';
+import { gameplayAudioLimits } from '../../shared/gameplay-sound-files.mjs';
 const cue = (id: string, tick: number): GameplaySoundCue => ({
   id,
   tick,
@@ -152,8 +153,8 @@ test('game sound contract accepts fixed bounded PCM assets and rejects external,
   for (const changed of [
     { url: 'https://untrusted.invalid/a.wav' },
     { mime: 'audio/mpeg' },
-    { bytes: 3 * 1024 ** 2 },
-    { durationMs: 11000 },
+    { bytes: gameplayAudioLimits.bytes + 1 },
+    { durationMs: gameplayAudioLimits.durationMs + 1 },
     { sampleRate: 96000 },
     { channels: 8 },
     { sha256: 'x' },

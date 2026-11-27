@@ -24,7 +24,7 @@ import {
 import type { GameplaySoundCue } from '../../shared/gameplay-sounds.js';
 import { gameplaySoundAssetRoutes } from '../src/gameplay-sound-assets.js';
 import { managedSoundDirectory } from '../../shared/gameplay-sound-bank.mjs';
-import { inspectGameplayAudio } from '../../shared/gameplay-sound-files.mjs';
+import { gameplayAudioLimits, inspectGameplayAudio } from '../../shared/gameplay-sound-files.mjs';
 import { sample } from '../../frontend/src/sample.js';
 import { writeReplay, validateReplayArtifacts } from '../src/replay.js';
 function soundReader(currentTick: number) {
@@ -95,7 +95,11 @@ test('only a recorded winning side selects a classic announcement at the round_e
 
 test('audio containers bound decoded duration/rate and reject truncated or changed MPEG frames before decoding', () => {
   assert.equal(inspectGameplayAudio(wav()).durationMs, 100);
-  assert.throws(() => inspectGameplayAudio(wav(80001)), /duration/);
+  // One sample past the duration bound at 8 kHz.
+  assert.throws(
+    () => inspectGameplayAudio(wav((gameplayAudioLimits.durationMs / 1000) * 8000 + 1)),
+    /duration/,
+  );
   const corrupt = wav();
   corrupt.writeUInt32LE(0xfffffff0, 40);
   assert.throws(() => inspectGameplayAudio(corrupt));

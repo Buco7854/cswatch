@@ -9,7 +9,7 @@ import {
   normalizeMpegBytes,
   normalizeGameplaySound,
 } from './normalize-gameplay-sound.mjs';
-import { inspectGameplayAudio } from '../../shared/gameplay-sound-files.mjs';
+import { inspectGameplayAudio, gameplayAudioLimits } from '../../shared/gameplay-sound-files.mjs';
 import { buildNetworkDeny } from './build-network-deny.mjs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -79,12 +79,18 @@ test('validated metadata-only Xing wrapper is stripped without changing actual t
 test('independent semantic bounds reject long/truncated streams, changing formats, oversized input and unknown metadata', () => {
   const original = originalToneMp3(),
     info = inspectMpegFrames(original);
-  assert.throws(() => inspectMpegFrames(Buffer.concat(Array.from({ length: 80 }, () => original))));
+  // Just over the decoded-duration bound, whatever that bound is.
+  const copies =
+    Math.floor(gameplayAudioLimits.durationMs / ((info.maximumSamples / info.sampleRate) * 1000)) +
+    1;
+  assert.throws(() =>
+    inspectMpegFrames(Buffer.concat(Array.from({ length: copies }, () => original))),
+  );
   assert.throws(() => inspectMpegFrames(original.subarray(0, original.length - 1)));
   const changed = Buffer.from(original);
   changed[info.frames[1].offset + 3] = 0;
   assert.throws(() => inspectMpegFrames(changed));
-  assert.throws(() => inspectMpegFrames(Buffer.alloc(2 * 1024 ** 2 + 1)));
+  assert.throws(() => inspectMpegFrames(Buffer.alloc(gameplayAudioLimits.bytes + 1)));
   assert.throws(() => inspectMpegFrames(Buffer.concat([Buffer.from('ID3'), original])));
 });
 test('operator normalization uses exclusive new output, preserves input and rejects links before WASM work', async (t) => {

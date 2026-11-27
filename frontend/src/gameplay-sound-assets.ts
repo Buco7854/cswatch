@@ -38,17 +38,18 @@ export function validateGameplaySoundCatalog(value: unknown): SharedGameplaySoun
       item.url !== `/api/sound-assets/${id}.wav` ||
       typeof item.sha256 !== 'string' ||
       !/^[a-f0-9]{64}$/.test(item.sha256) ||
-      !integer(item.bytes, 44, 2 * MiB) ||
+      !integer(item.bytes, 44, gameplayAudioLimits.bytes) ||
       typeof item.durationMs !== 'number' ||
       !Number.isFinite(item.durationMs) ||
       item.durationMs <= 0 ||
-      item.durationMs > 10000 ||
+      item.durationMs > gameplayAudioLimits.durationMs ||
       !integer(item.sampleRate, 8000, 48000) ||
       !integer(item.channels, 1, 2)
     )
       throw new Error('Invalid game sound asset');
     total += item.bytes as number;
-    if (total > 64 * MiB) throw new Error('Game sound catalog exceeds its bound');
+    if (total > gameplayAudioLimits.bankBytes)
+      throw new Error('Game sound catalog exceeds its bound');
     result.items[id] = {
       url: item.url as string,
       sha256: item.sha256,

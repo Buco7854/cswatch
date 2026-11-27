@@ -12,6 +12,7 @@ import { parseSteamListing, checkedBatch } from './steam-assets-plan.mjs';
 import { localDirectory } from './toolchain-security.mjs';
 import { regular, fileHash, checkStorage, checkFreeReserve, exists } from './asset-storage.mjs';
 import { managedSoundDirectory } from '../../shared/gameplay-sound-bank.mjs';
+import { gameplayAudioLimits } from '../../shared/gameplay-sound-files.mjs';
 import { prepareToolchain } from './prepare-toolchain.mjs';
 import { markSteamRateLimit } from './official-map-inventory.mjs';
 import {
@@ -156,7 +157,7 @@ export async function installGameplaySounds(options, adapters = {}) {
     const index = await (adapters.index ?? readVpkDirectory)(join(game, name));
     const availableIds = ids.filter((id) => {
       const entry = index.entries.get(gameplaySoundRegistry.items[id].source);
-      return entry && entry.length + entry.preloadBytes <= 2 * MiB;
+      return entry && entry.length + entry.preloadBytes <= gameplayAudioLimits.bytes;
     });
     const unsupportedResources = ids
       .filter((id) => !availableIds.includes(id))
@@ -175,7 +176,7 @@ export async function installGameplaySounds(options, adapters = {}) {
     for (const id of availableIds) {
       const resource = gameplaySoundRegistry.items[id].source,
         bytes = await index.readEntry(resource);
-      if (!bytes || bytes.length > 2 * MiB)
+      if (!bytes || bytes.length > gameplayAudioLimits.bytes)
         throw Object.assign(Error('Native sound resource failed CRC or size bounds.'), {
           code: 'SOURCE_MAP_MISMATCH',
         });
@@ -212,7 +213,7 @@ export async function installGameplaySounds(options, adapters = {}) {
         resourceReport.exportedMpegSha256 = await fileHash(
           join(converted, `${id}.mp3`),
           'sha256',
-          2 * MiB,
+          gameplayAudioLimits.bytes,
         );
         const normalized = await run(
           options.networkDeny,
